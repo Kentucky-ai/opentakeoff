@@ -5,7 +5,7 @@
 // gets the old page's text stored under the new bytes' hash.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createDocCache, createSheetSource, readHooks, readdEffects } from "../src/lib/ocr/sheetSource.ts";
+import { createDocCache, createSheetSource, docIdleMax, readHooks, readdEffects } from "../src/lib/ocr/sheetSource.ts";
 import { createPageReader, type ReadRegion } from "../src/lib/ocr/pageRead.ts";
 import { createPageCache, ocrCacheKey } from "../src/lib/ocr/pageCache.ts";
 import type { OcrProbe } from "../src/lib/ocr/client.ts";
@@ -34,32 +34,50 @@ function fakeStore(initial: Record<string, number[]>) {
   };
 }
 
-/** pdf.js's getDocument, faked: detaches the bytes the way pdf.js may. */
-function fakeOpen(data: Uint8Array) {
+/** pdf.js's getDocument, faked: detaches the bytes the way pdf.js may, and
+ * its pages are gone once destroyed. `held`: the parse waits for
+ * resolve()/reject(). */
+function fakeOpen(data: Uint8Array, held = false) {
   const from = data[0];
   structuredClone(data.buffer, { transfer: [data.buffer] });
   let destroyed = false;
-  return {
-    destroyed: () => destroyed,
-    destroy() { destroyed = true; },
-    promise: Promise.resolve({
-      getPage: async (_n: number): Promise<FakePage> => ({ from, getViewport: ({ scale }) => ({ width: 100 * scale, height: 50 * scale }) }),
-    }),
+  const doc = {
+    getPage: async (n: number): Promise<FakePage> => {
+      if (destroyed) throw new Error("destroyed");
+      if (n > 1) throw new Error(`no page ${n}`);
+      return { from, getViewport: ({ scale }) => ({ width: 100 * scale, height: 50 * scale }) };
+    },
   };
+  let resolve = () => {}, reject = (_e: Error) => {};
+  const promise = held ? new Promise<typeof doc>((res, rej) => { resolve = () => res(doc); reject = rej; }) : Promise.resolve(doc);
+  return { from, destroyed: () => destroyed, destroy() { destroyed = true; }, promise, resolve, reject };
 }
 
-function setup(initial: Record<string, number[]>, hashing = true) {
+interface SetupOpts { pinned?: () => Iterable<string>; maxIdle?: number; held?: (from: number) => boolean }
+
+function setup(initial: Record<string, number[]>, hashing = true, o: SetupOpts = {}) {
   const store = fakeStore(initial);
   const remembered: Promise<string | null>[] = [];
   const opened: ReturnType<typeof fakeOpen>[] = [];
   const docs = createDocCache<FakePage>({
     load: store.load,
-    open: (data) => { const t = fakeOpen(data); opened.push(t); return t; },
+    open: (data) => { const t = fakeOpen(data, o.held?.(data[0]) ?? false); opened.push(t); return t; },
     hashing: () => (hashing ? (h) => { remembered.push(h); } : null),
+    pinned: o.pinned,
+    maxIdle: o.maxIdle,
   });
-  const source = createSheetSource<FakePage>({ cached: docs.cached, open: docs.open, storeHash: store.storeHash, storeKnown: (f) => store.storeKnown(f) });
-  return { store, docs, source, remembered, opened };
+  // leases the source took and releases it made, counted
+  const leases = { taken: 0, released: 0 };
+  const lease = (f: string) => { leases.taken++; const r = docs.lease(f); return () => { leases.released++; r(); }; };
+  const source = createSheetSource<FakePage>({ cached: docs.cached, open: docs.open, lease, storeHash: (f) => store.storeHash(f), storeKnown: (f) => store.storeKnown(f) });
+  /** the first bytes of every destroyed document, in open order */
+  const destroyed = () => opened.filter((d) => d.destroyed()).map((d) => d.from);
+  return { store, docs, source, remembered, opened, destroyed, leases };
 }
+
+/** Files a.pdf, b.pdf, ... whose first byte is 1, 2, ... */
+const files = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`${"abcdefgh"[i]}.pdf`, [i + 1]]));
+const loadAll = async (t: ReturnType<typeof setup>, names: string[]) => { for (const f of names) { await t.docs.doc(f); await tick(); } };
 
 test("the doc cache hashes the bytes it loaded before pdf.js can detach them, and loads once", async () => {
   const t = setup({ "a.pdf": [1, 2, 3] });
@@ -130,6 +148,30 @@ test("hash: nothing loaded or known loads the document once and takes its hash",
   assert.equal(t.store.calls.storeHash, 0);
 });
 
+test("hash() keeps the document it loads until its hash settles", async () => {
+  // a store that doesn't hash here: the hash is the store's, held back
+  const t = setup(files(1), false, { maxIdle: 0 });
+  let settle!: (h: string) => void;
+  t.store.storeHash = () => new Promise((r) => { settle = r; });
+  const h = t.source.hash("a.pdf");
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(t.docs.loaded("a.pdf"), true, "parsed, so a trim could take it");
+  assert.deepEqual(t.destroyed(), [], "held while its hash is pending");
+  settle("d".repeat(64));
+  assert.equal(await h, "d".repeat(64));
+  await tick();
+  assert.deepEqual(t.destroyed(), [1], "settled, it is let go");
+});
+
+test("a hash() whose load fails still releases its lease", async () => {
+  const t = setup(files(1), false, { maxIdle: 0 });
+  t.store.storeHash = async () => { throw new Error("offline"); };
+  await assert.rejects(t.source.hash("a.pdf"), /offline/);
+  await tick();
+  assert.deepEqual(t.leases, { taken: 1, released: 1 });
+  assert.deepEqual(t.destroyed(), [1], "released, the idle document goes");
+});
+
 test("a store that doesn't hash here (local) keys on the store's hash", async () => {
   const t = setup({ "a.pdf": [1] }, false);
   await t.docs.doc("a.pdf");
@@ -144,11 +186,209 @@ test("hash with known: a loaded document with no hash of its own asks what the s
   assert.deepEqual([t.store.calls.storeHash, t.store.calls.storeKnown], [0, 1]);
 });
 
+test("readHooks.release twice releases once", async () => {
+  const t = setup(files(1));
+  const h = readHooks(t.source, "a.pdf", 1);
+  await h.getPage();
+  h.release();
+  h.release();
+  assert.deepEqual(t.leases, { taken: 1, released: 1 });
+});
+
 test("page: the page and the hash of the document it came from", async () => {
   const t = setup({ "a.pdf": [3] });
   const { page, hash } = await t.source.page("a.pdf", 1);
   assert.equal(page.from, 3);
   assert.equal(await hash, await shaHex([3]));
+});
+
+// ── which documents stay loaded ─────────────────────────────────────────────
+
+test("over the idle cap, the least recently used documents are destroyed", async () => {
+  const t = setup(files(5), true, { maxIdle: 2 });
+  await loadAll(t, ["a.pdf", "b.pdf", "c.pdf", "d.pdf", "e.pdf"]);
+  await tick();
+  assert.deepEqual(t.destroyed(), [1, 2, 3]);
+  assert.deepEqual(["a.pdf", "b.pdf", "c.pdf", "d.pdf", "e.pdf"].map((f) => t.docs.has(f)), [false, false, false, true, true]);
+});
+
+test("a pinned document is never trimmed; the pins are asked afresh on every trim", async () => {
+  const pins = new Set(["a.pdf"]);
+  const t = setup(files(3), true, { maxIdle: 1, pinned: () => pins });
+  await loadAll(t, ["a.pdf", "b.pdf", "c.pdf"]);
+  await tick();
+  assert.deepEqual(t.destroyed(), [2], "a stays pinned; b, unpinned and older than c, goes");
+  pins.clear();
+  t.docs.trim();
+  await tick();
+  assert.deepEqual(t.destroyed(), [1, 2], "unpinned, a goes next");
+  assert.equal(t.docs.has("c.pdf"), true);
+});
+
+test("asking for a document makes it the most recent; looking at its cache entry doesn't", async () => {
+  const t = setup(files(3), true, { maxIdle: 2 });
+  await loadAll(t, ["a.pdf", "b.pdf"]);
+  await t.docs.doc("a.pdf");
+  await loadAll(t, ["c.pdf"]);
+  await tick();
+  assert.deepEqual(t.destroyed(), [2], "b, not a, is the victim");
+
+  const u = setup(files(3), true, { maxIdle: 2 });
+  await loadAll(u, ["a.pdf", "b.pdf"]);
+  u.docs.cached("a.pdf");
+  await loadAll(u, ["c.pdf"]);
+  await tick();
+  assert.deepEqual(u.destroyed(), [1], "cached left a the oldest");
+});
+
+test("a document still parsing is never trimmed", async () => {
+  const t = setup(files(3), true, { maxIdle: 1, held: (from) => from === 1 });
+  const pending = t.docs.doc("a.pdf");
+  await tick();
+  await loadAll(t, ["b.pdf", "c.pdf"]);
+  await tick();
+  assert.deepEqual(t.destroyed(), [2], "b goes; a, still parsing, stays");
+  assert.equal(t.docs.has("a.pdf"), true);
+  t.opened[0].resolve();
+  await pending;
+});
+
+test("a document pdf.js can't parse is destroyed and dropped", async () => {
+  const t = setup(files(1), true, { held: () => true });
+  const p = t.docs.doc("a.pdf");
+  await tick();
+  t.opened[0].reject(new Error("bad pdf"));
+  await assert.rejects(p, /bad pdf/);
+  await tick();
+  assert.equal(t.docs.has("a.pdf"), false);
+  assert.deepEqual(t.destroyed(), [1]);
+});
+
+test("a document in use inside withDoc outlives siblings past the cap; released, it goes", async () => {
+  const t = setup(files(4), true, { maxIdle: 1 });
+  const page = await t.docs.withDoc("a.pdf", async (doc) => {
+    await loadAll(t, ["b.pdf", "c.pdf", "d.pdf"]);
+    await tick();
+    assert.deepEqual(t.destroyed(), [2, 3], "the idle siblings past the cap go");
+    return doc.getPage(1);
+  });
+  assert.equal(page.from, 1);
+  await tick();
+  assert.deepEqual(t.destroyed(), [1, 2, 3], "released, a is older than d");
+});
+
+test("releasing a lease twice is a no-op: a second lease still holds the document", async () => {
+  const t = setup(files(2), true, { maxIdle: 0 });
+  const r1 = t.docs.lease("a.pdf"), r2 = t.docs.lease("a.pdf");
+  await t.docs.doc("a.pdf");
+  await loadAll(t, ["b.pdf"]);
+  r1();
+  r1();
+  await tick();
+  assert.deepEqual(t.destroyed(), [2], "idle b goes; a is still leased");
+  r2();
+  await tick();
+  assert.deepEqual(t.destroyed(), [1, 2]);
+});
+
+test("a lease taken before a forced evict doesn't release the re-added document", async () => {
+  const t = setup(files(2), true, { maxIdle: 0 });
+  const old = t.docs.lease("a.pdf");
+  await t.docs.doc("a.pdf");
+  t.docs.evict("a.pdf");
+  const now = t.docs.lease("a.pdf");
+  await t.docs.doc("a.pdf");
+  await loadAll(t, ["b.pdf"]);
+  old();
+  await tick();
+  assert.deepEqual(t.destroyed(), [1, 2], "the evicted a and idle b go; the new a is still leased");
+  assert.equal(t.docs.has("a.pdf"), true);
+  now();
+  await tick();
+  assert.equal(t.docs.has("a.pdf"), false);
+});
+
+test("withLoadedDoc runs only on a document already loaded, never loading one", async () => {
+  const t = setup(files(3), true, { maxIdle: 1 });
+  let ran = false;
+  assert.equal(await t.docs.withLoadedDoc("a.pdf", () => { ran = true; }), undefined);
+  assert.equal(ran, false);
+  assert.equal(t.store.calls.loads, 0);
+  await loadAll(t, ["a.pdf"]);
+  const page = await t.docs.withLoadedDoc("a.pdf", async (doc) => {
+    await loadAll(t, ["b.pdf", "c.pdf"]);
+    await tick();
+    assert.deepEqual(t.destroyed(), [2], "idle b goes; a is leased");
+    return doc.getPage(1);
+  });
+  assert.equal(page!.from, 1);
+});
+
+test("a touched document becomes the last one trimmed", async () => {
+  const pins = new Set(["a.pdf"]);
+  const t = setup(files(3), true, { maxIdle: 2, pinned: () => pins });
+  await loadAll(t, ["a.pdf", "b.pdf", "c.pdf"]);
+  pins.clear();       // a's tab just closed
+  t.docs.touch(["a.pdf"]);
+  t.docs.trim();
+  await tick();
+  assert.deepEqual(t.destroyed(), [2], "b goes, not the a just unpinned");
+  assert.equal(t.docs.has("a.pdf"), true);
+});
+
+test("withDoc releases its lease when fn throws, and rethrows", async () => {
+  const t = setup(files(1), true, { maxIdle: 0 });
+  await assert.rejects(t.docs.withDoc("a.pdf", () => { throw new Error("boom"); }), /boom/);
+  await tick();
+  assert.deepEqual(t.destroyed(), [1]);
+});
+
+test("wasLoaded outlives a trim; a forced evict or clear forgets it", async () => {
+  const t = setup(files(3), true, { maxIdle: 0 });
+  await loadAll(t, ["a.pdf"]);
+  assert.equal(t.docs.has("a.pdf"), false, "trimmed");
+  assert.equal(t.docs.wasLoaded("a.pdf"), true, "a cloud re-add must still reset it");
+  const b = t.docs.lease("b.pdf");
+  await t.docs.doc("b.pdf");
+  t.docs.evict("b.pdf");
+  b();
+  assert.equal(t.docs.wasLoaded("b.pdf"), false);
+  const c = t.docs.lease("c.pdf");
+  await t.docs.doc("c.pdf");
+  t.docs.clear();
+  c();
+  assert.deepEqual(["a.pdf", "c.pdf"].map((f) => t.docs.wasLoaded(f)), [false, false]);
+});
+
+test("the idle-document budget is finite on both device tiers, smaller on low memory", () => {
+  assert.equal(docIdleMax(true), 2);
+  assert.equal(docIdleMax(false), 4);
+});
+
+test("page: a page that fails to open releases its lease", async () => {
+  const t = setup(files(2), true, { maxIdle: 0 });
+  const ok = await t.source.page("a.pdf", 1);
+  await assert.rejects(t.source.page("a.pdf", 2), /no page 2/);
+  await loadAll(t, ["b.pdf"]);
+  await tick();
+  assert.deepEqual(t.destroyed(), [2], "idle b goes; the first page's lease still holds a");
+  ok.release();
+  await tick();
+  assert.deepEqual(t.destroyed(), [1, 2], "the failed page's lease didn't");
+});
+
+test("withLoadedDoc skips a document still parsing, without waiting for it", async () => {
+  const t = setup(files(1), true, { held: () => true });
+  const pending = t.docs.doc("a.pdf");
+  await tick();
+  let ran = false;
+  // raced against a timer, so one that waits for the parse fails here
+  const out = await Promise.race([t.docs.withLoadedDoc("a.pdf", () => { ran = true; }), tick().then(() => "waited")]);
+  assert.equal(out, undefined);
+  assert.equal(ran, false);
+  assert.equal(t.store.calls.loads, 1);
+  t.opened[0].resolve();
+  await pending;
 });
 
 // ── through the page reader: what the cache stores ──────────────────────────
@@ -163,17 +403,17 @@ const session = {
 /** Reads one line naming the bytes the page came from. */
 const readRegion: ReadRegion = async (pg) => ({ lines: [{ str: `BYTES ${(pg as unknown as FakePage).from}`, x: 1, y: 20, w: 50, h: 10 }], ms: 1, rasters: 1 });
 
-function readerOver(t: ReturnType<typeof setup>) {
-  const meta = new Map<string, { lines: { str: string }[] }>();
+function readerOver(t: ReturnType<typeof setup>, meta = new Map<string, { lines: { str: string }[] }>()) {
   const puts: string[] = [];
   const cache = createPageCache({ metaGet: async (k) => meta.get(k), metaPut: async (k, v) => { puts.push(k); meta.set(k, v as { lines: { str: string }[] }); } });
   const reader = createPageReader({ session, cache, readRegion, onLines: () => {} });
-  // the canvas's readSheet wiring
-  const read = (file: string) => {
+  // the canvas's readSheet wiring; `hooked` also hands back the hooks
+  const hooked = (file: string) => {
     const h = readHooks(t.source, file, 1);
-    return reader.read({ key: file, file, page: 1, rs: 1, pdfHash: h.pdfHash, getPage: h.getPage, pageHash: h.pageHash });
+    return { hooks: h, done: reader.read({ key: file, file, page: 1, rs: 1, pdfHash: h.pdfHash, getPage: h.getPage, pageHash: h.pageHash }) };
   };
-  return { reader, read, puts, meta };
+  const read = (file: string) => hooked(file).done;
+  return { reader, read, hooked, puts, meta };
 }
 
 test("a re-added file's read never pairs the open document's page with the new bytes' hash", async () => {
@@ -220,6 +460,32 @@ test("a document replaced between the lookup and the page: stored under the page
   assert.deepEqual(puts, [ocrCacheKey(await shaHex([2]), 1)], "so its read goes under the new bytes' hash");
 });
 
+test("a read answered from the cache takes no lease and loads nothing", async () => {
+  const seed = readerOver(setup({ "a.pdf": [1] }));
+  await seed.read("a.pdf");
+  assert.equal(seed.meta.has(ocrCacheKey(await shaHex([1]), 1)), true, "seeded");
+  const t = setup({ "a.pdf": [1] });
+  t.store.storeKnown = async () => shaHex([1]);
+  const { hooks, done } = readerOver(t, seed.meta).hooked("a.pdf");
+  const out = await done;
+  assert.equal(out.ok && out.cached, true);
+  hooks.release();
+  assert.equal(t.store.calls.loads, 0);
+});
+
+test("a read that opens its page holds the document until released", async () => {
+  const t = setup(files(3), true, { maxIdle: 1 });
+  await loadAll(t, ["c.pdf"]);
+  const { hooks, done } = readerOver(t).hooked("a.pdf");
+  assert.equal((await done).ok, true);
+  await loadAll(t, ["b.pdf"]);
+  await tick();
+  assert.deepEqual(t.destroyed(), [3], "idle c goes; a, read, is still held");
+  hooks.release();
+  await tick();
+  assert.deepEqual(t.destroyed(), [3, 1], "released, a is older than b");
+});
+
 // ── what re-adding files resets ──────────────────────────────────────────────
 
 test("re-adding: identical local bytes keep everything; a revision or a fresh add resets", () => {
@@ -236,3 +502,25 @@ test("re-adding in the cloud: every name resets, and one with a loaded document 
     { reset: ["open.pdf", "closed.pdf"], evict: ["open.pdf"] },
   );
 });
+
+test("loaded: only once the document has finished loading, and not after it's gone", async () => {
+  const t = setup({ "a.pdf": [1], "b.pdf": [2] });
+  let open!: () => void;
+  const held = new Promise<void>((r) => { open = r; });
+  const docs = createDocCache<FakePage>({
+    load: t.store.load,
+    open: (data) => { const f = fakeOpen(data); return { ...f, promise: held.then(() => f.promise) }; },
+    hashing: () => null,
+  });
+  docs.doc("a.pdf");
+  await tick();
+  assert.equal(docs.has("a.pdf"), true, "a's load has started");
+  assert.equal(docs.loaded("a.pdf"), false, "but its document isn't in yet");
+  open();
+  await docs.doc("a.pdf");
+  assert.equal(docs.loaded("a.pdf"), true);
+  assert.equal(docs.loaded("b.pdf"), false, "never asked for");
+  docs.evict("a.pdf");
+  assert.equal(docs.loaded("a.pdf"), false);
+});
+

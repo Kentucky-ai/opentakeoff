@@ -36,6 +36,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { runPlanSearch, filesToIndex, pagesToIndex, galleryEscStep, createChangeSignal, needsRead, keysToLookUp, canLookUp, galleryReadView, unreadLine, thumbIndexStep, adoptEntry, galleryCountLine, needsTextPass, createWalkFailures, searchFailedLine, retryWalk } from "../lib/planSearch";
 import { measurePage } from "../lib/pictures";
 import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
+import { fetchSamplePlan } from "../lib/samplePlan.js";
 
 // Thumbnails in flight at once. The canvas rasters in its worker pool now, so
 // the main thread's pdf.js is mostly idle while the gallery is up; two keeps
@@ -61,9 +62,9 @@ const ctrlBtn = { display: "inline-flex", alignItems: "center", gap: 6, padding:
 
 export default function PlanNavigator({
   // presentation + exit
-  canClose, onExit, onPremium, initialMode = "plan", cloudMode,
+  canClose, onExit, onPremium, onStartTour, onConnect, initialMode = "plan", cloudMode,
   // plan-set (gallery) data
-  sheets, getDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
+  sheets, withDoc, withLoadedDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
   thumbCacheRef, busyRef, openTabs, onOpen,
   // plan-set search (#471): the canvas-owned index map, a subscription to its
   // changes (at most one call a frame), the setter that stores one sheet's
@@ -262,15 +263,13 @@ export default function PlanNavigator({
   const queueRef = useRef([]);
   const obsRef = useRef(null);
 
+  const demoBase = import.meta.env.BASE_URL || "/";
+  const reducedMotion = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const loadSample = async () => {
     if (sampleBusy || !onAddFiles) return;
     setSampleBusy(true);
     try {
-      const base = import.meta.env.BASE_URL || "/";
-      const res = await fetch(`${base}demo/sample-finish-plan.pdf`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      onAddFiles([new File([blob], "sample-finish-plan.pdf", { type: "application/pdf" })]);
+      onAddFiles([await fetchSamplePlan()]);
     } catch {
       setSampleBusy(false);
     }
@@ -302,9 +301,8 @@ export default function PlanNavigator({
         // a removed-and-re-added file must not stay hidden behind a stale 0
         if (pageOf(s.name)) continue;
         try {
-          const pdf = await getDoc(s.name);
+          const n = await withDoc(s.name, (pdf) => pdf.numPages || 1);
           if (seq !== seqRef.current) return;
-          const n = pdf.numPages || 1;
           setPages((m) => (m[s.name] ? m : { ...m, [s.name]: n }));
           onPages?.(s.name, n);
         } catch { if (seq === seqRef.current) setPages((m) => (m[s.name] !== undefined ? m : { ...m, [s.name]: 0 })); }
@@ -314,7 +312,7 @@ export default function PlanNavigator({
     return () => { seqRef.current++; };
     // pageOf/onPages are stable per render pass — knownPages is the real signal
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sheets, getDoc, knownPages]);
+  }, [sheets, withDoc, knownPages]);
 
   const allKeys = sheets.flatMap((s) => {
     const n = pageOf(s.name);
@@ -357,36 +355,38 @@ export default function PlanNavigator({
     };
     if (!rec) {
       const { file, page } = parseSheetKey(key);
-      const pdf = await getDoc(file);
-      const pg = await pdf.getPage(page);
-      if (seq !== seqRef.current) return;
-      rec = await renderThumb(pg, want);
-      if (seq !== seqRef.current) return;
-      // the thumbnail first: measuring waits on the page's op list (#489)
-      const shown = show();
-      // the page is warm: read its text once, for the sheet number +
-      // plan-noted scale when those are missing (shown as soon as the text
-      // is in), and measure its pictures (#489: pictures.ts measurePage; its
-      // op list only when the text says it isn't a scan), for the plan-set
-      // search index and the record's text-layer flag and pictures. Then
-      // release what the page parsed, unless the canvas holds it, and save
-      // the record with what was read.
-      try {
-        const text = pg.getTextContent();
-        const vpL = pg.getViewport({ scale: RENDER_SCALE });
-        if (!labels[key] || !detectedScales[key]) {
-          const tc = await text;
-          rec.label = extractSheetNumber(tc, vpL) || null;
-          rec.det = detectScale(tc, vpL) || null;
-          if (shown) emit();
-        }
-        const { index, pictures } = await measurePage(key, { getTextContent: () => text, getOperatorList: () => pg.getOperatorList() }, vpL, pdfjsLib.OPS);
-        rec.textLayer = index.textLayer;
-        rec.pictures = pictures;   // saveThumb never keeps "failed"
-        if (seq === seqRef.current && onIndexed && planIndexRef && needsTextPass(planIndexRef.current.get(key))) onIndexed(key, index);
-      } catch { /* text layer is optional */ }
-      finally { if (!pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } } }
-      saveThumb(key, rec);
+      // held from the page to the saved record: the file may be in no tab
+      await withDoc(file, async (pdf) => {
+        const pg = await pdf.getPage(page);
+        if (seq !== seqRef.current) return;
+        rec = await renderThumb(pg, want);
+        if (seq !== seqRef.current) return;
+        // the thumbnail first: measuring waits on the page's op list (#489)
+        const shown = show();
+        // the page is warm: read its text once, for the sheet number +
+        // plan-noted scale when those are missing (shown as soon as the text
+        // is in), and measure its pictures (#489: pictures.ts measurePage; its
+        // op list only when the text says it isn't a scan), for the plan-set
+        // search index and the record's text-layer flag and pictures. Then
+        // release what the page parsed, unless the canvas holds it, and save
+        // the record with what was read.
+        try {
+          const text = pg.getTextContent();
+          const vpL = pg.getViewport({ scale: RENDER_SCALE });
+          if (!labels[key] || !detectedScales[key]) {
+            const tc = await text;
+            rec.label = extractSheetNumber(tc, vpL) || null;
+            rec.det = detectScale(tc, vpL) || null;
+            if (shown) emit();
+          }
+          const { index, pictures } = await measurePage(key, { getTextContent: () => text, getOperatorList: () => pg.getOperatorList() }, vpL, pdfjsLib.OPS);
+          rec.textLayer = index.textLayer;
+          rec.pictures = pictures;   // saveThumb never keeps "failed"
+          if (seq === seqRef.current && onIndexed && planIndexRef && needsTextPass(planIndexRef.current.get(key))) onIndexed(key, index);
+        } catch { /* text layer is optional */ }
+        finally { if (!pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } } }
+        saveThumb(key, rec);
+      });
       return;
     }
     if (!show()) return;
@@ -408,18 +408,22 @@ export default function PlanNavigator({
         if (have) onIndexed(key, adoptEntry(have, step));
       } else if (step.kind === "flag") saveThumb(key, step.pictures ? { ...rec, textLayer: step.textLayer, pictures: step.pictures } : { ...rec, textLayer: step.textLayer });
       else if (step.kind === "read") {
-        let pg = null;
-        try {
-          const { file, page } = parseSheetKey(key);
-          pg = await (await getDoc(file)).getPage(page);
-          if (seq !== seqRef.current) return;
-          const { index, pictures } = await measurePage(key, pg, pg.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
-          if (seq !== seqRef.current) return;
-          if (!has(key)) onIndexed(key, index);
-          rec = { ...rec, textLayer: index.textLayer, pictures };
-          saveThumb(key, rec);
-        } catch { /* text layer is optional; asked again next open */ }
-        finally { if (pg && !pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } } }
+        const { file, page } = parseSheetKey(key);
+        // only while its document is still loaded (trimmed since: asked
+        // again next open), and held while it's read
+        await withLoadedDoc(file, async (pdf) => {
+          let pg = null;
+          try {
+            pg = await pdf.getPage(page);
+            if (seq !== seqRef.current) return;
+            const { index, pictures } = await measurePage(key, pg, pg.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
+            if (seq !== seqRef.current) return;
+            if (!has(key)) onIndexed(key, index);
+            rec = { ...rec, textLayer: index.textLayer, pictures };
+            saveThumb(key, rec);
+          } catch { /* text layer is optional; asked again next open */ }
+          finally { if (pg && !pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } } }
+        });
       }
     }
   };
@@ -493,7 +497,8 @@ export default function PlanNavigator({
   // every knownPages change, which would cancel the walk part-way through.
   // Restarts on a sheets change; stops on unmount or when the query clears.
   // In a cloud project this downloads every PDF not yet opened, the same as
-  // opening them; the documents stay in the canvas's cache like the pump's.
+  // opening them; each document is held while its pages are read, then
+  // joins the canvas's few idle ones like the pump's, oldest out first.
   const indexGenRef = useRef(0);
   const [indexProg, setIndexProg] = useState(null);   // { done, total } while the walk runs
   // what the last walk couldn't read ({ sheets, incomplete }); Retry, or the
@@ -568,54 +573,62 @@ export default function PlanNavigator({
       total = todo.reduce((t, f) => t + f.knownPages, 0);
       tick.notify();
       for (const { file, knownPages } of todo) {
-        let pdf;
-        try { pdf = await getDoc(file); }
-        catch (e) {   // unreadable file: not checked; say so and move on
+        // one lease for all the file's pages; true: the walk is over
+        let opened = false, stop;
+        try {
+          stop = await withDoc(file, async (pdf) => {
+            opened = true;
+            if (!live()) return true;
+            const n = pdf.numPages || 1;
+            total += n - knownPages;
+            const keys = pagesToIndex(file, n, has);
+            done += n - keys.length;   // pages already indexed count as checked
+            tick.notify();
+            for (const key of keys) {
+              if (!has(key)) {
+                while (busyRef.current === "rendering" && live()) await new Promise((r) => setTimeout(r, 150));
+                if (!live()) return true;
+                let page = null;
+                try {
+                  page = await pdf.getPage(parseSheetKey(key).page);
+                  if (!live()) return true;
+                  // its text, and its pictures (#489: measurePage; the op list
+                  // only on a page that isn't a scan), in the entry before the
+                  // lookup below asks whether the sheet needs a read
+                  const { index } = await measurePage(key, page, page.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
+                  if (!live()) return true;
+                  if (!has(key)) onIndexed(key, index);
+                  // a scan's or a hybrid's cached read (if any) joins the search
+                  // now, under the hash of the document the walk just loaded
+                  if (needsRead(planIndexRef.current.get(key)) && await lookupsAllowed()) await ocr.lookup(key);
+                } catch (e) {
+                  // destroyed doc (file closed / revised) or unreadable page: not
+                  // checked, so search doesn't claim it has no match
+                  if (live() && !has(key)) {
+                    console.warn(`Search couldn't read ${file} (${key})`, e);
+                    failures.fail(key);
+                    continue;
+                  }
+                }
+                // release only what the walk alone holds: getPage hands back the
+                // document's shared page proxy, and the canvas may have taken this
+                // page during the awaits above
+                finally { if (page && !pageHeld?.(key)) { try { page.cleanup(); } catch { /* already released */ } } }
+              }
+              done++;
+              tick.notify();
+            }
+            return false;
+          });
+        } catch (e) {
+          if (opened) throw e;
+          // unreadable file: not checked; say so and move on
           if (!live()) return;
           console.warn(`Search couldn't open ${file}`, e);
           failures.failFile(file, knownPages);
           continue;
         }
-        if (!live()) return;
-        const n = pdf.numPages || 1;
-        total += n - knownPages;
-        const keys = pagesToIndex(file, n, has);
-        done += n - keys.length;   // pages already indexed count as checked
-        tick.notify();
-        for (const key of keys) {
-          if (!has(key)) {
-            while (busyRef.current === "rendering" && live()) await new Promise((r) => setTimeout(r, 150));
-            if (!live()) return;
-            let page = null;
-            try {
-              page = await pdf.getPage(parseSheetKey(key).page);
-              if (!live()) return;
-              // its text, and its pictures (#489: measurePage; the op list
-              // only on a page that isn't a scan), in the entry before the
-              // lookup below asks whether the sheet needs a read
-              const { index } = await measurePage(key, page, page.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
-              if (!live()) return;
-              if (!has(key)) onIndexed(key, index);
-              // a scan's or a hybrid's cached read (if any) joins the search
-              // now, under the hash of the document the walk just loaded
-              if (needsRead(planIndexRef.current.get(key)) && await lookupsAllowed()) await ocr.lookup(key);
-            } catch (e) {
-              // destroyed doc (file closed / revised) or unreadable page: not
-              // checked, so search doesn't claim it has no match
-              if (live() && !has(key)) {
-                console.warn(`Search couldn't read ${file} (${key})`, e);
-                failures.fail(key);
-                continue;
-              }
-            }
-            // release only what the walk alone holds: getPage hands back the
-            // document's shared page proxy, and the canvas may have taken this
-            // page during the awaits above
-            finally { if (page && !pageHeld?.(key)) { try { page.cleanup(); } catch { /* already released */ } } }
-          }
-          done++;
-          tick.notify();
-        }
+        if (stop) return;
       }
     // done: retire this generation so a progress frame still queued can't
     // repaint "Indexing" after the clear
@@ -631,7 +644,7 @@ export default function PlanNavigator({
     // bumping the LIVE counter is the point: it invalidates this walk (seqRef's pattern)
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { indexGenRef.current++; setIndexProg(null); };
-    // planIndexRef/getDoc/busyRef/onIndexed/pageHeld are stable; pageOf is read through
+    // planIndexRef/withDoc/busyRef/onIndexed/pageHeld are stable; pageOf is read through
     // its ref so a page-count update doesn't restart the walk
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searching, sheets, walkTick]);
@@ -1128,16 +1141,45 @@ export default function PlanNavigator({
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px auto 16px", color: "var(--text-faint)", fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                   <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>
+                {onStartTour && (
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px 18px", marginBottom: 14, textAlign: "left" }}>
+                    {/* the guided takeoff itself, a real recorded run at 2× — muted, and
+                        still under reduced motion (the poster shows; controls play it) */}
+                    <video src={`${demoBase}demo/first-takeoff.mp4`} poster={`${demoBase}demo/first-takeoff-poster.jpg`}
+                      autoPlay={!reducedMotion} controls={reducedMotion} muted loop playsInline preload="metadata"
+                      aria-label="A recorded run of the guided first takeoff: open the sample plan, set its scale, arm Area, trace a patient room, open the Report"
+                      onClick={reducedMotion ? undefined : onStartTour}
+                      style={{ width: 220, aspectRatio: "960 / 618", border: "1px solid var(--ink-faint)", background: "var(--paper-shadow)", cursor: reducedMotion ? "default" : "pointer", display: "block" }} />
+                    <div style={{ maxWidth: 250 }}>
+                      <button onClick={onStartTour} title="Open the sample plan and do one real takeoff, step by step — about two minutes"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
+                        <Icon name="takeoff" size={16} />Guided first takeoff
+                      </button>
+                      <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 8, lineHeight: 1.5 }}>
+                        Two minutes, five steps, on a real plan. You do each step; it checks it off.
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <button onClick={loadSample} disabled={sampleBusy} title="Open a real floor finish plan and try a takeoff"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1, fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
-                  <Icon name="takeoff" size={16} />{sampleBusy ? "Loading sample…" : "Load sample plan"}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: onStartTour ? "9px 16px" : "13px 22px", border: "1px solid var(--ink)", background: onStartTour ? "transparent" : "var(--cobalt)", color: onStartTour ? "var(--ink)" : "var(--paper-bright)", cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1, fontWeight: 700, fontSize: onStartTour ? 13 : 14, fontFamily: "var(--f-body)" }}>
+                  <Icon name="takeoff" size={16} />{sampleBusy ? "Loading sample…" : onStartTour ? "Just open the sample plan" : "Load sample plan"}
                 </button>
                 <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 11, lineHeight: 1.6 }}>
-                  A real medical-center <strong style={{ color: "var(--ink)" }}>floor finish plan</strong> — the scale auto-detects;
+                  A real medical-center <strong style={{ color: "var(--ink)" }}>floor finish plan</strong> — its scale is read off the sheet;
                   pick a finish and trace a flooring takeoff in seconds.
                 </div>
+                {onConnect && (
+                  <div style={{ marginTop: 14, fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)" }}>
+                    Working with Claude, Codex or Cursor?{" "}
+                    <button type="button" onClick={onConnect}
+                      style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12.5, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                      Connect your AI
+                    </button>
+                  </div>
+                )}
                 <div style={{ marginTop: 30, fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--text-faint)" }}>
-                  Apache-2.0 open source · an open project by{" "}
+                  AGPL-3.0 open source · an open project by{" "}
                   <a href="https://kentucky-ai.com" target="_blank" rel="noopener" style={{ color: "var(--ink-muted)" }}>Kentucky&nbsp;AI</a>
                 </div>
               </div>
@@ -1358,7 +1400,7 @@ export default function PlanNavigator({
         : { position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: "var(--paper-cream)" }}>
       {header}
       {mode === "browse" ? browseBody : mode === "manage" ? manageBody : planBody}
-      {previewSheet && <SheetPreview sheet={previewSheet} label={labelOf(previewSheet)} getDoc={getDoc} onClose={closePreview} onOpen={(key) => { setPreviewSheet(null); onOpen([key], false); }} />}
+      {previewSheet && <SheetPreview sheet={previewSheet} label={labelOf(previewSheet)} withDoc={withDoc} onClose={closePreview} onOpen={(key) => { setPreviewSheet(null); onOpen([key], false); }} />}
       {confirmDialog}
       {bulkDialog}
       {clearDialog}

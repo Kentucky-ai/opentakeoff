@@ -41,6 +41,10 @@ import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArc
 import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
+import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
+import ConnectAI from "../components/ConnectAI.jsx";
+import { advanceTour, countFloorShapes, currentStep } from "../lib/firstTakeoff.js";
+import { fetchSamplePlan } from "../lib/samplePlan.js";
 import ReportPanel from "../components/ReportPanel.jsx";
 import RevisionsPanel from "../components/RevisionsPanel.jsx";
 import UserGuide from "../components/UserGuide.jsx";
@@ -52,7 +56,7 @@ import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../compone
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { joinAbuttingSpans } from "../lib/textjoin";
-import { dropFileFromIndex } from "../lib/planIndex";
+import { buildSheetIndex, dropFileFromIndex } from "../lib/planIndex";
 import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels } from "../lib/sheetLabels";
 import { snapsToVectors } from "../lib/cursorSnap";
 import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyPlan, copyPictureInputs, textChainPageLines, hybridCopyReader, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
@@ -61,13 +65,14 @@ import { createOcrSession } from "../lib/ocr/session";
 import { createConsentHost, focusAfterNotice } from "../lib/ocr/consentHost";
 import { createPageCache } from "../lib/ocr/pageCache";
 import { createPageReader, pageReadView, readSignature, backgroundRows, createReadRenderGate } from "../lib/ocr/pageRead";
-import { createDocCache, createSheetSource, readHooks, lookupHooks, readdEffects } from "../lib/ocr/sheetSource";
+import { createDocCache, createSheetSource, readHooks, lookupHooks, readdEffects, docIdleMax } from "../lib/ocr/sheetSource";
 import { getOcrClient } from "../lib/ocr/client";
 import { pageTextIndex } from "../lib/pageTextIndex";
 import { measurePage } from "../lib/pictures";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
-import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
+import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig, pinnedFiles } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
+import { LOW_MEMORY_DEVICE } from "../lib/deviceClass";
 import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
 import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_WAITING_MESSAGE, ocrReadingMessage } from "../lib/scheduleRoute";
 import { readBoxOnDevice } from "../lib/scheduleOcrRead";
@@ -563,6 +568,13 @@ export default function TakeoffCanvas() {
     draftStatsRef.current.cross = dCross;
   }
   const [guideOpen, setGuideOpen] = useState(false);   // the in-app manual overlay (? / the toolbar button)
+  // Guided first takeoff (components/FirstTakeoffTour.jsx): null when off, else
+  // { done: step ids, baseline: floor shapes that existed before it started }.
+  // Session-only on purpose — a reload ends the tour rather than resuming a
+  // half-remembered one over a different plan.
+  const [tour, setTour] = useState(null);
+  const [tourSampleBusy, setTourSampleBusy] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);   // Connect your AI (components/ConnectAI.jsx)
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
   // agentProposals are NOT shapes: committed truth stays committed. Each entry
@@ -821,7 +833,7 @@ export default function TakeoffCanvas() {
   }, [commitMsgState]);
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
-  const [importRead, setImportRead] = useState(null);        // Import-from-schedule approval read: { rows, skipped } (null = dialog closed)
+  const [importRead, setImportRead] = useState(null);        // Import-from-schedule approval read: { rows, skipped, sourceKey, boxTerms? } (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
   // The box being read: one at a time. importScheduleFromRect takes the lock
   // for every box (a vector box only for its own short read) as `mine` =
@@ -920,19 +932,32 @@ export default function TakeoffCanvas() {
   const detailKeysRef = useRef(new Map());    // sheetKey → last requested crop key (per-panel render-key dedup, generalizing the old single detailKeyRef)
   const detailCancelsRef = useRef(new Map()); // sheetKey → disposer for the in-flight paintDetail call
   const renderTasksRef = useRef(new Map());  // sheetKey → pdf.js RenderTask
-  // one pdf.js document per file, cached for the life of the project view —
-  // the canvas render AND the gallery thumbnails share it. A store that
-  // hashes on demand (cloud) gets the digest of the bytes it just gave,
-  // started before pdf.js can detach them, so it never downloads them again;
-  // OCR reads pair a page with the hash of the bytes it came from (#471).
+  // one pdf.js document per file — the canvas render AND the gallery
+  // thumbnails share it. Each is its own worker, so only the files the canvas
+  // shows (pinsRef, below) stay loaded for good; past docIdleMax idle ones
+  // the least recently used go, and anything else using a document leases
+  // it meanwhile. A store that hashes on demand (cloud) gets the digest of
+  // the bytes it just gave, started before pdf.js can detach them, so it
+  // never downloads them again while the document stays; OCR reads pair a
+  // page with the hash of the bytes it came from (#471).
+  const pinsRef = useRef({ files: new Set(), stitchById: {} });
+  const readerRef = useRef(null);
   const [docCache] = useState(() => createDocCache({
     load: (file) => store.loadPdfData(file),
     open: (data) => pdfjsLib.getDocument({ data }),
     hashing: (file) => (ocrEnabled() && typeof store.beginPdfHash === "function" ? store.beginPdfHash(file) : null),
+    // asked live: a stopped read's page may still be rasterizing
+    pinned: () => {
+      const { files, stitchById: byId } = pinsRef.current;
+      const reading = (readerRef.current?.active() ?? []).map((r) => r.key);
+      return [...files, ...pinnedFiles({ keys: reading, stitchById: byId })];
+    },
+    maxIdle: docIdleMax(LOW_MEMORY_DEVICE),
   }));
   const [sheetSource] = useState(() => createSheetSource({
     cached: docCache.cached,
     open: docCache.open,
+    lease: docCache.lease,
     storeHash: (file) => store.pdfHash(file),
     storeKnown: (file) => (typeof store.pdfHashIfKnown === "function" ? store.pdfHashIfKnown(file) : null),
   }));
@@ -1095,6 +1120,7 @@ export default function TakeoffCanvas() {
     // reads never overlap in the worker: each waits for it to be idle
     idle: () => getOcrClient().whenIdle(),
   }));
+  readerRef.current = pageReader;   // the doc cache's pins, made before it, ask it
   const [ocrAvail, setOcrAvail] = useState(null);      // the probe's state once asked ("available", "disabled", …), null before
   const [readableByKey, setReadableByKey] = useState({}); // sheet key → what a read of it covers: "page" (a scan), "picture" (a hybrid, #489), or null (nothing to read); planSearch readWhat on its index entry, set as panels are measured and kept in step with the index after (readableFromIndex)
   const measuredRef = useRef(new Set());               // sheet keys the render pass has measured, so each page is measured once
@@ -1254,12 +1280,14 @@ export default function TakeoffCanvas() {
     try {
       for (const k of ks) {
         const t = parseSheetKey(k);
-        const pdf = await docFor(t.file);
-        const pg = await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
-        const vp = pg.getViewport({ scale: RENDER_SCALE });
-        // EXACT dims — a butt layout at ceil'd widths would open a hairline gap
-        // and drift the composite extent (see resolveSource's wf/hf note)
-        dims[k] = { w: vp.width, h: vp.height };
+        // a member's file may be in no tab: held while its page is read
+        await docCache.withDoc(t.file, async (pdf) => {
+          const pg = await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+          const vp = pg.getViewport({ scale: RENDER_SCALE });
+          // EXACT dims — a butt layout at ceil'd widths would open a hairline gap
+          // and drift the composite extent (see resolveSource's wf/hf note)
+          dims[k] = { w: vp.width, h: vp.height };
+        });
       }
     } catch (e) { setCommitMsg(`Couldn't read those sheets to stitch them: ${e.message || e}`); return; }
     const st = { id: mintStitchId(), name: ks.map((k) => tabLabel(k)).join(" + "), members: autoButt(ks, dims), created_at: nowIso() };
@@ -1308,6 +1336,19 @@ export default function TakeoffCanvas() {
     const base = t.file.replace(/\.pdf$/i, "");
     return lvl + (t.page > 1 ? `${base} · ${t.page}` : base);
   };
+  // Every sheet key in the set, for Import from schedule's "on the plans?"
+  // check (#498): a file whose pages aren't counted yet is one unknownFiles,
+  // not zero sheets (0 is a file that failed to open: no sheets).
+  const planSetKeys = () => {
+    const keys = [];
+    let unknownFiles = 0;
+    for (const s of sheets) {
+      const n = s.name === active ? pageCount : knownPages[s.name];
+      if (n === undefined) { unknownFiles++; continue; }
+      for (let i = 0; i < n; i++) keys.push(i ? `${s.name}#${i + 1}` : s.name);
+    }
+    return { keys, unknownFiles };
+  };
   // A sheet's bare identifier for auto-naming an image markup (e.g. "AF101") —
   // tabLabel WITHOUT the mutable "Level 1 · " prefix and with a hyphen so a page-2
   // sheet reads "PLAN-2", not the compound "Level 1 · PLAN · 2" that would nest
@@ -1327,6 +1368,20 @@ export default function TakeoffCanvas() {
   // all the original single-sheet math is unchanged.
   const groupKeys = sheetGroup.length ? sheetGroup : [sheetKey];
   const stitchById = useMemo(() => Object.fromEntries(stitches.map((s) => [s.id, s])), [stitches]);
+  // the files on screen or a tab away stay loaded (docCache's pins); one that
+  // just left becomes the most recent idle one, so a tab just closed reopens
+  // without a reload unless enough other files are used meanwhile. Pins are
+  // set before any effect runs; the trim runs in an effect after the render
+  // effect (pinSig).
+  const pinFiles = pinnedFiles({ keys: [...openTabs, ...groupKeys], stitchById });
+  if (active) pinFiles.add(active);
+  const pinSig = [...pinFiles].sort().join("\n");
+  useLayoutEffect(() => {
+    const unpinned = [...pinsRef.current.files].filter((f) => !pinFiles.has(f));
+    if (unpinned.length) docCache.touch(unpinned);
+    pinsRef.current = { files: pinFiles, stitchById };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pinSig is pinFiles' identity; stitchById rides along
+  }, [pinSig, stitchById, docCache]);
   // docEpoch re-keys groupSig when a re-dropped file's BYTES changed under the
   // same name (store.addPdf → revised): the render effect keyed on groupSig is
   // the one path that resets every cache (compositor, pageObjs, snap grids) and
@@ -1402,6 +1457,34 @@ export default function TakeoffCanvas() {
   // the FOCUSED panel (the one last clicked); single mode focuses the lone panel.
   const focusPanel = (focusKey && groupKeys.includes(focusKey) && panelByKey(focusKey)) || panels[0];
   const unitsPerPx = scales[focusPanel.key] ?? null;
+  // Guided first takeoff — fold what the canvas can see into the tour's done
+  // set. Every step completes on the real action (lib/firstTakeoff.js).
+  const tourFloorShapes = tour ? countFloorShapes(shapes) : 0;
+  const tourSheetOpen = view === "canvas" && openTabs.length > 0;
+  useEffect(() => {
+    if (!tour) return;
+    const obs = { sheetOpen: tourSheetOpen, scaled: !!unitsPerPx, tool, floorShapes: tourFloorShapes, reportOpen: showReport };
+    const next = advanceTour(tour.done, obs, tour.baseline);
+    if (next !== tour.done) setTour((t) => (t ? { ...t, done: next } : t));
+  }, [tour, tourSheetOpen, unitsPerPx, tool, tourFloorShapes, showReport]);
+  const startTour = () => {
+    setGuideOpen(false);
+    setConnectOpen(false);
+    setTour({ done: [], baseline: countFloorShapes(shapes) });
+  };
+  const loadSampleForTour = async () => {
+    if (tourSampleBusy) return;
+    setTourSampleBusy(true);
+    try { await handleFiles([await fetchSamplePlan()]); } catch { /* the card stays on step 1; the button can be pressed again */ }
+    finally { setTourSampleBusy(false); }
+  };
+  // the room the tour just measured — the newest floor shape, for the done card
+  const tourResult = (() => {
+    if (!tour || currentStep(tour.done)) return null;
+    const last = [...shapes].reverse().find((sh) => (sh.computed?.area_sf || 0) > 0 && sh.measure_role !== "deduct");
+    if (!last) return null;
+    return { sf: last.computed.area_sf, tag: conditions.find((c) => c.id === last.condition_id)?.finish_tag || "" };
+  })();
   const labelFor = (p) => stitchById[p.key]?.name || (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
   // Scale semantics (why geometry divides by factorFor and calibration
   // multiplies back to baseline) are documented on the pure functions in
@@ -1636,6 +1719,16 @@ export default function TakeoffCanvas() {
     setKnownPages(next);
     metaPut(pageCacheKey, next).catch(() => { /* cache only — rediscovered next open */ });
   }, [pageCacheKey]);
+  // Import from schedule's plan set (#498), rebuilt only when the dialog's
+  // read or the set's pages change: the dialog re-checks every row against
+  // every sheet's index whenever this object changes, so a fresh one per
+  // canvas render would redo that on every unrelated update. The index map
+  // itself is mutated in place and announced through indexSignal.
+  const importPlanSet = useMemo(() => (importRead
+    ? { ...planSetKeys(), indexes: planIndexRef.current, sourceKey: importRead.sourceKey, boxTerms: importRead.boxTerms }
+    : undefined),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [importRead, sheets, active, pageCount, knownPages]);
   const forgetPages = useCallback((names) => {
     // a file whose bytes are leaving (or changing) takes its thumbnails with it
     forgetThumbs(names, thumbCacheRef.current);
@@ -1647,9 +1740,9 @@ export default function TakeoffCanvas() {
     setKnownPages(next);
     metaPut(pageCacheKey, next).catch(() => {});
   }, [pageCacheKey]);
-  // Free a departing file's pdf.js worker doc — the doc cache is deliberately
-  // long-lived (thumbnails + reopen speed), but a file that LEFT the working
-  // set would otherwise hold worker memory for the rest of the session (#302).
+  // Free a departing file's pdf.js worker doc — the doc cache keeps a few
+  // idle ones (thumbnails + reopen speed), but a file that LEFT the working
+  // set must go now, leased or not (#302).
   // Its search-index entries go too: the file's bytes are leaving or changing
   // (addPdf keys on the NAME, so a revision reuses every sheet key).
   const evictDoc = useCallback((name) => {
@@ -1749,17 +1842,17 @@ export default function TakeoffCanvas() {
     // as evictDoc: the measure puts the entry in, and the readable-sheets
     // effect looks its read up under that entry's plan; a lookup with no
     // entry would be a whole-page one, planSearch mayLookUp).
-    const readd = readdEffects(results.filter(Boolean), { cloud: cloudMode, loaded: (n) => docCache.has(n) });
+    const readd = readdEffects(results.filter(Boolean), { cloud: cloudMode, loaded: (n) => docCache.wasLoaded(n) });
     for (const n of readd.reset) if (dropFileFromIndex(planIndexRef.current, n)) notifyIndex();
     for (const n of readd.reset) { pageReader.dropFile(n); forgetTextLayer(n); }
     forgetThumbs(readd.reset, thumbCacheRef.current);
     await refreshSheets();
     // CO-1: a re-drop whose bytes CHANGED is a plan revision, not a re-open.
     // The store archived the old bytes; here the stale pdf.js docs must go
-    // (docFor caches by name for the life of the view) and the render effect
-    // must re-key so the new revision actually reaches the screen. A cloud
-    // re-add may have changed the bytes too, and says nothing: its loaded
-    // document goes the same way.
+    // (docFor caches by name) and the render effect must re-key so the new
+    // revision actually reaches the screen. A cloud re-add may have changed
+    // the bytes too, and says nothing: a document opened since its last
+    // evict goes the same way, even one trimmed since (wasLoaded).
     const revised = results.filter((r) => r?.revised);
     if (readd.evict.length) {
       for (const n of readd.evict) evictDoc(n);
@@ -2138,16 +2231,33 @@ export default function TakeoffCanvas() {
   }, []);
 
   // Bytes come from the store; pdf.js needs them up front (docCache above).
+  // Only for a file the canvas pins (on screen, or a tab): anything else
+  // leases it (docCache.withDoc, withSheetPage).
   const docFor = useCallback((file) => docCache.doc(file), [docCache]);
+  // A rendered sheet's page, its file held until release: a one-off that
+  // awaits can outlive a switch away, after which nothing pins that file.
+  // No page (not rendered, or a stitch): nothing held.
+  function holdSheetPage(key) {
+    const page = pageObjsRef.current.get(key);
+    // only a page whose file is still cached: a lease on a file a forced
+    // evict just dropped (removed or revised) would load it afresh before
+    // the canvas re-renders
+    const { file } = parseSheetKey(key);
+    return { page, release: page && docCache.has(file) ? docCache.lease(file) : () => {} };
+  }
+  async function withSheetPage(key, fn) {
+    const { page, release } = holdSheetPage(key);
+    try { return await fn(page); } finally { release(); }
+  }
 
   // ── on-device page reads (#471) ─────────────────────────────────────────
   // Read one sheet, by key, whether or not it's on screen: its page from the
   // file's cached doc (sheetSource: the page and the hash its read is stored
-  // under come from one document), released after unless the canvas holds
-  // it. A sheet already being read joins that read. What it reads is the
-  // plan from the sheet's index entry (planSearch readPlanOf: a scan whole, a
-  // hybrid's pictures, #489); a sheet not indexed yet is read whole, as
-  // before.
+  // under come from one document, leased until the read settles), the page
+  // released after unless the canvas holds it. A sheet already being read
+  // joins that read. What it reads is the plan from the sheet's index entry
+  // (planSearch readPlanOf: a scan whole, a hybrid's pictures, #489); a sheet
+  // not indexed yet is read whole, as before.
   const readSheet = useCallback((key, { force = false, signal } = {}) => {
     const { file, page } = parseSheetKey(key);
     const hooks = readHooks(sheetSource, file, page);
@@ -2159,7 +2269,7 @@ export default function TakeoffCanvas() {
       if (opened && pageObjsRef.current.get(key) !== opened) { try { opened.cleanup(); } catch { /* already released */ } }
       if (!r.ok && (r.status === "disabled" || r.status === "uninstalled")) setOcrAvail(r.status);
       return r;
-    });
+    }).finally(hooks.release);
   }, [sheetSource, pageReader]);
   // A sheet's cached read, if any, into the index (no page, no notice).
   // { known: true }: only a hash already in hand (the gallery's background
@@ -2262,11 +2372,16 @@ export default function TakeoffCanvas() {
     detailKeysRef.current.clear();
     for (const [, cv] of detailCanvasRefs.current) cv.style.display = "none";
     (async () => {
-      // resolve one drawable source: doc → page → viewport at the FIXED logical scale
+      // resolve one drawable source: doc → page → viewport at the FIXED logical
+      // scale. Every file here is pinned (groupKeys), so docFor holds; a stale
+      // chain's doc may be trimmed under it, and it bails
       const resolveSource = async (memberKey) => {
         const { file, page: pn } = parseSheetKey(memberKey);
         const pdf = await docFor(file); if (stale()) return null;
         if (file === active) setPageCount(pdf.numPages || 1);
+        // the doc is open anyway: count its pages for the set (the gallery's
+        // cache), so a file opened from a tab isn't "pages unknown" (#498)
+        rememberPages(file, pdf.numPages);
         const pageNum = Math.min(Math.max(1, pn), pdf.numPages || 1);
         const pageObj = await pdf.getPage(pageNum); if (stale()) return null;
         const viewport = pageObj.getViewport({ scale: RENDER_SCALE });
@@ -2391,7 +2506,7 @@ export default function TakeoffCanvas() {
           let infos = [];
           if (layerIds.length) {
             try {
-              const cfg = await (await docFor(m.file)).getOptionalContentConfig();
+              const cfg = await (await docFor(m.file)).getOptionalContentConfig();   // pinned: a panel's file
               const groups = cfg ? cfg.getGroups() : null;
               infos = buildLayerInfos(layerIds, layerOf, new Map(Object.entries(groups || {})));
             } catch { /* no resolvable declarations — nothing is stated */ }
@@ -2472,7 +2587,7 @@ export default function TakeoffCanvas() {
         labeledFileRef.current = active;
         setLabelsByFile((m) => labelsOnFileChange(m, active)); // drop other files' labels
         (async () => {
-          const pdf = await docFor(active);
+          const pdf = await docFor(active);   // pinned while active; a switch stops the loop (stale)
           const found = {};
           for (let n = 1; n <= (pdf.numPages || 1); n++) {
             if (stale()) return;
@@ -2505,6 +2620,9 @@ export default function TakeoffCanvas() {
     return () => { renderSeqRef.current++; for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } } cancelImportRead(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSig]);
+  // after the render effect, so a group switch starts loading the new files
+  // before the old ones are trimmed (pinFiles above)
+  useEffect(() => { docCache.trim(); }, [docCache, pinSig]);
 
   // ── detail view: composite the visible region + margin from cached tiles ──
   // Generalizes the old single-detail-canvas effect to EVERY panel (group
@@ -4858,8 +4976,8 @@ export default function TakeoffCanvas() {
   async function ensureTextSpans(key) {
     if (textSpansRef.current.has(key)) return textSpansRef.current.get(key);
     const spans = [];
+    const { page: pg, release } = holdSheetPage(key);
     try {
-      const pg = pageObjsRef.current.get(key);
       const vt = textTfRef.current.get(key);
       if (pg && vt) {
         const tc = await pg.getTextContent();
@@ -4886,7 +5004,7 @@ export default function TakeoffCanvas() {
           spans.push({ str, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), ...(rot ? { rot } : {}) });
         }
       }
-    } catch { /* no text layer — labels simply stay absent */ }
+    } catch { /* no text layer — labels simply stay absent */ } finally { release(); }
     // runs pdf.js split mid-tag ("WB" + "-" + "01") rejoin — the MCP textSpans
     // does the same, so the Symbol tool labels exactly what the agent reads
     const joined = joinAbuttingSpans(spans);
@@ -5700,6 +5818,19 @@ export default function TakeoffCanvas() {
   // includeMarkups (from the ReportPanel checkbox, default true) is ORTHOGONAL to
   // the canvas layer-hide (showMarkups): only this flag drops markups from the
   // PDF. Off → pass []; the RFI-only export still works (empty-guard unaffected).
+  // A marked-set build's pages: each file leased on its first page and let
+  // go once the build settles (a page is drawn after getPage returns, and
+  // stitch members interleave files).
+  function leasedPages() {
+    const held = new Map();
+    return {
+      getPage: async (file, pageNum) => {
+        if (!held.has(file)) held.set(file, docCache.lease(file));
+        return (await docCache.doc(file)).getPage(pageNum);
+      },
+      release: () => { for (const r of held.values()) r(); held.clear(); },
+    };
+  }
   async function exportMarkedSet(includeMarkups = true) {
     try {
       setCommitMsg("Building the marked set…");
@@ -5737,12 +5868,13 @@ export default function TakeoffCanvas() {
       // branding mode decides the cover identity + wordmark + parent credit;
       // resolved per-project (folderId "" ⇒ the single browser-only setting)
       const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
+      const pages = leasedPages();
       const { bytes, filename } = await buildMarkedSetPdf({
         projectName, clientInfo, company: brand.company, credit: brand.credit, coverTitle: brand.coverTitle,
         dark: darkMode, units, sheets: sheetMeta, shapes, markups: exportMarkups, approvals, rfis, conditions,
-        getPage: async (file, pageNum) => (await docFor(file)).getPage(pageNum),
+        getPage: pages.getPage,
         loadPdfData: (file) => store.loadPdfData(file),
-      });
+      }).finally(pages.release);
       downloadBytes(filename, bytes);
       setCommitMsg(`Marked set downloaded — ${filename}${skipped ? ` — ${skipped}` : ""}`);
     } catch (e) {
@@ -5771,14 +5903,15 @@ export default function TakeoffCanvas() {
       // their numbers without dragging the whole project register along
       const linked = new Set(sheetMarkups.map((m) => m.rfi_id).filter(Boolean));
       const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
+      const pages = leasedPages();
       const { bytes } = await buildMarkedSetPdf({
         projectName, clientInfo, company: brand.company, credit: brand.credit, coverTitle: brand.coverTitle,
         dark: darkMode, units, sheets: [{ key: k, ...parseSheetKey(k), label: tabLabel(k) }],
         shapes: shapes.filter((s) => s.sheet_id === k), markups: sheetMarkups,
         approvals: approvals.filter((a) => a.sheet_id === k), rfis: rfis.filter((r) => linked.has(r.id)), conditions,
-        getPage: async (file, pageNum) => (await docFor(file)).getPage(pageNum),
+        getPage: pages.getPage,
         loadPdfData: (file) => store.loadPdfData(file),
-      });
+      }).finally(pages.release);
       return { bytes, filename: dragFilename(projectName, tabLabel(k)) };
     });
   }
@@ -6443,16 +6576,17 @@ export default function TakeoffCanvas() {
   // whole sheet) as an image-px rect — shared by read_sheet_text and
   // read_schedule so both read the same box.
   async function agentPageText(key, region) {
-    const p = agentPanelFor(key);
-    const pageObj = pageObjsRef.current.get(key);
-    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
-    const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
-    const vp = pageObj.getViewport({ scale: rs });
-    const tc = await pageObj.getTextContent();
-    const rect = region
-      ? { x0: region.x0 * p.img.w, y0: region.y0 * p.img.h, x1: region.x1 * p.img.w, y1: region.y1 * p.img.h }
-      : { x0: 0, y0: 0, x1: p.img.w, y1: p.img.h };
-    return { tc, vp, rs, rect, p };
+    return withSheetPage(key, async (pageObj) => {
+      const p = agentPanelFor(key);
+      if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+      const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
+      const vp = pageObj.getViewport({ scale: rs });
+      const tc = await pageObj.getTextContent();
+      const rect = region
+        ? { x0: region.x0 * p.img.w, y0: region.y0 * p.img.h, x1: region.x1 * p.img.w, y1: region.y1 * p.img.h }
+        : { x0: 0, y0: 0, x1: p.img.w, y1: p.img.h };
+      return { tc, vp, rs, rect, p };
+    });
   }
 
   async function agentTextTokens(key, region) {
@@ -6481,26 +6615,27 @@ export default function TakeoffCanvas() {
   // Render just the asked-for crop offscreen (shift its top-left to (0,0)) and
   // hand back a PNG data URL — THE vision tool for scans and ambiguous areas.
   async function agentViewRegion(key, region) {
-    const p = agentPanelFor(key);
-    const pageObj = pageObjsRef.current.get(key);
-    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
-    const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
-    const x0 = region.x0 * p.img.w, y0 = region.y0 * p.img.h;
-    const regW = Math.max(1, (region.x1 - region.x0) * p.img.w);
-    const regH = Math.max(1, (region.y1 - region.y0) * p.img.h);
-    const factor = Math.min(1, AGENT_VIEW_MAX_EDGE / regW, AGENT_VIEW_MAX_EDGE / regH);
-    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
-    const cv = document.createElement("canvas");
-    cv.width = bw; cv.height = bh;
-    await pageObj.render({
-      canvasContext: cv.getContext("2d"),
-      viewport: pageObj.getViewport({ scale: rs * factor }),
-      transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
-      background: "#ffffff",   // never the panel canvas — dark mode bakes an inversion into those pixels
-    }).promise;
-    const image_data_url = cv.toDataURL("image/png");
-    cv.width = cv.height = 0;
-    return { image_data_url, width: bw, height: bh };
+    return withSheetPage(key, async (pageObj) => {
+      const p = agentPanelFor(key);
+      if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+      const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
+      const x0 = region.x0 * p.img.w, y0 = region.y0 * p.img.h;
+      const regW = Math.max(1, (region.x1 - region.x0) * p.img.w);
+      const regH = Math.max(1, (region.y1 - region.y0) * p.img.h);
+      const factor = Math.min(1, AGENT_VIEW_MAX_EDGE / regW, AGENT_VIEW_MAX_EDGE / regH);
+      const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
+      const cv = document.createElement("canvas");
+      cv.width = bw; cv.height = bh;
+      await pageObj.render({
+        canvasContext: cv.getContext("2d"),
+        viewport: pageObj.getViewport({ scale: rs * factor }),
+        transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
+        background: "#ffffff",   // never the panel canvas — dark mode bakes an inversion into those pixels
+      }).promise;
+      const image_data_url = cv.toDataURL("image/png");
+      cv.width = cv.height = 0;
+      return { image_data_url, width: bw, height: bh };
+    });
   }
 
   // The one-click engine at an agent-supplied seed — same trigger policy and
@@ -7183,113 +7318,120 @@ export default function TakeoffCanvas() {
   // rect in the page's rs-viewport px; null = the whole page
   function copyTextFrom(key, rect, scope) {
     if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
-    const pageObj = pageObjsRef.current.get(key);
+    // held until the copy settles: its text, or a box read waiting its turn,
+    // can outlive a switch away
+    const { page: pageObj, release } = holdSheetPage(key);
     const blocked = copyUnavailable({ stitch: isStitchKey(key), hasPage: !!pageObj });
-    if (blocked) { setCommitMsg(blocked); return; }
-    const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
-    const vp = pageObj.getViewport({ scale: rs });
-    // a scan for Copy text (copyIsScanLike): the page rule on this page's
-    // text, and the page may hold an image (a vector cover sheet's few title
-    // lines copy from the text layer at once); a hybrid's pictures come from
-    // its index entry (copyPictureInputs), as the Read control's do (readWhat)
-    const imageFrac = () => sheetStatsRef.current.get(key)?.imageFrac;
-    const scanLikeOf = (tc) => copyIsScanLike(tc, vp, imageFrac());
-    // OCR known off (and no read in memory): the chain starts with that
-    // miss, asks no OCR reader, and an empty copy still says why
-    const startMiss = copyStartMiss({ enabled: ocrEnabled(), avail: ocrAvail, hasRead: !!pageReader.lines(key) });
-    const seq = renderSeqRef.current;   // a sheet switch mid-await must not post a receipt for a page you left
-    const signal = copyGateRef.current.begin();   // and a newer box (or page copy) replaces this one
-    // an on-device read posts an in-progress line (sticky, it ends in "…");
-    // whatever ends this copy takes it down again, unless a newer message
-    // has replaced it
-    let busy = null;
-    const clearBusy = () => { if (busy) { const b = busy; busy = null; setCommitMsgState((m) => (m === b ? { text: "" } : m)); } };
-    // hybrid: the copy took copyPlan's "hybrid" chain (#489), which is never
-    // called a scan, and whose unread image is a picture
-    const settle = (o, tc, hybrid) => {
-      clearBusy();
-      if (o.kind === "aborted" || signal.aborted) return;
-      if (o.kind !== "text") { setCommitMsg(outcomeMessage(o, scope, scanLikeOf(tc), hybrid)); return; }
-      // after an on-device read the click's activation is usually gone and
-      // the write is refused: the receipt then holds the text in its textarea
-      deliverCopy(o.text, navigator.clipboard).then((ok) => setCopyReceipt(makeReceipt(o, { failed: !ok, scope, key, hybrid })));
-    };
-    // a box read's line: nothing while the download notice is up, then
-    // "Waiting…" until its turn in the engine, then "Reading…"
-    const postBusy = (text) => {
-      if (!busy) signal.addEventListener("abort", clearBusy, { once: true });   // Esc, or a newer box
-      busy = { text };
-      setCommitMsgState(busy);
-    };
-    // OCR (lib/copyText): which OCR this copy may use (copyOcrRoute: none on
-    // a sheet with a text layer and no placed image), then ocrCopyReaders: the page's own
-    // read (in memory, else the cache; a read of it under way is waited for),
-    // then, only if the page has no read, an on-device read of the box, not
-    // kept; copyReaderChain puts them after the text layer, or first on a
-    // scan. Copy page text on a scan is the page read itself
-    // (readSheet: kept, indexed, shown on the Read control with its Cancel,
-    // and it goes on if this copy is replaced).
-    // the page's read: in memory; else, with OCR on, the read under way
-    // (waited for) or the cached one
-    const pageLinesOrLookup = () => {
-      if (!ocrEnabled()) return null;
-      if (pageReader.status(key)?.state === "reading") return readSheet(key).then((r) => (r.ok ? r.lines : null));
-      return lookupSheet(key).then((h) => h?.lines ?? null);
-    };
-    // why OCR can't run here, if it can't
-    const ocrOff = () => (!ocrEnabled() ? "disabled" : ocrAvail === "disabled" || ocrAvail === "uninstalled" ? ocrAvail : null);
-    // a one-off read of a box (not kept)
-    const readBoxOf = (r, sig) => {
-      const off = ocrOff();
-      if (off) return Promise.resolve({ ok: false, status: off });
-      return pageReader.readBox({
-        file: parseSheetKey(key).file, rs, rect: r, getPage: async () => pageObj, signal: sig,
-        onPhase: (ph) => { if (!sig?.aborted) postBusy(ph === "waiting" ? "Waiting for another read…" : "Reading that box with the on-device text reader (OCR)…"); },
-      });
-    };
-    const ocrReadersFor = (tc) => {
-      const route = copyOcrRoute({ scope, scanLike: scanLikeOf(tc), imageFrac: imageFrac(), ocrOff: !!startMiss });
-      if (route === "none") return [];
-      return ocrCopyReaders({
-        // on a hybrid, none (copyText textChainPageLines): its read covers
-        // only the pictures, and this chain's box is off them or a sliver
-        pageLines: textChainPageLines(planIndexRef.current.get(key), () => pageReader.lines(key) ?? pageLinesOrLookup()),
-        readBox: (r, sig) => {
-          const off = ocrOff();
-          if (off) return Promise.resolve({ ok: false, status: off });
-          if (route === "page") return readSheet(key).then((res) => (res.ok ? { ok: true, lines: res.lines } : { ok: false, status: res.status, message: res.message }));
-          // the whole page reaches OCR only on a scan, which is the page
-          // route above; a page with a text layer never gets a one-off read
-          if (!r) return Promise.resolve({ ok: true, lines: [] });
-          return readBoxOf(r, sig);
-        },
-      });
-    };
-    const read = (tc) => {
-      // Which chain (lib/copyText copyPlan, #489): a box over a hybrid's
-      // picture is ONE combining reader (the text layer, and OCR for the
-      // picture: the page's read in memory, else the cached read or the one
-      // under way, else a read of each box ∩ picture). Otherwise the reader
-      // chain, asked in order; the first with any token answers: the text
-      // layer, then OCR — or, on a scan, OCR, then the text layer.
-      const failed = () => { clearBusy(); setCommitMsg("Couldn't read that region."); };
-      const scan = scanLikeOf(tc);
-      const plan = copyPlan({ scope, rect, scan, ...copyPictureInputs(planIndexRef.current.get(key)), rs, pageRead: !!pageReader.lines(key) });
-      const hybrid = plan.kind === "hybrid";
-      let out;
-      try {
-        const readers = hybrid
-          ? [hybridCopyReader({ tc, viewport: vp, ocrRects: plan.ocrRects, startMiss, pageLines: () => pageReader.lines(key), lookup: () => Promise.resolve(pageLinesOrLookup()), readBox: readBoxOf })]
-          : copyReaderChain({ scanLike: scan, textLayer: textLayerReader(tc, vp), ocr: ocrReadersFor(tc) });
-        out = readCopyText(readers, rect, { signal }, [], startMiss);
-      }
-      catch { failed(); return; }
-      if (out instanceof Promise) out.then((o) => { if (seq === renderSeqRef.current) settle(o, tc, hybrid); else clearBusy(); }).catch(failed);
-      else settle(out, tc, hybrid);
-    };
-    const e = textContentOf(pageObj);
-    if (e.tc) { read(e.tc); return; }
-    e.p.then((tc) => { if (seq === renderSeqRef.current && !signal.aborted) read(tc); }).catch(() => setCommitMsg("Couldn't read that sheet's text."));
+    if (blocked) { release(); setCommitMsg(blocked); return; }
+    // a throw before the copy is under way lets it go at once
+    try {
+      const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
+      const vp = pageObj.getViewport({ scale: rs });
+      // a scan for Copy text (copyIsScanLike): the page rule on this page's
+      // text, and the page may hold an image (a vector cover sheet's few title
+      // lines copy from the text layer at once); a hybrid's pictures come from
+      // its index entry (copyPictureInputs), as the Read control's do (readWhat)
+      const imageFrac = () => sheetStatsRef.current.get(key)?.imageFrac;
+      const scanLikeOf = (tc) => copyIsScanLike(tc, vp, imageFrac());
+      // OCR known off (and no read in memory): the chain starts with that
+      // miss, asks no OCR reader, and an empty copy still says why
+      const startMiss = copyStartMiss({ enabled: ocrEnabled(), avail: ocrAvail, hasRead: !!pageReader.lines(key) });
+      const seq = renderSeqRef.current;   // a sheet switch mid-await must not post a receipt for a page you left
+      const signal = copyGateRef.current.begin();   // and a newer box (or page copy) replaces this one
+      // an on-device read posts an in-progress line (sticky, it ends in "…");
+      // whatever ends this copy takes it down again, unless a newer message
+      // has replaced it
+      let busy = null;
+      const clearBusy = () => { if (busy) { const b = busy; busy = null; setCommitMsgState((m) => (m === b ? { text: "" } : m)); } };
+      // hybrid: the copy took copyPlan's "hybrid" chain (#489), which is never
+      // called a scan, and whose unread image is a picture
+      const settle = (o, tc, hybrid) => {
+        clearBusy();
+        if (o.kind === "aborted" || signal.aborted) return;
+        if (o.kind !== "text") { setCommitMsg(outcomeMessage(o, scope, scanLikeOf(tc), hybrid)); return; }
+        // after an on-device read the click's activation is usually gone and
+        // the write is refused: the receipt then holds the text in its textarea
+        deliverCopy(o.text, navigator.clipboard).then((ok) => setCopyReceipt(makeReceipt(o, { failed: !ok, scope, key, hybrid })));
+      };
+      // a box read's line: nothing while the download notice is up, then
+      // "Waiting…" until its turn in the engine, then "Reading…"
+      const postBusy = (text) => {
+        if (!busy) signal.addEventListener("abort", clearBusy, { once: true });   // Esc, or a newer box
+        busy = { text };
+        setCommitMsgState(busy);
+      };
+      // OCR (lib/copyText): which OCR this copy may use (copyOcrRoute: none on
+      // a sheet with a text layer and no placed image), then ocrCopyReaders: the page's own
+      // read (in memory, else the cache; a read of it under way is waited for),
+      // then, only if the page has no read, an on-device read of the box, not
+      // kept; copyReaderChain puts them after the text layer, or first on a
+      // scan. Copy page text on a scan is the page read itself
+      // (readSheet: kept, indexed, shown on the Read control with its Cancel,
+      // and it goes on if this copy is replaced).
+      // the page's read: in memory; else, with OCR on, the read under way
+      // (waited for) or the cached one
+      const pageLinesOrLookup = () => {
+        if (!ocrEnabled()) return null;
+        if (pageReader.status(key)?.state === "reading") return readSheet(key).then((r) => (r.ok ? r.lines : null));
+        return lookupSheet(key).then((h) => h?.lines ?? null);
+      };
+      // why OCR can't run here, if it can't
+      const ocrOff = () => (!ocrEnabled() ? "disabled" : ocrAvail === "disabled" || ocrAvail === "uninstalled" ? ocrAvail : null);
+      // a one-off read of a box (not kept)
+      const readBoxOf = (r, sig) => {
+        const off = ocrOff();
+        if (off) return Promise.resolve({ ok: false, status: off });
+        return pageReader.readBox({
+          file: parseSheetKey(key).file, rs, rect: r, getPage: async () => pageObj, signal: sig,
+          onPhase: (ph) => { if (!sig?.aborted) postBusy(ph === "waiting" ? "Waiting for another read…" : "Reading that box with the on-device text reader (OCR)…"); },
+        });
+      };
+      const ocrReadersFor = (tc) => {
+        const route = copyOcrRoute({ scope, scanLike: scanLikeOf(tc), imageFrac: imageFrac(), ocrOff: !!startMiss });
+        if (route === "none") return [];
+        return ocrCopyReaders({
+          // on a hybrid, none (copyText textChainPageLines): its read covers
+          // only the pictures, and this chain's box is off them or a sliver
+          pageLines: textChainPageLines(planIndexRef.current.get(key), () => pageReader.lines(key) ?? pageLinesOrLookup()),
+          readBox: (r, sig) => {
+            const off = ocrOff();
+            if (off) return Promise.resolve({ ok: false, status: off });
+            if (route === "page") return readSheet(key).then((res) => (res.ok ? { ok: true, lines: res.lines } : { ok: false, status: res.status, message: res.message }));
+            // the whole page reaches OCR only on a scan, which is the page
+            // route above; a page with a text layer never gets a one-off read
+            if (!r) return Promise.resolve({ ok: true, lines: [] });
+            return readBoxOf(r, sig);
+          },
+        });
+      };
+      const read = (tc) => {
+        // Which chain (lib/copyText copyPlan, #489): a box over a hybrid's
+        // picture is ONE combining reader (the text layer, and OCR for the
+        // picture: the page's read in memory, else the cached read or the one
+        // under way, else a read of each box ∩ picture). Otherwise the reader
+        // chain, asked in order; the first with any token answers: the text
+        // layer, then OCR — or, on a scan, OCR, then the text layer.
+        const failed = () => { clearBusy(); setCommitMsg("Couldn't read that region."); };
+        const scan = scanLikeOf(tc);
+        const plan = copyPlan({ scope, rect, scan, ...copyPictureInputs(planIndexRef.current.get(key)), rs, pageRead: !!pageReader.lines(key) });
+        const hybrid = plan.kind === "hybrid";
+        let out;
+        try {
+          const readers = hybrid
+            ? [hybridCopyReader({ tc, viewport: vp, ocrRects: plan.ocrRects, startMiss, pageLines: () => pageReader.lines(key), lookup: () => Promise.resolve(pageLinesOrLookup()), readBox: readBoxOf })]
+            : copyReaderChain({ scanLike: scan, textLayer: textLayerReader(tc, vp), ocr: ocrReadersFor(tc) });
+          out = readCopyText(readers, rect, { signal }, [], startMiss);
+        }
+        catch { failed(); return; }
+        if (out instanceof Promise) return out.then((o) => { if (seq === renderSeqRef.current) settle(o, tc, hybrid); else clearBusy(); }).catch(failed);
+        settle(out, tc, hybrid);
+      };
+      const e = textContentOf(pageObj);
+      const done = e.tc
+        ? read(e.tc)
+        : e.p.then((tc) => { if (seq === renderSeqRef.current && !signal.aborted) return read(tc); }).catch(() => setCommitMsg("Couldn't read that sheet's text."));
+      Promise.resolve(done).finally(release);
+    } catch (e) { release(); throw e; }
   }
   // two stage-px corners → the box on one sheet
   function copyTextFromBox(a, b) {
@@ -7329,11 +7471,14 @@ export default function TakeoffCanvas() {
     ocrReadRef.current = mine;
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
     const isCurrent = () => ocrReadRef.current === mine && !mine.ctl.signal.aborted && seq === renderSeqRef.current;
+    let release = () => {};
     try {
       if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
       const panel = panelAt(a[0]);
       if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet, around its schedule table."); return; }
-      const pageObj = pageObjsRef.current.get(panel.key);
+      const held = holdSheetPage(panel.key);
+      release = held.release;
+      const pageObj = held.page;
       if (!pageObj) { setCommitMsg("Open a sheet first."); return; }
       const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
       // rect in image (rs-viewport) px, clamped to the panel as
@@ -7344,7 +7489,7 @@ export default function TakeoffCanvas() {
         x1: cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w), y1: cl(Math.max(a[1], b[1]), 0, panel.img.h),
       };
       if (!(rect.x1 - rect.x0 >= 4 && rect.y1 - rect.y0 >= 4)) { setCommitMsg(EMPTY_BOX_MESSAGE); return; }
-      let spans, pageHasText, readScheduleSpans;
+      let spans, pageHasText, readScheduleSpans, boxTerms;
       try {
         const vp = pageObj.getViewport({ scale: rs });
         const tc = await pageObj.getTextContent();
@@ -7353,10 +7498,14 @@ export default function TakeoffCanvas() {
         const page = pageSpans(tc.items, vp.transform, rs);
         pageHasText = page.length > 0;   // the box's own source (pageSpans drops blank runs), so "box empty, page not" is consistent
         spans = graphSpans(spansInRect(page, rect));
+        // the box's terms as the sheet's plan-search entry counts them (the
+        // same runs, pageTextIndex's reader): the dialog's "on the plans?"
+        // check (#498) subtracts them from the schedule's own sheet
+        boxTerms = buildSheetIndex("box", extractRegionText(tc, vp, rect)).terms;
       } catch { if (isCurrent()) setCommitMsg("Couldn't read that region."); return; }
       const box = { textRuns: countTextRuns(spans), pageHasText };
       const route = routeScheduleRead(readScheduleSpans(spans), box);
-      if (route.kind === "rows") { setImportRead({ rows: route.rows, skipped: route.skipped ?? [] }); return; }
+      if (route.kind === "rows") { setImportRead({ rows: route.rows, skipped: route.skipped ?? [], sourceKey: panel.key, boxTerms }); return; }
       if (route.kind === "message") { setCommitMsg(route.text); return; }
       // On-device: the status line replaces the footer message, unless that
       // is the stale-tab lockout or another job's in-progress "…" line.
@@ -7377,11 +7526,12 @@ export default function TakeoffCanvas() {
         box,
       });
       if (!isCurrent()) return;
-      if (result.kind === "rows") setImportRead({ rows: result.rows, skipped: result.skipped ?? [] });
+      if (result.kind === "rows") setImportRead({ rows: result.rows, skipped: result.skipped ?? [], sourceKey: panel.key });
       else if (result.kind === "message") setCommitMsg(result.text);
     } catch {
       if (isCurrent()) setCommitMsg("Couldn't read that region.");
     } finally {
+      release();
       releaseImportRead(mine);
     }
   }
@@ -7397,70 +7547,71 @@ export default function TakeoffCanvas() {
     if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
     const panel = panelAt(a[0]);
     if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet."); return; }
-    const pageObj = pageObjsRef.current.get(panel.key);
-    if (!pageObj) { setCommitMsg("Capture a region on a single sheet (not a stitched view)."); return; }
-    const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
-    // rect in image (rs-viewport) px, clamped to the panel bounds so an over-drag
-    // past the sheet edge never parks the geometry off-sheet
-    const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-    const x0 = cl(Math.min(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
-    const x1 = cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
-    const y0 = cl(Math.min(a[1], b[1]), 0, panel.img.h);
-    const y1 = cl(Math.max(a[1], b[1]), 0, panel.img.h);
-    const regW = x1 - x0, regH = y1 - y0;
-    if (!(regW >= 4 && regH >= 4)) { setCommitMsg("Drag a larger box to capture."); return; }
-    // downscale to MARKUP_IMG_MAX (1600px) on the longest side
-    const factor = Math.min(1, MARKUP_IMG_MAX / regW, MARKUP_IMG_MAX / regH);
-    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
-    let src;
-    try {
-      const vp = pageObj.getViewport({ scale: rs * factor });
-      const canvas = document.createElement("canvas");
-      canvas.width = bw; canvas.height = bh;
-      await pageObj.render({
-        canvasContext: canvas.getContext("2d"),
-        viewport: vp,
-        transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
-      }).promise;
-      src = canvas.toDataURL("image/png");
-    } catch { setCommitMsg("Couldn't capture that region."); return; }
-    const { at, w, aspect } = captureRectToImageGeom({ x0, y0, x1, y1 }, panel.img.w, panel.img.h);
-    if (!(w > 0)) return;
-    // FROZEN origin label. sheetBaseLabel resolves a detected sheet number only for
-    // the ACTIVE file (or an already gallery-scanned sheet); on the non-active panel
-    // of a multi-FILE side-by-side group it would fall back to the file base. Since
-    // that panel is rendered here anyway, scan its title block NOW (the same
-    // extractSheetNumber the active-file scan at ~:2056 uses) so the frozen number is
-    // real — but only when it isn't already known, and only as a best-effort upgrade:
-    // a null result (unusual title block) keeps the file-base fallback, never worse.
-    let srcLabel = sheetBaseLabel(panel.key);
-    const pk = parseSheetKey(panel.key);
-    const labelKnown = isStitchKey(panel.key) || !!galleryLabels[panel.key] || (pk.file === active && !!pageLabels[pk.page]);
-    if (!labelKnown) {
+    return withSheetPage(panel.key, async (pageObj) => {
+      if (!pageObj) { setCommitMsg("Capture a region on a single sheet (not a stitched view)."); return; }
+      const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
+      // rect in image (rs-viewport) px, clamped to the panel bounds so an over-drag
+      // past the sheet edge never parks the geometry off-sheet
+      const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      const x0 = cl(Math.min(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
+      const x1 = cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
+      const y0 = cl(Math.min(a[1], b[1]), 0, panel.img.h);
+      const y1 = cl(Math.max(a[1], b[1]), 0, panel.img.h);
+      const regW = x1 - x0, regH = y1 - y0;
+      if (!(regW >= 4 && regH >= 4)) { setCommitMsg("Drag a larger box to capture."); return; }
+      // downscale to MARKUP_IMG_MAX (1600px) on the longest side
+      const factor = Math.min(1, MARKUP_IMG_MAX / regW, MARKUP_IMG_MAX / regH);
+      const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
+      let src;
       try {
-        const lbl = extractSheetNumber(await pageObj.getTextContent(), pageObj.getViewport({ scale: RENDER_SCALE }));
-        if (lbl) srcLabel = lbl;
-      } catch { /* title block unreadable — keep the file-base fallback */ }
-    }
-    // Capture-only provenance fields (uploads have no source, so addImageFromFile
-    // omits them): src_sheet_id is the ORIGIN sheet (sheet_id tracks where the
-    // image currently lives and moves on a cross-sheet place — see imageProvenance
-    // below). src_rect reuses the ALREADY-CLAMPED x0..y1 above, NOT the raw marquee
-    // corners a/b (they carry xOffset and are unclamped) and NOT bw/bh (the 1600px
-    // capture raster size) — normalizing by those would silently drift the traced
-    // region off the real source box. src_label is the FROZEN origin sheet name,
-    // resolved just above (sheetBaseLabel, upgraded via a title-block scan when the
-    // number isn't cached for a non-active side-by-side file): both the canvas caption
-    // and the marked-set PDF read this stored string, so they can never diverge on
-    // runtime label state (which sheetBaseLabel derives only for the active file).
-    addImageMarkup({
-      at, w, aspect, src, source: "capture", labelBase: srcLabel,
-      ...(referenceOnly ? { reference_only: true } : {}),
-      src_sheet_id: panel.key,
-      src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
-      src_label: srcLabel,
-      source_label: false,
-    }, panel.key);
+        const vp = pageObj.getViewport({ scale: rs * factor });
+        const canvas = document.createElement("canvas");
+        canvas.width = bw; canvas.height = bh;
+        await pageObj.render({
+          canvasContext: canvas.getContext("2d"),
+          viewport: vp,
+          transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
+        }).promise;
+        src = canvas.toDataURL("image/png");
+      } catch { setCommitMsg("Couldn't capture that region."); return; }
+      const { at, w, aspect } = captureRectToImageGeom({ x0, y0, x1, y1 }, panel.img.w, panel.img.h);
+      if (!(w > 0)) return;
+      // FROZEN origin label. sheetBaseLabel resolves a detected sheet number only for
+      // the ACTIVE file (or an already gallery-scanned sheet); on the non-active panel
+      // of a multi-FILE side-by-side group it would fall back to the file base. Since
+      // that panel is rendered here anyway, scan its title block NOW (the same
+      // extractSheetNumber the active-file scan at ~:2056 uses) so the frozen number is
+      // real — but only when it isn't already known, and only as a best-effort upgrade:
+      // a null result (unusual title block) keeps the file-base fallback, never worse.
+      let srcLabel = sheetBaseLabel(panel.key);
+      const pk = parseSheetKey(panel.key);
+      const labelKnown = isStitchKey(panel.key) || !!galleryLabels[panel.key] || (pk.file === active && !!pageLabels[pk.page]);
+      if (!labelKnown) {
+        try {
+          const lbl = extractSheetNumber(await pageObj.getTextContent(), pageObj.getViewport({ scale: RENDER_SCALE }));
+          if (lbl) srcLabel = lbl;
+        } catch { /* title block unreadable — keep the file-base fallback */ }
+      }
+      // Capture-only provenance fields (uploads have no source, so addImageFromFile
+      // omits them): src_sheet_id is the ORIGIN sheet (sheet_id tracks where the
+      // image currently lives and moves on a cross-sheet place — see imageProvenance
+      // below). src_rect reuses the ALREADY-CLAMPED x0..y1 above, NOT the raw marquee
+      // corners a/b (they carry xOffset and are unclamped) and NOT bw/bh (the 1600px
+      // capture raster size) — normalizing by those would silently drift the traced
+      // region off the real source box. src_label is the FROZEN origin sheet name,
+      // resolved just above (sheetBaseLabel, upgraded via a title-block scan when the
+      // number isn't cached for a non-active side-by-side file): both the canvas caption
+      // and the marked-set PDF read this stored string, so they can never diverge on
+      // runtime label state (which sheetBaseLabel derives only for the active file).
+      addImageMarkup({
+        at, w, aspect, src, source: "capture", labelBase: srcLabel,
+        ...(referenceOnly ? { reference_only: true } : {}),
+        src_sheet_id: panel.key,
+        src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
+        src_label: srcLabel,
+        source_label: false,
+      }, panel.key);
+    });
   }
 
   // The aggregate-budget gate shared by both entry points: refuse a new image when
@@ -7882,8 +8033,9 @@ export default function TakeoffCanvas() {
   // guessed. Commits like the rescale repair (replace + reset — not an edit,
   // no undo entry); the next autosave banks it. The seq guard kills an
   // in-flight heal the moment shapes/scales change — the rerun starts over
-  // against the fresh state (docFor caches, so the redo is cheap), and once
-  // nothing needsMetrics this is a pure no-op.
+  // against the fresh state (a loaded doc is reused, so the redo is cheap),
+  // and once nothing needsMetrics this is a pure no-op. Its sheets may be in
+  // no tab: one lease per file across that file's pages.
   const healSeqRef = useRef(0);
   useEffect(() => {
     if (status !== "ready") return;
@@ -7892,13 +8044,22 @@ export default function TakeoffCanvas() {
     const seq = ++healSeqRef.current;
     (async () => {
       const dimsBy = new Map();
+      const keysBy = new Map();
       for (const key of new Set(missing.map((s) => s.sheet_id))) {
+        const { file } = parseSheetKey(key);
+        keysBy.set(file, [...(keysBy.get(file) ?? []), key]);
+      }
+      for (const [file, keys] of keysBy) {
         try {
-          const { file, page: pn } = parseSheetKey(key);
-          const pdf = await docFor(file);
-          const pageObj = await pdf.getPage(Math.min(Math.max(1, pn), pdf.numPages || 1));
-          const vp = pageObj.getViewport({ scale: RENDER_SCALE });
-          dimsBy.set(key, { w: Math.ceil(vp.width), h: Math.ceil(vp.height) });
+          await docCache.withDoc(file, async (pdf) => {
+            for (const key of keys) {
+              try {
+                const pageObj = await pdf.getPage(Math.min(Math.max(1, parseSheetKey(key).page), pdf.numPages || 1));
+                const vp = pageObj.getViewport({ scale: RENDER_SCALE });
+                dimsBy.set(key, { w: Math.ceil(vp.width), h: Math.ceil(vp.height) });
+              } catch { /* an unreadable page — its shapes stay unpriced */ }
+            }
+          });
         } catch { /* orphaned sheet (source gone) — its shapes stay unpriced */ }
       }
       if (seq !== healSeqRef.current) return;   // stale — a newer load/edit owns the heal now
@@ -7909,7 +8070,7 @@ export default function TakeoffCanvas() {
       dispatchShape({ type: "replace", shapes: shapes.map((s) => (healed.has(s.id) ? { ...s, computed: healed.get(s.id) } : s)) }, { reset: true });
       setCommitMsg(`Repriced ${healed.size} takeoff${healed.size === 1 ? "" : "s"} that loaded without quantities.`);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on load/shape/scale change; docFor/uppFor/condById read from the same render
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on load/shape/scale change; docCache/uppFor/condById read from the same render
   }, [status, shapes, scales, conditions]);
   // Zone check: the SAME conditionTotals rules on the shapes whose center point
   // sits inside the traced zone (lib/zone.js) — third scope of the one role math.
@@ -8329,12 +8490,11 @@ export default function TakeoffCanvas() {
     keysHeld: () => !!ocrReadRef.current?.ocr,   // its Delete/Esc/⌘Z wait out a schedule box's on-device read, like the canvas's own keys
     legacyTools: { highlighter: "highlighter", cloud: "cloud", callout: "callout" },
     resetDraft: () => { leaveCanvas(); setMarkupDraft(null); },
-    readText: async key => {
-      const page = pageObjsRef.current.get(key);
+    readText: key => withSheetPage(key, async page => {
       if (!page) throw new Error("This sheet has no native PDF text available. Use Freehand for a scan or composite.");
       const content = await page.getTextContent();
       return nativeTextRuns(content, page.getViewport({ scale: RENDER_SCALE }).transform);
-    },
+    }),
     findSymbols: (key, rect) => {
       const segments = vectorSegsRef.current.get(key);
       if (!segments?.length) throw new Error("No vector symbols are available on this sheet. Scans need a manual cloud or note.");
@@ -8570,6 +8730,9 @@ export default function TakeoffCanvas() {
     { id: "copy", label: "Copy selected", group: "Edit", shortcut: "⌘C", disabled: !selectedId, run: copySelected },
     { id: "paste", label: "Paste", group: "Edit", shortcut: "⌘V", disabled: !clipRef.current.length, run: () => pasteClipboard() },
     { id: "report", label: "Open report", group: "Workspace", run: () => setShowReport(true) },
+    { id: "tour", label: "Guided first takeoff — learn it on the sample plan", group: "Help", run: startTour },
+    { id: "guide", label: "How OpenTakeoff works — shortcuts and the five-minute path", group: "Help", shortcut: "?", run: () => setGuideOpen(true) },
+    { id: "connect-ai", label: "Connect your AI — Claude, Codex, Cursor", group: "Help", run: () => setConnectOpen(true) },
     { id: "work", label: "Open work and review", group: "Workspace", run: () => setAgentOpen(true) },
     { id: "layout", label: "Arrange and save your layout", group: "Workspace", run: () => setWorkspaceLayoutOpen(true) },
     { id: "fit", label: "Fit sheet to view", group: "View", disabled: !stage.w, run: () => fitToView(stage.w, stage.h) },
@@ -8661,6 +8824,11 @@ export default function TakeoffCanvas() {
           {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
         </div>}
         layoutMenu={<button type="button" onClick={() => setWorkspaceLayoutOpen(true)} title="Arrange panels, lock positions, and save layouts"><Icon name="sliders" size={16} />Layout</button>}
+        helpMenu={<ToolMenu title="Learn OpenTakeoff, or connect an AI agent" face={<span>Help</span>} onOpenChange={onMenuDepth} items={[
+          { id: "tour", label: "Guided first takeoff", onSelect: startTour },
+          { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
+          { id: "connect-ai", label: "Connect your AI", onSelect: () => setConnectOpen(true) },
+        ]} />}
         fileMenu={<><ToolMenu title="Files and workspace" face={<span>File</span>} onOpenChange={onMenuDepth} items={sheetMenuItems} /><PresenceChip bridge={store.syncBridge} /><AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} /></>}
         conditionControl={<><label className="calm-condition-label" htmlFor="workspace-condition">Condition</label><select id="workspace-condition" value={activeCond || ""} onChange={(e) => activateCondition(e.target.value)} title={tool === "select" && selectedId ? "Reassign selected measurement" : "Condition for the next measurement"}>
           {!conditions.length && <option value="">No conditions</option>}{conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}</select>
@@ -8669,7 +8837,7 @@ export default function TakeoffCanvas() {
         history={<><button type="button" onClick={() => poly.length ? dropLastPoint() : undoShapeCommand()} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" size={16} /></button><button type="button" onClick={redoShapeCommand} title="Redo (⇧⌘Z)" aria-label="Redo"><span style={{ display: "flex", transform: "scaleX(-1)" }}><Icon name="undo" size={16} /></span></button></>}
         aids={<><button type="button" aria-pressed={tool === "zone"} onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))} title="Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool."><Icon name="zone" size={15} />Zone</button><button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"><Icon name="snap" size={15} />Snap</button><button type="button" aria-pressed={angleOn} onClick={() => setAngleOn((v) => !v)} title="45°/90° angle guides"><Icon name="angle" size={15} />45°</button>{draftMenu}<span className="calm-separator" />{annotations.control}</>}
         action={finishOk && <button type="button" onClick={finishShape}>Finish ({poly.length})</button>}
-        scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title="Switch display units">{units === "metric" ? "m" : "ft"}</button><ToolMenu title={scaleTitle} onOpenChange={onScaleMenuDepth} face={<span>{scaleFace}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 250 }} items={scaleItems} /></>}
+        scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title="Switch display units">{units === "metric" ? "m" : "ft"}</button><ToolMenu title={scaleTitle} onOpenChange={onScaleMenuDepth} face={<span data-tour="scale">{scaleFace}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 250 }} items={scaleItems} /></>}
       />}
       {workspaceLayout && !workspaceArrangement.readout && selShape?.measure_role === "surface_area" && <div className="calm-property-editor"><label>Selected wall height <input aria-label="Selected wall height" type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")} onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }} onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }} /></label><span>{heightUnit(units)} → {fa(selShape.computed?.area_sf || 0)}</span><button type="button" onClick={clearShapeHeight}>Use condition height</button></div>}
       {!focusMode && workspaceLayout && workspaceDetailsOpen && aCond && <div className="calm-property-editor"><strong>{aCond.finish_tag}</strong><ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} /><button type="button" onClick={() => setWorkspaceDetailsOpen(false)}>Close properties</button></div>}
@@ -8845,7 +9013,7 @@ export default function TakeoffCanvas() {
             <ToolMenu
               title={scaleTitle}
               onOpenChange={onScaleMenuDepth}
-              face={<span>{scaleFace}</span>}
+              face={<span data-tour="scale">{scaleFace}</span>}
               faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }}
               menuStyle={{ minWidth: 250 }}
               items={scaleItems}
@@ -8857,7 +9025,7 @@ export default function TakeoffCanvas() {
           style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
           Work{agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : ""}
         </button>
-        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
+        <button data-tour="report" onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
             and nothing shifts position mid-work (issue #61's contract). */}
@@ -8869,6 +9037,8 @@ export default function TakeoffCanvas() {
             { id: "premium-interest", label: "Request Premium — join the early-access list", highlight: true, onSelect: () => setPremiumOpen(true) },
             { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Premium layout — compact controls", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
             { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
+            { id: "tour", label: "Guided first takeoff", onSelect: startTour },
+            { id: "connect-ai", label: "Connect your AI", onSelect: () => setConnectOpen(true) },
             { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
             "divider",
             { id: "schedule", icon: "rectTool", label: "Import from schedule", active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
@@ -10871,16 +11041,18 @@ export default function TakeoffCanvas() {
       {(view === "gallery" || view === "picker") && (
         <PlanNavigator
           onPremium={() => setPremiumOpen(true)}
+          onStartTour={() => { startTour(); loadSampleForTour(); }}
+          onConnect={() => setConnectOpen(true)}
           canClose={openTabs.length > 0}
           onExit={() => setView("canvas")}
           initialMode={view === "picker" ? "browse" : "plan"}
           cloudMode={cloudMode}
-          sheets={sheets} getDoc={docFor} scales={scales} detectedScales={detectedScales} scaleUnconfirmed={scaleUnconfirmed}
+          sheets={sheets} withDoc={docCache.withDoc} withLoadedDoc={docCache.withLoadedDoc} scales={scales} detectedScales={detectedScales} scaleUnconfirmed={scaleUnconfirmed}
           shapes={shapes} labels={galleryLabels}
           onLabel={(k, lbl) => setGalleryLabels((m) => (m[k] === lbl ? m : { ...m, [k]: lbl }))}
           onDetect={(k, det) => setDetectedScales((d) => (d[k]?.label === det.label ? d : { ...d, [k]: det }))}
           thumbCacheRef={thumbCacheRef} busyRef={statusRef}
-          planIndexRef={planIndexRef} subscribeIndex={indexSignal.subscribe} onIndexed={onIndexed} pageHeld={pageHeld} docLoaded={docCache.has}
+          planIndexRef={planIndexRef} subscribeIndex={indexSignal.subscribe} onIndexed={onIndexed} pageHeld={pageHeld} docLoaded={docCache.loaded}
           ocr={ocrApi}
           openTabs={openTabs} onOpen={openSheets}
           stitches={stitches} onStitch={createStitch} onOpenStitch={openStitch} onDeleteStitch={deleteStitch}
@@ -10907,6 +11079,8 @@ export default function TakeoffCanvas() {
       {importRead && (
         <ImportSchedulePanel
           rows={importRead.rows} skipped={importRead.skipped}
+          planSet={importPlanSet}
+          subscribeIndex={indexSignal.subscribe} labelOf={tabLabel}
           existing={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
           palette={PALETTE} startIndex={conditions.length}
           onCreate={createFromSchedule}
@@ -11079,7 +11253,13 @@ export default function TakeoffCanvas() {
       {/* live counter (mock) — floating running totals, drag to park anywhere */}
       {!focusMode && (!workspaceLayout || workspaceArrangement.counter) && !agentOpen && !showReport && <LiveCounter rows={liveCounterRows} onActivate={(id) => activateCondition(id, { reassign: false })} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
-      {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
+      {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} onTour={startTour} onConnect={() => { setGuideOpen(false); setConnectOpen(true); }} />}
+      {connectOpen && <ConnectAI onClose={() => setConnectOpen(false)} />}
+      {tour && view === "canvas" && !focusMode && !guideOpen && !connectOpen && (
+        <FirstTakeoffTour done={tour.done} step={currentStep(tour.done)} sheetOpen={tourSheetOpen}
+          sampleBusy={tourSampleBusy} onLoadSample={loadSampleForTour} result={tourResult}
+          onClose={() => setTour(null)} onConnect={() => { setTour(null); setConnectOpen(true); }} />
+      )}
       {/* on-device OCR's download notice (#471): modal over everything, the
           gallery and the guide included. Keys stop here so the canvas's
           window shortcuts (Delete, ⌘Z, letters) don't act behind it, and a

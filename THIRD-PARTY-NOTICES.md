@@ -1,6 +1,6 @@
 # Third-party notices
 
-OpenTakeoff is Apache-2.0 licensed. It builds on the following open-source projects,
+OpenTakeoff is AGPL-3.0-only licensed (Apache-2.0 through commit `84c7f48e`; see NOTICE). It builds on the following open-source projects,
 which retain their own licenses:
 
 | Project | License | Use |

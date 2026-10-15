@@ -122,3 +122,40 @@ test("ambiguous boxes read nothing rather than rows in the wrong fields", () => 
   assert.equal(readScheduleSpans(oneBox, { ocr: true }).rows.length, 0, "one header box");
   assert.equal(readScheduleSpans(glued, { ocr: true }).rows.length, 0, "glued codes");
 });
+
+test("a header box OCR glued over two columns (MATERIAL CODE) splits when the cells under it sit inside it in two groups", () => {
+  // invented: material words printed on a group's first row only, codes beside them, both under the one box
+  const glued = (ocr: boolean) => {
+    const spans = [span("FINISH KEY", 40, 20), span("MATERIAL CODE", 40, 70), span("MFG", 400, 70), span("SPECIFICATION", 660, 70), span("NOTES", 920, 70),
+      ...[["Floor", "FL-1", "VENDOR-A", "SERIES-A", "ZONE-A"], ["", "TL-2", "VENDOR-B", "SERIES-B", "ZONE-B"], ["Base", "RB-3", "VENDOR-C", "SERIES-C", "ZONE-C"]]
+        .flatMap((r, j) => [r[0] && span(r[0], 40, 110 + j * 42), span(r[1], 100, 110 + j * 42), span(r[2], 400, 110 + j * 42), span(r[3], 660, 110 + j * 42), span(r[4], 920, 110 + j * 42)])
+        .filter((s): s is ReturnType<typeof span> => !!s)];
+    return readScheduleSpans(spans, { ocr }).rows.map((r) => [r.finish_tag, r.description, r.manufacturer, r.remarks]);
+  };
+  for (const ocr of [false, true]) assert.deepEqual(glued(ocr), [
+    ["FL-1", "Floor — SERIES-A", "VENDOR-A", "ZONE-A"],
+    ["TL-2", "SERIES-B", "VENDOR-B", "ZONE-B"],
+    ["RB-3", "Base — SERIES-C", "VENDOR-C", "ZONE-C"],
+  ], `ocr=${ocr}`);
+});
+
+test("a glued header box stays unsplit when a cell under it runs past its edge, or its key group holds no codes", () => {
+  const base = (codeX: number, codes: string[], hdr = "MATERIAL CODE") => [span("FINISH KEY", 40, 20), span(hdr, 40, 70), span("MFG", 400, 70), span("SPECIFICATION", 660, 70), span("NOTES", 920, 70),
+    ...codes.flatMap((c, j) => [span("Floor", 40, 110 + j * 42), span(c, codeX, 110 + j * 42), span("VENDOR-A", 400, 110 + j * 42), span("SERIES-A", 660, 110 + j * 42)])];
+  // the box runs x 40–131; FL-100000 at x = 100 runs to 163, past its right edge
+  for (const ocr of [false, true]) assert.equal(readScheduleSpans(base(100, ["FL-100000", "TL-200000"]), { ocr }).rows.length, 0, `overhang ocr=${ocr}`);
+  // the same box splits with codes that fit under it
+  for (const ocr of [false, true]) assert.equal(readScheduleSpans(base(100, ["FL-1", "TL-2"]), { ocr }).rows.length, 2, `fits ocr=${ocr}`);
+  // words, not codes, in the right-hand group
+  for (const ocr of [false, true]) assert.equal(readScheduleSpans(base(100, ["TILE", "WOOD"]), { ocr }).rows.length, 0, `no codes ocr=${ocr}`);
+});
+
+test("a headerless legend led by a four-letter code (CONC) reports it as skipped on a text-layer read, instead of dropping it", () => {
+  const spans = [span("FLOOR FINISH KEY", 40, 20),
+    ...[["CONC", "SEALED CONCRETE"], ["FL-1", "RESILIENT FLOOR"], ["TL-2", "CERAMIC TILE"]].flatMap((r, j) => [span(r[0], 40, 70 + j * 42), span(r[1], 260, 70 + j * 42)])];
+  const r = readScheduleSpans(spans);
+  assert.deepEqual(r.rows.map((x) => x.finish_tag), ["FL-1", "TL-2"]);
+  assert.deepEqual("skipped" in r ? r.skipped : undefined, ["CONC"]);
+  // on-device words take no letters candidates (ocrGate483): the rows read, nothing is reported
+  assert.deepEqual(readScheduleSpans(spans, { ocr: true }).rows.map((x) => x.finish_tag), ["FL-1", "TL-2"]);
+});

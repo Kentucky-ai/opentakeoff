@@ -1844,10 +1844,17 @@ export function growRoom(A,seed,solid,maxAbsorb,bayThrough,narrow,doorless,pocke
  *  start-to-end (face rings share opposite directions on interior edges,
  *  so the border keeps one consistent orientation and closes). */
 export function roomOutline(A,set){
+  // Ring start vertices and winding are accidents of the arrangement engine.
+  // Walk the border in one direction (shells clockwise, as JSTS winds them)
+  // and in key order, so the same face set always yields the same outline —
+  // where two vertices round to one pixel key, which one the walk takes
+  // otherwise depends on where each face ring happened to start.
+  const signed=(r)=>{let a=0;for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];a+=p[0]*q[1]-q[0]*p[1];}return a;};
+  const flip=set.length>0 && signed(A.faces[set[0]].ring)>0;
   const cnt=new Map(); const geo=new Map();
   const reg=(r)=>{
     for(let i=0;i<r.length;i++){
-      const a=r[i],b=r[(i+1)%r.length];
+      const a=flip?r[(i+1)%r.length]:r[i], b=flip?r[i]:r[(i+1)%r.length];
       const ka=Math.round(a[0])+','+Math.round(a[1]), kb=Math.round(b[0])+','+Math.round(b[1]);
       if(ka===kb) continue;
       const key=ka<kb?ka+'|'+kb:kb+'|'+ka;
@@ -1856,7 +1863,7 @@ export function roomOutline(A,set){
     }
   };
   for(const fi of set){ const f=A.faces[fi]; reg(f.ring); for(const h of f.holes) reg(h); }
-  const border=[...cnt.entries()].filter(([,c])=>c%2===1).map(([k])=>geo.get(k));
+  const border=[...cnt.entries()].filter(([,c])=>c%2===1).map(([k])=>k).sort().map((k)=>geo.get(k));
   // chain by endpoints
   const pk=(p)=>Math.round(p[0])+','+Math.round(p[1]);
   const byStart=new Map();
@@ -2000,9 +2007,25 @@ export function netRoomAt(net, x, y, ftPx){
   return { ring, holes, areaPx: polyWithHolesMetrics(ring, holes).area, faces: set.length, seedFace: fi, starved };
 }
 
+// Canonical ring: one winding (negative shoelace sum) starting at the
+// lexicographically smallest vertex, exact ties broken by the vertices that
+// follow. The arrangement's start vertex and winding are accidents of its
+// edge order, and simplifyRing's anchors and notch scan read the ring in
+// order, so without this the same room could simplify two ways (81 vs 85 SF
+// on a real sheet).
+function canonicalRing(ring){
+  const n=ring.length;
+  let s=0; for(let i=0;i<n;i++){ const p=ring[i],q=ring[(i+1)%n]; s+=p[0]*q[1]-q[0]*p[1]; }
+  const r = s>0 ? ring.slice().reverse() : ring.slice();
+  const less=(i,j)=>{ for(let k=0;k<n;k++){ const a=r[(i+k)%n], b=r[(j+k)%n];
+    if(a[0]!==b[0]) return a[0]<b[0]; if(a[1]!==b[1]) return a[1]<b[1]; } return false; };
+  let best=0; for(let i=1;i<n;i++) if(less(i,best)) best=i;
+  return best ? r.slice(best).concat(r.slice(0,best)) : r;
+}
+
 function simplifyRing(ring, colTol, notchTol, ftPx_, doorAt){
   if (ring.length < 4) return ring;
-  let pts = ring.slice();
+  let pts = canonicalRing(ring);
   // 1. RDP-style collinear merge on the closed ring
   const rdp = (arr) => {
     const n = arr.length; if (n < 4) return arr;
@@ -2024,12 +2047,16 @@ function simplifyRing(ring, colTol, notchTol, ftPx_, doorAt){
   };
   pts = rdp(pts);
   // 2. notch removal: a vertex pair (i, i+1) forming a short jog whose both
-  //    legs return within notchTol of the line through its neighbours
-  let changed=true, guard=0;
+  //    legs return within notchTol of the line through its neighbours. Each
+  //    pass removes the qualifying pair that changes the area LEAST (not the
+  //    first one the scan meets): at a corner notch both pairs qualify, and
+  //    the wrong one joins P→Q as a wedge down the whole adjacent wall.
+  let changed=true, guard=0, removed=false;
   while(changed && guard++<8 && pts.length>4){
     changed=false;
     const n=pts.length;
-    for(let i=0;i<n && pts.length>4;i++){
+    let pick=-1, pickD=Infinity;
+    for(let i=0;i<n;i++){
       const P=pts[(i-1+n)%n], A=pts[i], B=pts[(i+1)%n], Q=pts[(i+2)%n];
       const dx=Q[0]-P[0], dy=Q[1]-P[1], L=Math.hypot(dx,dy)||1;
       const dA=Math.abs((A[0]-P[0])*dy-(A[1]-P[1])*dx)/L;
@@ -2053,9 +2080,18 @@ function simplifyRing(ring, colTol, notchTol, ftPx_, doorAt){
       let doorNotch=false;
       if(doorAt && collinear && deep<=1.3*ftPx_ && jog<=5*ftPx_){ const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2; doorNotch=doorAt(mx,my,1.2*ftPx_); }
       if((dA<=notchTol && dB<=notchTol && jog<=2*notchTol) || (collinear && deep<=0.65*ftPx_ && jog<=4.5*ftPx_) || doorNotch){
-        pts.splice(i, 2); changed=true; break;
+        // area between the path P→A→B→Q and the chord Q→P
+        const d=Math.abs((P[0]*A[1]-A[0]*P[1])+(A[0]*B[1]-B[0]*A[1])+(B[0]*Q[1]-Q[0]*B[1])+(Q[0]*P[1]-P[0]*Q[1]))/2;
+        if(d<pickD){ pickD=d; pick=i; }
       }
     }
+    if(pick>=0){
+      // drop A and B; B wraps to index 0 when A is the last vertex
+      if(pick===n-1){ pts.splice(n-1,1); pts.splice(0,1); } else pts.splice(pick,2);
+      changed=true; removed=true;
+    }
   }
+  // a flattened jog leaves its two wall-face vertices collinear on the run
+  if(removed) pts = rdp(pts);
   return pts.length>=3 ? pts : ring;
 }
