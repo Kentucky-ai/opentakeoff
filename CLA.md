@@ -28,9 +28,14 @@ OpenTakeoff.
 
 ## How to sign
 
-In your first pull request after the relicensing, post this comment:
+Before starting contribution work or requesting an issue assignment, post this
+comment yourself on the issue (or on your first pull request if there is no issue):
 
 > I have read CLA.md and agree to it for this and my future contributions to OpenTakeoff.
+
+Link that comment in your pull request. If you have already agreed, link the
+earlier comment instead of signing again. See [CONTRIBUTING.md](CONTRIBUTING.md#contributor-agreement-and-issue-assignments)
+for assignment and reminder procedures.
 
 Contributions made before the relicensing stay under Apache-2.0 (see NOTICE)
 and need no signature.

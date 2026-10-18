@@ -2,6 +2,10 @@
 
 <!-- Describe the concrete problem and resulting behavior. Link the issue. -->
 
+## Contributor agreement
+
+Agreement comment link: <!-- Your own comment on this issue/PR or an earlier contribution. See CLA.md. -->
+
 ## Review evidence
 
 <!-- Every PR includes at least one screenshot, short video, or measured stats.
