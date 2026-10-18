@@ -38,7 +38,6 @@
     "A-104",
     "A-105",
     "C-101",
-    "C-102",
     "C-103",
     "C-104"
   ],
@@ -108,8 +107,8 @@
   ],
   "readerMs": {
     "count": 30,
-    "p95": 1.2,
-    "max": 2.3
+    "p95": 1.3,
+    "max": 2.7
   },
   "workerSpawnsAfterReload": 1,
   "consoleErrors": [
@@ -183,8 +182,8 @@
     },
     {
       "kind": "sheet",
-      "number": "C-102",
-      "text": "C-102"
+      "number": null,
+      "text": "set-2 · 2"
     },
     {
       "kind": "sheet",
@@ -824,8 +823,8 @@
       "ok": true,
       "detail": {
         "count": 30,
-        "p95": 1.2,
-        "max": 2.3
+        "p95": 1.3,
+        "max": 2.7
       }
     },
     {

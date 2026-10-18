@@ -1,0 +1,46 @@
+{
+  "baseline": "059ffa2",
+  "node": "v24.18.0",
+  "coverage": false,
+  "results": [
+    {
+      "items": 30002,
+      "notes": 0,
+      "answer": "A-101",
+      "before": {
+        "minMs": 2.15625,
+        "medianMs": 2.4482500000000016
+      },
+      "after": {
+        "minMs": 1.200290999999993,
+        "medianMs": 1.4008750000000134
+      }
+    },
+    {
+      "items": 30602,
+      "notes": 300,
+      "answer": "A-101",
+      "before": {
+        "minMs": 2.8678750000000264,
+        "medianMs": 3.131582999999978
+      },
+      "after": {
+        "minMs": 2.0706670000000145,
+        "medianMs": 2.144708000000037
+      }
+    },
+    {
+      "items": 59002,
+      "notes": 0,
+      "answer": "A-101",
+      "before": {
+        "minMs": 4.359583999999984,
+        "medianMs": 4.740250000000003
+      },
+      "after": {
+        "minMs": 2.9652080000000183,
+        "medianMs": 3.1127499999999486
+      }
+    }
+  ]
+}

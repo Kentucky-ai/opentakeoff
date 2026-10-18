@@ -5,6 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { readSheetNumber, sheetItems, MAX_ITEMS, type SheetItem, type SheetPage } from "../src/lib/sheetName.ts";
 import { extractSheetNumber, RENDER_SCALE } from "../src/lib/sheets.ts";
@@ -83,26 +85,54 @@ test("answers match the probe reader on every page above and on dense copies", a
   for (const p of pages) assert.equal(readSheetNumber(p), oracleSheetNumber(p));
 });
 
-// best of several runs: other work on the machine only ever adds time
-const best = (f: () => void, runs = 15) => {
-  for (let i = 0; i < 3; i++) f();
-  let b = Infinity;
-  for (let i = 0; i < runs; i++) { const a = performance.now(); f(); b = Math.min(b, performance.now() - a); }
-  return b;
-};
+test("label-row filtering preserves neighbouring angles, height changes and pixel-bucket ties", () => {
+  for (const bucketSize of [2, 32, 33, 80]) {
+    const extras = Array.from({ length: bucketSize }, (_, i) =>
+      it("NOTE", 700 - (i % 9) * 10, 600 + (i % 2) * 0.1, 8 + (i % 3) * 8));
+    for (const angle of [-90, 0, 90]) {
+      const page: SheetPage = { W, H, items: [
+        ...extras,
+        it("SHEET", 6600, 4500, 12, angle),
+        it("NUMBER", 6644, 4500, 12, angle),
+        it("A-101", 6600, 4540, 40, angle),
+        it("NOTE", 6650, 4500, 8, angle + 1),
+        it("NOTE", 6650, 4503, 28, angle - 1),
+      ] };
+      for (const items of [page.items, [...page.items].reverse()]) {
+        const p = { ...page, items };
+        assert.equal(readSheetNumber(p), oracleSheetNumber(p), `${bucketSize} items, angle ${angle}`);
+      }
+    }
+  }
+});
+
+// V8 coverage adds work to every hot-loop branch. Keep the same real-runtime
+// budgets when the parent runs test:coverage, rather than timing the probes.
+// All answer/oracle tests above still execute in the instrumented parent.
+type Timing = { ratio: number; dense: { items: number; ms: number }[]; noLabelMs: number };
+let measured: Timing | undefined;
+function timings(): Timing {
+  if (!measured) {
+    const env = { ...process.env };
+    delete env.NODE_V8_COVERAGE;
+    measured = JSON.parse(execFileSync(process.execPath,
+      ["--import", "tsx", fileURLToPath(new URL("./sheetNamePerformance.ts", import.meta.url))],
+      { env, encoding: "utf8", timeout: 15000 }));
+  }
+  return measured!;
+}
 
 test("cost grows about linearly with the page's text", () => {
-  const small = densePage(7500), big = densePage(30000);
+  const big = densePage(30000);
   assert.equal(readSheetNumber(big), "A-101");
-  const ratio = best(() => readSheetNumber(big)) / best(() => readSheetNumber(small));
+  const { ratio } = timings();
   // linear-ish runs at 3-5x on a busy machine; a quadratic reader is ~16x
   assert.ok(ratio <= 10, `4x the items cost ${ratio.toFixed(1)}x the time`);
 });
 
 test("a dense page reads within the main-thread budget", () => {
-  for (const p of [densePage(30000), densePage(30000, 3, 300), densePage(59000)]) {
-    const ms = best(() => readSheetNumber(p), 9);
-    assert.ok(ms <= 50, `${p.items.length} items took ${ms.toFixed(1)} ms`);
+  for (const { items, ms } of timings().dense) {
+    assert.ok(ms <= 50, `${items} items took ${ms.toFixed(1)} ms`);
   }
 });
 
@@ -113,7 +143,7 @@ test("past MAX_ITEMS a page is not read", () => {
 
 test("a page with no label word returns before grouping", () => {
   const items = densePage(30000).items.filter((i) => !/sheet|dwg|drawing/i.test(i.s));
-  const ms = best(() => readSheetNumber({ W, H, items }));
+  const ms = timings().noLabelMs;
   assert.equal(readSheetNumber({ W, H, items }), null);
   assert.ok(ms <= 5, `${ms.toFixed(1)} ms`);
 });

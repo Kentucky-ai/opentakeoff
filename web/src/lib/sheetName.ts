@@ -100,6 +100,23 @@ function sortByVU(pick: number[], u: Float64Array, v: Float64Array): Int32Array 
   for (let b = 0; b < nb; b++) {
     const a = start[b], z = start[b + 1];
     if (z - a < 2) continue;
+    // Most pixel buckets hold only a few text items. Sort those in place
+    // instead of allocating an array and a typed-array view per bucket.
+    // The comparator's item-number tie break preserves the exact order.
+    if (z - a <= 32) {
+      for (let j = a + 1; j < z; j++) {
+        const item = out[j];
+        let k = j;
+        while (k > a) {
+          const previous = out[k - 1];
+          if ((v[item] - v[previous] || u[item] - u[previous] || item - previous) >= 0) break;
+          out[k] = previous;
+          k--;
+        }
+        out[k] = item;
+      }
+      continue;
+    }
     const part = Array.from(out.subarray(a, z)).sort(cmp); // a plain array sorts faster than a typed one
     out.set(part, a);
   }
@@ -166,25 +183,26 @@ export function readSheetNumber(page: SheetPage): string | null {
       labs.push({ items: run, text, a, inline });
     }
   };
-  const groups = new Map<number, number[]>();
-  for (let i = 0; i < n; i++) { const k = Math.round(items[i].a); let g = groups.get(k); if (!g) groups.set(k, (g = [])); g.push(i); }
-  for (const [A] of groups) {
+  const groups = new Set<number>(), labelAngles = new Set<number>();
+  for (let i = 0; i < n; i++) {
+    const k = Math.round(items[i].a);
+    groups.add(k);
+    if (cand[i]) labelAngles.add(k);
+  }
+  for (const A of groups) {
+    // No run at this angle can name a label. Keep the original group order
+    // for ties; frameFor still includes neighbouring angles for cell reads.
+    if (!labelAngles.has(A)) continue;
     const { u, v, order } = frameFor(A);
-    // rows: an item joins the first row (in the order rows start) whose first
-    // item is within max(2, 0.35 h) of it. Items come in v order and every
-    // row starts at or above the item, so that row is the oldest one whose
-    // reach (start + tolerance) is still ≥ the item's v; a row out of reach
-    // stays out of reach, so a queue popped from the front finds it
-    const rows: number[][] = [], rowEnd: number[] = [];
-    let front = 0;
-    for (const i of order) {
-      if (Math.round(items[i].a) !== A) continue; // a neighbour angle's item: its own group
-      while (front < rows.length && rowEnd[front] < v[i]) front++;
-      if (front < rows.length) rows[front].push(i);
-      else { rows.push([i]); rowEnd.push(v[i] + Math.max(2, 0.35 * hOf(i))); }
-    }
-    for (const row of rows) {
-      if (!row.some((i) => cand[i])) continue; // no label word: no label run
+    // Rows are consecutive in v order: a new row starts only after the
+    // previous row's reach (first v + tolerance) expires. Keep its range,
+    // and collect its items only if it contains a possible label.
+    const readRow = (from: number, to: number) => {
+      const row: number[] = [];
+      for (let k = from; k < to; k++) {
+        const i = order[k];
+        if (Math.round(items[i].a) === A) row.push(i);
+      }
       row.sort((p, q) => u[p] - u[q]); // stable: ties keep (v, u, item) order
       let cur: number[] = [];
       const flush = () => {
@@ -197,7 +215,20 @@ export function readSheetNumber(page: SheetPage): string | null {
         cur.push(i);
       }
       if (cur.length) flush();
+    };
+    let from = 0, reach = -Infinity, hasCandidate = false;
+    for (let k = 0; k < order.length; k++) {
+      const i = order[k];
+      if (Math.round(items[i].a) !== A) continue;
+      if (v[i] > reach) {
+        if (hasCandidate) readRow(from, k);
+        from = k;
+        reach = v[i] + Math.max(2, 0.35 * hOf(i));
+        hasCandidate = false;
+      }
+      if (cand[i]) hasCandidate = true;
     }
+    if (hasCandidate) readRow(from, order.length);
   }
   if (!labs.length) return null;
 
