@@ -103,3 +103,7 @@ strip, no label, label not larger than its number).
 ## October 13 maintainer follow-up
 
 [Updated-main verification and page-count race regression](2026-10-13/README.md).
+
+## October 18 maintainer follow-up
+
+[Current-main integration and fresh browser verification](2026-10-18/README.md).

@@ -221,7 +221,7 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   // Metric display mode mirrors the standalone shapes CSV. The JSON keeps the
   // machine-readable raw-foot field names.
   const shapesTab = [
-    ["Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF"],
+    ["Per-shape measured quantities — no multiplier or waste; standalone deducts negative; reconciled cutouts stay as audit rows with zero additive area because the parent is already net; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF"],
     ["Shape", "Sheet", "Sheet ID", "Finish", "Role", `Area ${AU}`, LU, "EA", `Height ${M ? "m" : "ft"}`, "Height override", `Rise ${M ? "m" : "ft"}`, `Drop ${M ? "m" : "ft"}`, "Origin"],
   ];
   for (const r of shapeRows) {

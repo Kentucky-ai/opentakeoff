@@ -32,6 +32,128 @@ function unit(L){const d=Math.hypot(L[2]-L[0],L[3]-L[1])||1;return [(L[2]-L[0])/
 const PROF=[]; let _pt=0;
 const mark=(name)=>{ if(!OPTS.PROFILE) return; const t=(typeof performance!=="undefined"?performance.now():Date.now()); if(_pt) PROF.push([name, Math.round(t-_pt)]); _pt=t; };
 export function profile(){ return PROF.slice(); }
+
+// Phase 3 pruning helpers. Keys are supersets of the original predicates;
+// the original tests still run on every visited member.
+function indexStairGeo(geo, ftPx){
+  const tq=0.9*ftPx;
+  const t0Grid=new Map();
+  for(let j=0;j<geo.length;j++){
+    const b=geo[j];
+    if(b.len<2.5*ftPx||b.len>9*ftPx) continue;
+    b.t0b=Math.round(b.t0/tq);
+    b.t1b=Math.round(b.t1/tq);
+    const t0b=t0Grid.get(b.t0b); if(t0b) t0b.push(j); else t0Grid.set(b.t0b,[j]);
+  }
+  return {t0Grid};
+}
+function collectStairFam(i, geo, used, ftPx, index){
+  const a=geo[i];
+  const hits=[];
+  const aT0=a.t0b, aT1=a.t1b;
+  for(let dt=-2;dt<=2;dt++){
+    const bucket=index.t0Grid.get(aT0+dt); if(!bucket) continue;
+    for(const j of bucket){
+      if(j===i||used[j]) continue;
+      const b=geo[j];
+      if(b.t1b-aT1>2||aT1-b.t1b>2) continue;
+      if(Math.abs(a.ux*b.ux+a.uy*b.uy)<0.9995) continue;
+      if(b.len<2.5*ftPx||b.len>9*ftPx) continue;
+      if(Math.max(a.len,b.len)/Math.min(a.len,b.len)>1.35) continue;
+      if(Math.abs(b.t0-a.t0)>0.9*ftPx||Math.abs(b.t1-a.t1)>0.9*ftPx) continue;
+      hits.push(j);
+    }
+  }
+  hits.sort((p,q)=>p-q);
+  return [i, ...hits];
+}
+function inkLmaxAndPad(wallInk, IG){
+  let Lmax=0;
+  for(let w=0;w+3<wallInk.length;w+=4){
+    const L=Math.hypot(wallInk[w+2]-wallInk[w], wallInk[w+3]-wallInk[w+1]);
+    if(L>Lmax) Lmax=L;
+  }
+  return {Lmax, pad: 1+Math.floor(0.001*Lmax/IG)};
+}
+function gatherInkAlongRay(e, tMax, IG, inkGrid, pad){
+  const x0=e.x, y0=e.y, x1=e.x+e.ux*tMax, y1=e.y+e.uy*tMax;
+  const gx0=Math.floor(Math.min(x0,x1)/IG)-pad, gx1=Math.floor(Math.max(x0,x1)/IG)+pad;
+  const gy0=Math.floor(Math.min(y0,y1)/IG)-pad, gy1=Math.floor(Math.max(y0,y1)/IG)+pad;
+  const seen=new Set(), out=[];
+  for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+    const b=inkGrid.get(gx+','+gy); if(!b) continue;
+    for(const w of b){ if(!seen.has(w)){ seen.add(w); out.push(w); } }
+  }
+  return out;
+}
+function buildEvGrid(segs, clip, soft, ftPx){
+  // Eligible non-clip non-soft segs with L>=0.85 ft, bbox-inserted, doubling length classes.
+  // Panel half-width 0.6 ft + 0.5 L_max sin(arccos 0.94); leaf uses the same grid.
+  const EVG=2*ftPx, floorL=0.85*ftPx, sin094=Math.sqrt(1-0.94*0.94);
+  const n=segs.length>>2;
+  const classes=new Map();
+  for(let si=0;si<n;si++){
+    if(clip[si]) continue;
+    if(soft[si]) continue;
+    const x1=segs[si*4],y1=segs[si*4+1],x2=segs[si*4+2],y2=segs[si*4+3];
+    const L=Math.hypot(x2-x1,y2-y1);
+    if(L<floorL) continue;
+    const c=Math.max(0, Math.floor(Math.log(L/floorL)/Math.LN2));
+    const arr=classes.get(c); if(arr) arr.push(si); else classes.set(c,[si]);
+  }
+  const grids=[];
+  for(const sis of classes.values()){
+    let Lmax=0;
+    for(const si of sis){
+      const L=Math.hypot(segs[si*4+2]-segs[si*4], segs[si*4+3]-segs[si*4+1]);
+      if(L>Lmax) Lmax=L;
+    }
+    const grid=new Map();
+    for(const si of sis){
+      const x1=segs[si*4],y1=segs[si*4+1],x2=segs[si*4+2],y2=segs[si*4+3];
+      const gx0=Math.floor(Math.min(x1,x2)/EVG), gx1=Math.floor(Math.max(x1,x2)/EVG);
+      const gy0=Math.floor(Math.min(y1,y2)/EVG), gy1=Math.floor(Math.max(y1,y2)/EVG);
+      for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+        const k=gx+','+gy; const b=grid.get(k); if(b)b.push(si); else grid.set(k,[si]);
+      }
+    }
+    grids.push({Lmax, hw: 0.6*ftPx+0.5*Lmax*sin094, grid, EVG});
+  }
+  return grids;
+}
+function queryEvStrip(grids, ax, ay, bx, by, extraCells){
+  const seen=new Set(), out=[];
+  for(const g of grids){
+    const nx=-(by-ay), ny=bx-ax, L=Math.hypot(bx-ax,by-ay)||1;
+    const ux=nx/L, uy=ny/L, hw=g.hw;
+    const xs=[ax+ux*hw, ax-ux*hw, bx+ux*hw, bx-ux*hw];
+    const ys=[ay+uy*hw, ay-uy*hw, by+uy*hw, by-uy*hw];
+    const EVG=g.EVG;
+    const gx0=Math.floor(Math.min(...xs)/EVG)-extraCells, gx1=Math.floor(Math.max(...xs)/EVG)+extraCells;
+    const gy0=Math.floor(Math.min(...ys)/EVG)-extraCells, gy1=Math.floor(Math.max(...ys)/EVG)+extraCells;
+    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+      const b=g.grid.get(gx+','+gy); if(!b) continue;
+      for(const si of b){ if(!seen.has(si)){ seen.add(si); out.push(si); } }
+    }
+  }
+  return out;
+}
+function queryEvDiscs(grids, pts, r, extraCells){
+  const seen=new Set(), out=[];
+  for(const g of grids){
+    const EVG=g.EVG;
+    for(const [cx,cy] of pts){
+      const gx0=Math.floor((cx-r)/EVG)-extraCells, gx1=Math.floor((cx+r)/EVG)+extraCells;
+      const gy0=Math.floor((cy-r)/EVG)-extraCells, gy1=Math.floor((cy+r)/EVG)+extraCells;
+      for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+        const b=g.grid.get(gx+','+gy); if(!b) continue;
+        for(const si of b){ if(!seen.has(si)){ seen.add(si); out.push(si); } }
+      }
+    }
+  }
+  return out;
+}
+
 export function build(g, ftPx, texts){
   PROF.length=0; _pt=0; mark("start");
   O.markPolylineArcs(g.segs, g.meta);      // polyline-drawn swings get their SEG_CURVE stamp
@@ -519,13 +641,13 @@ export function build(g, ftPx, texts){
     }
     // hatch-claimed chains: treads at riser pitch are exactly what the hatch
     // classifier claims — the family test is the discriminator.
-    {
-      for(const L of mergeLines(rawSoft, DUP_D)) cands.push(L);
-    }
+    for(const L of mergeLines(rawSoft, DUP_D)){ cands.push(L); }
     // DASHED treads never reach the low pool (each dash dies at the length
     // gate) — chain axis-aligned short plain segs into dash-lines and let the
     // family test decide if they are a stair.
-    {
+    // mergeLinesCov leaves cov=NaN, so this pool is empty. Skip the O(n^2)
+    // shorts merge when STAIRLOG is off (its only observable is the shorts= log).
+    if(OPTS.STAIRLOG){
       const shorts=[];
       const n9=g.segs.length>>2;
       for(let i=0;i<n9 && shorts.length<80000;i++){
@@ -540,7 +662,7 @@ export function build(g, ftPx, texts){
         if(Math.min(ax,ay)>0.08*Math.max(ax,ay)) continue;   // axis-aligned dashes only
         shorts.push([x1,y1,x2,y2]);
       }
-      if(OPTS.STAIRLOG) console.error(`STAIR shorts=${shorts.length}`);
+      console.error(`STAIR shorts=${shorts.length}`);
       // dash gaps run 0.3-0.7 ft — the default merge tolerance (0.12 ft) never
       // bridges them; treads tolerate a looser lateral band because the family
       // pitch test is the real gate.
@@ -569,20 +691,12 @@ export function build(g, ftPx, texts){
       return {ux,uy,off,t0:Math.min(t0,t1),t1:Math.max(t0,t1),len:Math.abs(t1-t0)};
     });
     const P_LO=0.65*ftPx, P_HI=1.35*ftPx;
+    const stairIdx=indexStairGeo(geo, ftPx);
     for(let i=0;i<cands.length;i++){
       if(used[i]) continue;
       const a=geo[i];
       if(a.len<2.5*ftPx||a.len>9*ftPx) continue;      // tread width: a real flight
-      const fam=[i];
-      for(let j=0;j<cands.length;j++){
-        if(j===i||used[j]) continue;
-        const b=geo[j];
-        if(Math.abs(a.ux*b.ux+a.uy*b.uy)<0.9995) continue;
-        if(b.len<2.5*ftPx||b.len>9*ftPx) continue;
-        if(Math.max(a.len,b.len)/Math.min(a.len,b.len)>1.35) continue;
-        if(Math.abs(b.t0-a.t0)>0.9*ftPx||Math.abs(b.t1-a.t1)>0.9*ftPx) continue;  // aligned ends
-        fam.push(j);
-      }
+      const fam=collectStairFam(i, geo, used, ftPx, stairIdx);
       if(OPTS.STAIRBOX){
         const box=OPTS.STAIRBOX.split(",").map(Number);
         const L=cands[i];
@@ -1163,12 +1277,20 @@ export function build(g, ftPx, texts){
   // gap (leaf/panel lines parallel to the connector, or a swing-arc point).
   {
     const nseg2=g.segs.length>>2;
+    const clipMask=new Array(nseg2);
+    for(let si=0;si<nseg2;si++) clipMask[si]=(g.meta[si]&O.SEG_CLIP)?1:0;
+    const {pad:inkPad}=inkLmaxAndPad(wallInk, IG);
+    // no unconsumed end means the loop below never runs; don't index for it
+    const anyOpen=lineEnds.some((_,i)=>!leUsed.has(i));
+    const evGrids=anyOpen?buildEvGrid(g.segs, clipMask, soft, ftPx):[];
+    const TmaxJ=OPTS.NOFINISH?7*ftPx:24*ftPx;
     for(let i=0;i<lineEnds.length;i++){
       if(leUsed.has(i)) continue;
       const e=lineEnds[i];
       // nearest crossing wall-ink hit along the ray, roughly perpendicular
       let bestT=Infinity;
-      for(let w=0;w+3<wallInk.length;w+=4){
+      const inkHits=gatherInkAlongRay(e, TmaxJ, IG, inkGrid, inkPad);
+      for(const w of inkHits){
         const x1=wallInk[w],y1=wallInk[w+1],x2=wallInk[w+2],y2=wallInk[w+3];
         const ex=x2-x1, ey=y2-y1, eL=Math.hypot(ex,ey)||1;
         if(Math.abs((ex*e.ux+ey*e.uy)/eL)>0.5) continue;   // want a crossing wall, not a continuation
@@ -1176,7 +1298,7 @@ export function build(g, ftPx, texts){
         if(Math.abs(den)<1e-9) continue;
         const t=((x1-e.x)*ey-(y1-e.y)*ex)/den;
         const u=((x1-e.x)*e.uy-(y1-e.y)*e.ux)/den;
-        if(t>1.5*ftPx && t<(OPTS.NOFINISH?7:24)*ftPx && u>=-0.001 && u<=1.001 && t<bestT) bestT=t;
+        if(t>1.5*ftPx && t<TmaxJ && u>=-0.001 && u<=1.001 && t<bestT) bestT=t;
       }
       if(bestT===Infinity) continue;
       const hx=e.x+e.ux*bestT, hy=e.y+e.uy*bestT;
@@ -1185,6 +1307,8 @@ export function build(g, ftPx, texts){
       // door evidence in the gap — KIND recorded: 'arc' and 'panel' are
       // trusted (drafter-stated door); 'leaf' seals but is not trusted (the
       // loose foot test also fires at casework mouths).
+      // First-match: kind is identical for every match in a scan, so visit
+      // order inside a scan is unobservable.
       let evidence=false, kind=null;
       for(const a of arcs){
         for(const P of [a.C,a.P0,a.P1]){
@@ -1194,8 +1318,9 @@ export function build(g, ftPx, texts){
         if(evidence)break;
       }
       if(!evidence){
-        for(let si=0;si<nseg2;si++){
-          if(g.meta[si]&(O.SEG_CLIP)) continue;
+        const panelCands=queryEvStrip(evGrids, e.x, e.y, hx, hy, 1);
+        for(const si of panelCands){
+          if(clipMask[si]) continue;
           if(soft[si]) continue;                              // hatch/annotation is never a door panel
           const x1=g.segs[si*4],y1=g.segs[si*4+1],x2=g.segs[si*4+2],y2=g.segs[si*4+3];
           const L=Math.hypot(x2-x1,y2-y1);
@@ -1214,8 +1339,9 @@ export function build(g, ftPx, texts){
         // OPEN LEAF: the door drawn standing open — a stroke PERPENDICULAR to
         // the connector, door-length (≈ the gap), footed at one end of the
         // opening. The parallel-panel test above cannot see it.
-        for(let si=0;si<nseg2;si++){
-          if(g.meta[si]&(O.SEG_CLIP)) continue;
+        const leafCands=queryEvDiscs(evGrids, [[e.x,e.y],[hx,hy]], 0.5*ftPx, 1);
+        for(const si of leafCands){
+          if(clipMask[si]) continue;
           if(soft[si]) continue;
           const x1=g.segs[si*4],y1=g.segs[si*4+1],x2=g.segs[si*4+2],y2=g.segs[si*4+3];
           const L=Math.hypot(x2-x1,y2-y1);
@@ -1690,18 +1816,20 @@ export function mergeLines(rawLines, dupD){
     if(mergedFlags[i]) continue;
     const g0=items[i];
     const cluster=[g0]; mergedFlags[i]=true;
+    let ct0=g0.t0, ct1=g0.t1;
     for(let j=i+1;j<items.length;j++){
       if(mergedFlags[j]) continue;
       const g1=items[j];
+      // items are sorted by off: once g1.off - g0.off > dupD, later j fail too.
+      // Evaluate off before direction so the break is exact (both were continue).
+      if(g1.off-g0.off>dupD) break;
       if(Math.abs(g1.ux*g0.ux+g1.uy*g0.uy)<0.9995) continue;
-      if(Math.abs(g1.off-g0.off)>dupD) continue;
       // must touch/overlap along axis (allow small gap = dashes)
       if(g1.t0>g0.t1+dupD*4 || g0.t0>g1.t1+dupD*4){
-        // check against whole cluster extent
-        const ct0=Math.min(...cluster.map(c=>c.t0)), ct1=Math.max(...cluster.map(c=>c.t1));
         if(g1.t0>ct1+dupD*4 || ct0>g1.t1+dupD*4) continue;
       }
       cluster.push(g1); mergedFlags[j]=true;
+      ct0=Math.min(ct0,g1.t0); ct1=Math.max(ct1,g1.t1);
     }
     const off=cluster.reduce((s,c)=>s+c.off,0)/cluster.length;
     const t0=Math.min(...cluster.map(c=>c.t0)), t1=Math.max(...cluster.map(c=>c.t1));
