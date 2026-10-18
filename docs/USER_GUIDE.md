@@ -769,9 +769,9 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 | Export | What you get |
 |---|---|
 | **CSV** | The condition table, exactly the columns you're showing. |
-| **Excel** | A real workbook—**Summary**, **By sheet**, **Materials**, **Shapes** (the audit trail; deducts carry their sign), and **By floor × room**—the cross-section the others each flatten one axis out of: what goes down in *that room on that floor*, ordered quantities per cell, with a floor's unlabeled work rolled up so its rooms still add to the floor. Full-precision cells; formula-shaped names stay inert text. |
+| **Excel** | A real workbook—**Summary**, **By sheet**, **Materials**, **Shapes** (the audit trail; standalone deducts carry negative area, reconciled cutouts remain with zero additive area), and **By floor × room**—the cross-section the others each flatten one axis out of: what goes down in *that room on that floor*, ordered quantities per cell, with a floor's unlabeled work rolled up so its rooms still add to the floor. Full-precision cells; formula-shaped names stay inert text. |
 | **JSON** | The full structured report—works markups-only and RFI-only too. |
-| **Shapes CSV / JSON** | Per-shape measured quantities—no multiplier, no waste; the audit layer. |
+| **Shapes CSV / JSON** | Per-shape measured quantities—no multiplier, no waste; the audit layer. Standalone deducts carry negative area; reconciled cutouts remain as rows with zero additive area because the parent already includes the cut. |
 | **Print** | The report through your browser's print dialog. |
 | **Marked set** | A distribution-ready PDF built in your browser: every sheet that carries takeoffs or markups, the work burned in as drawn—condition colors, hatches, quantity chips, count markers, markups (toggleable)—behind a legend cover with net totals, w/Waste quantities, and a by-sheet breakdown. Exports in your current view: dark canvas → dark PDF. Send it to a GC who will never install anything. |
 | **RFI CSV / JSON** | The RFI register (appears once RFIs exist). |
@@ -893,7 +893,7 @@ What is **never** sent—this list is normative, enforced by a whitelist in the 
 
 One linkage is deliberate and disclosed: shapes carry **opaque, locally-minted IDs**, so re-contributing after an addendum supersedes rather than duplicates. The IDs contain nothing and reverse to nothing.
 
-The modal asks for an optional credit line and an attestation that you have the right to share the data. To bank takeoffs into **your own** corpus instead, run the bundled capture server (`python3 capture/capture_server.py`) and point the app at it (`localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"`)—see [`capture/README.md`](../capture/README.md).
+The modal asks for an optional credit line and an attestation that you have the right to share the data. To bank takeoffs into **your own** corpus instead, run the bundled capture server (`python3 capture/capture_server.py`) and point the app at it (`localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"`). The public app and local development origins are allowed by default. For a self-hosted build, start the server with `--allow-origin https://takeoff.example.com` using your build’s exact origin—see [`capture/README.md`](../capture/README.md).
 
 ---
 

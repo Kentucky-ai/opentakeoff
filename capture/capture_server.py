@@ -47,8 +47,31 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 
 MAX_BODY = 32 * 1024 * 1024  # a contribution is text; anything near this is not one
+DEFAULT_ORIGINS = frozenset({
+    "https://opentakeoff.kentucky-ai.com",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+})
+
+
+def allowed_origin(value: str) -> str:
+    """Accept an exact HTTP origin, never a wildcard, URL path or opaque origin."""
+    try:
+        url = urlsplit(value)
+        valid = (url.scheme in ("http", "https") and url.hostname
+                 and url.username is None and url.password is None
+                 and not url.path and not url.query and not url.fragment
+                 and not any(c.isspace() for c in value) and "*" not in value
+                 and url.port != 0 and value == f"{url.scheme}://{url.netloc}")
+    except ValueError:
+        valid = False
+    if not valid:
+        raise argparse.ArgumentTypeError("use an exact origin such as https://takeoff.example.com (no path or wildcard)")
+    return value
+
 CAPTURE_SCHEMA = "opentakeoff.capture.v2"
 # Wire schemas this server ingests: current and previous (N and N−1 — the
 # versioning policy in docs/CONTRIBUTION_SPEC.md). Anything else 400s.
@@ -265,7 +288,9 @@ class Corpus:
 
 # --- server ------------------------------------------------------------------
 
-def make_handler(corpus: Corpus):
+def make_handler(corpus: Corpus, origins=DEFAULT_ORIGINS):
+    origins = frozenset(allowed_origin(origin) for origin in origins)
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "opentakeoff-capture"
 
@@ -279,26 +304,50 @@ def make_handler(corpus: Corpus):
             self.wfile.write(data)
 
         def _cors(self):
-            # The canvas may be served from anywhere (localhost:5173, your own
-            # host, the public demo) while this runs on localhost — so allow it,
-            # including Chrome's private-network preflight.
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Vary", "Origin")
+            origin = self.headers.get("Origin")
+            if self._origin_ok() and origin in origins:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header("Access-Control-Allow-Private-Network", "true")
+
+        def _origin_ok(self):
+            values = self.headers.get_all("Origin", [])
+            # Command-line clients have no Origin. Browser cross-site requests
+            # without one must not use that exception.
+            if not values:
+                return self.headers.get("Sec-Fetch-Site") != "cross-site"
+            return len(values) == 1 and values[0] in origins
+
+        def _authorize(self):
+            if self._origin_ok():
+                return True
+            self._respond(403, {"ok": False, "error": "origin not allowed"})
+            return False
 
         def do_OPTIONS(self):
+            if not self._authorize():
+                return
             self.send_response(204)
             self._cors()
             self.end_headers()
 
         def do_GET(self):
+            if not self._authorize():
+                return
             if self.path.rstrip("/") in ("", "/health"):
                 self._respond(200, {"ok": True, **corpus.summary()})
             else:
                 self._respond(404, {"ok": False, "error": "GET /health or POST /contribute"})
 
         def do_POST(self):
+            if not self._authorize():
+                return
+            if self.path.rstrip("/") != "/contribute":
+                return self._respond(404, {"ok": False, "error": "POST /contribute"})
+            if self.headers.get_content_type() != "application/json":
+                return self._respond(415, {"ok": False, "error": "Content-Type must be application/json"})
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 if length <= 0 or length > MAX_BODY:
@@ -320,8 +369,8 @@ def make_handler(corpus: Corpus):
     return Handler
 
 
-def serve(corpus: Corpus, port: int):
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(corpus))
+def serve(corpus: Corpus, port: int, origins=DEFAULT_ORIGINS):
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(corpus, origins))
     os.makedirs(corpus.root, exist_ok=True)
     print(f"OpenTakeoff capture server — corpus: {os.path.abspath(corpus.root)}"
           + (f", mirror: {os.path.abspath(corpus.mirror)}" if corpus.mirror else ""), flush=True)
@@ -497,6 +546,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("command", choices=["serve", "summary", "selftest"], nargs="?", default="serve")
     p.add_argument("--port", type=int, default=8787)
+    p.add_argument("--allow-origin", action="append", type=allowed_origin,
+                   help="allowed browser origin; repeat for several. Replaces the defaults: "
+                        + ", ".join(sorted(DEFAULT_ORIGINS)))
     p.add_argument("--corpus", default=os.environ.get("OPENTAKEOFF_CORPUS_DIR", "corpus"),
                    help="corpus folder (default ./corpus, or $OPENTAKEOFF_CORPUS_DIR)")
     p.add_argument("--mirror", default=os.environ.get("OPENTAKEOFF_MIRROR_DIR", ""),
@@ -509,7 +561,7 @@ def main(argv=None):
     if a.command == "summary":
         print(json.dumps(corpus.summary(), indent=2))
         return 0
-    serve(corpus, a.port)
+    serve(corpus, a.port, a.allow_origin if a.allow_origin is not None else DEFAULT_ORIGINS)
     return 0
 
 

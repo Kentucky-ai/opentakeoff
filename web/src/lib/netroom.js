@@ -32,6 +32,366 @@ function unit(L){const d=Math.hypot(L[2]-L[0],L[3]-L[1])||1;return [(L[2]-L[0])/
 const PROF=[]; let _pt=0;
 const mark=(name)=>{ if(!OPTS.PROFILE) return; const t=(typeof performance!=="undefined"?performance.now():Date.now()); if(_pt) PROF.push([name, Math.round(t-_pt)]); _pt=t; };
 export function profile(){ return PROF.slice(); }
+
+// Phase 3 pruning helpers. Keys are supersets of the original predicates;
+// the original tests still run on every visited member.
+function indexStairGeo(geo, ftPx){
+  const tq=0.9*ftPx;
+  const t0Grid=new Map();
+  for(let j=0;j<geo.length;j++){
+    const b=geo[j];
+    if(b.len<2.5*ftPx||b.len>9*ftPx) continue;
+    b.t0b=Math.round(b.t0/tq);
+    b.t1b=Math.round(b.t1/tq);
+    const t0b=t0Grid.get(b.t0b); if(t0b) t0b.push(j); else t0Grid.set(b.t0b,[j]);
+  }
+  return {t0Grid};
+}
+function collectStairFam(i, geo, used, ftPx, index){
+  const a=geo[i];
+  const hits=[];
+  const aT0=a.t0b, aT1=a.t1b;
+  for(let dt=-2;dt<=2;dt++){
+    const bucket=index.t0Grid.get(aT0+dt); if(!bucket) continue;
+    for(const j of bucket){
+      if(j===i||used[j]) continue;
+      const b=geo[j];
+      if(b.t1b-aT1>2||aT1-b.t1b>2) continue;
+      if(Math.abs(a.ux*b.ux+a.uy*b.uy)<0.9995) continue;
+      if(b.len<2.5*ftPx||b.len>9*ftPx) continue;
+      if(Math.max(a.len,b.len)/Math.min(a.len,b.len)>1.35) continue;
+      if(Math.abs(b.t0-a.t0)>0.9*ftPx||Math.abs(b.t1-a.t1)>0.9*ftPx) continue;
+      hits.push(j);
+    }
+  }
+  hits.sort((p,q)=>p-q);
+  return [i, ...hits];
+}
+function inkLmaxAndPad(wallInk, IG){
+  let Lmax=0;
+  for(let w=0;w+3<wallInk.length;w+=4){
+    const L=Math.hypot(wallInk[w+2]-wallInk[w], wallInk[w+3]-wallInk[w+1]);
+    if(L>Lmax) Lmax=L;
+  }
+  return {Lmax, pad: 1+Math.floor(0.001*Lmax/IG)};
+}
+function gatherInkAlongRay(e, tMax, IG, inkGrid, pad){
+  const x0=e.x, y0=e.y, x1=e.x+e.ux*tMax, y1=e.y+e.uy*tMax;
+  const gx0=Math.floor(Math.min(x0,x1)/IG)-pad, gx1=Math.floor(Math.max(x0,x1)/IG)+pad;
+  const gy0=Math.floor(Math.min(y0,y1)/IG)-pad, gy1=Math.floor(Math.max(y0,y1)/IG)+pad;
+  const seen=new Set(), out=[];
+  for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+    const b=inkGrid.get(gx+','+gy); if(!b) continue;
+    for(const w of b){ if(!seen.has(w)){ seen.add(w); out.push(w); } }
+  }
+  return out;
+}
+function buildEvGrid(segs, clip, soft, ftPx){
+  // Eligible non-clip non-soft segs with L>=0.85 ft, bbox-inserted, doubling length classes.
+  // Panel half-width 0.6 ft + 0.5 L_max sin(arccos 0.94); leaf uses the same grid.
+  const EVG=2*ftPx, floorL=0.85*ftPx, sin094=Math.sqrt(1-0.94*0.94);
+  const n=segs.length>>2;
+  const classes=new Map();
+  for(let si=0;si<n;si++){
+    if(clip[si]) continue;
+    if(soft[si]) continue;
+    const x1=segs[si*4],y1=segs[si*4+1],x2=segs[si*4+2],y2=segs[si*4+3];
+    const L=Math.hypot(x2-x1,y2-y1);
+    if(L<floorL) continue;
+    const c=Math.max(0, Math.floor(Math.log(L/floorL)/Math.LN2));
+    const arr=classes.get(c); if(arr) arr.push(si); else classes.set(c,[si]);
+  }
+  const grids=[];
+  for(const sis of classes.values()){
+    let Lmax=0;
+    for(const si of sis){
+      const L=Math.hypot(segs[si*4+2]-segs[si*4], segs[si*4+3]-segs[si*4+1]);
+      if(L>Lmax) Lmax=L;
+    }
+    const grid=new Map();
+    for(const si of sis){
+      const x1=segs[si*4],y1=segs[si*4+1],x2=segs[si*4+2],y2=segs[si*4+3];
+      const gx0=Math.floor(Math.min(x1,x2)/EVG), gx1=Math.floor(Math.max(x1,x2)/EVG);
+      const gy0=Math.floor(Math.min(y1,y2)/EVG), gy1=Math.floor(Math.max(y1,y2)/EVG);
+      for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+        const k=gx+','+gy; const b=grid.get(k); if(b)b.push(si); else grid.set(k,[si]);
+      }
+    }
+    grids.push({Lmax, hw: 0.6*ftPx+0.5*Lmax*sin094, grid, EVG});
+  }
+  return grids;
+}
+function queryEvStrip(grids, ax, ay, bx, by, extraCells){
+  const seen=new Set(), out=[];
+  for(const g of grids){
+    const nx=-(by-ay), ny=bx-ax, L=Math.hypot(bx-ax,by-ay)||1;
+    const ux=nx/L, uy=ny/L, hw=g.hw;
+    const xs=[ax+ux*hw, ax-ux*hw, bx+ux*hw, bx-ux*hw];
+    const ys=[ay+uy*hw, ay-uy*hw, by+uy*hw, by-uy*hw];
+    const EVG=g.EVG;
+    const gx0=Math.floor(Math.min(...xs)/EVG)-extraCells, gx1=Math.floor(Math.max(...xs)/EVG)+extraCells;
+    const gy0=Math.floor(Math.min(...ys)/EVG)-extraCells, gy1=Math.floor(Math.max(...ys)/EVG)+extraCells;
+    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+      const b=g.grid.get(gx+','+gy); if(!b) continue;
+      for(const si of b){ if(!seen.has(si)){ seen.add(si); out.push(si); } }
+    }
+  }
+  return out;
+}
+function queryEvDiscs(grids, pts, r, extraCells){
+  const seen=new Set(), out=[];
+  for(const g of grids){
+    const EVG=g.EVG;
+    for(const [cx,cy] of pts){
+      const gx0=Math.floor((cx-r)/EVG)-extraCells, gx1=Math.floor((cx+r)/EVG)+extraCells;
+      const gy0=Math.floor((cy-r)/EVG)-extraCells, gy1=Math.floor((cy+r)/EVG)+extraCells;
+      for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+        const b=g.grid.get(gx+','+gy); if(!b) continue;
+        for(const si of b){ if(!seen.has(si)){ seen.add(si); out.push(si); } }
+      }
+    }
+  }
+  return out;
+}
+
+// Shared by build() and the dump-fed exact gate. Mutates `segs` in place and
+// returns it. No other state is read or written.
+export function healSegments(segs, ftPx){
+  const HEAL=0.75*ftPx;
+  const m=segs.length>>2;
+  const hit=(px_,py_,dx,dy,self)=>{
+    let best=Infinity;
+    for(let j=0;j<m;j++){
+      if(j===self) continue;
+      const x1=segs[j*4],y1=segs[j*4+1],x2=segs[j*4+2],y2=segs[j*4+3];
+      const ex=x2-x1, ey=y2-y1;
+      const den=dx*ey-dy*ex;
+      if(Math.abs(den)<1e-9) continue;
+      const t=((x1-px_)*ey-(y1-py_)*ex)/den;
+      const u=((x1-px_)*dy-(y1-py_)*dx)/den;
+      if(t>1e-6 && t<=HEAL && u>=-0.001 && u<=1.001 && t<best) best=t;
+    }
+    return best;
+  };
+  for(let i=0;i<m;i++){
+    const x1=segs[i*4],y1=segs[i*4+1],x2=segs[i*4+2],y2=segs[i*4+3];
+    const d=Math.hypot(x2-x1,y2-y1)||1;
+    const ux2=(x2-x1)/d, uy2=(y2-y1)/d;
+    const t2=hit(x2,y2,ux2,uy2,i);
+    if(t2<Infinity){ segs[i*4+2]=x2+ux2*(t2+0.3); segs[i*4+3]=y2+uy2*(t2+0.3); }
+    const t1=hit(x1,y1,-ux2,-uy2,i);
+    if(t1<Infinity){ segs[i*4]=x1-ux2*(t1+0.3); segs[i*4+1]=y1-uy2*(t1+0.3); }
+  }
+  return segs;
+}
+
+function inMaterialAt(material, x, y){ for(const r of material){ if(pointInRing(r,x,y)) return true; } return false; }
+
+// The one fixture-box interior predicate. build(), endPairsStage and the
+// dump-fed gate all use this instance; the 0.55 ft margin is part of it.
+export function makeXboxContext(xboxes, ftPx){
+  const M=0.55*ftPx;
+  const inXboxPt=(x,y)=>{ for(const b of xboxes){ if(x>=b[0]-M&&x<=b[2]+M&&y>=b[1]-M&&y<=b[3]+M) return true; } return false; };
+  return { inXboxPt };
+}
+
+// Facing, collinear wall ends across a door-scale gap. Read set: ends,
+// material, xboxes, ftPx. Output order is the contract.
+export function endPairsStage(ends, material, xboxes, ftPx){
+  const GAP_MIN=1.2*ftPx, GAP_MAX=7*ftPx;
+  const { inXboxPt }=makeXboxContext(xboxes, ftPx);
+  const valid=[];
+  for(let i=0;i<ends.length;i++){
+    for(let j=i+1;j<ends.length;j++){
+      const a=ends[i], b=ends[j];
+      const vx=b.x-a.x, vy=b.y-a.y, d=Math.hypot(vx,vy);
+      if(d<GAP_MIN||d>GAP_MAX) continue;
+      // anti-parallel axes
+      if(a.dir[0]*b.dir[0]+a.dir[1]*b.dir[1] > -0.94) continue;
+      const ux=vx/d, uy=vy/d;
+      if(ux*a.dir[0]+uy*a.dir[1]<0.94) continue;
+      if(-ux*b.dir[0]-uy*b.dir[1]<0.94) continue;
+      // collinear: b's center off a's axis line by less than the wall is thick
+      const anx=-a.dir[1], any_=a.dir[0];
+      if(Math.abs(vx*anx+vy*any_) > Math.max(a.hw,b.hw,0.3*ftPx)) continue;
+      if(Math.max(a.hw,b.hw)>2.2*Math.min(a.hw,b.hw)) continue;
+      let blocked=false;
+      // include the near-end samples: a connector that begins INSIDE wall
+      // material is crossing a wall, not spanning an opening
+      for(const t of [0.06,0.2,0.4,0.6,0.8,0.94]){ if(inMaterialAt(material, a.x+vx*t, a.y+vy*t)){blocked=true;break;} }
+      if(blocked) continue;
+      if(inXboxPt(a.x+vx/2, a.y+vy/2)) continue;      // fixture interior: not a doorway
+      valid.push([d,i,j]);
+    }
+  }
+  valid.sort((p,q)=>p[0]-q[0]);          // global greedy: shortest gaps claim their ends first
+  const doorQuads=[]; const synth=[];
+  const used=new Set();
+  for(const [,i,j] of valid){
+    if(used.has(i)||used.has(j)) continue;
+    used.add(i); used.add(j);
+    const a=ends[i], b=ends[j];
+    const d11=Math.hypot(b.corners[0][0]-a.corners[0][0],b.corners[0][1]-a.corners[0][1]);
+    const d12=Math.hypot(b.corners[1][0]-a.corners[0][0],b.corners[1][1]-a.corners[0][1]);
+    const [b1,b2]= d11<=d12 ? [b.corners[0],b.corners[1]] : [b.corners[1],b.corners[0]];
+    const a1=a.corners[0], a2=a.corners[1];
+    synth.push(a1[0],a1[1],b1[0],b1[1],  a2[0],a2[1],b2[0],b2[1]);
+    // jamb caps so the door cell closes even when the drafter drew none
+    synth.push(a1[0],a1[1],a2[0],a2[1],  b1[0],b1[1],b2[0],b2[1]);
+    doorQuads.push([a1,b1,b2,a2]);
+  }
+  return { synth, doorQuads };
+}
+
+// The one wall-ink grid. makeInkContext owns it; nearWall, crossesInk,
+// inkLmaxAndPad and gatherInkAlongRay all read this instance.
+export function makeInkContext(wallInk, ftPx){
+  const inkGrid=new Map();
+  const IG=2*ftPx;
+  for(let i=0;i+3<wallInk.length;i+=4){
+    const x0=Math.min(wallInk[i],wallInk[i+2]), x1=Math.max(wallInk[i],wallInk[i+2]);
+    const y0=Math.min(wallInk[i+1],wallInk[i+3]), y1=Math.max(wallInk[i+1],wallInk[i+3]);
+    for(let gx=Math.floor(x0/IG);gx<=Math.floor(x1/IG);gx++)
+      for(let gy=Math.floor(y0/IG);gy<=Math.floor(y1/IG);gy++){
+        const k=gx+','+gy; const b=inkGrid.get(k); if(b)b.push(i); else inkGrid.set(k,[i]);
+      }
+  }
+  const crossesInk=(ax2,ay2,bx2,by2)=>{
+    const dxc=bx2-ax2, dyc=by2-ay2;
+    const gx0=Math.floor(Math.min(ax2,bx2)/IG), gx1=Math.floor(Math.max(ax2,bx2)/IG);
+    const gy0=Math.floor(Math.min(ay2,by2)/IG), gy1=Math.floor(Math.max(ay2,by2)/IG);
+    const seen=new Set();
+    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+      const b=inkGrid.get(gx+','+gy); if(!b) continue;
+      for(const w of b){
+        if(seen.has(w)) continue; seen.add(w);
+        const x1=wallInk[w],y1=wallInk[w+1],x2=wallInk[w+2],y2=wallInk[w+3];
+        const ex=x2-x1, ey=y2-y1;
+        const den=dxc*ey-dyc*ex;
+        if(Math.abs(den)<1e-9) continue;
+        const t=((x1-ax2)*ey-(y1-ay2)*ex)/den;
+        const u=((x1-ax2)*dyc-(y1-ay2)*dxc)/den;
+        if(t>0.001&&t<0.999&&u>0.001&&u<0.999) return true;
+      }
+    }
+    return false;
+  };
+  return { crossesInk, inkGrid, IG };
+}
+
+// Finish-family context at a point: direction signature of LONG hatch strokes
+// (finishGrid) plus the transition-line search (longGrid + segs). Read set:
+// the two grids, segs, xboxes, ftPx.
+export function makeFinishContext(finishGrid, longGrid, segs, xboxes, ftPx){
+  const FG=2*ftPx, LG=8*ftPx;
+  const finishSig=(x,y,r)=>{
+    const h=new Array(12).fill(0); let tot=0;
+    for(let gx=Math.floor((x-r)/FG);gx<=Math.floor((x+r)/FG);gx++)
+      for(let gy=Math.floor((y-r)/FG);gy<=Math.floor((y+r)/FG);gy++){
+        const b=finishGrid.get(gx+','+gy); if(!b) continue;
+        for(let i=0;i<b.length;i+=3){ if(Math.hypot(b[i]-x,b[i+1]-y)<=r){ h[b[i+2]]++; tot++; } }
+      }
+    if(tot<3) return null;
+    const order=h.map((c,b)=>[c,b]).sort((a,b)=>b[0]-a[0]);
+    const fam=new Set(); let cov=0;
+    for(const [c,b] of order){ if(cov/tot>=0.7||c===0) break; fam.add(b); cov+=c; }
+    return fam;
+  };
+  const transitionUnder=(ax,ay,bx,by)=>{
+    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
+    const cand=new Set();
+    const gx0=Math.floor(Math.min(ax,bx)/LG),gx1=Math.floor(Math.max(ax,bx)/LG),gy0=Math.floor(Math.min(ay,by)/LG),gy1=Math.floor(Math.max(ay,by)/LG);
+    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){ const b=longGrid.get(gx+','+gy); if(b) for(const i of b) cand.add(i); }
+    for(const i of cand){
+      const x1=segs[i*4],y1=segs[i*4+1],x2=segs[i*4+2],y2=segs[i*4+3];
+      const sl=Math.hypot(x2-x1,y2-y1); if(sl<0.5*L) continue;
+      const vx=(x2-x1)/sl, vy=(y2-y1)/sl;
+      if(Math.abs(vx*ux+vy*uy)<0.985) continue;
+      const lat1=Math.abs((x1-ax)*(-uy)+(y1-ay)*ux), lat2=Math.abs((x2-ax)*(-uy)+(y2-ay)*ux);
+      if(lat1>0.35*ftPx||lat2>0.35*ftPx) continue;
+      const t1=(x1-ax)*ux+(y1-ay)*uy, t2=(x2-ax)*ux+(y2-ay)*uy;
+      const lo=Math.max(0,Math.min(t1,t2)), hi=Math.min(L,Math.max(t1,t2));
+      if(hi-lo>=0.6*L) return true;
+    }
+    return false;
+  };
+  const crossesXbox=(ax,ay,bx,by)=>{
+    const M=0.55*ftPx;
+    for(let t=0;t<=1.0001;t+=0.1){ const x=ax+(bx-ax)*t, y=ay+(by-ay)*t;
+      for(const b of xboxes){ if(x>=b[0]-M&&x<=b[2]+M&&y>=b[1]-M&&y<=b[3]+M) return true; } }
+    return false;
+  };
+  const finishDiffers=(ax,ay,bx,by)=>{
+    // cheap first: the hatch signatures; the transition-line search last
+    {
+      const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
+      const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
+      const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
+      if(!s1&&!s2) return false;
+      if(s1&&s2){ let shared=false; for(const b of s1) if(s2.has(b)){shared=true;break;} if(shared) return false; }
+    }
+    if(crossesXbox(ax,ay,bx,by)) return false;        // a tub rim is not a transition (measured: sealed two baths through the tub)
+    if(!transitionUnder(ax,ay,bx,by)) return false;
+    // sample both sides of a connector: perpendicular offsets 1.2 ft
+    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
+    const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
+    const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
+    if(!s1&&!s2) return false;
+    if(!s1||!s2) return true;                       // field on one side only
+    for(const b of s1) if(s2.has(b)) return false;  // share a direction: same field
+    return true;
+  };
+  return { finishDiffers };
+}
+
+// Line-end closures: anti-parallel, collinear wall ends facing across a gap.
+// Read set: lineEnds, the two predicates, the fixture predicate, ftPx, and
+// the two option values the comparator supplies from the dump. Loop order is
+// the contract: i ascending, dgx outer, dgy inner, bucket order, j <= i skipped.
+export function lineClosuresStage({lineEnds, finishDiffers, crossesInk, inXboxPt, ftPx, lcmin, nofinish}){
+  const GAPMAX_LE=24*ftPx;
+  const endGrid=new Map();
+  lineEnds.forEach((e,i)=>{ const k=Math.floor(e.x/GAPMAX_LE)+','+Math.floor(e.y/GAPMAX_LE); const b=endGrid.get(k); if(b)b.push(i); else endGrid.set(k,[i]); });
+  const lecand=[];
+  for(let i=0;i<lineEnds.length;i++){
+    const ei=lineEnds[i]; const cx=Math.floor(ei.x/GAPMAX_LE), cy=Math.floor(ei.y/GAPMAX_LE);
+    for(let dgx=-1;dgx<=1;dgx++) for(let dgy=-1;dgy<=1;dgy++){
+      const bucket=endGrid.get((cx+dgx)+','+(cy+dgy)); if(!bucket) continue;
+      for(const j of bucket){ if(j<=i) continue;
+    const a=lineEnds[i], b=lineEnds[j];
+    if(a.ux*b.ux+a.uy*b.uy > -0.94) continue;                 // anti-parallel
+    const vx=b.x-a.x, vy=b.y-a.y, d2=Math.hypot(vx,vy);
+    if(d2<lcmin*ftPx) continue;
+    if(d2>7*ftPx){
+      // wider than a door: only a FINISH CHANGE across the gap earns a closure
+      if(nofinish || d2>24*ftPx) continue;
+      if(!finishDiffers(a.x,a.y,b.x,b.y)) continue;
+    }
+    const ux2=vx/d2, uy2=vy/d2;
+    if(ux2*a.ux+uy2*a.uy<0.94) continue;                      // b lies ahead of a
+    if(-ux2*b.ux-uy2*b.uy<0.94) continue;
+    if(Math.abs(vx*(-a.uy)+vy*(a.ux)) > 0.3*ftPx) continue;   // collinear
+    // blocked = wall ink CROSSING the connector (parallel door-panel lines in
+    // the opening must not veto the closure)
+    if(crossesInk(a.x+vx*0.06, a.y+vy*0.06, a.x+vx*0.94, a.y+vy*0.94)) continue;
+    if(inXboxPt((a.x+b.x)/2,(a.y+b.y)/2)) continue;   // fixture interior: no closure
+    lecand.push([d2,i,j]);
+      }
+    }
+  }
+  lecand.sort((p2,q2)=>p2[0]-q2[0]);
+  const leUsed=new Set(); const lineClosures=[];
+  const sl=OPTS.SEALLOG?OPTS.SEALLOG.split(",").map(Number):null;
+  for(const [d9,i,j] of lecand){
+    const logIt=sl && [i,j].some(k=>lineEnds[k].x>=sl[0]&&lineEnds[k].x<=sl[2]&&lineEnds[k].y>=sl[1]&&lineEnds[k].y<=sl[3]);
+    if(leUsed.has(i)||leUsed.has(j)){ if(logIt) console.error(`SEAL skip used (${lineEnds[i].x.toFixed(0)},${lineEnds[i].y.toFixed(0)})-(${lineEnds[j].x.toFixed(0)},${lineEnds[j].y.toFixed(0)}) d=${(d9/ftPx).toFixed(2)}ft`); continue; }
+    if(logIt) console.error(`SEAL PAIR (${lineEnds[i].x.toFixed(0)},${lineEnds[i].y.toFixed(0)})-(${lineEnds[j].x.toFixed(0)},${lineEnds[j].y.toFixed(0)}) d=${(d9/ftPx).toFixed(2)}ft`);
+    leUsed.add(i); leUsed.add(j);
+    lineClosures.push({seg:[[lineEnds[i].x,lineEnds[i].y],[lineEnds[j].x,lineEnds[j].y]], door:false, finish:d9>7*ftPx});
+  }
+  return { outClosures: lineClosures, outLeUsed: Array.from(leUsed) };
+}
+
 export function build(g, ftPx, texts){
   PROF.length=0; _pt=0; mark("start");
   O.markPolylineArcs(g.segs, g.meta);      // polyline-drawn swings get their SEG_CURVE stamp
@@ -240,7 +600,7 @@ export function build(g, ftPx, texts){
     return false;
   };
 
-  const inXboxPt=(x,y,M=0.55*ftPx)=>{ for(const b of xboxes){ if(x>=b[0]-M&&x<=b[2]+M&&y>=b[1]-M&&y<=b[3]+M) return true; } return false; };
+  const { inXboxPt }=makeXboxContext(xboxes, ftPx);
   const extractPools=(useVouch)=>{
   const poche=[];       // material rings
   const pocheLum=[];    // fill luminance per poché ring (-1 unknown)
@@ -519,13 +879,13 @@ export function build(g, ftPx, texts){
     }
     // hatch-claimed chains: treads at riser pitch are exactly what the hatch
     // classifier claims — the family test is the discriminator.
-    {
-      for(const L of mergeLines(rawSoft, DUP_D)) cands.push(L);
-    }
+    for(const L of mergeLines(rawSoft, DUP_D)){ cands.push(L); }
     // DASHED treads never reach the low pool (each dash dies at the length
     // gate) — chain axis-aligned short plain segs into dash-lines and let the
     // family test decide if they are a stair.
-    {
+    // mergeLinesCov leaves cov=NaN, so this pool is empty. Skip the O(n^2)
+    // shorts merge when STAIRLOG is off (its only observable is the shorts= log).
+    if(OPTS.STAIRLOG){
       const shorts=[];
       const n9=g.segs.length>>2;
       for(let i=0;i<n9 && shorts.length<80000;i++){
@@ -540,7 +900,7 @@ export function build(g, ftPx, texts){
         if(Math.min(ax,ay)>0.08*Math.max(ax,ay)) continue;   // axis-aligned dashes only
         shorts.push([x1,y1,x2,y2]);
       }
-      if(OPTS.STAIRLOG) console.error(`STAIR shorts=${shorts.length}`);
+      console.error(`STAIR shorts=${shorts.length}`);
       // dash gaps run 0.3-0.7 ft — the default merge tolerance (0.12 ft) never
       // bridges them; treads tolerate a looser lateral band because the family
       // pitch test is the real gate.
@@ -569,20 +929,12 @@ export function build(g, ftPx, texts){
       return {ux,uy,off,t0:Math.min(t0,t1),t1:Math.max(t0,t1),len:Math.abs(t1-t0)};
     });
     const P_LO=0.65*ftPx, P_HI=1.35*ftPx;
+    const stairIdx=indexStairGeo(geo, ftPx);
     for(let i=0;i<cands.length;i++){
       if(used[i]) continue;
       const a=geo[i];
       if(a.len<2.5*ftPx||a.len>9*ftPx) continue;      // tread width: a real flight
-      const fam=[i];
-      for(let j=0;j<cands.length;j++){
-        if(j===i||used[j]) continue;
-        const b=geo[j];
-        if(Math.abs(a.ux*b.ux+a.uy*b.uy)<0.9995) continue;
-        if(b.len<2.5*ftPx||b.len>9*ftPx) continue;
-        if(Math.max(a.len,b.len)/Math.min(a.len,b.len)>1.35) continue;
-        if(Math.abs(b.t0-a.t0)>0.9*ftPx||Math.abs(b.t1-a.t1)>0.9*ftPx) continue;  // aligned ends
-        fam.push(j);
-      }
+      const fam=collectStairFam(i, geo, used, ftPx, stairIdx);
       if(OPTS.STAIRBOX){
         const box=OPTS.STAIRBOX.split(",").map(Number);
         const L=cands[i];
@@ -883,23 +1235,14 @@ export function build(g, ftPx, texts){
   const pocheMats=poche.filter(r=>!(ringW(r)<=RIM_MAX&&onXbox(r)));
   if(OPTS.XBOXLOG) console.error(`XBOX boxes=${xboxes.length} runs=${runs.length} dropped=${runs.length-runMats.length} pocheDropped=${poche.length-pocheMats.length}`);
   const material=[...pocheMats, ...runMats, ...stairRects];
-  const inMaterial=(x,y)=>{for(const r of material){ if(pointInRing(r,x,y)) return true;} return false;};
+  const inMaterial=(x,y)=>inMaterialAt(material,x,y);
 
   // ── wall-ink proximity: is (x,y) within tol of ANY wall evidence segment ──
   const wallInk=[];
   for(const ring of poche) for(let i=0;i<ring.length;i++){const p=ring[i],q=ring[(i+1)%ring.length];wallInk.push(p[0],p[1],q[0],q[1]);}
   for(const L of lines) wallInk.push(L[0],L[1],L[2],L[3]);
   for(const L of strokes) wallInk.push(L[0],L[1],L[2],L[3]);
-  const inkGrid=new Map();
-  const IG=2*ftPx;
-  for(let i=0;i+3<wallInk.length;i+=4){
-    const x0=Math.min(wallInk[i],wallInk[i+2]), x1=Math.max(wallInk[i],wallInk[i+2]);
-    const y0=Math.min(wallInk[i+1],wallInk[i+3]), y1=Math.max(wallInk[i+1],wallInk[i+3]);
-    for(let gx=Math.floor(x0/IG);gx<=Math.floor(x1/IG);gx++)
-      for(let gy=Math.floor(y0/IG);gy<=Math.floor(y1/IG);gy++){
-        const k=gx+','+gy; const b=inkGrid.get(k); if(b)b.push(i); else inkGrid.set(k,[i]);
-      }
-  }
+  const { crossesInk, inkGrid, IG }=makeInkContext(wallInk, ftPx);
   const nearWall=(x,y,tol)=>{
     for(const dgx of [-1,0,1]) for(const dgy of [-1,0,1]){
       const b=inkGrid.get((Math.floor(x/IG)+dgx)+','+(Math.floor(y/IG)+dgy));
@@ -1000,19 +1343,6 @@ export function build(g, ftPx, texts){
       }
     }
   }
-  const finishSig=(x,y,r)=>{
-    const h=new Array(12).fill(0); let tot=0;
-    for(let gx=Math.floor((x-r)/FG);gx<=Math.floor((x+r)/FG);gx++)
-      for(let gy=Math.floor((y-r)/FG);gy<=Math.floor((y+r)/FG);gy++){
-        const b=finishGrid.get(gx+','+gy); if(!b) continue;
-        for(let i=0;i<b.length;i+=3){ if(Math.hypot(b[i]-x,b[i+1]-y)<=r){ h[b[i+2]]++; tot++; } }
-      }
-    if(tot<3) return null;
-    const order=h.map((c,b)=>[c,b]).sort((a,b)=>b[0]-a[0]);
-    const fam=new Set(); let cov=0;
-    for(const [c,b] of order){ if(cov/tot>=0.7||c===0) break; fam.add(b); cov+=c; }
-    return fam;
-  };
   // the drafter DRAWS the transition (TR-01): a stroke spanning the connector,
   // parallel, within 0.35 ft — a hatch difference alone fires across open
   // plans (measured: Park 11→8, CI 28→22, AU 15→10 without this).
@@ -1029,50 +1359,7 @@ export function build(g, ftPx, texts){
       for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){ const k=gx+','+gy; const b=longGrid.get(k); if(b)b.push(i); else longGrid.set(k,[i]); }
     }
   }
-  const transitionUnder=(ax,ay,bx,by)=>{
-    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
-    const cand=new Set();
-    const gx0=Math.floor(Math.min(ax,bx)/LG),gx1=Math.floor(Math.max(ax,bx)/LG),gy0=Math.floor(Math.min(ay,by)/LG),gy1=Math.floor(Math.max(ay,by)/LG);
-    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){ const b=longGrid.get(gx+','+gy); if(b) for(const i of b) cand.add(i); }
-    for(const i of cand){
-      const x1=g.segs[i*4],y1=g.segs[i*4+1],x2=g.segs[i*4+2],y2=g.segs[i*4+3];
-      const sl=Math.hypot(x2-x1,y2-y1); if(sl<0.5*L) continue;
-      const vx=(x2-x1)/sl, vy=(y2-y1)/sl;
-      if(Math.abs(vx*ux+vy*uy)<0.985) continue;
-      const lat1=Math.abs((x1-ax)*(-uy)+(y1-ay)*ux), lat2=Math.abs((x2-ax)*(-uy)+(y2-ay)*ux);
-      if(lat1>0.35*ftPx||lat2>0.35*ftPx) continue;
-      const t1=(x1-ax)*ux+(y1-ay)*uy, t2=(x2-ax)*ux+(y2-ay)*uy;
-      const lo=Math.max(0,Math.min(t1,t2)), hi=Math.min(L,Math.max(t1,t2));
-      if(hi-lo>=0.6*L) return true;
-    }
-    return false;
-  };
-  const crossesXbox=(ax,ay,bx,by)=>{
-    const M=0.55*ftPx;
-    for(let t=0;t<=1.0001;t+=0.1){ const x=ax+(bx-ax)*t, y=ay+(by-ay)*t;
-      for(const b of xboxes){ if(x>=b[0]-M&&x<=b[2]+M&&y>=b[1]-M&&y<=b[3]+M) return true; } }
-    return false;
-  };
-  const finishDiffers=(ax,ay,bx,by)=>{
-    // cheap first: the hatch signatures; the transition-line search last
-    {
-      const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
-      const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
-      const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
-      if(!s1&&!s2) return false;
-      if(s1&&s2){ let shared=false; for(const b of s1) if(s2.has(b)){shared=true;break;} if(shared) return false; }
-    }
-    if(crossesXbox(ax,ay,bx,by)) return false;        // a tub rim is not a transition (measured: sealed two baths through the tub)
-    if(!transitionUnder(ax,ay,bx,by)) return false;
-    // sample both sides of a connector: perpendicular offsets 1.2 ft
-    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
-    const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
-    const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
-    if(!s1&&!s2) return false;
-    if(!s1||!s2) return true;                       // field on one side only
-    for(const b of s1) if(s2.has(b)) return false;  // share a direction: same field
-    return true;
-  };
+  const { finishDiffers }=makeFinishContext(finishGrid, longGrid, g.segs, xboxes, ftPx);
   mark("finishGrid");
   const lineEnds=[];
   const pushEnds=(x1,y1,x2,y2)=>{
@@ -1096,66 +1383,9 @@ export function build(g, ftPx, texts){
   // candidate was 56 of 60 s on a 105k-segment sheet. Bucket the ends
   // (cells of GAPMAX) so only reachable pairs are tried, and test crossings
   // by walking the ink grid along the connector.
-  const crossesInk=(ax2,ay2,bx2,by2)=>{
-    const dxc=bx2-ax2, dyc=by2-ay2;
-    const gx0=Math.floor(Math.min(ax2,bx2)/IG), gx1=Math.floor(Math.max(ax2,bx2)/IG);
-    const gy0=Math.floor(Math.min(ay2,by2)/IG), gy1=Math.floor(Math.max(ay2,by2)/IG);
-    const seen=new Set();
-    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
-      const b=inkGrid.get(gx+','+gy); if(!b) continue;
-      for(const w of b){
-        if(seen.has(w)) continue; seen.add(w);
-        const x1=wallInk[w],y1=wallInk[w+1],x2=wallInk[w+2],y2=wallInk[w+3];
-        const ex=x2-x1, ey=y2-y1;
-        const den=dxc*ey-dyc*ex;
-        if(Math.abs(den)<1e-9) continue;
-        const t=((x1-ax2)*ey-(y1-ay2)*ex)/den;
-        const u=((x1-ax2)*dyc-(y1-ay2)*dxc)/den;
-        if(t>0.001&&t<0.999&&u>0.001&&u<0.999) return true;
-      }
-    }
-    return false;
-  };
-  const GAPMAX_LE=24*ftPx;
-  const endGrid=new Map();
-  lineEnds.forEach((e,i)=>{ const k=Math.floor(e.x/GAPMAX_LE)+','+Math.floor(e.y/GAPMAX_LE); const b=endGrid.get(k); if(b)b.push(i); else endGrid.set(k,[i]); });
-  const lecand=[];
-  for(let i=0;i<lineEnds.length;i++){
-    const ei=lineEnds[i]; const cx=Math.floor(ei.x/GAPMAX_LE), cy=Math.floor(ei.y/GAPMAX_LE);
-    for(let dgx=-1;dgx<=1;dgx++) for(let dgy=-1;dgy<=1;dgy++){
-      const bucket=endGrid.get((cx+dgx)+','+(cy+dgy)); if(!bucket) continue;
-      for(const j of bucket){ if(j<=i) continue;
-    const a=lineEnds[i], b=lineEnds[j];
-    if(a.ux*b.ux+a.uy*b.uy > -0.94) continue;                 // anti-parallel
-    const vx=b.x-a.x, vy=b.y-a.y, d2=Math.hypot(vx,vy);
-    if(d2<(+OPTS.LCMIN||0.7)*ftPx) continue;
-    if(d2>7*ftPx){
-      // wider than a door: only a FINISH CHANGE across the gap earns a closure
-      if(OPTS.NOFINISH || d2>24*ftPx) continue;
-      if(!finishDiffers(a.x,a.y,b.x,b.y)) continue;
-    }
-    const ux2=vx/d2, uy2=vy/d2;
-    if(ux2*a.ux+uy2*a.uy<0.94) continue;                      // b lies ahead of a
-    if(-ux2*b.ux-uy2*b.uy<0.94) continue;
-    if(Math.abs(vx*(-a.uy)+vy*(a.ux)) > 0.3*ftPx) continue;   // collinear
-    // blocked = wall ink CROSSING the connector (parallel door-panel lines in
-    // the opening must not veto the closure)
-    if(crossesInk(a.x+vx*0.06, a.y+vy*0.06, a.x+vx*0.94, a.y+vy*0.94)) continue;
-    if(inXboxPt((a.x+b.x)/2,(a.y+b.y)/2)) continue;   // fixture interior: no closure
-    lecand.push([d2,i,j]);
-      }
-    }
-  }
-  lecand.sort((p2,q2)=>p2[0]-q2[0]);
-  const leUsed=new Set(); const lineClosures=[];
-  const sl=OPTS.SEALLOG?OPTS.SEALLOG.split(",").map(Number):null;
-  for(const [d9,i,j] of lecand){
-    const logIt=sl && [i,j].some(k=>lineEnds[k].x>=sl[0]&&lineEnds[k].x<=sl[2]&&lineEnds[k].y>=sl[1]&&lineEnds[k].y<=sl[3]);
-    if(leUsed.has(i)||leUsed.has(j)){ if(logIt) console.error(`SEAL skip used (${lineEnds[i].x.toFixed(0)},${lineEnds[i].y.toFixed(0)})-(${lineEnds[j].x.toFixed(0)},${lineEnds[j].y.toFixed(0)}) d=${(d9/ftPx).toFixed(2)}ft`); continue; }
-    if(logIt) console.error(`SEAL PAIR (${lineEnds[i].x.toFixed(0)},${lineEnds[i].y.toFixed(0)})-(${lineEnds[j].x.toFixed(0)},${lineEnds[j].y.toFixed(0)}) d=${(d9/ftPx).toFixed(2)}ft`);
-    leUsed.add(i); leUsed.add(j);
-    lineClosures.push({seg:[[lineEnds[i].x,lineEnds[i].y],[lineEnds[j].x,lineEnds[j].y]], door:false, finish:d9>7*ftPx});
-  }
+  const lcmin=(+OPTS.LCMIN||0.7), nofinish=!!OPTS.NOFINISH;
+  const { outClosures: lineClosures, outLeUsed }=lineClosuresStage({lineEnds, finishDiffers, crossesInk, inXboxPt, ftPx, lcmin, nofinish});
+  const leUsed=new Set(outLeUsed);
   mark("lineClosures");
   // ── JAMB BRIDGES: a door at a corner ends against a PERPENDICULAR wall.
   // An unconsumed wall end raycasts along its own line; a perpendicular wall
@@ -1163,12 +1393,20 @@ export function build(g, ftPx, texts){
   // gap (leaf/panel lines parallel to the connector, or a swing-arc point).
   {
     const nseg2=g.segs.length>>2;
+    const clipMask=new Array(nseg2);
+    for(let si=0;si<nseg2;si++) clipMask[si]=(g.meta[si]&O.SEG_CLIP)?1:0;
+    const {pad:inkPad}=inkLmaxAndPad(wallInk, IG);
+    // no unconsumed end means the loop below never runs; don't index for it
+    const anyOpen=lineEnds.some((_,i)=>!leUsed.has(i));
+    const evGrids=anyOpen?buildEvGrid(g.segs, clipMask, soft, ftPx):[];
+    const TmaxJ=OPTS.NOFINISH?7*ftPx:24*ftPx;
     for(let i=0;i<lineEnds.length;i++){
       if(leUsed.has(i)) continue;
       const e=lineEnds[i];
       // nearest crossing wall-ink hit along the ray, roughly perpendicular
       let bestT=Infinity;
-      for(let w=0;w+3<wallInk.length;w+=4){
+      const inkHits=gatherInkAlongRay(e, TmaxJ, IG, inkGrid, inkPad);
+      for(const w of inkHits){
         const x1=wallInk[w],y1=wallInk[w+1],x2=wallInk[w+2],y2=wallInk[w+3];
         const ex=x2-x1, ey=y2-y1, eL=Math.hypot(ex,ey)||1;
         if(Math.abs((ex*e.ux+ey*e.uy)/eL)>0.5) continue;   // want a crossing wall, not a continuation
@@ -1176,7 +1414,7 @@ export function build(g, ftPx, texts){
         if(Math.abs(den)<1e-9) continue;
         const t=((x1-e.x)*ey-(y1-e.y)*ex)/den;
         const u=((x1-e.x)*e.uy-(y1-e.y)*e.ux)/den;
-        if(t>1.5*ftPx && t<(OPTS.NOFINISH?7:24)*ftPx && u>=-0.001 && u<=1.001 && t<bestT) bestT=t;
+        if(t>1.5*ftPx && t<TmaxJ && u>=-0.001 && u<=1.001 && t<bestT) bestT=t;
       }
       if(bestT===Infinity) continue;
       const hx=e.x+e.ux*bestT, hy=e.y+e.uy*bestT;
@@ -1185,6 +1423,8 @@ export function build(g, ftPx, texts){
       // door evidence in the gap — KIND recorded: 'arc' and 'panel' are
       // trusted (drafter-stated door); 'leaf' seals but is not trusted (the
       // loose foot test also fires at casework mouths).
+      // First-match: kind is identical for every match in a scan, so visit
+      // order inside a scan is unobservable.
       let evidence=false, kind=null;
       for(const a of arcs){
         for(const P of [a.C,a.P0,a.P1]){
@@ -1194,8 +1434,9 @@ export function build(g, ftPx, texts){
         if(evidence)break;
       }
       if(!evidence){
-        for(let si=0;si<nseg2;si++){
-          if(g.meta[si]&(O.SEG_CLIP)) continue;
+        const panelCands=queryEvStrip(evGrids, e.x, e.y, hx, hy, 1);
+        for(const si of panelCands){
+          if(clipMask[si]) continue;
           if(soft[si]) continue;                              // hatch/annotation is never a door panel
           const x1=g.segs[si*4],y1=g.segs[si*4+1],x2=g.segs[si*4+2],y2=g.segs[si*4+3];
           const L=Math.hypot(x2-x1,y2-y1);
@@ -1214,8 +1455,9 @@ export function build(g, ftPx, texts){
         // OPEN LEAF: the door drawn standing open — a stroke PERPENDICULAR to
         // the connector, door-length (≈ the gap), footed at one end of the
         // opening. The parallel-panel test above cannot see it.
-        for(let si=0;si<nseg2;si++){
-          if(g.meta[si]&(O.SEG_CLIP)) continue;
+        const leafCands=queryEvDiscs(evGrids, [[e.x,e.y],[hx,hy]], 0.5*ftPx, 1);
+        for(const si of leafCands){
+          if(clipMask[si]) continue;
           if(soft[si]) continue;
           const x1=g.segs[si*4],y1=g.segs[si*4+1],x2=g.segs[si*4+2],y2=g.segs[si*4+3];
           const L=Math.hypot(x2-x1,y2-y1);
@@ -1250,47 +1492,7 @@ export function build(g, ftPx, texts){
 
   mark("jambBridges");
   // ── pair ends across door-scale gaps: facing, COLLINEAR, similar width, clear between ──
-  const GAP_MIN=1.2*ftPx, GAP_MAX=7*ftPx;
-  const valid=[];
-  for(let i=0;i<ends.length;i++){
-    for(let j=i+1;j<ends.length;j++){
-      const a=ends[i], b=ends[j];
-      const vx=b.x-a.x, vy=b.y-a.y, d=Math.hypot(vx,vy);
-      if(d<GAP_MIN||d>GAP_MAX) continue;
-      // anti-parallel axes
-      if(a.dir[0]*b.dir[0]+a.dir[1]*b.dir[1] > -0.94) continue;
-      const ux=vx/d, uy=vy/d;
-      if(ux*a.dir[0]+uy*a.dir[1]<0.94) continue;
-      if(-ux*b.dir[0]-uy*b.dir[1]<0.94) continue;
-      // collinear: b's center off a's axis line by less than the wall is thick
-      const anx=-a.dir[1], any_=a.dir[0];
-      if(Math.abs(vx*anx+vy*any_) > Math.max(a.hw,b.hw,0.3*ftPx)) continue;
-      if(Math.max(a.hw,b.hw)>2.2*Math.min(a.hw,b.hw)) continue;
-      let blocked=false;
-      // include the near-end samples: a connector that begins INSIDE wall
-      // material is crossing a wall, not spanning an opening
-      for(const t of [0.06,0.2,0.4,0.6,0.8,0.94]){ if(inMaterial(a.x+vx*t, a.y+vy*t)){blocked=true;break;} }
-      if(blocked) continue;
-      if(inXboxPt(a.x+vx/2, a.y+vy/2)) continue;      // fixture interior: not a doorway
-      valid.push([d,i,j]);
-    }
-  }
-  valid.sort((p,q)=>p[0]-q[0]);          // global greedy: shortest gaps claim their ends first
-  const doorQuads=[]; const synth=[];
-  const used=new Set();
-  for(const [,i,j] of valid){
-    if(used.has(i)||used.has(j)) continue;
-    used.add(i); used.add(j);
-    const a=ends[i], b=ends[j];
-    const d11=Math.hypot(b.corners[0][0]-a.corners[0][0],b.corners[0][1]-a.corners[0][1]);
-    const d12=Math.hypot(b.corners[1][0]-a.corners[0][0],b.corners[1][1]-a.corners[0][1]);
-    const [b1,b2]= d11<=d12 ? [b.corners[0],b.corners[1]] : [b.corners[1],b.corners[0]];
-    const a1=a.corners[0], a2=a.corners[1];
-    synth.push(a1[0],a1[1],b1[0],b1[1],  a2[0],a2[1],b2[0],b2[1]);
-    // jamb caps so the door cell closes even when the drafter drew none
-    synth.push(a1[0],a1[1],a2[0],a2[1],  b1[0],b1[1],b2[0],b2[1]);
-    doorQuads.push([a1,b1,b2,a2]);
-  }
+  const { synth, doorQuads }=endPairsStage(ends, material, xboxes, ftPx);
 
   // ── arrangement over wall ink + closures ──
   mark("endPairs");
@@ -1369,33 +1571,8 @@ export function build(g, ftPx, texts){
   // ── HEAL the network: a fragmented wall face or a T-junction stops a hair
   // short of the wall it meets; a dangling barrier splits no face. Extend each
   // segment end along its own direction to the first wall geometry within reach.
-  {
-    const HEAL=0.75*ftPx;
-    const m=segs.length>>2;
-    const hit=(px_,py_,dx,dy,self)=>{
-      let best=Infinity;
-      for(let j=0;j<m;j++){
-        if(j===self) continue;
-        const x1=segs[j*4],y1=segs[j*4+1],x2=segs[j*4+2],y2=segs[j*4+3];
-        const ex=x2-x1, ey=y2-y1;
-        const den=dx*ey-dy*ex;
-        if(Math.abs(den)<1e-9) continue;
-        const t=((x1-px_)*ey-(y1-py_)*ex)/den;
-        const u=((x1-px_)*dy-(y1-py_)*dx)/den;
-        if(t>1e-6 && t<=HEAL && u>=-0.001 && u<=1.001 && t<best) best=t;
-      }
-      return best;
-    };
-    for(let i=0;i<m;i++){
-      const x1=segs[i*4],y1=segs[i*4+1],x2=segs[i*4+2],y2=segs[i*4+3];
-      const d=Math.hypot(x2-x1,y2-y1)||1;
-      const ux2=(x2-x1)/d, uy2=(y2-y1)/d;
-      const t2=hit(x2,y2,ux2,uy2,i);
-      if(t2<Infinity){ segs[i*4+2]=x2+ux2*(t2+0.3); segs[i*4+3]=y2+uy2*(t2+0.3); }
-      const t1=hit(x1,y1,-ux2,-uy2,i);
-      if(t1<Infinity){ segs[i*4]=x1-ux2*(t1+0.3); segs[i*4+1]=y1-uy2*(t1+0.3); }
-    }
-  }
+  // The stage lives in healSegments() so the dump-fed gate runs the same code.
+  healSegments(segs, ftPx);
   mark("segs+seals+heal");
   const arr=buildPolyArrangement(segs, 2);
 
@@ -1690,18 +1867,20 @@ export function mergeLines(rawLines, dupD){
     if(mergedFlags[i]) continue;
     const g0=items[i];
     const cluster=[g0]; mergedFlags[i]=true;
+    let ct0=g0.t0, ct1=g0.t1;
     for(let j=i+1;j<items.length;j++){
       if(mergedFlags[j]) continue;
       const g1=items[j];
+      // items are sorted by off: once g1.off - g0.off > dupD, later j fail too.
+      // Evaluate off before direction so the break is exact (both were continue).
+      if(g1.off-g0.off>dupD) break;
       if(Math.abs(g1.ux*g0.ux+g1.uy*g0.uy)<0.9995) continue;
-      if(Math.abs(g1.off-g0.off)>dupD) continue;
       // must touch/overlap along axis (allow small gap = dashes)
       if(g1.t0>g0.t1+dupD*4 || g0.t0>g1.t1+dupD*4){
-        // check against whole cluster extent
-        const ct0=Math.min(...cluster.map(c=>c.t0)), ct1=Math.max(...cluster.map(c=>c.t1));
         if(g1.t0>ct1+dupD*4 || ct0>g1.t1+dupD*4) continue;
       }
       cluster.push(g1); mergedFlags[j]=true;
+      ct0=Math.min(ct0,g1.t0); ct1=Math.max(ct1,g1.t1);
     }
     const off=cluster.reduce((s,c)=>s+c.off,0)/cluster.length;
     const t0=Math.min(...cluster.map(c=>c.t0)), t1=Math.max(...cluster.map(c=>c.t1));

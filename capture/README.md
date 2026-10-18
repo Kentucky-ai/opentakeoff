@@ -52,19 +52,37 @@ values.
 python3 capture/capture_server.py            # serves on http://localhost:8787
 ```
 
-Point any OpenTakeoff build at it—one line in the browser console:
+Point an allowed OpenTakeoff build at it—one line in the browser console:
 
 ```js
 localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"
 ```
 
-That's it. Finish a takeoff, open **Report → Contribute**, and watch the rows
+By default, browser requests are allowed only from
+`https://opentakeoff.kentucky-ai.com`, `http://localhost:5173`, and
+`http://127.0.0.1:5173`. For a self-hosted build or another development port,
+set the exact origin (scheme, host and optional port, with no trailing slash):
+
+```bash
+python3 capture/capture_server.py --allow-origin https://takeoff.example.com
+```
+
+Repeat `--allow-origin` for several origins. Supplying it replaces the default
+list. Unlisted origins, including `null` from opaque or sandboxed pages, receive
+403 before the server reads counts or accepts contributions. CORS and
+private-network permission are returned only to an allowed origin. Native
+clients without an Origin header still work; this browser-origin policy is not
+client authentication. Contributions require `Content-Type: application/json`
+and the `/contribute` path. The listener remains bound to `127.0.0.1`.
+
+Finish a takeoff, open **Report → Contribute**, and watch the rows
 land. Self-hosting for a whole team? Bake the endpoint into the build with
-`VITE_CONTRIBUTE_ENDPOINT` and put the server somewhere everyone can reach.
+`VITE_CONTRIBUTE_ENDPOINT` and configure the allowed origin. A shared deployment needs its own authenticated proxy; this listener is local.
 
 ```bash
 python3 capture/capture_server.py summary    # corpus counts by finish
 python3 capture/capture_server.py selftest   # end-to-end check, no setup needed
+python3 -m unittest discover -s capture -p 'test_*.py' -v  # browser-origin regressions
 ```
 
 ## Feed a shared drive

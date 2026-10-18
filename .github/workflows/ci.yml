@@ -309,6 +309,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 capture/capture_server.py selftest
+      - run: python3 -m unittest discover -s capture -p 'test_*.py' -v
 
   server:
     runs-on: ubuntu-latest
