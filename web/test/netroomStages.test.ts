@@ -277,3 +277,21 @@ test("makeInkContext: one grid, crossesInk matches the reference on a fixture", 
     assert.equal(ctx.crossesInk(ax, ay, bx, by), crossesInkRef(wallInk, FT, ax, ay, bx, by),
       `crossesInk(${ax},${ay},${bx},${by})`);
 });
+
+test("endPairsStage: greedy picks the shortest gap when pairs compete", () => {
+  // 0 faces +x; 1 faces -x at 6 ft; 2 faces -x at 3 ft. (0,1) is inserted
+  // first but (0,2) is shorter, so the distance sort must claim (0,2).
+  const ends = [
+    mkEnd(0, 0, [1, 0]),
+    mkEnd(60, 0, [-1, 0]),
+    mkEnd(30, 0, [-1, 0]),
+  ];
+  const out = endPairsStage(ends, [], [], FT);
+  assert.deepEqual(out.synth, [
+    0, 3, 30, 3,
+    0, -3, 30, -3,
+    0, 3, 0, -3,
+    30, 3, 30, -3,
+  ]);
+  assert.deepEqual(out.doorQuads, [[[0, 3], [30, 3], [30, -3], [0, -3]]]);
+});
