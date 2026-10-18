@@ -893,7 +893,7 @@ What is **never** sent—this list is normative, enforced by a whitelist in the 
 
 One linkage is deliberate and disclosed: shapes carry **opaque, locally-minted IDs**, so re-contributing after an addendum supersedes rather than duplicates. The IDs contain nothing and reverse to nothing.
 
-The modal asks for an optional credit line and an attestation that you have the right to share the data. To bank takeoffs into **your own** corpus instead, run the bundled capture server (`python3 capture/capture_server.py`) and point the app at it (`localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"`)—see [`capture/README.md`](../capture/README.md).
+The modal asks for an optional credit line and an attestation that you have the right to share the data. To bank takeoffs into **your own** corpus instead, run the bundled capture server (`python3 capture/capture_server.py`) and point the app at it (`localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"`). The public app and local development origins are allowed by default. For a self-hosted build, start the server with `--allow-origin https://takeoff.example.com` using your build’s exact origin—see [`capture/README.md`](../capture/README.md).
 
 ---
 

@@ -595,6 +595,10 @@ python3 capture/capture_server.py    # then, in the app's browser console:
 # localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"
 ```
 
+The capture server allows the public app and local development origins by default.
+For another host, pass `--allow-origin https://takeoff.example.com`; see the
+[capture setup](capture/README.md#run-it) for the exact defaults and repeatable option.
+
 Run OpenTakeoff as-is and none of this exists for you—nothing is captured, nothing leaves
 your machine. Install it and every takeoff you *choose* to contribute compounds into an asset
 you own. This is the open edition of the capture layer inside
