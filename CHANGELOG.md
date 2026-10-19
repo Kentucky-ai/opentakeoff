@@ -15,6 +15,7 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **Premium plans replace Request Premium.** The toolbar button, the **⋯** menu item and the prompt after a report now open **Premium plans**: Individual Pro ($149/month, 300 AI credits), Team Pro ($399/month, 3 seats, 800 shared credits, +$129 a seat) and Enterprise, each with a 7-day free trial (50 AI credits). The trial buttons open sign-up at start.kentucky-ai.com in a new tab with the plan chosen. The early-access form and its Netlify form definition are removed; the app sends nothing.
 - **Sheet page counts stay removed during startup.** Removing or revising a PDF while saved page counts are still loading no longer restores its old count. Other files retain their counts.
 
 - **Sheets panel (Premium layout) is now a folder tree.** Multi-page PDFs appear as folders of their pages, each one-page PDF as a row; a row shows the sheet number from the title block's sheet-number box once that page's text has been read (opened, thumbnailed or searched), and the label its tab shows until then. Numbers are saved with local projects and reopen with them; Drive projects read them again each session. Search matches numbers, labels and file names. In the tree, arrow keys move, Right and Left open and close folders, and Enter opens a sheet. When a revised PDF is dropped, its tabs, pager and gallery labels no longer show the old revision's sheet numbers and display "file · page" until the new pages are read.

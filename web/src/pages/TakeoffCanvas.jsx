@@ -161,8 +161,8 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // pass through. AiSettings is the config surface for the ai.js seam.
 import AgentPanel from "../components/AgentPanel.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
-import PremiumInterest from "../components/PremiumInterest.jsx";
-import { shouldAutoPromptPremium, readPremiumPrompt } from "../lib/premiumInterest.js";
+import PremiumPlans from "../components/PremiumPlans.jsx";
+import { shouldAutoPromptPremium, readPremiumPrompt } from "../lib/premiumPlans.js";
 import "../styles/premiumWorkspace.css";
 import { WorkspaceChrome, WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
 import { useWorkspaceLayout, WorkspaceLayoutDialog, DockHandle, DockTargets } from "../components/WorkspaceLayout.jsx";
@@ -8830,7 +8830,7 @@ export default function TakeoffCanvas() {
       onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer?.files); }}
       style={{ position: "relative", display: "flex", flexDirection: "column", height: "100vh", "--workspace-glow-strength": workspaceArrangement.backlight / 100 }}>
       {pinWindow}
-      {premiumOpen && <PremiumInterest onClose={() => setPremiumOpen(false)} onOpenChange={onMenuDepth} />}
+      {premiumOpen && <PremiumPlans onClose={() => setPremiumOpen(false)} onOpenChange={onMenuDepth} />}
       {/* file inputs — always mounted (drag-drop and the ⋯ import path need
           the refs even while focus mode hides the bar) */}
       <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed,.otk" multiple style={{ display: "none" }}
@@ -9081,7 +9081,7 @@ export default function TakeoffCanvas() {
           onOpenChange={onMenuDepth}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
-            { id: "premium-interest", label: "Request Premium — join the early-access list", highlight: true, onSelect: () => setPremiumOpen(true) },
+            { id: "premium-plans", label: "Premium plans — pricing and 7-day free trial", highlight: true, onSelect: () => setPremiumOpen(true) },
             { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Premium layout — compact controls", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
             { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
             { id: "tour", label: "Guided first takeoff", onSelect: startTour },
