@@ -95,3 +95,18 @@ test("classifySoftStage: subpaths absent, texts present — tagbox is null, not 
   assert.equal(out.fleck, null);
   assert.equal(out.tagbox, null);
 });
+
+test("classifyHatchSegs: a query window just above half a cell still softens", () => {
+  // Five 0.8 px-long parallel strokes at 2 px pitch. Their projected span is
+  // 0.8 (half a cell < 0.8 < 1), so the short-query skip must NOT fire: the
+  // middle rows are a valid lattice and soften. Widening the skip to
+  // `t1 - t0 < 1` (a plausible "round up" mutant) leaves every row hard.
+  const segs: number[] = [];
+  const meta: number[] = [];
+  for (let k = 0; k < 5; k++) {
+    segs.push(0, k * 2, 0.8, k * 2);
+    meta.push(1 << 4);
+  }
+  const soft = classifySoftStage({ segs, meta: Uint8Array.from(meta), subpaths: undefined, texts: undefined, ftPx: FT }).hatch;
+  assert.deepEqual(softIdx(soft), [1, 2, 3], "interior 0.8 px-span rows soften");
+});
