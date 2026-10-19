@@ -377,12 +377,12 @@ test("endPairsStage: equal distances keep (i, j) insertion order, not a global j
 });
 
 test("endPairsStage: a non-finite end falls back to the all-pairs loop", () => {
-  // A non-finite corner on a far, unpairable end triggers the fallback; the
-  // finite pair still pairs exactly as the original all-pairs loop does.
-  const nanCorner: End = { x: 10000, y: 10000, dir: [1, 0], hw: 3, corners: [[NaN, NaN], [10000, 10000]] };
-  const out = endPairsStage([mkEnd(0, 0, [1, 0]), mkEnd(40, 0, [-1, 0]), nanCorner], [], [], FT);
-  assert.deepEqual(out.doorQuads, [[[0, 3], [40, 3], [40, -3], [0, -3]]]);
-  assert.deepEqual(out.synth, [0, 3, 40, 3, 0, -3, 40, -3, 0, 3, 0, -3, 40, 3, 40, -3]);
+  // A NaN coordinate is only visited by the all-pairs loop: the grid cannot
+  // place it in a cell. The shipped path therefore emits a NaN door quad;
+  // removing the fallback would emit nothing.
+  const nanEnd: End = { x: NaN, y: 0, dir: [-1, 0], hw: 3, corners: [[NaN, 3], [NaN, -3]] };
+  const out = endPairsStage([mkEnd(0, 0, [1, 0]), nanEnd], [], [], FT);
+  assert.deepEqual(out.doorQuads, [[[0, 3], [NaN, -3], [NaN, 3], [0, -3]]]);
 });
 
 // ── makeMaterialContext ─────────────────────────────────────────────────────
