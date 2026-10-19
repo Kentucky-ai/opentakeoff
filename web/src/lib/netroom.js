@@ -392,6 +392,26 @@ export function lineClosuresStage({lineEnds, finishDiffers, crossesInk, inXboxPt
   return { outClosures: lineClosures, outLeUsed: Array.from(leUsed) };
 }
 
+/** The ink-classifier stage, factored out of build() so it can be replayed:
+ *  four classifiers over one segment list, merged into the soft plane.
+ *  `hatch` is the PRE-merge snapshot (build()'s hatchOnly — it feeds
+ *  finishGrid and hatchFlags), so the merged `soft` must never alias it.
+ *  `fleck` is null when the geometry carries no subpaths, `tagbox` null when
+ *  subpaths or texts are absent — build()'s own guards, kept identical.
+ *  Replaying this must first run O.markPolylineArcs(segs, meta), exactly as
+ *  build() does: SEG_CURVE segments are exempt from hatch classification, so
+ *  an unstamped replay classifies polyline arcs differently. */
+export function classifySoftStage({segs, meta, subpaths, texts, ftPx}){
+  const hatchSoft=O.classifyHatchSegs(segs, meta, 1, O.HATCH_MAX_PITCH_FT*ftPx);
+  const hatch=Array.from(hatchSoft);
+  const annot=O.classifyOffsetAnnotationSegs(segs, meta, 1, O.ANNOT_OFFSET_MAX_FT*ftPx, O.ANNOT_OFFSET_MIN_FT*ftPx, O.ANNOT_MIN_LEN_FT*ftPx);
+  const fleck=subpaths?O.classifyFleckSegs(segs, meta, subpaths, 1, ftPx):null;
+  const tagbox=(subpaths&&texts?.length)?O.classifyTagBoxSegs(segs, meta, subpaths, texts, 1, ftPx):null;
+  const soft=hatchSoft;
+  for(let i=0;i<soft.length;i++){ if(annot&&annot[i])soft[i]=1; if(fleck&&fleck[i])soft[i]=1; if(tagbox&&tagbox[i])soft[i]=1; }
+  return {hatch, annot, fleck, tagbox, soft};
+}
+
 export function build(g, ftPx, texts){
   PROF.length=0; _pt=0; mark("start");
   O.markPolylineArcs(g.segs, g.meta);      // polyline-drawn swings get their SEG_CURVE stamp
@@ -405,12 +425,7 @@ export function build(g, ftPx, texts){
   // ── ink CLASSES from the existing classifiers: hatch, annotation, texture ──
   // a stroke any of them claims is NOT wall evidence (tile grout would pair
   // into phantom walls without this)
-  const soft=O.classifyHatchSegs(g.segs, g.meta, 1, O.HATCH_MAX_PITCH_FT*ftPx);
-  const hatchOnly=Array.from(soft);
-  const annot=O.classifyOffsetAnnotationSegs(g.segs, g.meta, 1, O.ANNOT_OFFSET_MAX_FT*ftPx, O.ANNOT_OFFSET_MIN_FT*ftPx, O.ANNOT_MIN_LEN_FT*ftPx);
-  const fleck=g.subpaths?O.classifyFleckSegs(g.segs, g.meta, g.subpaths, 1, ftPx):null;
-  const tagbox=(g.subpaths&&texts?.length)?O.classifyTagBoxSegs(g.segs, g.meta, g.subpaths, texts, 1, ftPx):null;
-  for(let i=0;i<soft.length;i++){ if(annot&&annot[i])soft[i]=1; if(fleck&&fleck[i])soft[i]=1; if(tagbox&&tagbox[i])soft[i]=1; }
+  const {hatch: hatchOnly, annot, fleck, tagbox, soft}=classifySoftStage({segs:g.segs, meta:g.meta, subpaths:g.subpaths, texts, ftPx});
   mark("classifiers");
   const W_MIN=0.15*ftPx, W_MAX=1.6*ftPx, SLIVER_LEN=1.5*ftPx, POCHE_LEN=1.0*ftPx;
   // ── the sheet's furniture pen: the MODAL pen over long strokes. Wall lines
