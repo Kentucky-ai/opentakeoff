@@ -1,7 +1,10 @@
 /* Design tokens — single source of truth, byte-synced between OpenTakeoff and Spline (npm run styles:sync). Change the look here.
    Brand (2026-08): precision-instrument UI. Light = "ice" — bright white
-   surfaces on a cool field, cobalt the one saturated thing. Dark = "HUD" —
-   true-black cockpit, electric blue, phosphor glow on the active instrument. */
+   surfaces on a cool field, deep teal the one saturated thing. Dark = "HUD" —
+   true-black cockpit, patch cyan, phosphor glow on the active instrument.
+   2026-10-21: the accent moved from cobalt/electric blue to the Kentucky AI patch
+   cyan (#62d4dc; deep teal #0e636b where it carries white text on light).
+   The --cobalt names are kept so nothing downstream has to change. */
 
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -19,8 +22,8 @@
   --ink-faint:  #d8e0ec;         /* hairlines */
 
   /* primary accent */
-  --cobalt:     #1f3fc7;
-  --cobalt-deep:#152a8c;
+  --cobalt:     #0e636b;
+  --cobalt-deep:#0a4d53;
 
   /* terrazzo confetti — substrate variant only */
   --fleck-rust:  #c4502a;
@@ -36,7 +39,7 @@
   /* chrome theming — novel colors pulled out of inline styles */
   --ink-secondary: #4e5d73;      /* secondary readout text */
   --text-faint:    #8b99ac;      /* faint text/fills — --ink-faint stays hairline-only */
-  --tint-select:   #e8eefc;      /* checked-row cobalt tint */
+  --tint-select:   #e3f3f4;      /* checked-row accent tint */
   --tint-active:   #edf6f1;      /* active-row green tint */
   --surface-pop:   #ffffff;      /* active chip / lifted fills */
   --well:          #ffffff;      /* media wells (PDF thumbs, stamp previews) — light in ALL themes */
@@ -72,7 +75,7 @@
   --shadow-2: 0 12px 36px rgba(13, 21, 38, .16);
 
   /* focus ring — translucent cobalt, sits outside the border */
-  --ring: 0 0 0 3px rgba(31, 63, 199, .18);
+  --ring: 0 0 0 3px rgba(14, 99, 107, .18);
 
   /* ── instrument scales (2026-08 overhaul) ─────────────────────────── */
   /* spacing — strict 4px grid; 2px stays a literal for hairline nudges */
@@ -108,8 +111,8 @@
   --stage: #edf1f7;
 
   /* accent tints — hover / selected fills */
-  --tint-08: rgba(31, 63, 199, .07);
-  --tint-14: rgba(31, 63, 199, .13);
+  --tint-08: rgba(14, 99, 107, .07);
+  --tint-14: rgba(14, 99, 107, .13);
 
   /* phosphor glow — HUD dark only; light is matte. Applied ONLY to:
      active tool face, status verb, hero quantity, primary CTA, cal dot */
@@ -118,7 +121,7 @@
   /* status bar (instrument strip) — dark ink even in light theme */
   --status-bg: #0d1526;
   --status-fg: #e8eef8;
-  --status-acc: #8fb0f5;
+  --status-acc: #97e6eb;
 }
 
 /* ── themes ──────────────────────────────────────────────────────────────────
@@ -127,7 +130,7 @@
    Scoped to screen so print always resolves the light palette.
 
    HUD dark is a re-derivation, not a flip: true-black field, chrome barely
-   off black, electric blue (#3F8CFF — red pulled out so it can't go purple),
+   off black, patch cyan (#62D4DC),
    glow on the five sanctioned elements. Role meanings hold: paper-bright =
    base surface, paper-cream = raised card, paper-shadow = hover/pressed
    (goes LIGHTER in dark). */
@@ -150,8 +153,8 @@
     --text-faint: #7e8ca0;
 
     /* accent → true HUD blue */
-    --cobalt:      #3f8cff;
-    --cobalt-deep: #6fb4ff;
+    --cobalt:      #62d4dc;
+    --cobalt-deep: #97e6eb;
 
     /* semantics, lifted for black */
     --c-positive: #35d48f;
@@ -159,7 +162,7 @@
     --c-danger:   #ff6b57;
 
     --ink-secondary:   #8fa0b8;
-    --tint-select:     #0b1526;
+    --tint-select:     #0a1a1c;
     --tint-active:     #0a1f18;
     --surface-pop:     #0e1420;
     /* --well stays white: PDF thumbnails and stamp previews are light media */
@@ -171,16 +174,16 @@
     --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .5);
     --shadow-2: 0 0 0 1px #161c24, 0 14px 44px rgba(0, 0, 0, .85);
     --shadow-pop: 0 0 0 1px #161c24, 0 6px 22px rgba(0, 0, 0, .7);
-    --ring: 0 0 0 3px rgba(63, 140, 255, .7);   /* the ring is the only focus indicator */
+    --ring: 0 0 0 3px rgba(98, 212, 220, .7);   /* the ring is the only focus indicator */
 
     --stage: #000000;
-    --tint-08: rgba(63, 140, 255, .10);
-    --tint-14: rgba(63, 140, 255, .20);
-    --glow: 0 0 9px rgba(63, 140, 255, .55);
+    --tint-08: rgba(98, 212, 220, .10);
+    --tint-14: rgba(98, 212, 220, .20);
+    --glow: 0 0 9px rgba(98, 212, 220, .55);
 
     --status-bg: #000000;
     --status-fg: #a9c3e6;
-    --status-acc: #6fb4ff;
+    --status-acc: #97e6eb;
 
     --grain-rgb: 255, 255, 255;
     --grain-inverse-rgb: 0, 0, 0;
@@ -238,7 +241,7 @@
 
 /* tick-mark hairline — status-bar top edge + calibration chip ONLY */
 .ticks {
-  background-image: repeating-linear-gradient(90deg, rgba(143, 176, 245, .18) 0 1px, transparent 1px 24px);
+  background-image: repeating-linear-gradient(90deg, rgba(151, 230, 235, .18) 0 1px, transparent 1px 24px);
   background-size: 100% 3px;
   background-repeat: no-repeat;
   background-position: top;

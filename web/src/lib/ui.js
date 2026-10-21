@@ -25,11 +25,11 @@ export const Z = {
    --cobalt / --c-danger / --c-positive; the DARK set matches the HUD theme.
    Pick with svgAccent(isDark) at the callsite when the overlay is theme-aware. */
 export const SVG = {
-  cobalt: "#1f3fc7",
+  cobalt: "#0e636b",
   danger: "#b03a26",
   positive: "#1f6b4a",
   dark: {
-    cobalt: "#3f8cff",
+    cobalt: "#62d4dc",
     danger: "#ff6b57",
     positive: "#35d48f",
   },
