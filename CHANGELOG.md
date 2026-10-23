@@ -15,6 +15,8 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **A broken image in a ZIP no longer hides the remaining plans.** Each extracted file is processed independently, so unreadable PNG/JPEG entries are skipped by their own names while later PDFs and valid scans still open. Archive limits and downstream PDF validation are unchanged.
+
 - **Premium plans replace Request Premium.** The toolbar button, the **⋯** menu item and the prompt after a report now open **Premium plans**: Individual Pro ($149/month, 300 AI credits), Team Pro ($399/month, 3 seats, 800 shared credits, +$129 a seat) and Enterprise, each with a 7-day free trial (50 AI credits). The trial buttons open sign-up at start.kentucky-ai.com in a new tab with the plan chosen. The early-access form and its Netlify form definition are removed; the app sends nothing.
 - **Sheet page counts stay removed during startup.** Removing or revising a PDF while saved page counts are still loading no longer restores its old count. Other files retain their counts.
 

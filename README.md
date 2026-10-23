@@ -329,7 +329,8 @@ is in its [glossary](docs/USER_GUIDE.md#18-glossary--what-the-words-mean-here).
 A plan **PDF**, an **image** (scan, screenshot, photo), or a whole **`.zip` plan set** straight
 off a bid platform. Zips are unpacked and images wrapped to PDF *in your browser*—multi-page,
 multi-file, up to **4 sheets side-by-side**, with hostile-archive guards so a malformed zip
-fails cleanly instead of ballooning the tab. No upload step, no conversion service, no account.
+fails cleanly instead of ballooning the tab. An unreadable image in a zip is skipped while the
+remaining plans continue to open. No upload step, no conversion service, no account.
 
 ### A real measuring engine
 **One-Click Area** is the headline — **temporarily gated** while the flood engine is re-validated (see the note at the top); this is what it does when it is on: click inside a room, the linework bounds a flood fill, the
