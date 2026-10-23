@@ -991,6 +991,11 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number, 
     for (let k = 0; k < pieces.length; k++) {
       const c = pieces[k];
       const j = rowOf[k];
+      // rowHas needs an overlap of at least HALF_CELL, and an overlap can
+      // never exceed the query's own projected span; a query shorter than
+      // half a cell therefore cannot match any row, so its whole lattice
+      // visit is skipped (exact; see the overlap bound in rowHas).
+      if (c.t1 - c.t0 < HALF_CELL) continue;
       const up = nearestRow(j, 1, c.w, c.t0, c.t1);
       const dn = nearestRow(j, -1, c.w, c.t0, c.t1);
       // a true pattern edge (nothing of the family beyond it within a pitch)

@@ -159,17 +159,45 @@ function queryEvDiscs(grids, pts, r, extraCells){
 export function healSegments(segs, ftPx){
   const HEAL=0.75*ftPx;
   const m=segs.length>>2;
+  if(!(HEAL>0)) return segs;
+  // Static grid over the INITIAL barriers. The inflation bounds every later
+  // in-place move: `t + 0.3` with `t <= HEAL` for the extension, plus the
+  // endpoint u-slack `0.001*L_current` with `L_current <= L_i + 2*(HEAL+0.3)`.
+  const grid=new Map();
+  // One stamp per segment instead of a Set per hit() call: the same
+  // per-query de-duplication with no allocation in the hot path.
+  const seen=new Int32Array(m); let seenQ=0;
+  for(let j=0;j<m;j++){
+    const x1=segs[j*4],y1=segs[j*4+1],x2=segs[j*4+2],y2=segs[j*4+3];
+    const L=Math.hypot(x2-x1,y2-y1);
+    const inf=HEAL+0.3+0.001*(L+2*(HEAL+0.3));
+    const bx0=Math.floor((Math.min(x1,x2)-inf)/HEAL), bx1=Math.floor((Math.max(x1,x2)+inf)/HEAL);
+    const by0=Math.floor((Math.min(y1,y2)-inf)/HEAL), by1=Math.floor((Math.max(y1,y2)+inf)/HEAL);
+    for(let gx=bx0;gx<=bx1;gx++) for(let gy=by0;gy<=by1;gy++){
+      const k=gx+','+gy; const b=grid.get(k); if(b)b.push(j); else grid.set(k,[j]);
+    }
+  }
   const hit=(px_,py_,dx,dy,self)=>{
     let best=Infinity;
-    for(let j=0;j<m;j++){
-      if(j===self) continue;
-      const x1=segs[j*4],y1=segs[j*4+1],x2=segs[j*4+2],y2=segs[j*4+3];
-      const ex=x2-x1, ey=y2-y1;
-      const den=dx*ey-dy*ex;
-      if(Math.abs(den)<1e-9) continue;
-      const t=((x1-px_)*ey-(y1-py_)*ex)/den;
-      const u=((x1-px_)*dy-(y1-py_)*dx)/den;
-      if(t>1e-6 && t<=HEAL && u>=-0.001 && u<=1.001 && t<best) best=t;
+    // Ray bbox from p to p+d*HEAL, plus one cell of padding.
+    const gx0=Math.floor(Math.min(px_,px_+dx*HEAL)/HEAL)-1;
+    const gx1=Math.floor(Math.max(px_,px_+dx*HEAL)/HEAL)+1;
+    const gy0=Math.floor(Math.min(py_,py_+dy*HEAL)/HEAL)-1;
+    const gy1=Math.floor(Math.max(py_,py_+dy*HEAL)/HEAL)+1;
+    const qid=++seenQ;
+    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+      const b=grid.get(gx+','+gy); if(!b) continue;
+      for(const j of b){
+        if(j===self || seen[j]===qid) continue;
+        seen[j]=qid;
+        const x1=segs[j*4],y1=segs[j*4+1],x2=segs[j*4+2],y2=segs[j*4+3];
+        const ex=x2-x1, ey=y2-y1;
+        const den=dx*ey-dy*ex;
+        if(Math.abs(den)<1e-9) continue;
+        const t=((x1-px_)*ey-(y1-py_)*ex)/den;
+        const u=((x1-px_)*dy-(y1-py_)*dx)/den;
+        if(t>1e-6 && t<=HEAL && u>=-0.001 && u<=1.001 && t<best) best=t;
+      }
     }
     return best;
   };
@@ -185,7 +213,39 @@ export function healSegments(segs, ftPx){
   return segs;
 }
 
-function inMaterialAt(material, x, y){ for(const r of material){ if(pointInRing(r,x,y)) return true; } return false; }
+// The one wall-material interior predicate: a point outside a ring's bbox
+// cannot be inside the ring, so index the rings' bboxes on a 4 ft grid and
+// run the original pointInRing only on the point's cell. build(),
+// endPairsStage and the dump-fed gate use this instance. The grid is a
+// superset: every ring whose bbox contains the point is in the point's cell.
+export function makeMaterialContext(material, ftPx){
+  const CG=4*ftPx;
+  const grid=(CG>0&&Number.isFinite(CG))?new Map():null;
+  const wild=[];                                  // non-finite bboxes: always candidates
+  if(grid){
+    for(let k=0;k<material.length;k++){
+      const r=material[k];
+      let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,bad=false;
+      for(const p of r){
+        if(!Number.isFinite(p[0])||!Number.isFinite(p[1])){ bad=true; break; }
+        if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<y0)y0=p[1]; if(p[1]>y1)y1=p[1];
+      }
+      if(bad||!(Number.isFinite(x0)&&Number.isFinite(y0)&&Number.isFinite(x1)&&Number.isFinite(y1))){ wild.push(k); continue; }
+      for(let gx=Math.floor(x0/CG);gx<=Math.floor(x1/CG);gx++)
+        for(let gy=Math.floor(y0/CG);gy<=Math.floor(y1/CG);gy++){
+          const key=gx+','+gy; const b=grid.get(key); if(b)b.push(k); else grid.set(key,[k]);
+        }
+    }
+  }
+  const inMaterial=(x,y)=>{
+    if(!grid){ for(const r of material) if(pointInRing(r,x,y)) return true; return false; }
+    for(const k of wild){ if(pointInRing(material[k],x,y)) return true; }
+    const b=grid.get(Math.floor(x/CG)+','+Math.floor(y/CG));
+    if(b) for(const k of b) if(pointInRing(material[k],x,y)) return true;
+    return false;
+  };
+  return { inMaterial };
+}
 
 // The one fixture-box interior predicate. build(), endPairsStage and the
 // dump-fed gate all use this instance; the 0.55 ft margin is part of it.
@@ -200,29 +260,59 @@ export function makeXboxContext(xboxes, ftPx){
 export function endPairsStage(ends, material, xboxes, ftPx){
   const GAP_MIN=1.2*ftPx, GAP_MAX=7*ftPx;
   const { inXboxPt }=makeXboxContext(xboxes, ftPx);
+  const { inMaterial }=makeMaterialContext(material, ftPx);
   const valid=[];
-  for(let i=0;i<ends.length;i++){
-    for(let j=i+1;j<ends.length;j++){
+  const consider=(i,j)=>{
       const a=ends[i], b=ends[j];
       const vx=b.x-a.x, vy=b.y-a.y, d=Math.hypot(vx,vy);
-      if(d<GAP_MIN||d>GAP_MAX) continue;
+      if(d<GAP_MIN||d>GAP_MAX) return;
       // anti-parallel axes
-      if(a.dir[0]*b.dir[0]+a.dir[1]*b.dir[1] > -0.94) continue;
+      if(a.dir[0]*b.dir[0]+a.dir[1]*b.dir[1] > -0.94) return;
       const ux=vx/d, uy=vy/d;
-      if(ux*a.dir[0]+uy*a.dir[1]<0.94) continue;
-      if(-ux*b.dir[0]-uy*b.dir[1]<0.94) continue;
+      if(ux*a.dir[0]+uy*a.dir[1]<0.94) return;
+      if(-ux*b.dir[0]-uy*b.dir[1]<0.94) return;
       // collinear: b's center off a's axis line by less than the wall is thick
       const anx=-a.dir[1], any_=a.dir[0];
-      if(Math.abs(vx*anx+vy*any_) > Math.max(a.hw,b.hw,0.3*ftPx)) continue;
-      if(Math.max(a.hw,b.hw)>2.2*Math.min(a.hw,b.hw)) continue;
+      if(Math.abs(vx*anx+vy*any_) > Math.max(a.hw,b.hw,0.3*ftPx)) return;
+      if(Math.max(a.hw,b.hw)>2.2*Math.min(a.hw,b.hw)) return;
       let blocked=false;
       // include the near-end samples: a connector that begins INSIDE wall
       // material is crossing a wall, not spanning an opening
-      for(const t of [0.06,0.2,0.4,0.6,0.8,0.94]){ if(inMaterialAt(material, a.x+vx*t, a.y+vy*t)){blocked=true;break;} }
-      if(blocked) continue;
-      if(inXboxPt(a.x+vx/2, a.y+vy/2)) continue;      // fixture interior: not a doorway
+      for(const t of [0.06,0.2,0.4,0.6,0.8,0.94]){ if(inMaterial(a.x+vx*t, a.y+vy*t)){blocked=true;break;} }
+      if(blocked) return;
+      if(inXboxPt(a.x+vx/2, a.y+vy/2)) return;      // fixture interior: not a doorway
       valid.push([d,i,j]);
+  };
+  // Point grid at 7.5 ft: any accepted pair has d <= GAP_MAX = 7 ft, so it
+  // sits in the 3x3 neighbourhood. The per-i ascending j sort preserves the
+  // original (i, j) insertion order the stable distance sort relies on.
+  const cell=7.5*ftPx;
+  let finite=cell>0 && Number.isFinite(cell);
+  for(const e of ends){
+    if(!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.hw)
+       ||!Number.isFinite(e.dir[0])||!Number.isFinite(e.dir[1])
+       ||!e.corners.every(c=>Number.isFinite(c[0])&&Number.isFinite(c[1]))){ finite=false; break; }
+  }
+  if(finite){
+    const endGrid=new Map();
+    for(let i=0;i<ends.length;i++){
+      const k=Math.floor(ends[i].x/cell)+','+Math.floor(ends[i].y/cell);
+      const b=endGrid.get(k); if(b)b.push(i); else endGrid.set(k,[i]);
     }
+    for(let i=0;i<ends.length;i++){
+      const cx=Math.floor(ends[i].x/cell), cy=Math.floor(ends[i].y/cell);
+      const cand=[];
+      for(let dgx=-1;dgx<=1;dgx++) for(let dgy=-1;dgy<=1;dgy++){
+        const b=endGrid.get((cx+dgx)+','+(cy+dgy)); if(!b) continue;
+        for(const j of b) if(j>i) cand.push(j);
+      }
+      cand.sort((a,b)=>a-b);
+      for(const j of cand) consider(i,j);
+    }
+  } else {
+    // Non-finite input: the original all-pairs loop visits NaN ends; the
+    // grid never would. Fall back so behavior is identical.
+    for(let i=0;i<ends.length;i++) for(let j=i+1;j<ends.length;j++) consider(i,j);
   }
   valid.sort((p,q)=>p[0]-q[0]);          // global greedy: shortest gaps claim their ends first
   const doorQuads=[]; const synth=[];
@@ -323,20 +413,15 @@ export function makeFinishContext(finishGrid, longGrid, segs, xboxes, ftPx){
   };
   const finishDiffers=(ax,ay,bx,by)=>{
     // cheap first: the hatch signatures; the transition-line search last
-    {
-      const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
-      const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
-      const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
-      if(!s1&&!s2) return false;
-      if(s1&&s2){ let shared=false; for(const b of s1) if(s2.has(b)){shared=true;break;} if(shared) return false; }
-    }
-    if(crossesXbox(ax,ay,bx,by)) return false;        // a tub rim is not a transition (measured: sealed two baths through the tub)
-    if(!transitionUnder(ax,ay,bx,by)) return false;
-    // sample both sides of a connector: perpendicular offsets 1.2 ft
     const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
     const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
     const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
     if(!s1&&!s2) return false;
+    if(s1&&s2){ let shared=false; for(const b of s1) if(s2.has(b)){shared=true;break;} if(shared) return false; }
+    if(crossesXbox(ax,ay,bx,by)) return false;        // a tub rim is not a transition (measured: sealed two baths through the tub)
+    if(!transitionUnder(ax,ay,bx,by)) return false;
+    // the same samples decide the field difference (s1/s2 are pure and
+    // identical arguments, so the second finishSig pair is redundant)
     if(!s1||!s2) return true;                       // field on one side only
     for(const b of s1) if(s2.has(b)) return false;  // share a direction: same field
     return true;
@@ -362,19 +447,20 @@ export function lineClosuresStage({lineEnds, finishDiffers, crossesInk, inXboxPt
     if(a.ux*b.ux+a.uy*b.uy > -0.94) continue;                 // anti-parallel
     const vx=b.x-a.x, vy=b.y-a.y, d2=Math.hypot(vx,vy);
     if(d2<lcmin*ftPx) continue;
+    // side-effect-free rejections first: the finish search is the expensive one
+    const ux2=vx/d2, uy2=vy/d2;
+    if(ux2*a.ux+uy2*a.uy<0.94) continue;                      // b lies ahead of a
+    if(-ux2*b.ux-uy2*b.uy<0.94) continue;
+    if(Math.abs(vx*(-a.uy)+vy*(a.ux)) > 0.3*ftPx) continue;   // collinear
+    if(inXboxPt((a.x+b.x)/2,(a.y+b.y)/2)) continue;   // fixture interior: no closure
     if(d2>7*ftPx){
       // wider than a door: only a FINISH CHANGE across the gap earns a closure
       if(nofinish || d2>24*ftPx) continue;
       if(!finishDiffers(a.x,a.y,b.x,b.y)) continue;
     }
-    const ux2=vx/d2, uy2=vy/d2;
-    if(ux2*a.ux+uy2*a.uy<0.94) continue;                      // b lies ahead of a
-    if(-ux2*b.ux-uy2*b.uy<0.94) continue;
-    if(Math.abs(vx*(-a.uy)+vy*(a.ux)) > 0.3*ftPx) continue;   // collinear
     // blocked = wall ink CROSSING the connector (parallel door-panel lines in
     // the opening must not veto the closure)
     if(crossesInk(a.x+vx*0.06, a.y+vy*0.06, a.x+vx*0.94, a.y+vy*0.94)) continue;
-    if(inXboxPt((a.x+b.x)/2,(a.y+b.y)/2)) continue;   // fixture interior: no closure
     lecand.push([d2,i,j]);
       }
     }
@@ -392,6 +478,26 @@ export function lineClosuresStage({lineEnds, finishDiffers, crossesInk, inXboxPt
   return { outClosures: lineClosures, outLeUsed: Array.from(leUsed) };
 }
 
+/** The ink-classifier stage, factored out of build() so it can be replayed:
+ *  four classifiers over one segment list, merged into the soft plane.
+ *  `hatch` is the PRE-merge snapshot (build()'s hatchOnly — it feeds
+ *  finishGrid and hatchFlags), so the merged `soft` must never alias it.
+ *  `fleck` is null when the geometry carries no subpaths, `tagbox` null when
+ *  subpaths or texts are absent — build()'s own guards, kept identical.
+ *  Replaying this must first run O.markPolylineArcs(segs, meta), exactly as
+ *  build() does: SEG_CURVE segments are exempt from hatch classification, so
+ *  an unstamped replay classifies polyline arcs differently. */
+export function classifySoftStage({segs, meta, subpaths, texts, ftPx}){
+  const hatchSoft=O.classifyHatchSegs(segs, meta, 1, O.HATCH_MAX_PITCH_FT*ftPx);
+  const hatch=Array.from(hatchSoft);
+  const annot=O.classifyOffsetAnnotationSegs(segs, meta, 1, O.ANNOT_OFFSET_MAX_FT*ftPx, O.ANNOT_OFFSET_MIN_FT*ftPx, O.ANNOT_MIN_LEN_FT*ftPx);
+  const fleck=subpaths?O.classifyFleckSegs(segs, meta, subpaths, 1, ftPx):null;
+  const tagbox=(subpaths&&texts?.length)?O.classifyTagBoxSegs(segs, meta, subpaths, texts, 1, ftPx):null;
+  const soft=hatchSoft;
+  for(let i=0;i<soft.length;i++){ if(annot&&annot[i])soft[i]=1; if(fleck&&fleck[i])soft[i]=1; if(tagbox&&tagbox[i])soft[i]=1; }
+  return {hatch, annot, fleck, tagbox, soft};
+}
+
 export function build(g, ftPx, texts){
   PROF.length=0; _pt=0; mark("start");
   O.markPolylineArcs(g.segs, g.meta);      // polyline-drawn swings get their SEG_CURVE stamp
@@ -405,12 +511,7 @@ export function build(g, ftPx, texts){
   // ── ink CLASSES from the existing classifiers: hatch, annotation, texture ──
   // a stroke any of them claims is NOT wall evidence (tile grout would pair
   // into phantom walls without this)
-  const soft=O.classifyHatchSegs(g.segs, g.meta, 1, O.HATCH_MAX_PITCH_FT*ftPx);
-  const hatchOnly=Array.from(soft);
-  const annot=O.classifyOffsetAnnotationSegs(g.segs, g.meta, 1, O.ANNOT_OFFSET_MAX_FT*ftPx, O.ANNOT_OFFSET_MIN_FT*ftPx, O.ANNOT_MIN_LEN_FT*ftPx);
-  const fleck=g.subpaths?O.classifyFleckSegs(g.segs, g.meta, g.subpaths, 1, ftPx):null;
-  const tagbox=(g.subpaths&&texts?.length)?O.classifyTagBoxSegs(g.segs, g.meta, g.subpaths, texts, 1, ftPx):null;
-  for(let i=0;i<soft.length;i++){ if(annot&&annot[i])soft[i]=1; if(fleck&&fleck[i])soft[i]=1; if(tagbox&&tagbox[i])soft[i]=1; }
+  const {hatch: hatchOnly, annot, fleck, tagbox, soft}=classifySoftStage({segs:g.segs, meta:g.meta, subpaths:g.subpaths, texts, ftPx});
   mark("classifiers");
   const W_MIN=0.15*ftPx, W_MAX=1.6*ftPx, SLIVER_LEN=1.5*ftPx, POCHE_LEN=1.0*ftPx;
   // ── the sheet's furniture pen: the MODAL pen over long strokes. Wall lines
@@ -1235,7 +1336,9 @@ export function build(g, ftPx, texts){
   const pocheMats=poche.filter(r=>!(ringW(r)<=RIM_MAX&&onXbox(r)));
   if(OPTS.XBOXLOG) console.error(`XBOX boxes=${xboxes.length} runs=${runs.length} dropped=${runs.length-runMats.length} pocheDropped=${poche.length-pocheMats.length}`);
   const material=[...pocheMats, ...runMats, ...stairRects];
-  const inMaterial=(x,y)=>inMaterialAt(material,x,y);
+  // `material` is truncated in place by materialValidation; inMaterial must
+  // follow the live array, so it is rebuilt after that truncation.
+  let { inMaterial }=makeMaterialContext(material, ftPx);
 
   // ── wall-ink proximity: is (x,y) within tol of ANY wall evidence segment ──
   const wallInk=[];
@@ -1640,6 +1743,7 @@ export function build(g, ftPx, texts){
       kept.push(poly);
     }
     material.length=0; material.push(...kept);
+    inMaterial=makeMaterialContext(material, ftPx).inMaterial;
   }
 
   mark("materialValidation");

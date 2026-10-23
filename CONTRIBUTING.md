@@ -6,10 +6,45 @@ issues, and ideas are all welcome.
 ## Where to start
 
 - [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue)—small,
-  fully specified, exact files named. Claim one in a comment.
+  fully specified, exact files named. Follow the contributor agreement steps below
+  before claiming one in a comment.
 - [The flagship challenge](https://github.com/Kentucky-ai/opentakeoff/issues/29)—an open
   design-and-build bake-off. Post a design comment first; multiple entries
   welcome; the best one merges with credit.
+
+## Contributor agreement and issue assignments
+
+Before starting contribution work or asking to be assigned an issue, read
+[CLA.md](CLA.md) and post this comment yourself on the issue:
+
+> I have read CLA.md and agree to it for this and my future contributions to OpenTakeoff.
+
+If you have already agreed, link your earlier agreement comment instead. Include
+that link in your pull request. For a small change without an issue, post the
+agreement on the pull request before review. Maintainers verify that the linked
+comment belongs to the contributor before assigning work or merging a first PR.
+A checked box or a comment posted by someone else does not replace the agreement.
+Reporting a bug, suggesting a feature, and discussing an issue do not require it.
+
+### When an agreement is missing
+
+Maintainers ask for the agreement and record that request in an issue or PR
+comment. Count calendar days from that request, not from the issue's creation:
+
+- After 7 days without an agreement, post one friendly reminder with the CLA link
+  and the exact agreement text above.
+- After 14 days without an agreement, close an unsigned PR with: "Closing while
+  the contributor agreement is pending. Happy to reopen once the CLA is signed."
+  Keep the underlying bug or feature issue open if it is still needed. Release
+  any assignment held for the unsigned contribution so someone else can work on it.
+- An agreement posted later allows the PR to reopen, subject to the usual review
+  and checks. Silence never counts as agreement, and elapsed time never permits
+  merging an unsigned contribution.
+
+For existing unsigned contributions, use the dated agreement request already on
+the thread. If it is already more than 7 days old and no reminder was sent, send
+one and allow at least 7 more days before closure. This is a manual maintainer
+workflow; no bot currently posts reminders, closes PRs, or verifies signatures.
 
 ## Dev setup
 
@@ -111,5 +146,5 @@ engines—OpenTakeoff is a takeoff tool, not an ERP.
 - Never commit real plan PDFs or any private/customer data.
 
 OpenTakeoff is licensed under AGPL-3.0-only. Before your first pull request is merged, read
-[CLA.md](CLA.md) and post the agreement comment it gives on the pull request. Contributions made
+[CLA.md](CLA.md) and post the agreement comment on the issue or pull request as described above. Contributions made
 before the relicensing stay under Apache-2.0 (see [NOTICE](NOTICE)).

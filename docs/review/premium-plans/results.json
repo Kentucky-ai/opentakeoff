@@ -1,0 +1,88 @@
+{
+  "base": "http://localhost:5191/",
+  "checks": [
+    {
+      "name": "every Premium button reads \"Premium plans\"",
+      "ok": true,
+      "detail": [
+        "Premium plans",
+        "Premium plans"
+      ]
+    },
+    {
+      "name": "no \"Request Premium\" text anywhere",
+      "ok": true
+    },
+    {
+      "name": "dialog shows Individual Pro",
+      "ok": true
+    },
+    {
+      "name": "dialog shows $149",
+      "ok": true
+    },
+    {
+      "name": "dialog shows Team Pro",
+      "ok": true
+    },
+    {
+      "name": "dialog shows $399",
+      "ok": true
+    },
+    {
+      "name": "dialog shows +$129 a seat, 250 credits each",
+      "ok": true
+    },
+    {
+      "name": "dialog shows 800 AI credits a month, shared",
+      "ok": true
+    },
+    {
+      "name": "dialog shows 300 AI credits a month",
+      "ok": true
+    },
+    {
+      "name": "dialog shows Enterprise",
+      "ok": true
+    },
+    {
+      "name": "dialog shows 50 AI credits",
+      "ok": true
+    },
+    {
+      "name": "Individual Pro trial link",
+      "ok": true
+    },
+    {
+      "name": "Team Pro trial link",
+      "ok": true
+    },
+    {
+      "name": "sign-in link",
+      "ok": true
+    },
+    {
+      "name": "no form or inputs in the dialog",
+      "ok": true
+    },
+    {
+      "name": "Escape closes the dialog",
+      "ok": true
+    },
+    {
+      "name": "closing records a dismissal (30-day snooze)",
+      "ok": true,
+      "detail": "{\"status\":\"dismissed\",\"at\":1792413884260}"
+    },
+    {
+      "name": "phone: no sideways scroll in the dialog",
+      "ok": true,
+      "detail": 0
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

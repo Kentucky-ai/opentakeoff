@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { endPairsStage, lineClosuresStage, makeFinishContext, makeInkContext } from "../src/lib/netroom.js";
+import { endPairsStage, healSegments, lineClosuresStage, makeFinishContext, makeInkContext, makeMaterialContext } from "../src/lib/netroom.js";
+import { pointInRing } from "../src/lib/polyarr.js";
 
 // A 10 px foot keeps every threshold in whole units: 1.2 ft = 12, 7 ft = 70.
 const FT = 10;
@@ -276,6 +277,170 @@ test("makeInkContext: one grid, crossesInk matches the reference on a fixture", 
   for (const [ax, ay, bx, by] of cases)
     assert.equal(ctx.crossesInk(ax, ay, bx, by), crossesInkRef(wallInk, FT, ax, ay, bx, by),
       `crossesInk(${ax},${ay},${bx},${by})`);
+});
+
+// ── healSegments grid ───────────────────────────────────────────────────────
+// Local reference: the original all-pairs heal loop. The grid must reproduce
+// it exactly, including the in-place mutation order earlier iterations see.
+function healNaive(segs: number[], ftPx: number) {
+  const HEAL = 0.75 * ftPx;
+  const m = segs.length >> 2;
+  const hit = (px: number, py: number, dx: number, dy: number, self: number) => {
+    let best = Infinity;
+    for (let j = 0; j < m; j++) {
+      if (j === self) continue;
+      const x1 = segs[j * 4], y1 = segs[j * 4 + 1], x2 = segs[j * 4 + 2], y2 = segs[j * 4 + 3];
+      const ex = x2 - x1, ey = y2 - y1;
+      const den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((x1 - px) * ey - (y1 - py) * ex) / den;
+      const u = ((x1 - px) * dy - (y1 - py) * dx) / den;
+      if (t > 1e-6 && t <= HEAL && u >= -0.001 && u <= 1.001 && t < best) best = t;
+    }
+    return best;
+  };
+  for (let i = 0; i < m; i++) {
+    const x1 = segs[i * 4], y1 = segs[i * 4 + 1], x2 = segs[i * 4 + 2], y2 = segs[i * 4 + 3];
+    const d = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const ux = (x2 - x1) / d, uy = (y2 - y1) / d;
+    const t2 = hit(x2, y2, ux, uy, i);
+    if (t2 < Infinity) { segs[i * 4 + 2] = x2 + ux * (t2 + 0.3); segs[i * 4 + 3] = y2 + uy * (t2 + 0.3); }
+    const t1 = hit(x1, y1, -ux, -uy, i);
+    if (t1 < Infinity) { segs[i * 4] = x1 - ux * (t1 + 0.3); segs[i * 4 + 1] = y1 - uy * (t1 + 0.3); }
+  }
+  return segs;
+}
+
+// Segment 0 is moved by an earlier iteration (its far end hits segment 1, 0.3
+// beyond HEAL+0.3 into the next cell). Segment 2 later hits that moved end at
+// a cell the *uninflated* bbox of segment 0 never inserted.
+const healMovedIntoNewCell = [0, 30, 0, 22.5, -5, 15, 5, 15, 15, 14.7, 5, 14.7];
+
+test("healSegments: a hit on an earlier-moved end lands in a cell the uninflated bbox never inserted", () => {
+  const want = healNaive(Array.from(healMovedIntoNewCell), FT);
+  const got = healSegments(Array.from(healMovedIntoNewCell), FT);
+  assert.deepEqual(got, want);
+  // segment 2's near end was extended across the gap to segment 0's moved end
+  assert.ok(Math.abs(got[10] - -0.3) < 1e-9);
+  assert.deepEqual(want.slice(8, 10), [15, 14.7]);
+});
+
+// Cells below a foot: HEAL = 0.09375 px, so the absolute 0.3 extension is
+// more than three cells. The hit cell (y = 0.1375, cell 1) is outside the
+// +0.3-omitted inflated bbox (lowest cell 4). Segment 0's far end hits the
+// barrier at y = 0.4375 first (t = 0.0625).
+const healNo03Term = [0, 1.0, 0, 0.5, -0.2, 0.4375, 0.2, 0.4375, 0.05, 0.1375, 0.2, 0.1375];
+
+test("healSegments: the +0.3 extension term covers the moved end across a cell boundary", () => {
+  const want = healNaive(Array.from(healNo03Term), 0.125);
+  const got = healSegments(Array.from(healNo03Term), 0.125);
+  assert.deepEqual(got, want);
+  assert.ok(Math.abs(got[8] - -0.3) < 1e-9);
+});
+
+// 0.001*L: a 40,000 px segment accepts a ray 32 px past its end (u = 1.0008,
+// within the 1.001 slack). Only the 0.001*L inflation reaches that cell; the
+// term-omitted bbox starts one cell below and the padded query never visits it.
+const healNoLTerm = [0, 40000, 0, 0, 15, -32, 5, -32];
+
+test("healSegments: the 0.001*L term covers the endpoint u-slack across a cell boundary", () => {
+  const want = healNaive(Array.from(healNoLTerm), FT);
+  const got = healSegments(Array.from(healNoLTerm), FT);
+  assert.deepEqual(got, want);
+  assert.ok(Math.abs(got[6] - -0.3) < 1e-9);
+});
+
+// ── endPairs grid ───────────────────────────────────────────────────────────
+test("endPairsStage: exactly GAP_MAX is accepted, just past it is not", () => {
+  // -1 and 69 are 70 px (7 ft) apart and straddle the 75 px cell boundary.
+  const at = endPairsStage([mkEnd(-1, 0, [1, 0]), mkEnd(69, 0, [-1, 0])], [], [], FT);
+  assert.deepEqual(at.doorQuads, [[[-1, 3], [69, 3], [69, -3], [-1, -3]]]);
+  const past = endPairsStage([mkEnd(-1, 0, [1, 0]), mkEnd(69.0001, 0, [-1, 0])], [], [], FT);
+  assert.deepEqual(past.doorQuads, []);
+});
+
+test("endPairsStage: equal distances keep (i, j) insertion order, not a global j sort", () => {
+  const ends = [
+    mkEnd(0, 0, [1, 0]),        // 0
+    mkEnd(0, 200, [1, 0]),      // 1
+    mkEnd(40, 200, [-1, 0]),    // 2
+    mkEnd(10000, 10000, [1, 0]),// 3, isolated filler
+    mkEnd(10000, 10000, [1, 0]),// 4, isolated filler
+    mkEnd(40, 0, [-1, 0]),      // 5
+  ];
+  const out = endPairsStage(ends, [], [], FT);
+  assert.deepEqual(out.doorQuads, [
+    // (0, 5) is inserted first at i=0 even though j=5 > the second pair's j=2
+    [[0, 3], [40, 3], [40, -3], [0, -3]],
+    [[0, 203], [40, 203], [40, 197], [0, 197]],
+  ]);
+});
+
+test("endPairsStage: a non-finite end falls back to the all-pairs loop", () => {
+  // A NaN coordinate is only visited by the all-pairs loop: the grid cannot
+  // place it in a cell. The shipped path therefore emits a NaN door quad;
+  // removing the fallback would emit nothing.
+  const nanEnd: End = { x: NaN, y: 0, dir: [-1, 0], hw: 3, corners: [[NaN, 3], [NaN, -3]] };
+  const out = endPairsStage([mkEnd(0, 0, [1, 0]), nanEnd], [], [], FT);
+  assert.deepEqual(out.doorQuads, [[[0, 3], [NaN, -3], [NaN, 3], [0, -3]]]);
+});
+
+// ── makeMaterialContext ─────────────────────────────────────────────────────
+test("makeMaterialContext: the bbox grid matches the full point scan", () => {
+  const material: [number, number][][] = [
+    [[0, 0], [10, 0], [10, 10], [0, 10]],           // square, straddles cells
+    [[-20, -5], [-8, 3], [-11, 9]],                 // triangle
+    [[100, 100], [140, 100], [140, 140], [100, 140]], // far ring
+  ];
+  const ctx = makeMaterialContext(material, FT);
+  const ref = (x: number, y: number) => material.some((r) => pointInRing(r, x, y));
+  for (let x = -30; x <= 150; x++)
+    for (let y = -15; y <= 150; y++)
+      assert.equal(ctx.inMaterial(x, y), ref(x, y), `point ${x},${y}`);
+});
+
+test("makeMaterialContext: a non-positive ftPx falls back to the full scan", () => {
+  const material: [number, number][][] = [[[0, 0], [10, 0], [10, 10], [0, 10]]];
+  const ctx = makeMaterialContext(material, 0);
+  const ref = (x: number, y: number) => material.some((r) => pointInRing(r, x, y));
+  for (const [x, y] of [[5, 5], [-1, 5], [10, 10], [11, 5]]) assert.equal(ctx.inMaterial(x, y), ref(x, y));
+});
+
+test("endPairsStage: same-i candidates across cells keep ascending j (tie)", () => {
+  // e1 (y=3) is in cell 0; e2 (y=-3) is in cell -1. The 3x3 scan visits
+  // dgy=-1 first, so the unsorted candidate stream is [2, 1]; the tie between
+  // the two equal distances must resolve to the lower j.
+  const ends = [mkEnd(0, 0, [1, 0]), mkEnd(40, 3, [-1, 0]), mkEnd(40, -3, [-1, 0])];
+  const out = endPairsStage(ends, [], [], FT);
+  assert.deepEqual(out.doorQuads, [[[0, 3], [40, 0], [40, 6], [0, -3]]]);
+  assert.equal(out.synth.length, 16);
+});
+
+test("makeMaterialContext: a NaN-vertex ring is always a candidate and matches the scan", () => {
+  const material: [number, number][][] = [
+    [[0, 0], [NaN, 5], [10, 0], [10, 10], [0, 10]],
+    [[30, 0], [40, 0], [40, 10], [30, 10]],
+  ];
+  const ctx = makeMaterialContext(material, FT);
+  const ref = (x: number, y: number) => material.some((r) => pointInRing(r, x, y));
+  for (let x = -5; x <= 45; x++)
+    for (let y = -5; y <= 15; y++)
+      assert.equal(ctx.inMaterial(x, y), ref(x, y), `point ${x},${y}`);
+});
+
+test("makeMaterialContext: a context rebuilt after in-place truncation follows the live array", () => {
+  const material: [number, number][][] = [
+    [[0, 0], [10, 0], [10, 10], [0, 10]],
+    [[30, 0], [40, 0], [40, 10], [30, 10]],
+  ];
+  // build()'s materialValidation truncates the same array in place; the
+  // predicate used afterwards is the one rebuilt from it.
+  material.length = 0; material.push([[30, 0], [40, 0], [40, 10], [30, 10]]);
+  const live = makeMaterialContext(material, FT).inMaterial;
+  const ref = (x: number, y: number) => material.some((r) => pointInRing(r, x, y));
+  for (let x = -5; x <= 45; x++)
+    for (let y = -5; y <= 15; y++)
+      assert.equal(live(x, y), ref(x, y), `point ${x},${y}`);
 });
 
 test("endPairsStage: greedy picks the shortest gap when pairs compete", () => {
