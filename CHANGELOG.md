@@ -15,6 +15,7 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **Estimate pricing engine (no UI yet).** `web/src/lib/estimate.js` prices a takeoff from per-condition `pricing` (`unit` SF/SY/LF/EA, `material` and `labor` $/unit) and per-material-row `price`: material on the waste-adjusted order quantity, labor on the measured quantity, then sales tax on material, overhead, and profit as a markup or a margin. A price that was never entered is reported missing, never counted as $0. Condition templates never carry prices: they stay with the project.
 - **Premium plans replace Request Premium.** The toolbar button, the **⋯** menu item and the prompt after a report now open **Premium plans**: Individual Pro ($149/month, 300 AI credits), Team Pro ($399/month, 3 seats, 800 shared credits, +$129 a seat) and Enterprise, each with a 7-day free trial (50 AI credits). The trial buttons open sign-up at start.kentucky-ai.com in a new tab with the plan chosen. The early-access form and its Netlify form definition are removed; the app sends nothing.
 - **Sheet page counts stay removed during startup.** Removing or revising a PDF while saved page counts are still loading no longer restores its old count. Other files retain their counts.
 
