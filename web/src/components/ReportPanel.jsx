@@ -24,7 +24,7 @@ import { buildContribution, sendContribution, isContributeConfigured } from "../
 import { activeTheme, saveActiveThemeFile, clearActiveTheme } from "../lib/reportTheme.js";
 import { activeProfile, loadProfiles } from "../lib/identity.js";
 import { useCompanyProfiles, CompanyIdentityFields } from "./CompanyIdentity.jsx";
-import { resolveBranding, loadBrandingSelection, saveBrandingSelection } from "../lib/branding.js";
+import { resolveBranding, loadBrandingSelection, saveBrandingSelection, OT_WATERMARK } from "../lib/branding.js";
 import { projectIdFromUrl } from "../lib/store.js";
 import { describeConditionEdit, proposedConditionEditRows } from "../lib/proposals.js";
 import { qtyLabels, resolveNote } from "../lib/noteFields.ts";
@@ -652,6 +652,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             overlap the last row of intermediate pages */}
         <table className="report-flow"><thead><tr><td>
           {projectName || "Untitled project"} — {DISCLAIMER}
+          {/* the OpenTakeoff line on every printed page, in every branding mode */}
+          <span style={{ float: "right" }}>{OT_WATERMARK}</span>
         </td></tr></thead><tbody><tr><td>
         {/* print-only masthead — hidden on screen via app.css. Title-block header
             (logo/firm row · project title · bordered fact grid), the drafting-

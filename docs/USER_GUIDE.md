@@ -774,6 +774,16 @@ An empty box means *not entered*, never $0. Type 0 for scope you aren't charging
 
 Prices are saved with the project. Condition templates never carry them, so every new job starts unpriced.
 
+### Proposal
+
+**Estimate → Proposal PDF…** builds the bid proposal you send: your letterhead from **Company setup** (name, logo, address, phone, email, license), **Prepared for** (client, address and reference, saved with the project), the scope (each condition, its spec description and measured quantity), the **base bid**, then inclusions, exclusions, terms and a signature block for both sides.
+
+- **Lump sum** prints one base bid. **Itemized** prints a price on each line: the base bid spread over the lines in proportion to their cost, to the cent, so the lines add up to the base bid exactly.
+- The first time you open it, the inclusions, exclusions, terms and validity are copied from Company setup. Edits here change **this job only**. **Reset text to Company setup** copies them again.
+- If the estimate isn't fully priced, the dialog says which lines and still lets you download.
+
+Every page of the proposal, the marked set and the printed report carries **Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com**. The proposal and the marked set also carry a light diagonal *OpenTakeoff* watermark. Branding as your trade name puts your company on the document; it doesn't remove these.
+
 ### The numbers, honestly
 
 - **Measured versus w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.

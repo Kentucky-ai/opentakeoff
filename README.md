@@ -802,7 +802,7 @@ Thanks to **[@knmurphy](https://github.com/knmurphy)** (Kevin Murphy) for [image
 ship it, build on top of it, and share your changes when you run a modified copy for others.
 Through commit `84c7f48e` (tag `apache-2.0-final`) OpenTakeoff was Apache-2.0, and that code
 stays Apache-2.0 for everyone who already has it. See [NOTICE](NOTICE) for attribution and the
-relicensing note; contributions are accepted under the [CLA](CLA.md). For commercial terms
+relicensing note and the section 7(b) attribution term; contributions are accepted under the [CLA](CLA.md). For commercial terms
 outside the AGPL, contact [Kentucky AI](https://kentucky-ai.com).
 
 For an agent measurement workflow focused on accurate geometry, see [Geometry from source to review](docs/GEOMETRY_WORKFLOW.md).

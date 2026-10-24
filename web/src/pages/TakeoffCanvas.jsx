@@ -46,6 +46,7 @@ import ConnectAI from "../components/ConnectAI.jsx";
 import CompanySetup from "../components/CompanySetup.jsx";
 import EstimatePanel from "../components/EstimatePanel.jsx";
 import { sanitizeEstimateSettings } from "../lib/estimate.js";
+import { sanitizeBidProposal } from "../lib/bidProposal.js";
 import { loadEstimatingDefaults } from "../lib/companySetup.js";
 import { advanceTour, countFloorShapes, currentStep } from "../lib/firstTakeoff.js";
 import { fetchSamplePlan } from "../lib/samplePlan.js";
@@ -910,6 +911,7 @@ export default function TakeoffCanvas() {
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
   const [estimateSettings, setEstimateSettings] = useState(null);   // the project's markups (lib/estimate.js); null until its estimate first opens, then copied from Company setup
+  const [bidProposal, setBidProposal] = useState(null);   // the project's proposal text/layout (lib/bidProposal.js); null until its proposal first opens
   const [showEstimate, setShowEstimate] = useState(false);
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
   const importInputRef = useRef(null);                  // hidden <input type=file> for "Import takeoff…" (the agent-JSON handoff)
@@ -1977,6 +1979,7 @@ export default function TakeoffCanvas() {
       a.client_info && typeof a.client_info === "object" && !Array.isArray(a.client_info) ? a.client_info : {}
     ).filter(([, v]) => typeof v === "string")));
     setEstimateSettings(a.estimate_settings && typeof a.estimate_settings === "object" ? sanitizeEstimateSettings(a.estimate_settings) : null);   // unconditional set: a loaded project never inherits the replaced one's markups
+    setBidProposal(a.bid_proposal && typeof a.bid_proposal === "object" ? sanitizeBidProposal(a.bid_proposal) : null);   // same unconditional-set rule
     setConditionColumns(sanitizeConditionColumns(a.condition_columns));   // non-array/malformed → [] (unconditional set: snapshot load must not inherit pre-load columns)
     setShapeLabels(sanitizeShapeLabels(a.shape_labels));   // same unconditional-set rule: a snapshot load must not inherit the replaced project's label vocabulary
     setActiveLabel(null);   // active label is session-only — never carry one from the replaced project into a fresh/loaded one
@@ -2866,7 +2869,7 @@ export default function TakeoffCanvas() {
   const buildPayload = () => buildTakeoffDocument({
     // the envelope — key order, omit-when-empty, the units/palette rules — is
     // decided in lib/takeoffDocument.js, the same writer the MCP server uses
-    project_name: projectName, units, client_info: clientInfo, estimate_settings: estimateSettings,
+    project_name: projectName, units, client_info: clientInfo, estimate_settings: estimateSettings, bid_proposal: bidProposal,
     sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
     conditions, condition_columns: conditionColumns, shape_labels: shapeLabels, palette,
     shapes, markups, rfis, approvals, proposals, condition_edit_proposals: conditionEditProposals, rules,
@@ -3104,7 +3107,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, bidProposal, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -11179,6 +11182,8 @@ export default function TakeoffCanvas() {
           conditions={conditions} shapes={shapes} rollByCond={rollByCond}
           settings={estimateSettings} onSettings={(next) => setEstimateSettings(sanitizeEstimateSettings(next))}
           onUpdateCondition={updateCondById}
+          onClientInfo={setClientInfo}
+          bidProposal={bidProposal} onBidProposal={(next) => setBidProposal(sanitizeBidProposal(next))}
           onOpenCompanySetup={() => setCompanySetupOpen(true)} companyRev={companyRev}
           onClose={() => setShowEstimate(false)}
         />

@@ -16,6 +16,8 @@ import { buildXlsx } from "../lib/xlsx.js";
 import { loadEstimatingDefaults } from "../lib/companySetup.js";
 import { loadProfiles, activeProfile } from "../lib/identity.js";
 import { OT_WATERMARK } from "../lib/branding.js";
+import { bidProposalFromDefaults } from "../lib/bidProposal.js";
+import BidProposalDialog from "./BidProposalDialog.jsx";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const money = (v) => `$${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -40,10 +42,17 @@ function PriceInput({ value, onCommit, label, name }) {
   );
 }
 
-export default function EstimatePanel({ projectName, clientInfo = {}, conditions, shapes, rollByCond = null, settings, onSettings, onUpdateCondition, onClose, onOpenCompanySetup, companyRev = 0 }) {
+export default function EstimatePanel({ projectName, clientInfo = {}, conditions, shapes, rollByCond = null, settings, onSettings, onUpdateCondition, onClose, onOpenCompanySetup, companyRev = 0, onClientInfo = null, bidProposal = null, onBidProposal = null }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(() => new Set());   // conditions whose material rows are expanded
   const [msg, setMsg] = useState("");
+  const [proposalOpen, setProposalOpen] = useState(false);
+  // the project's proposal text is copied from Company setup the first time the
+  // dialog opens, then belongs to the project (the estimate_settings rule)
+  const openProposal = () => {
+    if (!bidProposal && onBidProposal) onBidProposal(bidProposalFromDefaults(loadEstimatingDefaults()));
+    setProposalOpen(true);
+  };
 
   useEffect(() => {
     const onKey = (e) => {
@@ -127,7 +136,8 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
         </select>
         <button className="btn-ghost" onClick={resetToCompany} title="Replace this project's markups with your Company setup defaults">Company defaults</button>
         {onOpenCompanySetup && <button className="btn-ghost" onClick={onOpenCompanySetup} title="Your company, default markups and proposal terms">Company setup…</button>}
-        <button className="btn-primary" onClick={exportExcel} disabled={!est.lines.length} title="Download the priced estimate as an Excel workbook">Excel</button>
+        <button className="btn-ghost" onClick={exportExcel} disabled={!est.lines.length} title="Download the priced estimate as an Excel workbook">Excel</button>
+        {onBidProposal && <button className="btn-primary" onClick={openProposal} disabled={!est.lines.length} title="Your bid proposal as a PDF — letterhead, scope, base bid, terms, signature">Proposal PDF…</button>}
         <button type="button" onClick={onClose} title="Close (Esc)" aria-label="Close estimate"
           style={{ background: "none", border: "none", color: "var(--ink-soft)", fontSize: 20, cursor: "pointer", lineHeight: 1, padding: 4 }}>×</button>
       </div>
@@ -234,6 +244,12 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
           Material is priced on the order quantity (waste applied), labor on the measured quantity. Prices stay with this project. {OT_WATERMARK}
         </p>
       </div>
+      {proposalOpen && onBidProposal && (
+        <BidProposalDialog est={est} conditions={conditions} projectName={projectName}
+          clientInfo={clientInfo} onClientInfo={onClientInfo}
+          proposal={bidProposal} onProposal={onBidProposal}
+          onOpenCompanySetup={onOpenCompanySetup} onClose={() => setProposalOpen(false)} />
+      )}
     </div>
   );
 }
