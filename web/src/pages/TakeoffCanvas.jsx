@@ -44,6 +44,9 @@ import PlanNavigator from "../components/PlanNavigator.jsx";
 import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
 import ConnectAI from "../components/ConnectAI.jsx";
 import CompanySetup from "../components/CompanySetup.jsx";
+import EstimatePanel from "../components/EstimatePanel.jsx";
+import { sanitizeEstimateSettings } from "../lib/estimate.js";
+import { loadEstimatingDefaults } from "../lib/companySetup.js";
 import { advanceTour, countFloorShapes, currentStep } from "../lib/firstTakeoff.js";
 import { fetchSamplePlan } from "../lib/samplePlan.js";
 import ReportPanel from "../components/ReportPanel.jsx";
@@ -906,6 +909,8 @@ export default function TakeoffCanvas() {
   useEffect(() => { sweepRef.current = sweep; }, [sweep]);
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
+  const [estimateSettings, setEstimateSettings] = useState(null);   // the project's markups (lib/estimate.js); null until its estimate first opens, then copied from Company setup
+  const [showEstimate, setShowEstimate] = useState(false);
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
   const importInputRef = useRef(null);                  // hidden <input type=file> for "Import takeoff…" (the agent-JSON handoff)
   const profileInputRef = useRef(null);                 // hidden <input type=file> for "Import profile…" (#299)
@@ -1971,6 +1976,7 @@ export default function TakeoffCanvas() {
     setClientInfo(Object.fromEntries(Object.entries(
       a.client_info && typeof a.client_info === "object" && !Array.isArray(a.client_info) ? a.client_info : {}
     ).filter(([, v]) => typeof v === "string")));
+    setEstimateSettings(a.estimate_settings && typeof a.estimate_settings === "object" ? sanitizeEstimateSettings(a.estimate_settings) : null);   // unconditional set: a loaded project never inherits the replaced one's markups
     setConditionColumns(sanitizeConditionColumns(a.condition_columns));   // non-array/malformed → [] (unconditional set: snapshot load must not inherit pre-load columns)
     setShapeLabels(sanitizeShapeLabels(a.shape_labels));   // same unconditional-set rule: a snapshot load must not inherit the replaced project's label vocabulary
     setActiveLabel(null);   // active label is session-only — never carry one from the replaced project into a fresh/loaded one
@@ -2860,7 +2866,7 @@ export default function TakeoffCanvas() {
   const buildPayload = () => buildTakeoffDocument({
     // the envelope — key order, omit-when-empty, the units/palette rules — is
     // decided in lib/takeoffDocument.js, the same writer the MCP server uses
-    project_name: projectName, units, client_info: clientInfo,
+    project_name: projectName, units, client_info: clientInfo, estimate_settings: estimateSettings,
     sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
     conditions, condition_columns: conditionColumns, shape_labels: shapeLabels, palette,
     shapes, markups, rfis, approvals, proposals, condition_edit_proposals: conditionEditProposals, rules,
@@ -3098,7 +3104,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -7817,6 +7823,13 @@ export default function TakeoffCanvas() {
   // handler, before re-render — the active-based form would hit the old active.
   const updateCondById = (id, patch) => setConditions((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch, updated_at: nowIso() } : c)));
   const updateCond = (patch) => updateCondById(activeCond, patch);
+  // The project's markups are copied from Company setup the first time its
+  // estimate opens, then belong to the project: changing the defaults later
+  // never re-prices a bid already worked up.
+  const openEstimate = () => {
+    if (!estimateSettings) setEstimateSettings(sanitizeEstimateSettings(loadEstimatingDefaults()));
+    setShowEstimate(true);
+  };
 
   // delete a condition entirely (and its takeoffs); pick a new active one
   function deleteCondition(id) {
@@ -8770,6 +8783,7 @@ export default function TakeoffCanvas() {
     { id: "copy", label: "Copy selected", group: "Edit", shortcut: "⌘C", disabled: !selectedId, run: copySelected },
     { id: "paste", label: "Paste", group: "Edit", shortcut: "⌘V", disabled: !clipRef.current.length, run: () => pasteClipboard() },
     { id: "report", label: "Open report", group: "Workspace", run: () => setShowReport(true) },
+    { id: "estimate", label: "Estimate — price the takeoff", group: "Workspace", run: openEstimate },
     { id: "company-setup", label: "Company setup — logo, markups, proposal terms", group: "Workspace", run: () => setCompanySetupOpen(true) },
     { id: "tour", label: "Guided first takeoff — learn it on the sample plan", group: "Help", run: startTour },
     { id: "guide", label: "How OpenTakeoff works — shortcuts and the five-minute path", group: "Help", shortcut: "?", run: () => setGuideOpen(true) },
@@ -8852,7 +8866,7 @@ export default function TakeoffCanvas() {
         onNavigate={() => setWorkspaceNavigationOpen((v) => !v)} navigationOpen={workspaceNavigationOpen}
         onTakeoffs={toggleTakeoffs} takeoffsOpen={takeoffsOpen} onWork={() => setAgentOpen((v) => !v)} workOpen={agentOpen} workButtonRef={workButtonRef}
         pending={shapes.filter((shape) => shape.origin?.reviewed === false).length} running={agentRunning}
-        onPremium={openPremiumPricing} onReport={() => setShowReport(true)} onFocus={toggleFocusMode} onClassic={() => workspacePrefs.setEnabled(false)}
+        onPremium={openPremiumPricing} onReport={() => setShowReport(true)} onEstimate={openEstimate} onFocus={toggleFocusMode} onClassic={() => workspacePrefs.setEnabled(false)}
         onControls={() => setWorkspaceControlsOpen((v) => !v)} controlsOpen={workspaceControlsOpen} onSearch={() => setWorkspaceSearchOpen(true)}
         pinControl={pinButton}
         panelTools={<div className="calm-panel-tools" role="group" aria-label="Quantity and review tools">
@@ -9065,6 +9079,8 @@ export default function TakeoffCanvas() {
           style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
           Work{agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : ""}
         </button>
+        <button onClick={openEstimate} disabled={!conditions.length} title="Price the takeoff — material and labor per unit, markups, Excel."
+          style={{ padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: conditions.length ? "var(--ink)" : "var(--text-faint)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Estimate</button>
         <button data-tour="report" onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
@@ -11143,7 +11159,7 @@ export default function TakeoffCanvas() {
         <ReportPanel
           projectName={projectName} onProjectName={setProjectName}
           clientInfo={clientInfo} onClientInfo={setClientInfo} units={units}
-          onOpenCompanySetup={() => setCompanySetupOpen(true)} companyRev={companyRev}
+          onOpenCompanySetup={() => setCompanySetupOpen(true)} companyRev={companyRev} onEstimate={openEstimate}
           conditions={conditions} shapes={shapes} markups={markups} rfis={rfis}
           conditionEditProposals={conditionEditProposals}
           conditionColumns={conditionColumns} shapeLabels={shapeLabels}
@@ -11154,6 +11170,17 @@ export default function TakeoffCanvas() {
           sheetDims={(k) => panelByKey(k)?.img}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
           onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {showEstimate && estimateSettings && (
+        <EstimatePanel
+          projectName={projectName} clientInfo={clientInfo}
+          conditions={conditions} shapes={shapes} rollByCond={rollByCond}
+          settings={estimateSettings} onSettings={(next) => setEstimateSettings(sanitizeEstimateSettings(next))}
+          onUpdateCondition={updateCondById}
+          onOpenCompanySetup={() => setCompanySetupOpen(true)} companyRev={companyRev}
+          onClose={() => setShowEstimate(false)}
         />
       )}
 

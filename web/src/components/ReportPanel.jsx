@@ -49,7 +49,7 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null, conditionEditProposals = [], onOpenCompanySetup = null, companyRev = 0 }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null, conditionEditProposals = [], onOpenCompanySetup = null, companyRev = 0, onEstimate = null }) {
   // proposals (#365): a pending condition-edit diff prints BESIDE the current
   // values — the row's numbers are always the current knobs; the chip says
   // what the agent proposed, and the JSON export carries the same rows.
@@ -446,6 +446,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={() => setShowInfo(true)}
           title="Your company identity and the client/job details for the print header and marked-set cover">Project info</button>
+        {onEstimate && <button className="btn-ghost" onClick={onEstimate} title="Price this takeoff — material and labor per unit, markups, Excel">Estimate</button>}
         {/* always rendered, even with zero custom columns — Sheet grouping
             is useful on its own */}
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap" }}
