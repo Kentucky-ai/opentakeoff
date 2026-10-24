@@ -17,7 +17,7 @@ OpenTakeoff is an open-source alternative to subscription takeoff software — a
 ## Key facts
 
 - **Agent-native**: the same engine answers to a person at the canvas or an AI agent over MCP — not two implementations, one. Every shape records its provenance: scale, method, and person or agent.
-- **MCP server**: `opentakeoff-mcp` on npm, official MCP registry listing, <!--tool-count-->53<!--/tool-count--> tools on a default build — an agent loads a plan, reads the title block, adopts the scale (never applied silently), traces rooms on the wall faces, and exports the same payload the app autosaves.
+- **MCP server**: `opentakeoff-mcp` on npm, official MCP registry listing, <!--tool-count-->58<!--/tool-count--> tools on a default build — an agent loads a plan, reads the title block, adopts the scale (never applied silently), traces rooms on the wall faces, and exports the same payload the app autosaves.
 - Measuring: Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct. One-Click Area (flood-fill room detection) is temporarily gated while it is re-validated; `VITE_ONE_CLICK=1` / `OPENTAKEOFF_ONE_CLICK=1` lift the gate
 - Drawing aids: 45°/90° angle lock (polar tracking with ⇧ hard-lock, commits the on-axis point), live angle + segment-length readout at the cursor, endpoint snap
 - Scale: auto-detects the drawn scale note per sheet, or calibrate from a known dimension

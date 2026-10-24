@@ -72,7 +72,7 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // no geometry crosses them — same reasoning.
 // the proposal verbs (#365) other than revise_proposal take a label, a
 // rationale, a condition diff, or a record id — no geometry crosses them.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "edit_annotation", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
+const NO_COORDS = new Set(["undo_last", "set_pricing", "set_estimate_settings", "estimate_summary", "export_estimate", "export_proposal", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "edit_annotation", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
   "propose_takeoff", "withdraw_proposal", "propose_condition_edit", "withdraw_condition_edit",
   // scope_merge (#366) takes two shape ids and a winner — no geometry crosses it
   "scope_merge"]);

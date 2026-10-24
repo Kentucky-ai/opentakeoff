@@ -67,6 +67,8 @@ import { sanitizeApprovals as sanitizeApprovalsJs, applyApprovalCommand as apply
 // its tombstone rule, one implementation for both surfaces
 import { nextRfiNumber, liveRfis } from "../../web/src/lib/rfi.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
+import { priceEstimate, sanitizePricing, sanitizeEstimateSettings, priceValue } from "../../web/src/lib/estimate.js";
+import { sanitizeBidProposal } from "../../web/src/lib/bidProposal.js";
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLfByShape } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
 
@@ -128,6 +130,9 @@ export interface MaterialRow {
   unit: string;
   round: boolean;
   note?: string;
+  /** $ per this row's own unit (bag, pail, roll) — lib/estimate.js. Absent =
+   * not entered, never $0. Set by set_pricing; never carried by templates. */
+  price?: number;
 }
 
 /** A takeoff proposal (#365): a named batch of pending agent shapes with one
@@ -199,8 +204,16 @@ export interface Condition {
    * condition roll goods — material class + the packing engine's spec fields,
    * exactly the object the canvas persists (web/src/lib/rollTakeoff.js). */
   roll_setup?: Record<string, unknown>;
+  /** The estimate's prices for this condition (lib/estimate.js): a unit and
+   * material / labor $ per unit. Absent fields are not entered, never $0. */
+  pricing?: ConditionPricing;
   materials: MaterialRow[];
 }
+
+export interface ConditionPricing { unit?: "SF" | "SY" | "LF" | "EA"; material?: number; labor?: number }
+/** The project-level estimate records (canvas: estimate_settings, bid_proposal,
+ * client_info) — one snapshot type for set_estimate_settings' undo. */
+export interface EstimateRecords { estimate_settings: Record<string, unknown> | null; bid_proposal: Record<string, unknown> | null; client_info: Record<string, string> }
 
 /** Shape provenance (contribution.v2 vocabulary — mirrors the canvas +
  * web/src/lib/provenance.js). Truthfulness rules: `actor` is omitted for a
@@ -671,7 +684,12 @@ export type JournalPayload =
   | { op: "proposal_withdraw"; tool: string; proposal_id: string; removed: { shape: Shape; index: number }[]; was_current: boolean }
   | { op: "condition_proposal"; tool: string; proposal: ConditionEditProposal; replaced?: ConditionEditProposal }
   | { op: "condition_proposal_withdraw"; tool: string; proposal: ConditionEditProposal; index: number }
-  | { op: "condition_proposal_accept"; tool: string; proposal: ConditionEditProposal; index: number; before: Condition };
+  | { op: "condition_proposal_accept"; tool: string; proposal: ConditionEditProposal; index: number; before: Condition }
+  // estimate (lib/estimate.js): a price write snapshots the condition's pricing
+  // and every material row's price; a settings write snapshots the three
+  // project records. Each undoes verbatim.
+  | { op: "pricing"; tool: string; condition_id: string; before: { pricing?: ConditionPricing; prices: { id: string; price?: number }[] } }
+  | { op: "estimate_settings"; tool: string; before: EstimateRecords };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -726,6 +744,13 @@ export class Session {
    * stays behind the canvas's human Preview→Apply gate). apply_rules re-runs
    * them; applied_to mirrors the canvas's audit-trail semantics. */
   rules: Rule[] = [];
+  /** The project's estimate records, the canvas's own fields: markups
+   * (estimate_settings), proposal layout and text (bid_proposal) and who it is
+   * for (client_info). null / {} until set_estimate_settings writes them or an
+   * import carries them; export_takeoff writes them back out. */
+  estimateSettings: Record<string, unknown> | null = null;
+  bidProposal: Record<string, unknown> | null = null;
+  clientInfo: Record<string, string> = {};
 
   /** Newest-last. Capped at UNDO_CAP; the oldest entry falls off the front. */
   private journal: JournalEntry[] = [];
@@ -775,6 +800,9 @@ export class Session {
       this.nextOrd = 1;
       this.scheduleWithheld = [];
       this.rules = [];
+      this.estimateSettings = null;
+      this.bidProposal = null;
+      this.clientInfo = {};
       // the journal's entries reference shapes that no longer exist — undoing
       // across a document swap would be a lie, so the history goes with them
       this.journal = [];
@@ -4361,6 +4389,25 @@ export class Session {
           this.reflowLinears(c);
         }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "pricing") {
+        const c = this.conditions.find((x) => x.id === e.condition_id);
+        if (c) {
+          if (e.before.pricing === undefined) delete c.pricing;
+          else c.pricing = e.before.pricing;
+          const prev = new Map(e.before.prices.map((p) => [p.id, p.price]));
+          for (const m of c.materials) {
+            if (!prev.has(m.id)) continue;
+            const v = prev.get(m.id);
+            if (v === undefined) delete m.price;
+            else m.price = v;
+          }
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "estimate_settings") {
+        this.estimateSettings = e.before.estimate_settings;
+        this.bidProposal = e.before.bid_proposal;
+        this.clientInfo = e.before.client_info;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "duplicate_condition") {
         // a twin is removed whole — and the family_id the mint may have stamped on the PARENT
         // comes off too when the parent had no family before, so undo leaves no orphan grouping
@@ -4961,6 +5008,9 @@ export class Session {
     return buildTakeoffDocument({
       project_name: "",
       units: "imperial",
+      client_info: this.clientInfo,
+      estimate_settings: this.estimateSettings,
+      bid_proposal: this.bidProposal,
       sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => sheetEntry({ sheet_id: s.key, units_per_px: s.upp as number, scale_source: s.scaleSource, scale_confirmed: s.scaleConfirmed })),
       conditions: this.conditions,
       shapes: this.shapes,
@@ -5001,6 +5051,116 @@ export class Session {
       // any exist, so the document is byte-identical otherwise
       proposedConditionEdits: this.proposedConditionEdits(),
     });
+  }
+
+  // ── estimate (lib/estimate.js) ────────────────────────────────────────────
+  // The prices are the estimator's. set_pricing and set_estimate_settings write
+  // exactly what they are handed; nothing here proposes, fills or defaults a
+  // price, and whatever was never entered stays "not entered" — the engine
+  // reports it, never counts it as a hidden $0.
+
+  /** The same priced estimate the canvas Estimate panel shows: conditionTotals
+   * rows (roll-goods seams included, the exportReport rule) through
+   * priceEstimate with the project's markups. */
+  pricedEstimate(): ReturnType<typeof priceEstimate> {
+    const { dimsFor, uppFor } = this.rollInputs();
+    const { byCond } = computeRollTakeoff(this.conditions, this.shapes, dimsFor, uppFor) as { byCond: Map<string, unknown> };
+    const rows = conditionTotals(this.conditions, this.shapes, { seamByShape: seamLfByShape(byCond) });
+    return priceEstimate({ rows, conditions: this.conditions, settings: this.estimateSettings });
+  }
+
+  setPricing(tag: string, opts: { unit?: ConditionPricing["unit"]; material?: number | null; labor?: number | null; materials?: { name: string; price: number | null }[] }) {
+    if (opts.unit === undefined && opts.material === undefined && opts.labor === undefined && !opts.materials?.length) {
+      throw new UserError("Nothing to change — pass unit, material, labor, or materials: [{name, price}].");
+    }
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement first."}`);
+    }
+    const key = (n: string) => n.trim().toLowerCase();
+    const rows = new Map(c.materials.filter((m) => m && m.name).map((m) => [key(m.name), m]));
+    for (const r of opts.materials ?? []) {
+      if (!rows.has(key(r.name))) {
+        throw new UserError(`${tag} has no material row ${JSON.stringify(r.name)}.${rows.size ? ` Its rows: ${[...rows.values()].map((m) => m.name).join(", ")}.` : " It has no material rows — add them with edit_materials first."}`);
+      }
+    }
+    const before = { pricing: c.pricing ? { ...c.pricing } : undefined, prices: c.materials.map((m) => ({ id: m.id, price: m.price })) };
+    const next: Record<string, unknown> = { ...(sanitizePricing(c.pricing) ?? {}) };
+    if (opts.unit !== undefined) next.unit = opts.unit;
+    for (const k of ["material", "labor"] as const) {
+      if (opts[k] === null) delete next[k];
+      else if (opts[k] !== undefined) next[k] = opts[k];
+    }
+    const clean = sanitizePricing(next) as ConditionPricing | undefined;
+    if (clean) c.pricing = clean;
+    else delete c.pricing;
+    for (const r of opts.materials ?? []) {
+      const m = rows.get(key(r.name)) as MaterialRow;
+      const v = priceValue(r.price);
+      if (v === null) delete m.price;
+      else m.price = v;
+    }
+    this.record({ op: "pricing", tool: "set_pricing", condition_id: c.id, before });
+    const line = this.pricedEstimate().lines.find((l) => l.id === c.id) ?? null;
+    return {
+      condition: tag, condition_id: c.id, pricing: c.pricing ?? {},
+      material_prices: c.materials.filter((m) => m && m.name).map((m) => ({ name: m.name, unit: m.unit, price: m.price ?? null })),
+      line,
+      ...(line ? {} : { note: `${tag} has no committed shapes yet. The prices are saved; the line prices once it is measured.` }),
+    };
+  }
+
+  setEstimateSettings(opts: {
+    tax_pct?: number; overhead_pct?: number; profit_pct?: number; profit_mode?: "markup" | "margin";
+    proposal?: { itemized?: boolean; scope_note?: string; inclusions?: string; exclusions?: string; terms?: string; valid_days?: number };
+    client?: { name?: string; address?: string; reference?: string };
+  }) {
+    const markups = (["tax_pct", "overhead_pct", "profit_pct", "profit_mode"] as const).filter((k) => opts[k] !== undefined);
+    if (!markups.length && !opts.proposal && !opts.client) {
+      throw new UserError("Nothing to change — pass tax_pct, overhead_pct, profit_pct, profit_mode, proposal, or client.");
+    }
+    const before: EstimateRecords = {
+      estimate_settings: this.estimateSettings ? { ...this.estimateSettings } : null,
+      bid_proposal: this.bidProposal ? { ...this.bidProposal } : null,
+      client_info: { ...this.clientInfo },
+    };
+    if (markups.length) {
+      const patch = Object.fromEntries(markups.map((k) => [k, opts[k]]));
+      this.estimateSettings = sanitizeEstimateSettings({ ...(this.estimateSettings ?? {}), ...patch }) as Record<string, unknown>;
+    }
+    if (opts.proposal) this.bidProposal = sanitizeBidProposal({ ...(this.bidProposal ?? {}), ...opts.proposal }) as Record<string, unknown>;
+    if (opts.client) {
+      const next = { ...this.clientInfo };
+      for (const [k, field] of [["name", "client_name"], ["address", "client_address"], ["reference", "reference"]] as const) {
+        const v = opts.client[k];
+        if (v === undefined) continue;
+        if (v.trim()) next[field] = v;
+        else delete next[field];
+      }
+      this.clientInfo = next;
+    }
+    this.record({ op: "estimate_settings", tool: "set_estimate_settings", before });
+    return { estimate_settings: this.estimateSettings, bid_proposal: this.bidProposal, client_info: this.clientInfo };
+  }
+
+  estimateSummary() {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    const est = this.pricedEstimate();
+    const missing = est.unpriced.length;
+    return {
+      settings: est.settings,
+      settings_source: this.estimateSettings ? "project" : "unset — 0% markups until set_estimate_settings",
+      lines: est.lines,
+      material: est.material, labor: est.labor, tax: est.tax, cost: est.cost,
+      overhead: est.overhead, profit: est.profit, total: est.total,
+      complete: est.complete, unpriced: est.unpriced, warnings: est.warnings,
+      note: !est.lines.length
+        ? "Nothing measured yet — commit shapes under conditions first."
+        : est.complete
+          ? "Every measured line is priced."
+          : `${missing} line${missing === 1 ? " is" : "s are"} not fully priced; total counts what is missing at $0 ("priced so far"). Get those prices from the estimator — never fill one in yourself.`,
+    };
   }
 
   // ── the sheet graph (#87) ─────────────────────────────────────────────────

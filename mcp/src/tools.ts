@@ -24,8 +24,10 @@ import {
   proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
   proposeConditionEditOutput, withdrawConditionEditOutput,
   scopeDuplicatesOutput, scopeMergeOutput,
+  setPricingOutput, setEstimateSettingsOutput, estimateSummaryOutput, exportEstimateOutput, exportProposalOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
+import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
 import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
 import { importTakeoff } from "./importing.ts";
 
@@ -369,6 +371,74 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     return doc;
   }));
 
+  // ── estimate (lib/estimate.js) — the prices are the estimator's ──────────
+  const NO_INVENTED_PRICES = "Every price comes from the estimator or a document they gave you — never invent, estimate or 'typical' one; a price nobody entered stays unentered and estimate_summary names it.";
+  server.registerTool("set_pricing", {
+    description: `Price one condition for the estimate — the canvas Estimate panel's row. unit is what the condition is bought in (SF, SY, LF, EA); material and labor are $ per that unit: material is priced on the ORDER quantity (waste applied — SY is the waste-adjusted SY), labor on the MEASURED quantity (no waste); EA carries no waste on either. materials prices the condition's supporting-material rows (from edit_materials) per THEIR unit (bag, pail, roll) — quantities are already whole packages. null clears a price back to "not entered"; 0 is an explicit $0 (owner-furnished material, labor-only scope). ${NO_INVENTED_PRICES} The reply carries the condition's estimate line. Rides export_takeoff into the app; undo_last reverses the call.`,
+    inputSchema: {
+      condition: z.string().describe("Finish tag of an existing condition, e.g. 'CPT-1'"),
+      unit: z.enum(["SF", "SY", "LF", "EA"]).optional().describe("Pricing unit (default: what was measured — area, then length, then count)"),
+      material: z.number().min(0).nullable().optional().describe("Material $ per unit, on the order quantity; null clears"),
+      labor: z.number().min(0).nullable().optional().describe("Labor $ per unit, on the measured quantity; null clears"),
+      materials: z.array(z.object({
+        name: z.string().describe("A supporting-material row's name on this condition (case-insensitive)"),
+        price: z.number().min(0).nullable().describe("$ per the row's own unit; null clears"),
+      })).optional().describe("Prices for the condition's supporting-material rows"),
+    },
+    outputSchema: setPricingOutput,
+  }, run("set_pricing", (a) => session.setPricing(a.condition, { unit: a.unit, material: a.material, labor: a.labor, materials: a.materials })));
+
+  server.registerTool("set_estimate_settings", {
+    description: `The project's markups, proposal text and client — the canvas's estimate_settings, bid_proposal and client_info. Markups: tax_pct (sales tax on material), overhead_pct (on material + labor + tax), profit_pct with profit_mode markup (× (1 + p)) or margin (÷ (1 − p); 33.33% margin is ×1.5). proposal: itemized (a sell price on each scope line, the base bid allocated to the cent) or lump sum, scope_note, inclusions / exclusions (one per line), terms, valid_days. client: who the proposal is for. Only what you pass changes; an empty client string clears that field. Until markups are set the estimate prices at 0% — say so rather than assume a number. ${NO_INVENTED_PRICES} Rides export_takeoff; undo_last reverses the call.`,
+    inputSchema: {
+      tax_pct: z.number().min(0).optional(),
+      overhead_pct: z.number().min(0).optional(),
+      profit_pct: z.number().min(0).optional(),
+      profit_mode: z.enum(["markup", "margin"]).optional(),
+      proposal: z.object({
+        itemized: z.boolean().optional(),
+        scope_note: z.string().optional(),
+        inclusions: z.string().optional().describe("One per line"),
+        exclusions: z.string().optional().describe("One per line"),
+        terms: z.string().optional(),
+        valid_days: z.number().int().min(1).max(365).optional(),
+      }).optional(),
+      client: z.object({ name: z.string().optional(), address: z.string().optional(), reference: z.string().optional() }).optional(),
+    },
+    outputSchema: setEstimateSettingsOutput,
+  }, run("set_estimate_settings", (a) => session.setEstimateSettings(a)));
+
+  server.registerTool("estimate_summary", {
+    description: `The priced estimate — the canvas Estimate panel as data: one line per measured condition (unit, order and measured quantities, rates, material / labor / supply cost, status priced | partial | unpriced with what is missing), then material, labor, sales tax, cost, overhead, profit and the base bid. complete is false while anything is unentered: the total then counts the missing pieces at $0 and is "priced so far", and unpriced lists every hole — report it to the estimator, never fill it. Read-only.`,
+    inputSchema: {},
+    outputSchema: estimateSummaryOutput,
+  }, run("estimate_summary", () => session.estimateSummary()));
+
+  server.registerTool("export_estimate", {
+    description: `Write the priced estimate as an Excel workbook — the canvas Estimate panel's Excel button: an Estimate tab (every line, then material, labor, tax, overhead, profit, base bid), a Materials tab (each supply's packages, price, cost) and, when anything is unentered, an Unpriced tab. Values only; an unentered rate is an empty cell, never 0. Every tab ends with "Prepared with OpenTakeoff". Default path: next to the loaded plan as "<project or plan> - estimate.xlsx". The reply repeats complete and unpriced — tell the user when the total is only priced so far.`,
+    inputSchema: {
+      path: z.string().optional().describe('Where to write the .xlsx (default: "<plan dir>/<project or plan> - estimate.xlsx")'),
+      project_name: z.string().optional().describe("Project name on each tab (default: the plan file's name)"),
+      company_name: z.string().optional().describe("Prepared-by line"),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
+    },
+    outputSchema: exportEstimateOutput,
+  }, run("export_estimate", (a) => exportEstimateFile(session, a)));
+
+  server.registerTool("export_proposal", {
+    description: `Write the bid proposal PDF — the canvas Proposal dialog's download: letterhead from company, prepared-for (set_estimate_settings client), the scope (each condition, its spec description, measured quantity), the base bid (lump sum, or itemized when the project's proposal says so), inclusions / exclusions / terms and signature blocks. Every page carries a light diagonal "OpenTakeoff" and the line "Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com". Pass company exactly as the estimator gave it — this server has no Company setup of its own. It never refuses an incomplete estimate; the reply's complete and unpriced say what the base bid is missing, and the user must hear it before sending. Default path: next to the loaded plan as "<project or plan> - proposal.pdf".`,
+    inputSchema: {
+      path: z.string().optional().describe('Where to write the PDF (default: "<plan dir>/<project or plan> - proposal.pdf")'),
+      project_name: z.string().optional().describe("Project name on the proposal (default: the plan file's name)"),
+      company: z.object({
+        name: z.string().optional(), address: z.string().optional(), phone: z.string().optional(),
+        email: z.string().optional(), license: z.string().optional(),
+      }).optional().describe("The contractor's letterhead, from the estimator"),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
+    },
+    outputSchema: exportProposalOutput,
+  }, run("export_proposal", (a) => exportProposalFile(session, a)));
+
   server.registerTool("import_takeoff", {
     description: `The way BACK IN (#151): load an "opentakeoff.takeoff_canvas.v1" file — a prior export_takeoff, or the app's own save — into this session, through the SAME tested merge rules as the app's Sheet-menu import: finish-tag identity joins imported conditions onto this session's own (their knobs win), new ids append, duplicate ids skip (re-import is idempotent), and THIS session's calibration wins per sheet. An uncalibrated empty session adopts the file wholesale. New dimensional shapes refuse atomically if their source scale differs from the session calibration or is missing; align scales and re-export, or use a fresh session. Counts and duplicate IDs are exempt. Legacy agent traces without review flags arrive reviewed:false. Resume yesterday's work, extend a takeoff a human already reviewed (their ink stays ink — reviewed shapes arrive untouchable by agent verbs), or audit someone else's export with list_shapes/takeoff_summary. Requires a loaded plan; shapes referencing OTHER files ride along and count in totals but can't be viewed against this document — the reply's unknown_files names them. Approval marks ride the file too — transport, not minting: an estimator seal arriving by import stays estimator ink, listable but untouchable here. undo_last removes the imported SHAPES as one step; adopted conditions, scales, annotations, and approval marks stay.`,
     inputSchema: {
@@ -386,7 +456,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("apply_rules", (a) => session.applyRules(a)));
 
   server.registerTool("export_marked_pdf", {
-    description: `The MARKED-UP PLANSET — the deliverable of every takeoff. Writes a distribution-ready PDF to disk: a legend cover (per-condition totals, swatches, a by-sheet breakdown) followed by every sheet that carries takeoff shapes or annotations, vector-copied from the source plan with the work burned in as drawn — condition colors and hatches, a quantity chip on every shape, annotation clouds/callouts/highlights, and approval marks (the estimator's APPROVED rings, the agent's AGENT diamonds — the cover tallies the split). Built by the same module as the canvas's MARKED SET button, so agent output and app output are one implementation. A construction takeoff is no good without markup: finish EVERY takeoff by writing this file and giving the user its path (export_report carries the numbers for pricing; this carries the evidence). When the shapes were machine-traced and unreviewed, the document says so on its last page — the review path is importing the export_takeoff payload into the app, where agent shapes arrive as pencil proposals. Default path: next to the loaded plan as "<plan> - marked set.pdf". Needs no native canvas — pure vector copy, so it works even where view_sheet cannot render. The one source it refuses: an ENCRYPTED plan PDF (owner password, empty user password — it opens everywhere, but its pages cannot be vector-copied and there is no canvas here to render them); the refusal names the sheet — export the marked set from the app, or supply an unencrypted PDF.`,
+    description: `The MARKED-UP PLANSET — the deliverable of every takeoff. Writes a distribution-ready PDF to disk: a legend cover (per-condition totals, swatches, a by-sheet breakdown) followed by every sheet that carries takeoff shapes or annotations, vector-copied from the source plan with the work burned in as drawn — condition colors and hatches, a quantity chip on every shape, annotation clouds/callouts/highlights, and approval marks (the estimator's APPROVED rings, the agent's AGENT diamonds — the cover tallies the split). Built by the same module as the canvas's MARKED SET button, so agent output and app output are one implementation. Every page carries a light diagonal \"OpenTakeoff\" and the line \"Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com\". A construction takeoff is no good without markup: finish EVERY takeoff by writing this file and giving the user its path (export_report carries the numbers for pricing; this carries the evidence). When the shapes were machine-traced and unreviewed, the document says so on its last page — the review path is importing the export_takeoff payload into the app, where agent shapes arrive as pencil proposals. Default path: next to the loaded plan as "<plan> - marked set.pdf". Needs no native canvas — pure vector copy, so it works even where view_sheet cannot render. The one source it refuses: an ENCRYPTED plan PDF (owner password, empty user password — it opens everywhere, but its pages cannot be vector-copied and there is no canvas here to render them); the refusal names the sheet — export the marked set from the app, or supply an unencrypted PDF.`,
     inputSchema: {
       path: z.string().optional().describe('Where to write the PDF (default: "<plan dir>/<plan> - marked set.pdf")'),
       project_name: z.string().optional().describe("Cover-page project name (default: the plan file's name)"),

@@ -12,6 +12,8 @@ import {
   mergeTakeoffImport as mergeJs,
 } from "../../web/src/lib/importTakeoff.js";
 import { UserError } from "./format.ts";
+import { sanitizePricing, sanitizeEstimateSettings, priceValue } from "../../web/src/lib/estimate.js";
+import { sanitizeBidProposal } from "../../web/src/lib/bidProposal.js";
 import { sanitizeApprovals, type Session, type Shape, type Condition, type Markup, type Rfi, type TakeoffProposal, type ConditionEditProposal } from "./session.ts";
 import type { Rule } from "../../web/src/lib/rules.ts";
 
@@ -106,6 +108,30 @@ export async function importTakeoff(session: Session, filePath: string) {
     session.rules.push({ ...raw, applied_to: [...(raw.applied_to ?? [])], seed_condition_id: mapped ?? raw.seed_condition_id });
     knownRuleIds.add(raw.id);
     rulesImported++;
+  }
+
+  // estimate (lib/estimate.js): transport. A condition the merge joined onto
+  // this session's own keeps the session's knobs — but a session condition
+  // with no prices takes the file's, row prices by material name, so a priced
+  // canvas takeoff never loses its prices on the way in. The project records
+  // (markups, proposal text, client) arrive when the session has none.
+  for (const c of session.conditions) {
+    const src = importedConds.find((x) => tagKey(x.finish_tag) === tagKey(c.finish_tag));
+    if (!src || src === c) continue;
+    const priced = sanitizePricing(src.pricing);
+    if (!c.pricing && priced) c.pricing = priced as Condition["pricing"];
+    const srcPrices = new Map((Array.isArray(src.materials) ? src.materials : []).filter((m) => m && m.name && priceValue(m.price) !== null).map((m) => [String(m.name).trim().toLowerCase(), priceValue(m.price) as number]));
+    for (const m of c.materials ?? []) {
+      const v = m && m.name ? srcPrices.get(m.name.trim().toLowerCase()) : undefined;
+      if (m && m.price === undefined && v !== undefined) m.price = v;
+    }
+  }
+  const objOf = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null);
+  if (!session.estimateSettings && objOf(imported.estimate_settings)) session.estimateSettings = sanitizeEstimateSettings(imported.estimate_settings) as Record<string, unknown>;
+  if (!session.bidProposal && objOf(imported.bid_proposal)) session.bidProposal = sanitizeBidProposal(imported.bid_proposal) as Record<string, unknown>;
+  const client = objOf(imported.client_info);
+  if (!Object.keys(session.clientInfo).length && client) {
+    session.clientInfo = Object.fromEntries(Object.entries(client).filter(([, v]) => typeof v === "string" && v.trim())) as Record<string, string>;
   }
 
   // the imported SHAPES journal as one reversible gesture; adopted conditions,

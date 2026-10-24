@@ -16,6 +16,54 @@
     "client_info": {
       "type": "object"
     },
+    "estimate_settings": {
+      "type": "object",
+      "properties": {
+        "tax_pct": {
+          "type": "number",
+          "minimum": 0
+        },
+        "overhead_pct": {
+          "type": "number",
+          "minimum": 0
+        },
+        "profit_pct": {
+          "type": "number",
+          "minimum": 0
+        },
+        "profit_mode": {
+          "enum": [
+            "markup",
+            "margin"
+          ]
+        }
+      }
+    },
+    "bid_proposal": {
+      "type": "object",
+      "properties": {
+        "itemized": {
+          "type": "boolean"
+        },
+        "scope_note": {
+          "type": "string"
+        },
+        "inclusions": {
+          "type": "string"
+        },
+        "exclusions": {
+          "type": "string"
+        },
+        "terms": {
+          "type": "string"
+        },
+        "valid_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365
+        }
+      }
+    },
     "sheets": {
       "type": "array",
       "items": {

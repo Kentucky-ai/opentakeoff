@@ -174,10 +174,16 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
   one stays behind the canvas's human Preview→Apply gate.
 - **Touching human-affirmed work.** `edit_shape` refuses a shape carrying
   `origin.reviewed === true`.
+- **A price.** `set_pricing` and `set_estimate_settings` write the prices and markups you are
+  given, by the estimator or a document they handed you, and nothing else. There is no verb
+  that proposes, looks up or defaults one, and you must not invent a "typical" rate. An unentered
+  price stays unentered: `estimate_summary` and both exports carry `complete: false` and an
+  `unpriced` list, the total is *priced so far*, and the user hears what is missing before a
+  proposal goes out.
 
 ## 6. Staged tool exposure
 
-By default every client gets all <!--tool-count-->53<!--/tool-count--> tool schemas on `tools/list`—the flat contract every
+By default every client gets all <!--tool-count-->58<!--/tool-count--> tool schemas on `tools/list`—the flat contract every
 published client already expects.
 
 Fifty-two descriptions is real token weight for a session that may never touch half of them, so the
@@ -304,7 +310,7 @@ Follow [Geometry from source to review](GEOMETRY_WORKFLOW.md) when tracing a rea
 ## Geometry review cleanup
 
 Use the [generated tool index](MCP_TOOL_INDEX.md) for the
-<!--tool-count-->53<!--/tool-count--> default tools, their stages and required arguments.
+<!--tool-count-->58<!--/tool-count--> default tools, their stages and required arguments.
 The [geometry workflow](GEOMETRY_WORKFLOW.md) is the source-to-handoff route.
 
 - Shorten a note with `list_annotations` then `edit_annotation`; empty text clears

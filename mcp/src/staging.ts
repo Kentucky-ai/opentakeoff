@@ -31,10 +31,12 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
     "duplicate_condition", "split_condition", "undo_last", "annotate",
     "list_annotations", "edit_annotation", "link_annotation", "mark_verdict", "delete_verdict",
     "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
+    "set_pricing", "set_estimate_settings",
   ],
   handoff: [
     "takeoff_summary", "export_takeoff", "export_report", "import_takeoff",
     "apply_rules", "export_marked_pdf", "export_dxf",
+    "estimate_summary", "export_estimate", "export_proposal",
   ],
 };
 
