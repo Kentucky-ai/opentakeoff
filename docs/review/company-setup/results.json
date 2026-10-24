@@ -1,0 +1,96 @@
+{
+  "base": "http://localhost:5191/",
+  "passed": 16,
+  "total": 16,
+  "checks": [
+    {
+      "name": "File → Company setup… opens the dialog",
+      "ok": true
+    },
+    {
+      "name": "typing in the dialog never arms a canvas tool (the name kept every letter)",
+      "ok": true
+    },
+    {
+      "name": "margin preview reads ×1.333",
+      "ok": true
+    },
+    {
+      "name": "trade name saved with phone, email, license",
+      "ok": true,
+      "detail": {
+        "id": "tp_mvmdlugq_0",
+        "name": "Sample Flooring Co",
+        "address": "100 Example Ave\nAnytown, ST 00000",
+        "phone": "555-0100",
+        "email": "bids@example.com",
+        "license": "LIC-000"
+      }
+    },
+    {
+      "name": "estimating defaults saved",
+      "ok": true,
+      "detail": {
+        "tax_pct": 6,
+        "overhead_pct": 10,
+        "profit_pct": 25,
+        "profit_mode": "margin",
+        "valid_days": 45,
+        "inclusions": "Material and labor for the scope shown",
+        "exclusions": "Floor prep beyond 1/8 in. in 10 ft",
+        "terms": "Net 30"
+      }
+    },
+    {
+      "name": "proposal text saved",
+      "ok": true,
+      "detail": {
+        "inclusions": "Material and labor for the scope shown",
+        "exclusions": "Floor prep beyond 1/8 in. in 10 ft",
+        "terms": "Net 30"
+      }
+    },
+    {
+      "name": "Esc closes the dialog",
+      "ok": true
+    },
+    {
+      "name": "Project info shows the shared trade name",
+      "ok": true
+    },
+    {
+      "name": "Project info links to Company setup",
+      "ok": true
+    },
+    {
+      "name": "Company setup reopens with the saved overhead",
+      "ok": true
+    },
+    {
+      "name": ".otprofile carries company_profiles and estimating_defaults",
+      "ok": true
+    },
+    {
+      "name": "wiped before import",
+      "ok": true
+    },
+    {
+      "name": "import restores the trade name and contact fields",
+      "ok": true
+    },
+    {
+      "name": "import restores the defaults and proposal text",
+      "ok": true
+    },
+    {
+      "name": "no sideways scroll at 390 px",
+      "ok": true,
+      "detail": 0
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

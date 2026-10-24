@@ -22,7 +22,8 @@ import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
 import { reportWorkbook, buildXlsx } from "../lib/xlsx.js";
 import { buildContribution, sendContribution, isContributeConfigured } from "../lib/contribute.js";
 import { activeTheme, saveActiveThemeFile, clearActiveTheme } from "../lib/reportTheme.js";
-import { normalizeLogoToPng, loadProfiles, saveProfiles, activeProfile, updateActiveProfile, addProfile, setActiveProfile, removeProfile } from "../lib/identity.js";
+import { activeProfile, loadProfiles } from "../lib/identity.js";
+import { useCompanyProfiles, CompanyIdentityFields } from "./CompanyIdentity.jsx";
 import { resolveBranding, loadBrandingSelection, saveBrandingSelection } from "../lib/branding.js";
 import { projectIdFromUrl } from "../lib/store.js";
 import { describeConditionEdit, proposedConditionEditRows } from "../lib/proposals.js";
@@ -48,7 +49,7 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null, conditionEditProposals = [] }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null, conditionEditProposals = [], onOpenCompanySetup = null, companyRev = 0 }) {
   // proposals (#365): a pending condition-edit diff prints BESIDE the current
   // values — the row's numbers are always the current knobs; the chip says
   // what the agent proposed, and the JSON export carries the same rows.
@@ -109,7 +110,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     let alive = true;
     loadBrandingSelection(projectId).then((s) => { if (alive) setBrandSel(s); });
     return () => { alive = false; };
-  }, [identityRev, projectId]);
+  }, [identityRev, companyRev, projectId]);   // companyRev: Company setup (opened from the canvas) saved
   // resolveBranding decides the masthead identity, the export title tag, and the
   // end credit. company is null in default mode → the firm block renders the
   // OpenTakeoff brand name instead of a trade-name identity (read only inside the
@@ -954,7 +955,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
       )}
       {showInfo && (
         <ProjectInfoModal clientInfo={clientInfo} onClientInfo={onClientInfo}
-          onSaved={() => setIdentityRev((r) => r + 1)} onClose={() => setShowInfo(false)} />
+          onSaved={() => setIdentityRev((r) => r + 1)} onClose={() => setShowInfo(false)}
+          onOpenCompanySetup={onOpenCompanySetup && (() => { setShowInfo(false); onOpenCompanySetup(); })} />
       )}
     </div>
   );
@@ -964,40 +966,13 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
 // localStorage), client/job fields are per-project (onClientInfo → autosave).
 // Company edits save on every change, so an overlay-click close loses nothing;
 // onSaved bumps identityRev so the print masthead re-reads immediately.
-function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
+function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose, onOpenCompanySetup }) {
   // trade-name profiles: the picker chooses which trade name is active for
   // EDITING; the active one still mirrors to the legacy company key (backward
   // compat). Which trade name BRANDS a project is the separate per-project
   // branding selection below (resolveBranding), not this active-id.
-  const [profs, setProfs] = useState(loadProfiles);
-  const active = activeProfile(profs) || {};
-  const [logoErr, setLogoErr] = useState("");
-  const [saveFailed, setSaveFailed] = useState(false);
-  // pick sequence: normalizeLogoToPng is async, so a slow first pick must not
-  // clobber a faster second pick — resurrect a logo removed meanwhile — or land
-  // after the modal closes (a pick still normalizing would otherwise persist
-  // from the dead fiber)
-  const logoSeq = useRef(0);
-  useEffect(() => () => { logoSeq.current++; }, []);   // unmount invalidates in-flight picks
-
-  // one commit path: a producer runs against the CURRENT state (functional set,
-  // so a slow logo normalize can't revert a name typed meanwhile), persists, and
-  // bumps the masthead via onSaved. saveProfiles also mirrors the active profile
-  // to the legacy company key (backward compat).
-  const commit = (produce) => {
-    setProfs((prev) => {
-      const next = produce(prev);
-      const ok = saveProfiles(next);
-      setSaveFailed(!ok);
-      if (ok && onSaved) onSaved();
-      return next;
-    });
-  };
-  // edit the active profile's fields — creates a first profile if none exists yet
-  const editActive = (fields) => commit((prev) => (prev.profiles.length ? updateActiveProfile(prev, fields) : addProfile(prev, fields).state));
-  const switchProfile = (id) => commit((prev) => setActiveProfile(prev, id));
-  const addTradeName = () => commit((prev) => addProfile(prev, {}).state);
-  const deleteActive = () => commit((prev) => removeProfile(prev, prev.activeId));
+  const company = useCompanyProfiles(onSaved);
+  const { profs } = company;
 
   // branding mode — per-project (meta KV, keyed on the project id). Toggling
   // clear-label on brands the deliverables as the trade name; off (default) is
@@ -1024,28 +999,10 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
   // brands as (profiles[0]) instead of highlighting nothing
   const brandProfileId = activeProfile({ profiles: profs.profiles, activeId: brandSel.profileId })?.id || null;
 
-  const onLogoFile = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ""; // re-picking the same file must still fire onChange
-    if (!file) return;
-    setLogoErr("");
-    const seq = ++logoSeq.current;
-    try {
-      const logo = await normalizeLogoToPng(file);
-      if (seq !== logoSeq.current) return;   // superseded by a later pick/remove/close
-      editActive({ logo });
-    } catch (err) {
-      if (seq !== logoSeq.current) return;   // stale failure — don't flash its error
-      setLogoErr(err.message || String(err));
-    }
-  };
-  // bump the seq so an in-flight pick can't resurrect the removed logo; "" clears
-  const removeLogo = () => { logoSeq.current++; editActive({ logo: "" }); };
   const client = (field) => (e) => onClientInfo && onClientInfo({ ...clientInfo, [field]: e.target.value });
 
   const section = { fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" };
   const row = { display: "block", margin: "8px 0" };
-  const err = { margin: "6px 0 0", fontSize: 11.5, color: "var(--c-danger)" };
 
   return (
     <div onClick={onClose} className="report-modal" style={{ position: "absolute", inset: 0, zIndex: 60, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -1056,45 +1013,11 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
         </div>
         <div style={{ padding: 16, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
           <div style={section}>Company — your trade names, saved on this device</div>
-          {/* trade-name picker: choose which identity prints on the report + marked-set */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0" }}>
-            <select name="trade-name" aria-label="Active trade name" value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
-              className="field-input" style={{ flex: 1, minWidth: 0 }} disabled={!profs.profiles.length}>
-              {profs.profiles.length === 0 && <option value="">No trade name yet — add one</option>}
-              {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || "Untitled trade name"}</option>)}
-            </select>
-            <button onClick={addTradeName} className="btn-ghost" title="Add another trade name (e.g. a second brand)"
-              style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>+ Add</button>
-            {profs.profiles.length > 1 && (
-              <button onClick={deleteActive} title="Delete the selected trade name"
-                style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Delete</button>
-            )}
-          </div>
-          <label style={row}>
-            <span className="field-label">Name</span>
-            <input name="company-name" autoComplete="organization" value={active.name || ""} onChange={(e) => editActive({ name: e.target.value })}
-              placeholder="Your trade name" className="field-input" style={{ marginTop: 4 }} />
-          </label>
-          <label style={row}>
-            <span className="field-label">Address</span>
-            <textarea name="company-address" autoComplete="street-address" value={active.address || ""} onChange={(e) => editActive({ address: e.target.value })}
-              rows={2} placeholder={"Street\nCity, ST"} className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
-          </label>
-          <div style={row}>
-            <span className="field-label">Logo</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-              <input name="company-logo" type="file" accept="image/*" onChange={onLogoFile} style={{ fontSize: 12, minWidth: 0 }} />
-              {active.logo && (
-                <>
-                  <img src={active.logo} alt="Company logo" style={{ width: 120, height: "auto", flex: "none", border: "1px solid var(--ink-faint)", background: "var(--well)" }} />
-                  <button onClick={removeLogo}
-                    style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: 0, whiteSpace: "nowrap" }}>Remove logo</button>
-                </>
-              )}
-            </div>
-            {logoErr && <p style={err}>{logoErr}</p>}
-          </div>
-          {saveFailed && <p style={err}>Couldn't save on this device</p>}
+          <CompanyIdentityFields company={company} />
+          {onOpenCompanySetup && (
+            <button onClick={onOpenCompanySetup} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 12 }}
+              title="Phone, email, license, markups and proposal terms">Company setup — markups and proposal terms…</button>
+          )}
 
           {/* branding mode — per project. Off = OpenTakeoff (default); on brands
               the report + marked set as the selected trade name, keeping a subtle

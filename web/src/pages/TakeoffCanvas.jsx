@@ -43,6 +43,7 @@ import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
 import ConnectAI from "../components/ConnectAI.jsx";
+import CompanySetup from "../components/CompanySetup.jsx";
 import { advanceTour, countFloorShapes, currentStep } from "../lib/firstTakeoff.js";
 import { fetchSamplePlan } from "../lib/samplePlan.js";
 import ReportPanel from "../components/ReportPanel.jsx";
@@ -576,6 +577,8 @@ export default function TakeoffCanvas() {
   const [tour, setTour] = useState(null);
   const [tourSampleBusy, setTourSampleBusy] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);   // Connect your AI (components/ConnectAI.jsx)
+  const [companySetupOpen, setCompanySetupOpen] = useState(false);   // Company setup (components/CompanySetup.jsx)
+  const [companyRev, setCompanyRev] = useState(0);   // bumped on every Company setup save so an open report's masthead re-reads
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
   // agentProposals are NOT shapes: committed truth stays committed. Each entry
@@ -3038,7 +3041,7 @@ export default function TakeoffCanvas() {
       await backupProfileFile();
       const n = await applyProfile(p);
       await refreshLibraries();
-      setCommitMsg(`Applied profile${p.name ? ` "${p.name}"` : ""} — ${n.templates} condition template${n.templates === 1 ? "" : "s"}, ${n.materials} material${n.materials === 1 ? "" : "s"}, ${n.stamps} stamp${n.stamps === 1 ? "" : "s"}, ${n.reportTemplates} report template${n.reportTemplates === 1 ? "" : "s"}. Your previous setup downloaded as opentakeoff-profile-backup.otprofile.`);
+      setCommitMsg(`Applied profile${p.name ? ` "${p.name}"` : ""} — ${n.templates} condition template${n.templates === 1 ? "" : "s"}, ${n.materials} material${n.materials === 1 ? "" : "s"}, ${n.stamps} stamp${n.stamps === 1 ? "" : "s"}, ${n.reportTemplates} report template${n.reportTemplates === 1 ? "" : "s"}${n.company ? ", company setup" : ""}. Your previous setup downloaded as opentakeoff-profile-backup.otprofile.`);
     } catch (e) {
       setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't apply profile: ${e?.message || e}`);
     }
@@ -8609,8 +8612,13 @@ export default function TakeoffCanvas() {
   });
   sheetMenuItems.push({ section: "Profile — your templates, stamps & report setup" });
   sheetMenuItems.push({
+    id: "company-setup", icon: "document", label: "Company setup…",
+    title: "Your company on proposals — trade name, logo, phone, email, license — plus default overhead, profit and sales tax and your proposal inclusions, exclusions and terms. Saved on this device; Export profile carries it.",
+    onSelect: () => setCompanySetupOpen(true),
+  });
+  sheetMenuItems.push({
     id: "export-profile", icon: "document", label: "Export profile…",
-    title: "Save your working environment — condition templates, material library, stamps, report templates/theme/columns — as one portable .otprofile. Import it on another machine or hand a company setup to another estimator; project takeoffs are never in it.",
+    title: "Save your working environment — condition templates, material library, stamps, report templates/theme/columns, company setup — as one portable .otprofile. Import it on another machine or hand a company setup to another estimator; project takeoffs are never in it.",
     onSelect: exportProfileFile,
   });
   sheetMenuItems.push({
@@ -8620,7 +8628,7 @@ export default function TakeoffCanvas() {
   });
   sheetMenuItems.push({
     id: "reset-profile", icon: "undo", label: "Reset profile to defaults",
-    title: "Back to a stock OpenTakeoff setup — empty template/material libraries, the default stamps, no report customization. Your current setup downloads as a backup first; project takeoffs are untouched.",
+    title: "Back to a stock OpenTakeoff setup — empty template/material libraries, the default stamps, no report customization. Your company setup is kept. Your current setup downloads as a backup first; project takeoffs are untouched.",
     onSelect: resetProfile,
   });
 
@@ -8762,6 +8770,7 @@ export default function TakeoffCanvas() {
     { id: "copy", label: "Copy selected", group: "Edit", shortcut: "⌘C", disabled: !selectedId, run: copySelected },
     { id: "paste", label: "Paste", group: "Edit", shortcut: "⌘V", disabled: !clipRef.current.length, run: () => pasteClipboard() },
     { id: "report", label: "Open report", group: "Workspace", run: () => setShowReport(true) },
+    { id: "company-setup", label: "Company setup — logo, markups, proposal terms", group: "Workspace", run: () => setCompanySetupOpen(true) },
     { id: "tour", label: "Guided first takeoff — learn it on the sample plan", group: "Help", run: startTour },
     { id: "guide", label: "How OpenTakeoff works — shortcuts and the five-minute path", group: "Help", shortcut: "?", run: () => setGuideOpen(true) },
     { id: "connect-ai", label: "Connect your AI — Claude, Codex, Cursor", group: "Help", run: () => setConnectOpen(true) },
@@ -11134,6 +11143,7 @@ export default function TakeoffCanvas() {
         <ReportPanel
           projectName={projectName} onProjectName={setProjectName}
           clientInfo={clientInfo} onClientInfo={setClientInfo} units={units}
+          onOpenCompanySetup={() => setCompanySetupOpen(true)} companyRev={companyRev}
           conditions={conditions} shapes={shapes} markups={markups} rfis={rfis}
           conditionEditProposals={conditionEditProposals}
           conditionColumns={conditionColumns} shapeLabels={shapeLabels}
@@ -11287,6 +11297,7 @@ export default function TakeoffCanvas() {
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} onTour={startTour} onConnect={() => { setGuideOpen(false); setConnectOpen(true); }} />}
       {connectOpen && <ConnectAI onClose={() => setConnectOpen(false)} />}
+      {companySetupOpen && <CompanySetup onClose={() => setCompanySetupOpen(false)} onSaved={() => setCompanyRev((r) => r + 1)} />}
       {tour && view === "canvas" && !focusMode && !guideOpen && !connectOpen && (
         <FirstTakeoffTour done={tour.done} step={currentStep(tour.done)} sheetOpen={tourSheetOpen}
           sampleBusy={tourSampleBusy} onLoadSample={loadSampleForTour} result={tourResult}

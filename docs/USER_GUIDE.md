@@ -749,6 +749,16 @@ RFIs export as **RFI CSV** and **RFI JSON** from the Report, and they ride the M
 
 Open **Report** for the whole takeoff on one page: a per-condition table, the supporting-materials buy list, per-sheet base quantities, and your markups noted—with a project-name field and a print masthead up top (client, reference, date, prepared-by, and an optional trade-name identity so the output brands as your company).
 
+### Company setup
+
+**File → Company setup…** (also in **Find an action**, and from **Report → Project info**) holds who you are and how you price, once per device:
+
+- **Company**—trade name, address, phone, email, license number and logo, for your proposals. You can keep several trade names; **Project info** picks which one brands a project.
+- **Estimating defaults**—overhead %, profit % (a markup on cost, or a margin of the price: a 25% margin is cost × 1.333), sales tax % on material, and how many days a proposal stays valid.
+- **Proposal text**—your inclusions, exclusions and terms, in your own words.
+
+Nothing is pre-filled. Every field saves as you type, stays in this browser, and travels in **Export profile**. Importing a profile made before company setup existed leaves yours alone; **Reset profile to defaults** keeps it too.
+
 ### The numbers, honestly
 
 - **Measured versus w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
