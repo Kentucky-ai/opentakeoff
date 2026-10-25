@@ -33,6 +33,15 @@ test("relativeAge: 60m boundary flips minutes → hours", () => {
   assert.equal(relativeAge(isoAt(NOW - 60 * MIN), NOW), "1h ago");
 });
 
+test("relativeAge: a rounded count stays inside the bucket it was chosen from", () => {
+  // 59.5 min, 23.5 h, and 6.5 d round to 60, 24, and 7, but the raw elapsed
+  // time is still under the next threshold. The chip must not say "60m ago",
+  // "24h ago", or "7d ago" — those counts belong to the next wording.
+  assert.equal(relativeAge(isoAt(NOW - 59.5 * MIN), NOW), "59m ago");
+  assert.equal(relativeAge(isoAt(NOW - 23.5 * HOUR), NOW), "23h ago");
+  assert.equal(relativeAge(isoAt(NOW - 6.5 * DAY), NOW), "6d ago");
+});
+
 test("relativeAge: hours bucket, interior + just-under-24h edge", () => {
   assert.equal(relativeAge(isoAt(NOW - 5 * HOUR), NOW), "5h ago");
   assert.equal(relativeAge(isoAt(NOW - 23 * HOUR), NOW), "23h ago");

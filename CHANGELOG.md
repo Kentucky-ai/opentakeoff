@@ -15,6 +15,8 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **A capture's age stays in the bucket the clock chose.** At 59.5 minutes the Captures row reads "59m ago", at 23.5 hours "23h ago", and at 6.5 days "6d ago". "1h ago" still starts at 60 minutes, "yesterday" at 24 hours, and the plain date at 7 days.
+
 - **A broken image in a ZIP no longer hides the remaining plans.** Each extracted file is processed independently, so unreadable PNG/JPEG entries are skipped by their own names while later PDFs and valid scans still open. Archive limits and downstream PDF validation are unchanged.
 - **MCP 0.9.100: dependency security refresh.** Upgrade the MCP SDK and Zod, adapt record schemas for Zod 4, and refresh affected MCP, Vite and protocol dependency locks. The MCP tool set and takeoff payloads are unchanged. [Validation evidence](docs/review/dependency-security-2026-10-24/README.md).
 

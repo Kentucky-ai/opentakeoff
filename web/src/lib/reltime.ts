@@ -30,8 +30,8 @@ function formatUtcDate(ms: number): string {
 }
 
 // Compact natural-language age of `iso` relative to `nowMs`:
-//  <45s → "just now" | <60m → "<n>m ago" | <24h → "<n>h ago" | <48h →
-//  "yesterday" | <7d → "<n>d ago" | else → a plain UTC date. `nowMs` is a
+//  <45s → "just now" | <60m → "<n>m ago" (n ≤ 59) | <24h → "<n>h ago" (n ≤ 23) | <48h →
+//  "yesterday" | <7d → "<n>d ago" (n ≤ 6) | else → a plain UTC date. `nowMs` is a
 // caller-supplied argument (not `Date.now()`) so a fixed epoch pins every
 // bucket boundary in tests.
 export function relativeAge(iso: string, nowMs: number): string {
@@ -39,13 +39,16 @@ export function relativeAge(iso: string, nowMs: number): string {
   if (!Number.isFinite(t) || !Number.isFinite(nowMs)) return "";
   const diffMs = nowMs - t;
   if (diffMs / 1000 < 45) return "just now";
-  // Rounds to the nearest unit; the "min 1" floor for minutes falls out for
-  // free — every diffMs in this bucket is >= 45_000ms (0.75min), which
-  // already rounds up to 1.
-  if (diffMs < 60 * MIN_MS) return `${Math.round(diffMs / MIN_MS)}m ago`;
-  if (diffMs < DAY_MS) return `${Math.round(diffMs / HOUR_MS)}h ago`;
+  // Rounds to the nearest unit, then stays inside the bucket the raw elapsed
+  // time selected. 59.5 minutes is still under an hour, so the chip reads
+  // "59m ago" — "60m ago" is the next bucket's count. The same cap keeps
+  // 23.5 hours at "23h ago" and 6.5 days at "6d ago". The "min 1" floor for
+  // minutes falls out for free: every diffMs in that bucket is >= 45_000ms
+  // (0.75min), which already rounds up to 1.
+  if (diffMs < 60 * MIN_MS) return `${Math.min(59, Math.round(diffMs / MIN_MS))}m ago`;
+  if (diffMs < DAY_MS) return `${Math.min(23, Math.round(diffMs / HOUR_MS))}h ago`;
   if (diffMs < 2 * DAY_MS) return "yesterday";
-  if (diffMs < 7 * DAY_MS) return `${Math.round(diffMs / DAY_MS)}d ago`;
+  if (diffMs < 7 * DAY_MS) return `${Math.min(6, Math.round(diffMs / DAY_MS))}d ago`;
   return formatUtcDate(t);
 }
 
