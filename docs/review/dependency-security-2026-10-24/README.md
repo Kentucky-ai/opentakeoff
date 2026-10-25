@@ -15,6 +15,6 @@ The patch raises MCP SDK and Zod requirements, migrates `z.record(value)` to the
 
 Reproduce using `npm ci --ignore-scripts` inside each of `web`, `mcp`, and `protocol`, then run the commands above. These are dependency/schema changes with no visible UI change, so expected-versus-observed engine/tool evidence is provided instead of an unrelated screenshot.
 
-Audits are advisory-database snapshots, not proof of exploitability or absence of all defects. In particular, an HTTP body-parser issue in the dependency graph does not demonstrate that the stdio entry point is remotely reachable. The package version remains 0.9.99 in this review branch: no npm tag was published. A release must use the next coordinated version across the repository's version surfaces. Existing installed packages are not repaired by this branch alone.
+Audits are advisory-database snapshots, not proof of exploitability or absence of all defects. In particular, an HTTP body-parser issue in the dependency graph does not demonstrate that the stdio entry point is remotely reachable. The review branch reserves MCP 0.9.100 consistently across all seven version fields. No npm package or release tag was published. Existing installed packages are not repaired by this branch alone.
 
 This overlaps the dependency updates proposed in #557, #556, #564 and #565, plus the protocol fast-uri update in #563; it adds the Zod API migration and integrated local evidence. Those PRs have not been closed or merged by this work.
