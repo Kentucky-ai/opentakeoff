@@ -578,7 +578,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       remove: z.array(z.string()).optional().describe("Existing row ids to remove"),
       patch: z.array(z.object({
         id: z.string(),
-        fields: z.record(z.union([z.string(), z.number(), z.boolean()])).describe("Field:value pairs — name/per/basis/unit/round/note only"),
+        fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).describe("Field:value pairs — name/per/basis/unit/round/note only"),
       })).optional().describe("Field changes on existing rows"),
     },
     outputSchema: editMaterialsOutput,
