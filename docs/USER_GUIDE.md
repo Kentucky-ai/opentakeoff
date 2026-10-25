@@ -749,6 +749,41 @@ RFIs export as **RFI CSV** and **RFI JSON** from the Report, and they ride the M
 
 Open **Report** for the whole takeoff on one page: a per-condition table, the supporting-materials buy list, per-sheet base quantities, and your markups noted—with a project-name field and a print masthead up top (client, reference, date, prepared-by, and an optional trade-name identity so the output brands as your company).
 
+### Company setup
+
+**File → Company setup…** (also in **Find an action**, and from **Report → Project info**) holds who you are and how you price, once per device:
+
+- **Company**—trade name, address, phone, email, license number and logo, for your proposals. You can keep several trade names; **Project info** picks which one brands a project.
+- **Estimating defaults**—overhead %, profit % (a markup on cost, or a margin of the price: a 25% margin is cost × 1.333), sales tax % on material, and how many days a proposal stays valid.
+- **Proposal text**—your inclusions, exclusions and terms, in your own words.
+
+Nothing is pre-filled. Every field saves as you type, stays in this browser, and travels in **Export profile**. Importing a profile made before company setup existed leaves yours alone; **Reset profile to defaults** keeps it too.
+
+### Estimate
+
+**Estimate** (in the toolbar, in **Find an action**, and in the Report header) prices what you measured. Each condition that has takeoffs gets a row:
+
+- **Unit**—SF, SY, LF or EA. It starts as what you measured (area, then length, then count).
+- **Material $/unit** prices the **order quantity**, with the condition's waste. **Labor $/unit** prices the **measured quantity**, without waste. EA never carries waste.
+- **▸ materials** opens the condition's supporting materials (adhesive, grout and so on) to price per package. Quantities are already rounded up to whole packages.
+- Across the top: **Overhead**, **Profit** (markup or margin) and **Sales tax** on material for this project. The first time a project's estimate opens they're copied from **Company setup**. After that they belong to the project: changing your defaults never re-prices a bid you already worked up. **Company defaults** copies them again when you ask.
+
+An empty box means *not entered*, never $0. Type 0 for scope you aren't charging for. Until every line is priced, a banner names what's missing, the row says **PARTLY PRICED** or **UNPRICED**, and the total reads **Base bid — priced so far**.
+
+**Excel** downloads `<project> - estimate.xlsx`: **Estimate** (every line, then material, labor, tax, overhead, profit and the base bid), **Materials** (each supply's packages, price and cost) and, when anything is missing, **Unpriced**. Rates you didn't enter stay empty cells. Every tab ends with *Prepared with OpenTakeoff*.
+
+Prices are saved with the project. Condition templates never carry them, so every new job starts unpriced.
+
+### Proposal
+
+**Estimate → Proposal PDF…** builds the bid proposal you send: your letterhead from **Company setup** (name, logo, address, phone, email, license), **Prepared for** (client, address and reference, saved with the project), the scope (each condition, its spec description and measured quantity), the **base bid**, then inclusions, exclusions, terms and a signature block for both sides.
+
+- **Lump sum** prints one base bid. **Itemized** prints a price on each line: the base bid spread over the lines in proportion to their cost, to the cent, so the lines add up to the base bid exactly.
+- The first time you open it, the inclusions, exclusions, terms and validity are copied from Company setup. Edits here change **this job only**. **Reset text to Company setup** copies them again.
+- If the estimate isn't fully priced, the dialog says which lines and still lets you download.
+
+Every page of the proposal, the marked set and the printed report carries **Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com**. The proposal and the marked set also carry a light diagonal *OpenTakeoff* watermark. Branding as your trade name puts your company on the document; it doesn't remove these.
+
 ### The numbers, honestly
 
 - **Measured versus w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
@@ -1030,7 +1065,7 @@ What's sent, and only while an agent run you started is going: your goal, the pr
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). **Help → Connect your AI** in the app (also on the opening screen and in the **⋯** menu) has the setup for Claude Desktop, Claude Code, Codex and Cursor with copy buttons, and a first question to ask about the sample plan; [CONNECT.md](CONNECT.md) is the same walk-through. An
-MCP client gets **<!--tool-count-->53<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **<!--tool-count-->58<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |

@@ -398,7 +398,7 @@ New agent measurements, including `measure_polygon` and `measure_line`, explicit
 
 The [generated tool index](MCP_TOOL_INDEX.md) gives each tool's stage and required
 arguments directly from the running server's schemas. The default surface has
-<!--tool-count-->53<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
+<!--tool-count-->58<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
 
 Use `list_annotations` → `edit_annotation {annotation_id, text}` to shorten or clear
 a note. One `undo_last` restores the text. Geometry, dimension length, links and
@@ -410,6 +410,24 @@ small overlaps with an explanation when SF rounds to zero. A material coverage
 row is not another finish polygon. For a physical opening, clip an explicit
 `measure_line` or `measure_surface` run with `cut_out`; a derived base with numeric
 opening allowances refuses clipping because those openings have no locations.
+
+## Pricing the takeoff and the bid proposal (0.9.99)
+
+The canvas's **Estimate** panel and **Proposal** dialog have agent verbs over the same engine
+(`web/src/lib/estimate.js`):
+
+1. `set_pricing {condition, unit, material, labor, materials:[{name, price}]}` for each
+   condition, with the estimator's prices. Material is priced on the order quantity (waste
+   applied), labor on the measured quantity, supplies per package.
+2. `set_estimate_settings {tax_pct, overhead_pct, profit_pct, profit_mode, proposal, client}`
+   for the project's markups, proposal text and client.
+3. `estimate_summary` to read the result. `complete: false` and `unpriced` name every hole.
+4. `export_estimate` (Excel) and `export_proposal {company}` (PDF, OpenTakeoff watermark on
+   every page) to write the files beside the plan.
+
+Nothing here invents a price. Prices, markups, proposal text and client ride `export_takeoff`
+into the app and back through `import_takeoff`, where a joined condition with no prices takes
+the file's.
 
 ## Wiki resources
 

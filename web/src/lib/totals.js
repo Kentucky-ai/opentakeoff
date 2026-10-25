@@ -32,6 +32,11 @@ import { hasFields, qtyLabels, resolveNote } from "./noteFields.ts";
 // keep importing round2 from here; num.js is the single definition.
 export { round2 } from "./num.js";
 
+// A supporting-material row that counts: named. conditionTotals keeps exactly
+// these rows, in order — lib/estimate.js relies on the same predicate to line
+// each row's price up with its quantity.
+export const isMaterialLine = (m) => Boolean(m && m.name);
+
 // The role → quantity mapping from the header comment, shared by
 // conditionTotals and sheetTotals. Mutates acc ({ floor, wall, border, lf,
 // ea }) in place with the shape's raw computed numbers — no multiplier, no
@@ -84,7 +89,7 @@ export function conditionTotals(conditions, shapes, ctx = null) {
     // to whole units (you buy whole buckets/bags). basis = this condition's measured
     // area (SF), linear (LF), count (EA), or figured seam length (LF — weld rod,
     // seam tape). Coverage comes off the product data sheet.
-    const materials = (c.materials || []).filter((m) => m && m.name).map((m) => {
+    const materials = (c.materials || []).filter(isMaterialLine).map((m) => {
       const per = Math.max(0, Number(m.per) || 0);
       const basisVal = m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total;
       let qty = per > 0 ? basisVal / per : 0;

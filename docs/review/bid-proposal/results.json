@@ -1,0 +1,99 @@
+{
+  "base": "http://localhost:5191/",
+  "passed": 20,
+  "total": 20,
+  "checks": [
+    {
+      "name": "estimate fully priced before the proposal",
+      "ok": true
+    },
+    {
+      "name": "Proposal dialog opens from the Estimate",
+      "ok": true
+    },
+    {
+      "name": "proposal text copied from Company setup",
+      "ok": true
+    },
+    {
+      "name": "letterhead line names the company",
+      "ok": true
+    },
+    {
+      "name": "job-only exclusion saved with the project, not in Company setup",
+      "ok": true
+    },
+    {
+      "name": "client saved with the project",
+      "ok": true
+    },
+    {
+      "name": "file name is \"<project> - proposal.pdf\" for an unnamed project",
+      "ok": true,
+      "detail": "proposal.pdf"
+    },
+    {
+      "name": "proposal PDF shows the company",
+      "ok": true,
+      "detail": "Sample Flooring Co"
+    },
+    {
+      "name": "proposal PDF shows the license",
+      "ok": true,
+      "detail": "License LIC-000"
+    },
+    {
+      "name": "proposal PDF shows the client",
+      "ok": true,
+      "detail": "Example General Contractors"
+    },
+    {
+      "name": "proposal PDF shows the reference",
+      "ok": true,
+      "detail": "Ref. Bid 26-001"
+    },
+    {
+      "name": "proposal PDF shows the base bid = engine",
+      "ok": true,
+      "detail": "$9,317.58"
+    },
+    {
+      "name": "proposal PDF shows the job-only exclusion",
+      "ok": true,
+      "detail": "After-hours work"
+    },
+    {
+      "name": "proposal PDF shows the terms",
+      "ok": true,
+      "detail": "Net 30. Price holds for the dates shown."
+    },
+    {
+      "name": "proposal PDF shows the scope note",
+      "ok": true,
+      "detail": "Quantities from the sample finish plan AF101."
+    },
+    {
+      "name": "proposal: watermark and footer on every page",
+      "ok": true,
+      "detail": 1
+    },
+    {
+      "name": "printed report strip carries the line",
+      "ok": true
+    },
+    {
+      "name": "marked set: watermark and footer on every page",
+      "ok": true,
+      "detail": 2
+    },
+    {
+      "name": "pages rendered to PNG (pdftoppm)",
+      "ok": true
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

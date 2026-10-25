@@ -1,0 +1,57 @@
+{
+  "base": "http://localhost:5191/",
+  "passed": 7,
+  "total": 7,
+  "checks": [
+    {
+      "name": "sample project saved with a CPT-1 condition",
+      "ok": true,
+      "detail": {
+        "materials": 1
+      }
+    },
+    {
+      "name": "CPT-1 pricing survives a reload",
+      "ok": true,
+      "detail": {
+        "unit": "SY",
+        "material": 1,
+        "labor": 1
+      }
+    },
+    {
+      "name": "CPT-1 material prices survive a reload",
+      "ok": true,
+      "detail": [
+        1
+      ]
+    },
+    {
+      "name": "CPT-1 saved to the Library",
+      "ok": true
+    },
+    {
+      "name": "the template has no pricing",
+      "ok": true
+    },
+    {
+      "name": "no template material carries a price",
+      "ok": true,
+      "detail": [
+        [
+          "round",
+          "name",
+          "kind",
+          "per",
+          "basis",
+          "unit"
+        ]
+      ]
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

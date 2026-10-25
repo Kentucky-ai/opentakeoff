@@ -6,7 +6,7 @@ Refresh with `npm run check:tool-count --prefix mcp -- --write`; CI fails on sta
 For the operating workflow, read [the agent guide](AGENT_GUIDE.md) and [geometry workflow](GEOMETRY_WORKFLOW.md).
 For behavior and optional arguments, use the [tool reference](../mcp/README.md#tools) and the discovered input schema.
 
-Default build: **53 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
+Default build: **58 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
 
 | Tool | Stage | Availability | Required arguments |
 |---|---|---|---|
@@ -26,8 +26,11 @@ Default build: **53 tools**. Coordinates, where present, are full-sheet image pi
 | `edit_condition` | revise | Default | `condition` |
 | `edit_materials` | revise | Default | `condition` |
 | `edit_shape` | revise | Default | `shape_id` |
+| `estimate_summary` | handoff | Default | None |
 | `export_dxf` | handoff | Default | `path` |
+| `export_estimate` | handoff | Default | None |
 | `export_marked_pdf` | handoff | Default | None |
+| `export_proposal` | handoff | Default | None |
 | `export_report` | handoff | Default | None |
 | `export_takeoff` | handoff | Default | None |
 | `find_schedule` | setup | Default | `kind` |
@@ -53,6 +56,8 @@ Default build: **53 tools**. Coordinates, where present, are full-sheet image pi
 | `revise_proposal` | revise | Default | `proposal_id`, `shapes` |
 | `scope_duplicates` | revise | Default | None |
 | `scope_merge` | revise | Default | `shape_a`, `shape_b` |
+| `set_estimate_settings` | revise | Default | None |
+| `set_pricing` | revise | Default | `condition` |
 | `set_scale` | setup | Default | `sheet` |
 | `sheet_context` | setup | Default | `sheet` |
 | `sheet_graph` | setup | Default | None |

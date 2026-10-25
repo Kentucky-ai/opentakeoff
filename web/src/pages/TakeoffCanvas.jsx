@@ -43,6 +43,11 @@ import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
 import ConnectAI from "../components/ConnectAI.jsx";
+import CompanySetup from "../components/CompanySetup.jsx";
+import EstimatePanel from "../components/EstimatePanel.jsx";
+import { sanitizeEstimateSettings } from "../lib/estimate.js";
+import { sanitizeBidProposal } from "../lib/bidProposal.js";
+import { loadEstimatingDefaults } from "../lib/companySetup.js";
 import { advanceTour, countFloorShapes, currentStep } from "../lib/firstTakeoff.js";
 import { fetchSamplePlan } from "../lib/samplePlan.js";
 import ReportPanel from "../components/ReportPanel.jsx";
@@ -192,7 +197,7 @@ import {
   MARKUP_IMG_MAX, MAX_IMAGE_MARKUP_BYTES, MARKUP_UPLOAD_MAX_BYTES, MARKUP_DECODE_MAX_AREA,
   FLOAT_GAP, SWEEP_PANEL_W, CANVAS_EDGE, RAIL_CLEAR, ZONE_PANEL_W,
 } from "../lib/canvasConstants.js";
-import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
+import { uid, clamp, isDangerMsg, instantiateTemplate, conditionToTemplate, seedConditions } from "../lib/canvasUtil.js";
 import { repairConditionMultipliers, describeMultiplierRepair } from "../lib/multiplier.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
 // pool in lib/tilePool.ts, DOM/Worker orchestration glue here via one
@@ -576,6 +581,8 @@ export default function TakeoffCanvas() {
   const [tour, setTour] = useState(null);
   const [tourSampleBusy, setTourSampleBusy] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);   // Connect your AI (components/ConnectAI.jsx)
+  const [companySetupOpen, setCompanySetupOpen] = useState(false);   // Company setup (components/CompanySetup.jsx)
+  const [companyRev, setCompanyRev] = useState(0);   // bumped on every Company setup save so an open report's masthead re-reads
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
   // agentProposals are NOT shapes: committed truth stays committed. Each entry
@@ -903,6 +910,9 @@ export default function TakeoffCanvas() {
   useEffect(() => { sweepRef.current = sweep; }, [sweep]);
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
+  const [estimateSettings, setEstimateSettings] = useState(null);   // the project's markups (lib/estimate.js); null until its estimate first opens, then copied from Company setup
+  const [bidProposal, setBidProposal] = useState(null);   // the project's proposal text/layout (lib/bidProposal.js); null until its proposal first opens
+  const [showEstimate, setShowEstimate] = useState(false);
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
   const importInputRef = useRef(null);                  // hidden <input type=file> for "Import takeoff…" (the agent-JSON handoff)
   const profileInputRef = useRef(null);                 // hidden <input type=file> for "Import profile…" (#299)
@@ -1968,6 +1978,8 @@ export default function TakeoffCanvas() {
     setClientInfo(Object.fromEntries(Object.entries(
       a.client_info && typeof a.client_info === "object" && !Array.isArray(a.client_info) ? a.client_info : {}
     ).filter(([, v]) => typeof v === "string")));
+    setEstimateSettings(a.estimate_settings && typeof a.estimate_settings === "object" ? sanitizeEstimateSettings(a.estimate_settings) : null);   // unconditional set: a loaded project never inherits the replaced one's markups
+    setBidProposal(a.bid_proposal && typeof a.bid_proposal === "object" ? sanitizeBidProposal(a.bid_proposal) : null);   // same unconditional-set rule
     setConditionColumns(sanitizeConditionColumns(a.condition_columns));   // non-array/malformed → [] (unconditional set: snapshot load must not inherit pre-load columns)
     setShapeLabels(sanitizeShapeLabels(a.shape_labels));   // same unconditional-set rule: a snapshot load must not inherit the replaced project's label vocabulary
     setActiveLabel(null);   // active label is session-only — never carry one from the replaced project into a fresh/loaded one
@@ -2857,7 +2869,7 @@ export default function TakeoffCanvas() {
   const buildPayload = () => buildTakeoffDocument({
     // the envelope — key order, omit-when-empty, the units/palette rules — is
     // decided in lib/takeoffDocument.js, the same writer the MCP server uses
-    project_name: projectName, units, client_info: clientInfo,
+    project_name: projectName, units, client_info: clientInfo, estimate_settings: estimateSettings, bid_proposal: bidProposal,
     sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
     conditions, condition_columns: conditionColumns, shape_labels: shapeLabels, palette,
     shapes, markups, rfis, approvals, proposals, condition_edit_proposals: conditionEditProposals, rules,
@@ -3038,7 +3050,7 @@ export default function TakeoffCanvas() {
       await backupProfileFile();
       const n = await applyProfile(p);
       await refreshLibraries();
-      setCommitMsg(`Applied profile${p.name ? ` "${p.name}"` : ""} — ${n.templates} condition template${n.templates === 1 ? "" : "s"}, ${n.materials} material${n.materials === 1 ? "" : "s"}, ${n.stamps} stamp${n.stamps === 1 ? "" : "s"}, ${n.reportTemplates} report template${n.reportTemplates === 1 ? "" : "s"}. Your previous setup downloaded as opentakeoff-profile-backup.otprofile.`);
+      setCommitMsg(`Applied profile${p.name ? ` "${p.name}"` : ""} — ${n.templates} condition template${n.templates === 1 ? "" : "s"}, ${n.materials} material${n.materials === 1 ? "" : "s"}, ${n.stamps} stamp${n.stamps === 1 ? "" : "s"}, ${n.reportTemplates} report template${n.reportTemplates === 1 ? "" : "s"}${n.company ? ", company setup" : ""}. Your previous setup downloaded as opentakeoff-profile-backup.otprofile.`);
     } catch (e) {
       setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't apply profile: ${e?.message || e}`);
     }
@@ -3095,7 +3107,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, bidProposal, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -7814,6 +7826,13 @@ export default function TakeoffCanvas() {
   // handler, before re-render — the active-based form would hit the old active.
   const updateCondById = (id, patch) => setConditions((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch, updated_at: nowIso() } : c)));
   const updateCond = (patch) => updateCondById(activeCond, patch);
+  // The project's markups are copied from Company setup the first time its
+  // estimate opens, then belong to the project: changing the defaults later
+  // never re-prices a bid already worked up.
+  const openEstimate = () => {
+    if (!estimateSettings) setEstimateSettings(sanitizeEstimateSettings(loadEstimatingDefaults()));
+    setShowEstimate(true);
+  };
 
   // delete a condition entirely (and its takeoffs); pick a new active one
   function deleteCondition(id) {
@@ -8362,21 +8381,9 @@ export default function TakeoffCanvas() {
     templatesRef.current = next; setTemplates(next);
     store.saveTemplates(next).catch((e) => setCommitMsg(`Couldn't save the library: ${e.message || e}`));
   };
-  const condToTemplate = (c) => ({
-    finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch || "solid",
-    waste_pct: c.waste_pct || 0,
-    ...(c.height_ft != null ? { height_ft: c.height_ft } : {}),
-    ...(c.thickness_in != null ? { thickness_in: c.thickness_in } : {}),
-    ...(c.rise_ft != null ? { rise_ft: c.rise_ft } : {}),
-    ...(c.drop_ft != null ? { drop_ft: c.drop_ft } : {}),
-    ...(c.laborType != null ? { laborType: c.laborType } : {}),
-    ...(c.subfloorType != null ? { subfloorType: c.subfloorType } : {}),
-    ...(c.roll_setup ? { roll_setup: { ...c.roll_setup } } : {}),   // #136 — the roll spec is part of what makes a CPT-1 template CPT-1
-    materials: (c.materials || []).map(({ id: _id, ...m }) => (m.grout ? { ...m, grout: { ...m.grout } } : m)),   // ids are minted on instantiation; grout never shared by reference
-  });
   const saveActiveAsTemplate = () => {
     if (!aCond) return;
-    const tpl = condToTemplate(aCond);
+    const tpl = conditionToTemplate(aCond);
     const at = templates.findIndex((t) => t.finish_tag === tpl.finish_tag);
     if (at >= 0 && !window.confirm(`A “${tpl.finish_tag}” template is already in the library — replace it?`)) return;
     persistTemplates(at >= 0 ? templates.map((t, i) => (i === at ? tpl : t)) : [...templates, tpl]);
@@ -8621,8 +8628,13 @@ export default function TakeoffCanvas() {
   });
   sheetMenuItems.push({ section: "Profile — your templates, stamps & report setup" });
   sheetMenuItems.push({
+    id: "company-setup", icon: "document", label: "Company setup…",
+    title: "Your company on proposals — trade name, logo, phone, email, license — plus default overhead, profit and sales tax and your proposal inclusions, exclusions and terms. Saved on this device; Export profile carries it.",
+    onSelect: () => setCompanySetupOpen(true),
+  });
+  sheetMenuItems.push({
     id: "export-profile", icon: "document", label: "Export profile…",
-    title: "Save your working environment — condition templates, material library, stamps, report templates/theme/columns — as one portable .otprofile. Import it on another machine or hand a company setup to another estimator; project takeoffs are never in it.",
+    title: "Save your working environment — condition templates, material library, stamps, report templates/theme/columns, company setup — as one portable .otprofile. Import it on another machine or hand a company setup to another estimator; project takeoffs are never in it.",
     onSelect: exportProfileFile,
   });
   sheetMenuItems.push({
@@ -8632,7 +8644,7 @@ export default function TakeoffCanvas() {
   });
   sheetMenuItems.push({
     id: "reset-profile", icon: "undo", label: "Reset profile to defaults",
-    title: "Back to a stock OpenTakeoff setup — empty template/material libraries, the default stamps, no report customization. Your current setup downloads as a backup first; project takeoffs are untouched.",
+    title: "Back to a stock OpenTakeoff setup — empty template/material libraries, the default stamps, no report customization. Your company setup is kept. Your current setup downloads as a backup first; project takeoffs are untouched.",
     onSelect: resetProfile,
   });
 
@@ -8774,6 +8786,8 @@ export default function TakeoffCanvas() {
     { id: "copy", label: "Copy selected", group: "Edit", shortcut: "⌘C", disabled: !selectedId, run: copySelected },
     { id: "paste", label: "Paste", group: "Edit", shortcut: "⌘V", disabled: !clipRef.current.length, run: () => pasteClipboard() },
     { id: "report", label: "Open report", group: "Workspace", run: () => setShowReport(true) },
+    { id: "estimate", label: "Estimate — price the takeoff", group: "Workspace", run: openEstimate },
+    { id: "company-setup", label: "Company setup — logo, markups, proposal terms", group: "Workspace", run: () => setCompanySetupOpen(true) },
     { id: "tour", label: "Guided first takeoff — learn it on the sample plan", group: "Help", run: startTour },
     { id: "guide", label: "How OpenTakeoff works — shortcuts and the five-minute path", group: "Help", shortcut: "?", run: () => setGuideOpen(true) },
     { id: "connect-ai", label: "Connect your AI — Claude, Codex, Cursor", group: "Help", run: () => setConnectOpen(true) },
@@ -8855,7 +8869,7 @@ export default function TakeoffCanvas() {
         onNavigate={() => setWorkspaceNavigationOpen((v) => !v)} navigationOpen={workspaceNavigationOpen}
         onTakeoffs={toggleTakeoffs} takeoffsOpen={takeoffsOpen} onWork={() => setAgentOpen((v) => !v)} workOpen={agentOpen} workButtonRef={workButtonRef}
         pending={shapes.filter((shape) => shape.origin?.reviewed === false).length} running={agentRunning}
-        onPremium={openPremiumPricing} onReport={() => setShowReport(true)} onFocus={toggleFocusMode} onClassic={() => workspacePrefs.setEnabled(false)}
+        onPremium={openPremiumPricing} onReport={() => setShowReport(true)} onEstimate={openEstimate} onFocus={toggleFocusMode} onClassic={() => workspacePrefs.setEnabled(false)}
         onControls={() => setWorkspaceControlsOpen((v) => !v)} controlsOpen={workspaceControlsOpen} onSearch={() => setWorkspaceSearchOpen(true)}
         pinControl={pinButton}
         panelTools={<div className="calm-panel-tools" role="group" aria-label="Quantity and review tools">
@@ -9068,6 +9082,8 @@ export default function TakeoffCanvas() {
           style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
           Work{agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : ""}
         </button>
+        <button onClick={openEstimate} disabled={!conditions.length} title="Price the takeoff — material and labor per unit, markups, Excel."
+          style={{ padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: conditions.length ? "var(--ink)" : "var(--text-faint)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Estimate</button>
         <button data-tour="report" onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
@@ -11146,6 +11162,7 @@ export default function TakeoffCanvas() {
         <ReportPanel
           projectName={projectName} onProjectName={setProjectName}
           clientInfo={clientInfo} onClientInfo={setClientInfo} units={units}
+          onOpenCompanySetup={() => setCompanySetupOpen(true)} companyRev={companyRev} onEstimate={openEstimate}
           conditions={conditions} shapes={shapes} markups={markups} rfis={rfis}
           conditionEditProposals={conditionEditProposals}
           conditionColumns={conditionColumns} shapeLabels={shapeLabels}
@@ -11156,6 +11173,19 @@ export default function TakeoffCanvas() {
           sheetDims={(k) => panelByKey(k)?.img}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
           onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {showEstimate && estimateSettings && (
+        <EstimatePanel
+          projectName={projectName} clientInfo={clientInfo}
+          conditions={conditions} shapes={shapes} rollByCond={rollByCond}
+          settings={estimateSettings} onSettings={(next) => setEstimateSettings(sanitizeEstimateSettings(next))}
+          onUpdateCondition={updateCondById}
+          onClientInfo={setClientInfo}
+          bidProposal={bidProposal} onBidProposal={(next) => setBidProposal(sanitizeBidProposal(next))}
+          onOpenCompanySetup={() => setCompanySetupOpen(true)} companyRev={companyRev}
+          onClose={() => setShowEstimate(false)}
         />
       )}
 
@@ -11299,6 +11329,7 @@ export default function TakeoffCanvas() {
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} onTour={startTour} onConnect={() => { setGuideOpen(false); setConnectOpen(true); }} />}
       {connectOpen && <ConnectAI onClose={() => setConnectOpen(false)} />}
+      {companySetupOpen && <CompanySetup onClose={() => setCompanySetupOpen(false)} onSaved={() => setCompanyRev((r) => r + 1)} />}
       {tour && view === "canvas" && !focusMode && !guideOpen && !connectOpen && (
         <FirstTakeoffTour done={tour.done} step={currentStep(tour.done)} sheetOpen={tourSheetOpen}
           sampleBusy={tourSampleBusy} onLoadSample={loadSampleForTour} result={tourResult}

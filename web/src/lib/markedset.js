@@ -1,3 +1,4 @@
+import { stampWatermark } from "./pdfWatermark.js";
 import { annotationScene, pathString } from './annotationTools.js';
 // Marked-Set PDF export — distribute the takeoff off-app, fully client-side.
 //
@@ -967,6 +968,10 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     const cw = font.widthOfTextAtSize(winAnsiSafe(credit), 7);
     lastPg.drawText(winAnsiSafe(credit), { x: (612 - cw) / 2, y: 22, size: 7, font, color: muted });
   }
+
+  // the OpenTakeoff watermark on every page, cover included, in every branding
+  // mode (lib/pdfWatermark.js) — clear-label names the firm, it never removes this
+  for (const p of allPages) stampWatermark(p, { font, rgb, degrees, dark });
 
   const pages = doc.getPageCount();
   const bytes = await doc.save();

@@ -20,3 +20,20 @@ in LICENSES/Apache-2.0.txt.
 
 Contributions made after the relicensing are accepted under the Contributor
 License Agreement in CLA.md.
+
+Additional terms (AGPL-3.0 section 7)
+-------------------------------------
+Under section 7(b) of the GNU Affero General Public License version 3, the
+following additional term applies to the material Kentucky AI authored, and to
+contributions Kentucky AI distributes under the license granted in CLA.md:
+
+  If you convey a modified version, or let users interact with one over a
+  network, you must preserve the author attribution "OpenTakeoff, an open
+  project by Kentucky AI (https://opentakeoff.kentucky-ai.com)" in the
+  Appropriate Legal Notices the program displays (the license line on the
+  plan-set home screen), and keep this NOTICE file with the source.
+
+Separately, and as a request rather than a license condition: the estimates,
+bid proposals, printed reports and marked sets OpenTakeoff produces carry the
+line "Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com". Please keep it
+in modified versions.

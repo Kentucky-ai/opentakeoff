@@ -10,7 +10,7 @@
 //   imperial project's payload round-trips byte-identical; only metric writes it.
 // - The navigation keys (`sheet_group`, `last_group`, `sheet_tabs`) and the
 //   core collections are always present, even when empty.
-// - Every additive key (`client_info`, `condition_columns`, `shape_labels`,
+// - Every additive key (`client_info`, `estimate_settings`, `bid_proposal`, `condition_columns`, `shape_labels`,
 //   `palette`, `approvals`, `proposals`, `condition_edit_proposals`, `rules`,
 //   `stitches`, `sheet_levels`, `layer_overrides`, `provenance_counters`) is
 //   omitted when empty, so a document that never used the feature is
@@ -23,7 +23,7 @@ const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 
 /** Canonical key order of the document. Optional keys appear in this order when present. */
 export const TAKEOFF_DOCUMENT_KEYS = Object.freeze([
-  "schema", "project_name", "units", "client_info", "sheets", "conditions", "condition_columns",
+  "schema", "project_name", "units", "client_info", "estimate_settings", "bid_proposal", "sheets", "conditions", "condition_columns",
   "shape_labels", "palette", "shapes", "markups", "rfis", "approvals", "proposals",
   "condition_edit_proposals", "rules", "sheet_group", "last_group", "sheet_tabs", "stitches",
   "sheet_levels", "layer_overrides", "provenance_counters",
@@ -56,6 +56,10 @@ export function buildTakeoffDocument(f = {}) {
     project_name: typeof f.project_name === "string" ? f.project_name : "",
     ...(f.units === "metric" ? { units: "metric" } : {}),
     ...(hasClient ? { client_info: clientInfo } : {}),
+    // the project's own markups (lib/estimate.js), written once its estimate is opened
+    ...(Object.keys(obj(f.estimate_settings)).length ? { estimate_settings: f.estimate_settings } : {}),
+    // the project's own proposal text and layout (lib/bidProposal.js), written once its proposal is opened
+    ...(Object.keys(obj(f.bid_proposal)).length ? { bid_proposal: f.bid_proposal } : {}),
     sheets: arr(f.sheets),
     conditions,
     ...(arr(f.condition_columns).length ? { condition_columns: f.condition_columns } : {}),

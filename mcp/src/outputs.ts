@@ -442,6 +442,9 @@ export const exportTakeoffOutput = {
   schema: z.string(),
   project_name: z.string(),
   units: z.string().optional().describe("Present only for a metric project; absent means imperial — the app's own diff-only convention"),
+  client_info: z.object({}).passthrough().optional().describe("Who the proposal is for (client_name, client_address, reference) — present once set_estimate_settings or an import set it"),
+  estimate_settings: z.object({}).passthrough().optional().describe("The project's markups (tax_pct, overhead_pct, profit_pct, profit_mode) — present once set"),
+  bid_proposal: z.object({}).passthrough().optional().describe("The project's proposal layout and text — present once set"),
   sheets: z.array(z.object({
     sheet_id: z.string(), units_per_px: z.number(),
     scale_source: z.string().optional().describe("How the exported calibration was established"),
@@ -643,7 +646,8 @@ export const undoLastOutput = {
     // undo_last's reply against this enum, so a journal op missing from it
     // fails the undo call itself. Add the op here in the same change.
     op: z.enum(["commit", "scale", "edit", "annotation_text", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete",
-      "proposal_open", "proposal_revise", "proposal_withdraw", "condition_proposal", "condition_proposal_withdraw", "condition_proposal_accept"]),
+      "proposal_open", "proposal_revise", "proposal_withdraw", "condition_proposal", "condition_proposal_withdraw", "condition_proposal_accept",
+      "pricing", "estimate_settings"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),
@@ -1152,4 +1156,57 @@ export const countMarksOutput = {
   excluded_in_tables: z.number().int().optional().describe("Tag occurrences inside a schedule table's own region — row labels, never instances"),
   skipped: z.array(z.object({ sheet: z.string(), role: z.string(), reason: z.string() })),
   complete: z.boolean(),
+};
+
+// ── estimate (lib/estimate.js) ──────────────────────────────────────────────
+const unpricedRow = z.object({
+  id: z.string(), finish_tag: z.string(),
+  status: z.enum(["partial", "unpriced"]),
+  missing: z.array(z.string()).describe('What was never entered: "material", "labor", or "material row: <name>"'),
+}).passthrough();
+const estimateLine = z.object({
+  id: z.string(), finish_tag: z.string(), unit: z.enum(["SF", "SY", "LF", "EA"]),
+  material_qty: z.number().describe("Order quantity in the unit — waste applied (EA never carries waste)"),
+  labor_qty: z.number().describe("Measured quantity in the unit — no waste"),
+  material_rate: z.number().nullable().describe("$ per unit; null = never entered"),
+  labor_rate: z.number().nullable().describe("$ per unit; null = never entered"),
+  material_cost: z.number(), labor_cost: z.number(),
+  materials: z.array(z.object({ name: z.string(), unit: z.string(), qty: z.number(), price: z.number().nullable(), cost: z.number(), priced: z.boolean() }).passthrough()),
+  materials_cost: z.number(), total: z.number(),
+  status: z.enum(["priced", "partial", "unpriced"]),
+  missing: z.array(z.string()),
+}).passthrough();
+const estimateSettings = z.object({ tax_pct: z.number(), overhead_pct: z.number(), profit_pct: z.number(), profit_mode: z.enum(["markup", "margin"]) }).passthrough();
+
+export const setPricingOutput = {
+  condition: z.string(), condition_id: z.string(),
+  pricing: z.object({ unit: z.enum(["SF", "SY", "LF", "EA"]).optional(), material: z.number().optional(), labor: z.number().optional() }).passthrough().describe("The condition's prices after this write; an absent field is not entered"),
+  material_prices: z.array(z.object({ name: z.string(), unit: z.string(), price: z.number().nullable() }).passthrough()),
+  line: estimateLine.nullable().describe("The condition's estimate line after this write; null while it has no committed shapes"),
+  note: z.string().optional(),
+};
+export const setEstimateSettingsOutput = {
+  estimate_settings: estimateSettings.nullable(),
+  bid_proposal: z.object({}).passthrough().nullable(),
+  client_info: z.object({}).passthrough(),
+};
+export const estimateSummaryOutput = {
+  settings: estimateSettings,
+  settings_source: z.string(),
+  lines: z.array(estimateLine),
+  material: z.number().describe("Condition material + supply rows"), labor: z.number(),
+  tax: z.number().describe("Sales tax on material"), cost: z.number().describe("material + labor + tax"),
+  overhead: z.number(), profit: z.number(),
+  total: z.number().describe("The base bid — 'priced so far' while complete is false"),
+  complete: z.boolean(),
+  unpriced: z.array(unpricedRow),
+  warnings: z.array(z.string()),
+  note: z.string(),
+};
+export const exportEstimateOutput = {
+  path: z.string(), tabs: z.array(z.string()), total: z.number(), complete: z.boolean(), unpriced: z.array(unpricedRow),
+};
+export const exportProposalOutput = {
+  path: z.string(), pages: z.number().int(), base_bid: z.number(), itemized: z.boolean(), complete: z.boolean(), unpriced: z.array(unpricedRow),
+  note: z.string().optional(),
 };
