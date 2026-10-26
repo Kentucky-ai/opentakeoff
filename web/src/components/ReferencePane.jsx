@@ -3,11 +3,11 @@
 // wheel/drag pan-zoom scoped to its element — panning/zooming this pane never
 // touches the primary pane's transform, and vice versa. Renders the referenced
 // sheet's BASE raster (Task 3) plus a read-only mirror of its committed shapes
-// (Task 5) plus a tile-composited detail layer (Task 6) that is the active
-// raster path at EVERY zoom level on this pane's OWN scale — no DETAIL_ENGAGE
-// gate, matching the primary pane's detail view. It NEVER handles measurement/
-// keyboard/tools — no selection, no vertex handles, no click handlers reach
-// the shape overlay below.
+// and markups (Task 5) plus a tile-composited detail layer (Task 6) that is the
+// active raster path at EVERY zoom level on this pane's OWN scale — no
+// DETAIL_ENGAGE gate, matching the primary pane's detail view. It NEVER handles
+// measurement/keyboard/tools — no selection, no vertex handles, no markup
+// halo, no click handlers reach the overlay below.
 //
 // `refKey` arrives already validated by the caller (TakeoffCanvas): a
 // dangling/unresolvable refKey is reported as `null` here, not as a raw
@@ -17,6 +17,10 @@
 // sorted (TakeoffCanvas's `refStackedShapes`, the reference-pane analog of
 // the primary's `stackedShapes` — NOT scoped to the primary's sheetGroup, so
 // a shape on a sheet the primary isn't even displaying still mirrors here).
+// `markups` arrives the same way (TakeoffCanvas's `refMarkups`), plus the
+// context its ink needs to render identically to the primary: `rfis` (linkage
+// badge numbers), `noteQtyLabels` ({{qty}} fields in note text) and
+// `sheetBaseLabel` (a capture's legacy source caption).
 //
 // Tab bar (Task 7): a thin strip of chips along the pane's top edge listing
 // `refSet` — the sheets dropped here, `activeKey` included. Clicking a chip
@@ -38,10 +42,12 @@ import { MIN_SCALE, MAX_SCALE, SYNC_MS, GESTURE_MS } from "../lib/canvasConstant
 import { SHEET_TAB_DND_MIME } from "../lib/dropZones";
 import { HatchPattern } from "./hatches.jsx";
 import { renderShapeGlyph } from "./shapeGlyphs.jsx";
+import { renderMarkupGlyph, readOnlyPremiumInk } from "./markupGlyphs.jsx";
 import { Icon } from "../brand/icons.jsx";
 
 export default function ReferencePane({
   refKey, panelImg, paintBase, paintDetail, epoch, shapes = [], conditions = [], condById = {}, darkMode = false, patId,
+  markups = [], rfis = [], noteQtyLabels, sheetBaseLabel,
   refSet = [], activeKey = null, tabLabel = (k) => k, onSelectRef, onRemoveRef, onDropSheet,
 }) {
   const stageRef = useRef(null);
@@ -256,6 +262,22 @@ export default function ReferencePane({
                     dn: (vn) => vn.map(([x, y]) => [x * panelImg.w, y * panelImg.h]),
                     cond: condById[s.condition_id], sel: false, z: scale, darkMode,
                     patId: (c) => patId(c, "ref-"),
+                  }))}
+                  {/* Read-only markup mirror — the SAME renderer the primary's markup
+                      layer calls (markupGlyphs.jsx), so clouds, callouts, text notes,
+                      dimensions, arrows, highlights, bubbles, captured images and vector
+                      stamps all mirror without a second implementation to drift. Two
+                      differences from the primary, both deliberate: `selected` is pinned
+                      false (no halo, and none of the selection-only geometry exists on
+                      this path), and premium ink comes from `readOnlyPremiumInk`, which
+                      can never mint the annotation workbench's selection handles. Sits
+                      inside the same pointerEvents:none <svg> as the shapes, so a click
+                      or drag here still pans the pane — markups are never interactive.
+                      `markups` arrives already scoped to this refKey and paint-ordered
+                      (TakeoffCanvas's `refMarkups`, via lib/markupPaint). */}
+                  {markups.map((m) => renderMarkupGlyph(m, {
+                    img: panelImg, z: scale, darkMode, condById, rfis, noteQtyLabels, sheetBaseLabel,
+                    selected: false, premiumInk: readOnlyPremiumInk,
                   }))}
                 </svg>
               )}

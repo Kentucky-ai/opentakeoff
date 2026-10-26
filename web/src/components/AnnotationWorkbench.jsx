@@ -4,7 +4,11 @@ import { ANNOTATION_DEFAULTS, ANNOTATION_PRESETS, annotationStyle, annotationSce
 import ToolMenu from './ToolMenu.jsx';
 import './AnnotationWorkbench.css';
 
-const supported = m => !m.reference_only && ['arrow','highlight','callout','cloud','text'].includes(m.type);
+// The premium (`annotation_style`) family's type gate — exported so the
+// reference pane's read-only ink (components/markupGlyphs.jsx) applies the
+// SAME supported types the interactive workbench does, instead of a second
+// copy of this list that could fall out of step.
+export const premiumSupported = m => !m.reference_only && ['arrow','highlight','callout','cloud','text'].includes(m.type);
 const colors = ['#dc3d43','#2563eb','#249268','#8b5cf6','#172033','#ffd60a','#ff9f0a'];
 const tools = [['arrow','Arrow','arrow'],['highlighter','Highlighter','highlighter'],['callout','Callout','callout'],['cloud','Cloud + note','cloud'],['sweep','Sweep','symbol'],['selection','Select markups','select']];
 const ArrowIcon = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 19 19 5M9 5h10v10"/></svg>;
@@ -95,7 +99,7 @@ export function useAnnotationWorkbench(options) {
   };
   const commitEdit=rows=>{const o=current.current,by=new Map(rows.map(m=>[m.id,{...m,updated_at:new Date().toISOString()}]));o.commit(o.markups.map(m=>by.get(m.id)||m));};
   useEffect(()=>{const next=options.legacyTools?.[options.tool];if(next)arm(next);},[options.tool]); // eslint-disable-line react-hooks/exhaustive-deps
-  const selectedRows=options.markups.filter(m=>selected.includes(m.id)&&supported(m));
+  const selectedRows=options.markups.filter(m=>selected.includes(m.id)&&premiumSupported(m));
   const setStyle=patch=>{
     const next=annotationStyle({...style,...patch});setStyles(s=>({...s,[mode]:next}));
     if(selectedRows.length && !active)commitEdit(selectedRows.map(m=>({...m,...(patch.width_pt&&m.pts?{w:patch.width_pt*2/(options.panels.find(p=>p.key===m.sheet_id)?.img.w||2000)}:{}),color:patch.color||m.color,annotation_style:annotationStyle({...style,...m.annotation_style,...patch})})));
@@ -112,7 +116,7 @@ export function useAnnotationWorkbench(options) {
   async function runRegion(a,b,p) {
     const st=state.current,o=current.current,token=++request.current,region=box(local(a,p),local(b,p));
     if(st.mode==='selection'){
-      const r=box(norm(a,p),norm(b,p)),found=o.markups.filter(m=>supported(m)&&m.sheet_id===p.key&&markupBounds(m)&&intersects(markupBounds(m),r));
+      const r=box(norm(a,p),norm(b,p)),found=o.markups.filter(m=>premiumSupported(m)&&m.sheet_id===p.key&&markupBounds(m)&&intersects(markupBounds(m),r));
       setSelected(found.map(m=>m.id));o.setSelectedId(found[0]?.id||null);o.setTool('select');o.message(`${found.length} editable markup${found.length===1?'':'s'} selected.`);return;
     }
     setBusy(true);
@@ -166,11 +170,11 @@ export function useAnnotationWorkbench(options) {
     if(e.button!==0||o.spaceRef.current||!o.ready||o.visible===false||st.editor||st.review||busy)return;
     const q=o.toImage(e.clientX,e.clientY),p=panelFor(q);if(!p)return;
     if(o.tool==='select'){
-      for(const m of o.markups.filter(m=>st.selected.includes(m.id)&&supported(m)&&m.sheet_id===p.key)){
+      for(const m of o.markups.filter(m=>st.selected.includes(m.id)&&premiumSupported(m)&&m.sheet_id===p.key)){
         const h=handles(m,p).find(h=>Math.hypot(h.point[0]-q[0],h.point[1]-q[1])<9/o.tf.current.scale);
         if(h){stop(e);gesture.current={kind:'handle',original:m,live:m,handle:h.key,p,start:q};e.currentTarget.setPointerCapture(e.pointerId);return;}
       }
-      const m=[...o.markups].reverse().find(m=>supported(m)&&m.sheet_id===p.key&&hit(q,m,p));
+      const m=[...o.markups].reverse().find(m=>premiumSupported(m)&&m.sheet_id===p.key&&hit(q,m,p));
       if(!m){setSelected([]);return;}
       stop(e);const ids=e.shiftKey?(st.selected.includes(m.id)?st.selected.filter(x=>x!==m.id):[...st.selected,m.id]):(st.selected.includes(m.id)?st.selected:[m.id]);
       setSelected(ids);o.setSelectedId(ids[0]||null);
@@ -210,7 +214,7 @@ export function useAnnotationWorkbench(options) {
   };
   const onDouble=e=>{
     const o=current.current;if(o.tool!=='select')return;const q=o.toImage(e.clientX,e.clientY),p=panelFor(q);if(!p)return;
-    const m=[...o.markups].reverse().find(m=>supported(m)&&['callout','cloud','text'].includes(m.type)&&m.sheet_id===p.key&&hit(q,m,p));
+    const m=[...o.markups].reverse().find(m=>premiumSupported(m)&&['callout','cloud','text'].includes(m.type)&&m.sheet_id===p.key&&hit(q,m,p));
     if(m){stop(e);clear();setEditor({markup:m,text:m.text||'',fresh:false});}
   };
   const applyNote=()=>{if(!editor)return;const m={...editor.markup,text:editor.text.trim(),annotation_style:editor.markup.annotation_style||style};if(m.type==='callout'&&!m.text)return;editor.fresh?commitNew([m]):commitEdit([m]);setEditor(null);paint(preview.current);};
@@ -276,5 +280,5 @@ export function useAnnotationWorkbench(options) {
     {review&&(()=>{const p=options.panels.find(p=>p.key===review.key);if(!p)return null;return <g transform={`translate(${p.xOffset},0)`}>{review.rows.map((r,i)=>{const [a,b]=r.rect,z=options.zoom;return <g key={i} role="checkbox" tabIndex={0} aria-label={`Sheet match ${i+1}: ${r.text}`} aria-checked={r.checked} onKeyDown={e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();e.stopPropagation();toggleReview(i);}}} style={{pointerEvents:'all',cursor:'pointer'}} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggleReview(i);}}><rect x={a[0]-4/z} y={a[1]-4/z} width={Math.max(10/z,b[0]-a[0]+8/z)} height={Math.max(10/z,b[1]-a[1]+8/z)} fill={r.checked?'#2563eb':'#ed9a23'} fillOpacity={r.checked?.13:.05} stroke={r.checked?'#2563eb':'#ed9a23'} strokeWidth={2/z} strokeDasharray={r.checked?undefined:`${4/z} ${3/z}`}/><text x={a[0]} y={a[1]-8/z} fontSize={11/z} fill={r.checked?'#2563eb':'#b66b00'}>{i+1}{r.held?' ?':''}</text></g>;})}</g>;})()}
     <g ref={preview} style={{pointerEvents:'none'}}/>
   </g>;
-  return {toolbar,control,layer,selected,active,onPointerDownCapture:onDown,onPointerMoveCapture:onMove,onPointerUpCapture:onUp,onDoubleClickCapture:onDouble,onPointerCancelCapture:e=>{if(gesture.current){stop(e);clear();}},render:(m,p)=>m.annotation_style&&supported(m)?<AnnotationInk key={m.id} markup={m} panel={p} selected={options.tool==='select'&&selected.includes(m.id)} zoom={options.zoom}/>:null};
+  return {toolbar,control,layer,selected,active,onPointerDownCapture:onDown,onPointerMoveCapture:onMove,onPointerUpCapture:onUp,onDoubleClickCapture:onDouble,onPointerCancelCapture:e=>{if(gesture.current){stop(e);clear();}},render:(m,p)=>m.annotation_style&&premiumSupported(m)?<AnnotationInk key={m.id} markup={m} panel={p} selected={options.tool==='select'&&selected.includes(m.id)} zoom={options.zoom}/>:null};
 }

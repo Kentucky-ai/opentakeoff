@@ -29,8 +29,8 @@ import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
-import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
-import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat, sourceCaption, filterCaptures } from "../lib/markupImage";
+import { svgPlacedBox } from "../lib/svgpath.js";
+import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat, filterCaptures } from "../lib/markupImage";
 import { rectMidpoint, pendingSourceOutcome, isTraceable, traceLabel } from "../lib/sourceTrace";
 import { relativeAge, absoluteUtc } from "../lib/reltime";
 import { ingestFiles } from "../lib/ingest.js";
@@ -59,6 +59,8 @@ import PageReadControl, { readControlPlacement, READ_CONTROL_LEFT } from "../com
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { shapeFill as glyphFill, renderShapeGlyph } from "../components/shapeGlyphs.jsx";
+import { renderMarkupGlyph } from "../components/markupGlyphs.jsx";
+import { paintOrderedMarkups, markupsForSheet } from "../lib/markupPaint.ts";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { serializeSplitView, normalizeSplitView, wouldExceedSheetCap, canSplit } from "../lib/splitView";
@@ -135,11 +137,11 @@ import { buildMarkedSetPdf, downloadBytes, splitLoadedSheets, skippedPdfsNote } 
 import { repeatPlan } from "../lib/repeatTool.js";
 import { createDragCache, sheetContentSignature, dragFilename, downloadUrlEntry } from "../lib/dragOut.js";
 import { counterRows } from "../lib/liveCounter.js";
-import { qtyLabels, resolveMarkup, FIELD_WARN_INK, FIELD_WARN_INK_DARK } from "../lib/noteFields.ts";
+import { qtyLabels, resolveMarkup } from "../lib/noteFields.ts";
 import LiveCounter from "../components/LiveCounter.jsx";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
-import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, polyWithHolesMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm, ringSelfIntersects, minAreaRect } from "../lib/geometry.js";
+import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, polyWithHolesMetrics, openLen, pointInPoly, hitShape, distToSeg, reflectVertsNorm, ringSelfIntersects, minAreaRect } from "../lib/geometry.js";
 // Drawing style (draft chrome look) — one resolved token object (DS in JSX,
 // dsRef.current in the imperative movers) replaces the hardcoded cobalt/star
 // literals across the in-progress trace, cursor, and selection chrome.
@@ -150,8 +152,8 @@ import { flattenArcRing, arcPathD, arcLength } from "../lib/arc.js";
 // Notes are ink on the sheet (lib/markupText): sized in page points, wrapped at
 // three inches, floored for legibility on screen — the Marked Set burns the
 // same layout, so the print looks like the canvas it was reviewed on.
-import { NOTE_PT, LABEL_PT, NOTE_FONT_FAMILY, inkPx, layoutNote, noteBox, lineBaseline, canvasMeasure } from "../lib/markupText.js";
-import { dashArrayFor, boostForDark, clampWeight, snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
+import { NOTE_PT, inkPx, layoutNote, noteBox, canvasMeasure } from "../lib/markupText.js";
+import { snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
 import { nextRfiNumber } from "../lib/rfi.js";
 import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch } from "../lib/materials.js";
 import RfiPanel from "../components/RfiPanel.jsx";
@@ -1653,6 +1655,18 @@ export default function TakeoffCanvas() {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
     return markups.filter((m) => !m.reference_only && keys.has(m.sheet_id));
   }, [markups, sheetGroup, sheetKey]);
+  // Reference-pane markups (split screen, markup mirror): the same live
+  // `markups` state, scoped to the pane's effective refKey and paint-ordered by
+  // lib/markupPaint's shared tier rule (the primary's per-panel filter uses the
+  // same helper, so the two panes can't stack differently). Same
+  // reference-only exclusion as `visibleMarkups` — a pin for the reference rail
+  // is not ink on a sheet. A null effective refKey mirrors nothing.
+  // Gated on showMarkups for the same reason the primary layer is: the toggle's
+  // job is "hide the markup ink on the canvas", and the mirror is canvas ink.
+  const refMarkups = useMemo(
+    () => (showMarkups ? markupsForSheet(markups, effectiveRefKey) : []),
+    [markups, effectiveRefKey, showMarkups]
+  );
   // scale is PER PAGE (plan sets are never one uniform scale) — set it once per
   // sheet and it's remembered. In group mode the scale dropdown and hints target
   // the FOCUSED panel (the one last clicked); single mode focuses the lone panel.
@@ -9454,299 +9468,20 @@ export default function TakeoffCanvas() {
                         </g>
                       );
                     })()}
-                    {/* markup layer — highlights / clouds / callouts / text notes on this
-                        panel. Highlights draw FIRST (behind) so their translucent fill never
-                        dims the linework above. A selected markup wears a CONTRASTING halo
-                        (white outer ring + cobalt inner). Per-markup color drives the STROKE/
-                        FILL (dark-boosted on the dark canvas); RFI linkage is an unconditional
-                        ⬢/number badge, independent of the note text. Layer hides via showMarkups. */}
-                    {showMarkups && visibleMarkups.filter((m) => m.sheet_id === p.key)
-                      // three draw tiers that MATCH the three hit tiers (selectAt),
-                      // so on-screen z-order never contradicts selection priority:
-                      // image at the back (0), highlight (1), everything else on top
-                      // (2). Painting is document order, so tier 0 draws first/behind
-                      // and tier 2 last/on top; hit-test ranks them in reverse, so the
-                      // topmost-drawn markup is the one a click selects.
-                      .slice().sort((a, b) => (a.type === "image" ? 0 : a.type === "highlight" ? 1 : 2) - (b.type === "image" ? 0 : b.type === "highlight" ? 1 : 2))
-                      .map((m0) => {
-                      // fields resolve before anything reads the text, Premium ink included;
-                      // an unresolved field leaves the literal in place and tints the note
-                      const { m, unresolved: mUnres } = resolveMarkup(m0, noteQtyLabels);
-                      const premiumInk = annotations.render(m, p);
-                      if (premiumInk) {
-                        const at=m.at||m.from||m.rect?.[0]||m.pts?.[0]||m.quads?.[0]?.[0];
-                        const linked=rfis.find(r=>r.id===m.rfi_id);
-                        return <g key={m.id}>{premiumInk}{m.rfi_id&&at&&<text x={at[0]*p.img.w} y={at[1]*p.img.h-14/tf.scale} fill="#1f3fc7" fontSize={12/tf.scale} fontWeight="700">RFI {linked?.number||''}</text>}</g>;
-                      }
-                      const z = tf.scale;
-                      // Colour precedence: an explicit per-markup colour always
-                      // wins (the user picked it), then the LINKED CONDITION's
-                      // colour so an annotation reads as part of that scope at a
-                      // glance, then RFI blue, then the unattached default.
-                      const mCond = m.condition_id ? condById[m.condition_id] : null;
-                      const base = m.color || mCond?.color || (m.rfi_id ? "#1f3fc7" : "#c47a10");
-                      const mk = darkMode ? boostForDark(base) : base;   // literal — SVG attrs don't resolve CSS vars
-                      // a note quoting a field that can't resolve reads in the danger ink;
-                      // note blocks sit on a white backing in both themes, labels on the sheet
-                      const labelInk = mUnres.length ? (darkMode ? FIELD_WARN_INK_DARK : FIELD_WARN_INK) : mk;
-                      const noteInk = mUnres.length ? FIELD_WARN_INK : "#0e1a2e";
-                      const dash = dashArrayFor(m.line_style || "solid", z);
-                      const w = clampWeight(m.weight);   // stroke-width multiplier over each element's base, default ×1
-                      const selM = m.id === selectedMarkupId;
-                      // linkage badge — unconditional for any linked markup (a note-less
-                      // recolored cloud still reads as linked); kept in cobalt for legibility
-                      // regardless of the user's color, pinned clear of the halo.
-                      const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
-                      const badgeCol = darkMode ? boostForDark("#1f3fc7") : "#1f3fc7";
-                      const badge = (bx, by) => (m.rfi_id ? (
-                        <text x={bx} y={by} fill={badgeCol} fontSize={12 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{"⬢"}{linked && linked.number != null && linked.number !== "" ? " " + linked.number : ""}</text>
-                      ) : null);
-                      // revision-delta △n — a small numbered triangle at a cloud corner,
-                      // clear of the halo, the top-left RFI badge, and the centered note.
-                      // Absent/zero m.rev → nothing (legacy clouds render unchanged).
-                      // the triangle backing is ALWAYS white, so stroke/number it in the
-                      // UN-boosted color (mk's dark boost is tuned to contrast the dark
-                      // canvas, and would wash out on white).
-                      const revTri = (rx, ry) => (Number.isFinite(m.rev) && m.rev > 0 ? (
-                        <g style={{ pointerEvents: "none" }}>
-                          <path d={`M${rx},${ry - 9 / z} L${rx + 8 / z},${ry + 6 / z} L${rx - 8 / z},${ry + 6 / z} Z`} fill="#fff" stroke={base} strokeWidth={1.4 / z} />
-                          <text x={rx} y={ry + 2.5 / z} fill={base} fontSize={9 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central">{m.rev}</text>
-                        </g>
-                      ) : null);
-                      // halo ring widths scale with weight so a heavy stroke never overruns them
-                      const halo = (x0, y0, x1, y1) => (selM ? (
-                        <>
-                          <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill="none" stroke="#fff" strokeWidth={(5 * w) / z} />
-                          <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill="none" stroke="#1f3fc7" strokeWidth={(2 * w) / z} />
-                        </>
-                      ) : null);
-                      if (m.type === "highlight" && Array.isArray(m.pts)) {
-                        // freehand highlighter stroke — the ink keeps its OWN hue (a highlight
-                        // IS its color; dark legibility comes from the higher opacity, not a
-                        // boost). Weight (×) multiplies the stored width like every markup.
-                        const ip = m.pts.map(([nx, ny]) => [nx * p.img.w, ny * p.img.h]);
-                        if (ip.length < 2) return null;
-                        const sw = (m.w || 0.01) * p.img.w * w, o = darkMode ? 0.42 : 0.32;
-                        const ink = m.tip === "chisel"
-                          ? <path d={"M" + chiselRibbon(ip, sw, 45).map((q) => q.join(",")).join(" L") + " Z"} fill={m.color || "#ffd60a"} fillOpacity={o} />
-                          : <path d={strokePathD(ip)} fill="none" stroke={m.color || "#ffd60a"} strokeOpacity={o} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />;
-                        return (
-                          <g key={m.id}>
-                            {/* selection halo follows the stroke's spine (white outer + cobalt
-                                inner, the selected-markup convention adapted to an open path) */}
-                            {selM && (
-                              <>
-                                <path d={strokePathD(ip)} fill="none" stroke="#fff" strokeWidth={sw + 8 / z} strokeLinecap="round" strokeLinejoin="round" />
-                                <path d={strokePathD(ip)} fill="none" stroke="#1f3fc7" strokeOpacity={0.55} strokeWidth={sw + 4 / z} strokeLinecap="round" strokeLinejoin="round" />
-                              </>
-                            )}
-                            {ink}
-                            {badge(ip[0][0], ip[0][1] - 9 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "highlight") {
-                        const [c0, c1] = m.rect;
-                        const hx0 = Math.min(c0[0], c1[0]) * p.img.w, hy0 = Math.min(c0[1], c1[1]) * p.img.h;
-                        const hx1 = Math.max(c0[0], c1[0]) * p.img.w, hy1 = Math.max(c0[1], c1[1]) * p.img.h;
-                        const pad = (5 * w) / z;
-                        return (
-                          <g key={m.id}>
-                            {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
-                            <rect x={hx0} y={hy0} width={hx1 - hx0} height={hy1 - hy0} fill={mk} fillOpacity={0.18} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            {m.text && <text x={(hx0 + hx1) / 2} y={(hy0 + hy1) / 2} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-                            {badge(hx0, hy0 - pad - 9 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "cloud") {
-                        const [c0, c1] = m.rect;
-                        const pad = (5 * w) / z;
-                        const bx0 = Math.min(c0[0], c1[0]) * p.img.w - pad, by0 = Math.min(c0[1], c1[1]) * p.img.h - pad;
-                        const bx1 = Math.max(c0[0], c1[0]) * p.img.w + pad, by1 = Math.max(c0[1], c1[1]) * p.img.h + pad;
-                        return (
-                          <g key={m.id}>
-                            {halo(bx0, by0, bx1, by1)}
-                            <path d={cloudPath(c0[0] * p.img.w, c0[1] * p.img.h, c1[0] * p.img.w, c1[1] * p.img.h)} fill="none" stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            {m.text && <text x={(c0[0] + c1[0]) / 2 * p.img.w} y={(c0[1] + c1[1]) / 2 * p.img.h} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-                            {badge(bx0, by0 - 9 / z)}
-                            {revTri(bx1, by0 - 9 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "callout") {
-                        // the note is INK: page-point size (× zoom on screen, floored for
-                        // legibility), wrapped at three inches into a block anchored at
-                        // baseline-left — the same layout the Marked Set burns and hitMarkup tests
-                        const [tx, ty] = m.target, [ax, ay] = m.at;
-                        const AX = ax * p.img.w, AY = ay * p.img.h;
-                        const fs = inkPx(NOTE_PT, z);
-                        const L = layoutNote({ text: m.text, fontPx: fs, measure: canvasMeasure(fs) });
-                        const b = noteBox(AX, AY, L);
-                        return (
-                          <g key={m.id}>
-                            {halo(b.x0 - 2 / z, b.y0 - 2 / z, b.x1 + 2 / z, b.y1 + 2 / z)}
-                            <line x1={tx * p.img.w} y1={ty * p.img.h} x2={AX} y2={AY} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            {/* arrowhead at the target end — replaces the old vertex star */}
-                            <path d={arrowheadPath(AX, AY, tx * p.img.w, ty * p.img.h, 9 / z)} fill={mk} />
-                            {L.lines.length > 0 && <rect x={b.x0} y={b.y0} width={L.w} height={L.h} fill="rgba(255,255,255,.92)" stroke={mk} strokeWidth={(1 * w) / z} strokeDasharray={dash} />}
-                            {L.lines.length > 0 && (
-                              <text fill={noteInk} fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
-                                {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{ln || "\u00a0"}</tspan>)}
-                              </text>
-                            )}
-                            {badge(AX, b.y0 - 8 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "arrow") {
-                        const [fx, fy] = [m.from[0] * p.img.w, m.from[1] * p.img.h];
-                        const [tx, ty] = [m.to[0] * p.img.w, m.to[1] * p.img.h];
-                        const midx = (fx + tx) / 2, midy = (fy + ty) / 2;
-                        const hx0 = Math.min(fx, tx), hy0 = Math.min(fy, ty), hx1 = Math.max(fx, tx), hy1 = Math.max(fy, ty);
-                        const pad = (6 * w) / z;
-                        return (
-                          <g key={m.id}>
-                            {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
-                            <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} strokeLinecap="round" />
-                            {/* filled arrowhead at the `to` end */}
-                            <path d={arrowheadPath(fx, fy, tx, ty, 11 / z)} fill={mk} />
-                            {m.text && <text x={midx} y={midy - inkPx(LABEL_PT, z) * 0.6} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-                            {badge(hx0, hy0 - pad - 9 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "dimension" && m.from && m.to) {
-                        // a dimension line: perpendicular ticks at both ends and the
-                        // measured length (m.len_ft, snapshotted at annotate time from
-                        // the sheet scale) centered beside the line — a note ABOUT a
-                        // distance, never a takeoff quantity
-                        const [fx, fy] = [m.from[0] * p.img.w, m.from[1] * p.img.h];
-                        const [tx, ty] = [m.to[0] * p.img.w, m.to[1] * p.img.h];
-                        const dl = Math.hypot(tx - fx, ty - fy) || 1;
-                        const dnx = -(ty - fy) / dl, dny = (tx - fx) / dl;   // unit normal
-                        const tick = 7 / z;
-                        const dimText = [Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ");
-                        const hx0 = Math.min(fx, tx), hy0 = Math.min(fy, ty), hx1 = Math.max(fx, tx), hy1 = Math.max(fy, ty);
-                        const pad = (6 * w) / z;
-                        return (
-                          <g key={m.id}>
-                            {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
-                            <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            <line x1={fx - dnx * tick} y1={fy - dny * tick} x2={fx + dnx * tick} y2={fy + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
-                            <line x1={tx - dnx * tick} y1={ty - dny * tick} x2={tx + dnx * tick} y2={ty + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
-                            {dimText && <text x={(fx + tx) / 2 + dnx * (inkPx(LABEL_PT, z) * 0.9)} y={(fy + ty) / 2 + dny * (inkPx(LABEL_PT, z) * 0.9)} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{dimText}</text>}
-                            {badge(hx0, hy0 - pad - 9 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "bubble") {
-                        const cx = m.at[0] * p.img.w, cy = m.at[1] * p.img.h;
-                        const rad = (Number(m.r) > 0 ? Number(m.r) : 0.02) * p.img.w;
-                        const pad = (5 * w) / z;
-                        return (
-                          <g key={m.id}>
-                            {halo(cx - rad - pad, cy - rad - pad, cx + rad + pad, cy + rad + pad)}
-                            <circle cx={cx} cy={cy} r={rad} fill={darkMode ? "rgba(12,15,20,.85)" : "rgba(255,255,255,.85)"} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            {m.text && <text x={cx} y={cy} fill={labelInk} fontSize={Math.min(13, rad * z * 0.9) / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-                            {badge(cx + rad, cy - rad - 4 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "image") {
-                        // a raster image markup (screenshot capture or upload). Width-anchored
-                        // like svg but off `m.w` alone (imagePlacedBox), rendered as-is (no
-                        // dark-mode invert — a screenshot is captured from the light PDF).
-                        // Self-contained: a guard-fail returns null, never falling through to
-                        // the text renderer below (which would paint a phantom note box).
-                        const { bw, bh } = imagePlacedBox(m.w, m.aspect, p.img.w);
-                        // only a PNG/JPEG DATA url renders (matches the marked-set
-                        // export invariant) — an imported record with an http(s)://
-                        // src must never make <image href> fetch remote content.
-                        if (!(m.src && pickEmbedFormat(m.src) && Array.isArray(m.at) && bw > 0 && bh > 0)) return null;
-                        const x0 = m.at[0] * p.img.w - bw / 2, y0 = m.at[1] * p.img.h - bh / 2;
-                        // Source caption (captures only) — the origin sheet NAME, read
-                        // from the frozen src_label (resolved at capture time; the
-                        // marked-set PDF reads the SAME stored string, so screen and PDF
-                        // can't diverge). Legacy captures without src_label fall back to
-                        // the live closure. A stitch origin has no page number, so drop the
-                        // "· p.N" for it. "" (upload or no src_sheet_id) ⇒ render nothing.
-                        const capText = m.source === "capture" && m.source_label && m.src_sheet_id
-                          ? sourceCaption(m.src_label ?? sheetBaseLabel(m.src_sheet_id), isStitchKey(m.src_sheet_id) ? 0 : parseSheetKey(m.src_sheet_id).page)
-                          : "";
-                        return (
-                          <g key={m.id}>
-                            {halo(x0, y0, x0 + bw, y0 + bh)}
-                            <image href={m.src} x={x0} y={y0} width={bw} height={bh} preserveAspectRatio="none" style={{ pointerEvents: "none" }} />
-                            {/* PERMANENT frame — a placed screenshot overlays its own source and is
-                                invisible without it; the halo is selection-only. White + slate double
-                                stroke reads on both canvas themes (the image itself is never inverted). */}
-                            <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#fff" strokeWidth={2.5 / z} style={{ pointerEvents: "none" }} />
-                            <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#2a3550" strokeWidth={1 / z} style={{ pointerEvents: "none" }} />
-                            {selM && <rect x={x0 + bw - 4 / z} y={y0 + bh - 4 / z} width={8 / z} height={8 / z} fill="#1f3fc7" stroke="#fff" strokeWidth={1.5 / z} style={{ pointerEvents: "none" }} />}
-                            {capText && (() => {
-                              // Frame-hugging chip on the TOP edge, centered on the box
-                              // width so it never collides with the top-LEFT link badge
-                              // (badge(x0, y0-9/z) is centered ON x0). Explicit light
-                              // fill + dark ink — NOT theme tokens (the image render
-                              // never dark-mode-inverts, so a chip that flipped with the
-                              // app theme would read backwards against it). Fixed screen
-                              // size (every dimension /z): on a very small capture it can
-                              // overrun the frame width, which is fine — it stays on the
-                              // top edge, clear of the bottom-right resize handle.
-                              const capCx = x0 + bw / 2, capCy = y0 - 9 / z;
-                              const capH = 15 / z, capW = (capText.length * 5.6 + 14) / z;
-                              return (
-                                <g style={{ pointerEvents: "none" }}>
-                                  <rect x={capCx - capW / 2} y={capCy - capH / 2} width={capW} height={capH} rx={3 / z}
-                                    fill="rgba(255,247,237,.95)" stroke="#0e1a2e" strokeWidth={1 / z} />
-                                  <text x={capCx} y={capCy} fill="#0e1a2e" fontSize={10 / z} fontWeight="600" textAnchor="middle" dominantBaseline="central">{capText}</text>
-                                </g>
-                              );
-                            })()}
-                            {badge(x0, y0 - 9 / z)}
-                          </g>
-                        );
-                      }
-                      if (m.type === "svg" && m.path && Array.isArray(m.vb)) {
-                        // a vector symbol (imported .svg or saved-as-stamp art). The
-                        // path is baked local→image px through a uniform scale off the
-                        // LONGER viewBox extent so it never distorts and a one-axis
-                        // symbol can't blow up; stroke/fill are the symbol's OWN color
-                        // (dark-boosted), not the linkage tint.
-                        const { s: sx, bw, bh } = svgPlacedBox(m.vb, m.w, p.img.w);
-                        if (!(sx > 0)) return null;
-                        const x0 = m.at[0] * p.img.w - bw / 2, y0 = m.at[1] * p.img.h - bh / 2;
-                        const d = transformPath(m.path, (lx, ly) => [x0 + lx * sx, y0 + ly * sx]);
-                        const fillOn = m.fill && m.fill !== "none";
-                        const fcol = fillOn ? (darkMode ? boostForDark(m.fill) : m.fill) : "none";
-                        return (
-                          <g key={m.id}>
-                            {halo(x0, y0, x0 + bw, y0 + bh)}
-                            <path d={d} fill={fcol} fillOpacity={fillOn ? 0.9 : undefined} stroke={mk} strokeWidth={(1.6 * w) / z} strokeLinejoin="round" style={{ pointerEvents: "none" }} />
-                            {badge(x0, y0 - 9 / z)}
-                          </g>
-                        );
-                      }
-                      // a text note — ink on the sheet, laid out exactly like a callout's block
-                      const [x, y] = m.at;
-                      const AX = x * p.img.w, AY = y * p.img.h;
-                      const fs = inkPx(NOTE_PT, z);
-                      const L = layoutNote({ text: m.text, fontPx: fs, measure: canvasMeasure(fs) });
-                      const b = noteBox(AX, AY, L);
-                      return (
-                        <g key={m.id}>
-                          {halo(b.x0 - 2 / z, b.y0 - 2 / z, b.x1 + 2 / z, b.y1 + 2 / z)}
-                          {L.lines.length > 0 && <rect x={b.x0} y={b.y0} width={L.w} height={L.h} fill="rgba(255,247,237,.92)" stroke={mk} strokeWidth={(1 * w) / z} strokeDasharray={dash} />}
-                          {L.lines.length > 0 && (
-                            <text fill={noteInk} fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
-                              {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{ln || "\u00a0"}</tspan>)}
-                            </text>
-                          )}
-                          {badge(AX, b.y0 - 8 / z)}
-                        </g>
-                      );
-                    })}
+                    {/* markup layer — clouds / callouts / text notes / dimensions / arrows /
+                        highlights / bubbles / captured images / vector stamps on this panel.
+                        The ink itself lives in markupGlyphs.jsx, shared byte-for-byte with the
+                        reference pane's read-only mirror; the paint order and the per-panel
+                        scope come from lib/markupPaint.ts, shared the same way. Highlights draw
+                        FIRST (behind) so their translucent fill never dims the linework above. A
+                        selected markup wears a CONTRASTING halo (white outer ring + cobalt
+                        inner) — `selected` is the only thing this side adds. Layer hides via
+                        showMarkups. */}
+                    {showMarkups && paintOrderedMarkups(visibleMarkups.filter((m) => m.sheet_id === p.key)).map((m0) =>
+                      renderMarkupGlyph(m0, {
+                        img: p.img, z: tf.scale, darkMode, condById, rfis, noteQtyLabels, sheetBaseLabel,
+                        selected: m0.id === selectedMarkupId, premiumInk: annotations.render,
+                      }))}
                     {/* approval seals — ink over pencil (lib/approvals.js): the
                         estimator's APPROVED ring, the agent's AGENT diamond. Its
                         own layer above markups and NOT gated on showMarkups — a
@@ -11474,6 +11209,7 @@ export default function TakeoffCanvas() {
          reference={splitView && splitMounted ? (
            <ReferencePane refKey={effectiveRefKey} panelImg={refPanelImg} paintBase={paintReferenceBase} paintDetail={paintReferenceDetail} epoch={refEpoch}
              shapes={refStackedShapes} conditions={conditions} condById={condById} darkMode={darkMode} patId={patId}
+             markups={refMarkups} rfis={rfis} noteQtyLabels={noteQtyLabels} sheetBaseLabel={sheetBaseLabel}
              refSet={refSet} activeKey={rawRefKey} tabLabel={tabLabel} onSelectRef={selectRefTab} onRemoveRef={removeRefTab} onDropSheet={dropOntoReference} />
          ) : null}
        />
