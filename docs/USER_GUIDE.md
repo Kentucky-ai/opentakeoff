@@ -156,7 +156,7 @@ Side-by-side groups and stitches share one canvas; **split screen** gives the sh
 The two panes are not equals, on purpose:
 
 - **The primary pane measures.** Every tool, snap grid, and keyboard shortcut stays where it was; the split changes nothing about how you take off.
-- **The reference pane looks.** It frames one open sheet at its own pan and zoom—crisp detail tiles included—and mirrors the primary sheet's committed shapes read-only, so a door schedule or an adjacent room can sit beside the room you trace. Markups (clouds, callouts, text) do not mirror yet, and a pane cannot frame a stitch yet: give it a single sheet.
+- **The reference pane looks.** It frames one open sheet at its own pan and zoom—crisp detail tiles included—and mirrors the primary sheet's committed shapes and markups read-only, so a door schedule or an adjacent room can sit beside the room you trace, revision clouds and notes included. Mirrored ink is ink, not a control: click it and the pane pans, exactly as if the markup were printed on the sheet; select a cloud in the primary and the mirror shows the cloud, never the selection. Notes size themselves to the pane's own zoom, so they stay legible at any zoom on that side. Hiding the markup layer (the canvas's **Hide layer** control) hides it in both panes. A pane cannot frame a stitch yet: give it a single sheet.
 
 The divider between the panes drags to resize; **⟳** flips the split between side-by-side and stacked; **✕** closes the reference pane and the primary folds back to full width. The layout saves with the project and reopens with it.
 
