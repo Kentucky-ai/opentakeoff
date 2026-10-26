@@ -6358,17 +6358,21 @@ export default function TakeoffCanvas() {
     });
   }
   function onSheetTabDragStart(k, e) {
+    // split gesture: the tab MIME rides on EVERY sheet-tab drag, ink or not —
+    // the canvas drop zones and the reference pane filter on it. The export
+    // types are added only when the marked-sheet cache is armed; a drag that
+    // starts before that build lands refuses the EXPORT (honest — never ship a
+    // stale sheet) while still working as a split drag, and arms the build so
+    // the next drag can export.
+    e.dataTransfer.setData(SHEET_TAB_DND_MIME, k);
+    e.dataTransfer.effectAllowed = "copy";
     const hit = sheetDragCacheRef.current.get(k, sheetContentSignature(k, shapes, markups, approvals));
     if (!hit) {
-      // not armed yet (or content changed since) — refuse THIS drag honestly
-      // rather than shipping a stale sheet, and start the build for the next
-      e.preventDefault();
       if (sheetHasInk(k)) { armSheetDrag(k); setCommitMsg("Preparing the marked sheet — drag again in a moment."); }
       return;
     }
     e.dataTransfer.setData("DownloadURL", downloadUrlEntry(hit.filename, hit.url));
     e.dataTransfer.setData("text/plain", hit.filename);
-    e.dataTransfer.effectAllowed = "copy";
   }
 
   // ── live counter (mock) — floating running totals, parked anywhere ──
@@ -10926,11 +10930,16 @@ export default function TakeoffCanvas() {
             const on = sheetGroup.length ? inGroup : k === sheetKey;
             const lbl = tabLabel(k);
             return (
-              <span key={k} data-sheet-tab={on ? "active" : "idle"}
-                draggable={!isStitchKey(k) && sheetHasInk(k)}
+              <span key={k} data-sheet-tab={on ? "active" : "idle"} draggable={!isStitchKey(k)}
                 onMouseEnter={() => armSheetDrag(k)}
                 onDragStart={(e) => onSheetTabDragStart(k, e)}
-                title={!isStitchKey(k) && sheetHasInk(k) ? "Drag this tab out of the app to export the marked sheet" : undefined}
+                // dragend fires exactly once per drag gesture regardless of how
+                // it ended (a real drop, an Escape-cancel, or releasing outside
+                // any valid target) — the one reliable place to guarantee the
+                // overlay never survives a cancelled drag (onDrop only clears
+                // dragZone on an actual drop).
+                onDragEnd={() => setDragZone(null)}
+                title={!isStitchKey(k) ? "Drag this tab to a screen edge to split, or out of the app to export the marked sheet" : undefined}
                 style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
                 <button onClick={() => goToSheet(k)} title={k} style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 11.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140, padding: 0 }}>{lbl}</button>
                 <button onClick={() => toggleInGroup(k)} title={inGroup ? "Remove from side-by-side" : "Side-by-side with the current sheet"} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
