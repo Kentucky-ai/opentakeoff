@@ -110,7 +110,7 @@ export function dimLabel(feet: number, units: UnitSystem = "imperial"): string {
 }
 
 /** Parse a typed dimension into internal feet. Imperial accepts decimal feet
- *  ("12.5"), feet-inches forms ("12'6", "12' 6\"", "12-6"), and inches-only
+ *  ("12.5"), feet-inches forms ("12'6", "12' 6\"", "12-6", "12-6\""), and inches-only
  *  ("6\"", "6in" — the natural way to type a sub-foot check dimension); metric
  *  users type meters. Bare numbers must be plain unsigned decimals: scientific
  *  notation ("1e3") and negatives parse as NaN — every consumer guards > 0,
@@ -129,10 +129,12 @@ export function parseLenInput(raw: string, units: UnitSystem): number {
   // dimension callout; only the feet-inches form below treats inch ≥ 12 as a typo)
   const inOnly = s.match(/^(\d+(?:\.\d+)?)\s*(?:"|″|”|in)$/i);
   if (inOnly) return Number(inOnly[1]) / 12;
-  // feet-inches: 12'6, 12' 6", 12-6, 12ft 6in — incl. the curly quotes (’ ”)
-  // macOS/iOS smart punctuation substitutes and spec-doc pastes carry
+  // feet-inches: 12'6, 12' 6", 12-6, 12-6", 12ft 6in — incl. the curly quotes (’ ”)
+  // macOS/iOS smart punctuation substitutes and spec-doc pastes carry.
+  // The hyphen form takes the same optional inch mark as the foot-mark form;
+  // without it, typing the mark the other examples show ("12-6"") read as nothing.
   const fi = s.match(/^(\d+(?:\.\d+)?)\s*(?:'|′|’|ft)\s*(?:-|\s)?\s*(\d+(?:\.\d+)?)?\s*(?:"|″|”|in)?$/i)
-    || s.match(/^(\d+)\s*-\s*(\d+(?:\.\d+)?)$/);
+    || s.match(/^(\d+)\s*-\s*(\d+(?:\.\d+)?)\s*(?:"|″|”|in)?$/i);
   if (fi) {
     const ft = Number(fi[1]);
     const inch = fi[2] != null ? Number(fi[2]) : 0;

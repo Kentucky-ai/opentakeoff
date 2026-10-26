@@ -227,7 +227,7 @@ No usable note? **Calibrate two points…**: click both ends of something the dr
 
 ### Check a dimension (`K`) — make it a habit
 
-`K` is calibrate's read-only twin, for *verifying* a scale before you trace. Click both ends of a printed dimension string; the bar reads what that span **measures** at the current scale (the live cursor chip shows the running length while you pick the second point). Then type what the drawing **says** (`12.5`, `12'6`, `12' 6"`, `12-6`, and `6"` all parse), and a verdict chip grades the error:
+`K` is calibrate's read-only twin, for *verifying* a scale before you trace. Click both ends of a printed dimension string; the bar reads what that span **measures** at the current scale (the live cursor chip shows the running length while you pick the second point). Then type what the drawing **says** (`12.5`, `12'6`, `12' 6"`, `12-6`, `12-6"`, and `6"` all parse), and a verdict chip grades the error:
 
 - **Green**, within 1%: *matches — scale checks out*.
 - **Amber**, within 5%: *off — re-check or recalibrate*.

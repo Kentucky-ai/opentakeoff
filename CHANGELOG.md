@@ -15,6 +15,7 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **Check a dimension reads a hyphen length that ends with an inch mark.** `12-6"` is 12 ft 6 in, the same length as `12-6`. `12-14"` is still not a dimension, and a bare `6"` is unchanged.
 - **A capture's age stays in the bucket the clock chose.** At 59.5 minutes the Captures row reads "59m ago", at 23.5 hours "23h ago", and at 6.5 days "6d ago". "1h ago" still starts at 60 minutes, "yesterday" at 24 hours, and the plain date at 7 days.
 
 - **A broken image in a ZIP no longer hides the remaining plans.** Each extracted file is processed independently, so unreadable PNG/JPEG entries are skipped by their own names while later PDFs and valid scans still open. Archive limits and downstream PDF validation are unchanged.

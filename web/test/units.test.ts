@@ -86,6 +86,10 @@ test("parseLenInput reads decimal feet, feet-inches forms, and meters", () => {
   assert.equal(parseLenInput("12'6", "imperial"), 12.5);
   assert.equal(parseLenInput(`12' 6"`, "imperial"), 12.5);
   assert.equal(parseLenInput("12-6", "imperial"), 12.5);
+  assert.equal(parseLenInput(`12-6"`, "imperial"), 12.5);
+  assert.equal(parseLenInput("12 - 6″", "imperial"), 12.5);
+  assert.equal(parseLenInput("12-6in", "imperial"), 12.5);
+  assert.ok(Number.isNaN(parseLenInput(`12-14"`, "imperial")));
   assert.equal(parseLenInput("12′ 6″", "imperial"), 12.5);
   assert.equal(parseLenInput("12ft 6in", "imperial"), 12.5);
   assert.equal(parseLenInput(".5", "imperial"), 0.5);
