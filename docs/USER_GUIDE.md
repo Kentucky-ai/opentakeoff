@@ -118,6 +118,19 @@ Notes: align the match line **before** tracing—once takeoffs live on a stitch 
 
 Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. If an agent will be doing the takeoff on a split floor, do the stitch and align yourself first, or have the agent measure the member sheets individually.
 
+### Split screen (reference pane)
+
+Side-by-side groups and stitches share one canvas; **split screen** gives the sheet you are measuring a companion pane. **Drag a sheet tab** toward a screen edge—left, right, top, or bottom—and drop it: the canvas splits in two and the dragged sheet opens in the new pane. Dropping on the center zone adds the tab to a side-by-side group instead, as before.
+
+The two panes are not equals, on purpose:
+
+- **The primary pane measures.** Every tool, snap grid, and keyboard shortcut stays where it was; the split changes nothing about how you take off.
+- **The reference pane looks.** It frames one open sheet at its own pan and zoom—crisp detail tiles included—and mirrors the primary sheet's committed shapes read-only, so a door schedule or an adjacent room can sit beside the room you trace. Markups (clouds, callouts, text) do not mirror yet, and a pane cannot frame a stitch yet: give it a single sheet.
+
+The divider between the panes drags to resize; **⟳** flips the split between side-by-side and stacked; **✕** closes the reference pane and the primary folds back to full width. The layout saves with the project and reopens with it.
+
+Limits: the panes together keep at most **6 sheets** live, and split screen turns itself off on a narrow window or a low-memory device rather than thrash the tile pool.
+
 ### Levels (multi-floor sets)
 
 In the gallery, select sheets and click **Assign level…** (`"L1"`, `"Level 2"`, `"Garage"`—empty clears). The gallery groups by level with unassigned sheets last, cards wear their level chip, and tabs plus the page picker carry the label. Levels save with the project.

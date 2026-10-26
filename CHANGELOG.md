@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-10-26 — split-screen reference pane
+
+### Added
+- **Split screen (reference pane).** Drag a sheet tab to a screen edge (left, right, top, bottom) and the canvas splits: the dragged sheet opens in a second pane that frames one sheet at its own pan and zoom, crisp detail tiles included, and mirrors the primary sheet's committed shapes read-only. The primary pane keeps every measuring tool, snap grid, and shortcut; only the display transform is duplicated, never the coordinate, measurement, keyboard, or undo machinery. The divider drags to resize, **⟳** flips the split orientation, **✕** closes the pane with fold-back, and the layout persists in the project save. The drop gesture offers five zones—edges split, center adds the tab to a side-by-side group as before. Panes together keep at most 6 sheets live; the feature disables itself below a narrow viewport or on a low-memory device. Known limits, tracked in the fork's issue #214: markups do not mirror (shapes do), and a reference pane cannot frame a stitch yet.
+
 ## 2026-08-26 — the readout keeps a tape log
 
 ### Added
