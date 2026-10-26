@@ -18,7 +18,10 @@ schedule. The drawn scale (`1/8" = 1'-0"`) auto-detects.
    Area** inside a room, or trace one with **Area**
 3. Add a waste %, open **Report**, and export your quantities + buy list
 
-> Source: a federal VA solicitation drawing set (publicly released for bidding).
+> Source: a federal VA solicitation drawing set (publicly released for bidding):
+> VA project 656-19-306, "Renovate Building 28 First Floor East RRTP", St. Cloud VA
+> Medical Center, Saint Cloud MN, construction documents dated May 22, 2020,
+> A/E of record Anderson (title block). The original SAM.gov notice is archived.
 > Document metadata stripped; included only to demonstrate the tool.
 
 ## `sample-plan.pdf` — a tiny synthetic sheet

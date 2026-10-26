@@ -7,6 +7,7 @@ export type UnitSystem = "imperial" | "metric";
 export const M_PER_FT = 0.3048;
 export const M2_PER_SF = 0.09290304;
 export const MM_PER_IN = 25.4;
+export const M3_PER_CF = 0.028316846592;
 
 /** area for display: SF in, SF or m² out */
 export const areaVal = (sf: number, units: UnitSystem): number =>
@@ -82,6 +83,13 @@ export function ftIn(feet: number): string {
   if (inch === 12) { ft += 1; inch = 0; }
   return `${sign}${ft}′ ${inch}″`;
 }
+
+/** volume readout: cubic feet in, cubic yards (imperial) or m³ (metric) out.
+ *  A footprint × the condition's H is a fill, a slab, an excavation — the
+ *  number an estimator wants beside the L × W × D. */
+export const volVal = (cf: number, units: UnitSystem): number =>
+  units === "metric" ? cf * M3_PER_CF : cf / 27;
+export const volUnit = (units: UnitSystem): string => (units === "metric" ? "m³" : "CY");
 
 /** length readout for the check tool: ft-in in imperial, meters in metric */
 export const fmtCheckLen = (feet: number, units: UnitSystem): string =>

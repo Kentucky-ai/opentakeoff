@@ -1,0 +1,89 @@
+{
+  "sheet_id": "sample-finish-plan.pdf",
+  "shapes_on_sheet": 6,
+  "deduct_shapes": [],
+  "reference_id": "stcloud-af101-estimator-trace-v2",
+  "profile": "estimator-trace",
+  "metadata_error": null,
+  "rooms": [
+    {
+      "label": "CONFERENCE/BREAK ROOM 134",
+      "finish": "CPT-1",
+      "area_sf": {
+        "expected": 278.5390123456765,
+        "actual": 278.43,
+        "percent_error": 0.03913719114549093
+      },
+      "overlap_iou": 0.9984854505352905,
+      "boundary_vertex_edge_px": 6.199999999999818,
+      "geometry_area_sf": 278.4307407407402,
+      "pass": false
+    },
+    {
+      "label": "CONFERENCE/BREAK ROOM 134",
+      "finish": "VCT-1",
+      "area_sf": {
+        "expected": 57.42583333333253,
+        "actual": 57.43,
+        "percent_error": 0.00725573566044252
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 57.42583333333253,
+      "pass": true
+    },
+    {
+      "label": "STORAGE 134A",
+      "finish": "CPT-1",
+      "area_sf": {
+        "expected": 16.354012345679585,
+        "actual": 16.72,
+        "percent_error": 2.2379074112482273
+      },
+      "overlap_iou": 0.9634531161240417,
+      "boundary_vertex_edge_px": 5.5,
+      "geometry_area_sf": 16.71623456789997,
+      "pass": false
+    },
+    {
+      "label": "OFFICE 136",
+      "finish": "CPT-1",
+      "area_sf": {
+        "expected": 129.62148148148108,
+        "actual": 130.12,
+        "percent_error": 0.3845956031525098
+      },
+      "overlap_iou": 0.9897496060996274,
+      "boundary_vertex_edge_px": 40.499999999999886,
+      "geometry_area_sf": 130.12043209876404,
+      "pass": false
+    },
+    {
+      "label": "PATIENT ROOM 137",
+      "finish": "CPT-1",
+      "area_sf": {
+        "expected": 251.93813271604887,
+        "actual": 251.82,
+        "percent_error": 0.04688957355336907
+      },
+      "overlap_iou": 0.9992717274757924,
+      "boundary_vertex_edge_px": 5.712675239323276,
+      "geometry_area_sf": 251.8190740740737,
+      "pass": false
+    },
+    {
+      "label": "TOILET 137A",
+      "finish": "PT-1/PT-2",
+      "area_sf": {
+        "expected": 60.865277777776626,
+        "actual": 60.9,
+        "percent_error": 0.05704766903413432
+      },
+      "overlap_iou": 0.999470877749956,
+      "boundary_vertex_edge_px": 2.900000000000091,
+      "geometry_area_sf": 60.89749999999867,
+      "pass": false
+    }
+  ],
+  "pass": false
+}

@@ -20,9 +20,10 @@
 // Pure-ish helpers (DOM canvas + IndexedDB, no React) so PlanNavigator stays
 // a view.
 import { metaGet, metaPut, metaDelete, metaDeletePrefix } from "./store.js";
+import { PICTURE_PARAMS_HASH } from "./pictureParams";
 
-export const THUMB_W = 380;           // CSS px — the card well is 270..~400 wide
-const THUMB_VERSION = 2;              // bump to invalidate every persisted thumb
+export const THUMB_W = 640;           // CSS px — large gallery cards are capped at this width
+const THUMB_VERSION = 3;              // bump to invalidate every persisted thumb
 const PREFIX = `thumb:v${THUMB_VERSION}:`;
 
 /** Device px the raster should be wide for a crisp card on this screen. */
@@ -41,25 +42,49 @@ export async function renderThumb(pg, w = thumbPixelWidth()) {
   c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
   const ctx = c.getContext("2d", { alpha: false });
   await pg.render({ canvasContext: ctx, viewport: vp, background: "#ffffff" }).promise;
-  let blob = await new Promise((res) => c.toBlob(res, "image/webp", 0.9));
-  if (!blob) blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.9));
+  let blob = await new Promise((res) => c.toBlob(res, "image/webp", 0.98));
+  if (!blob) blob = await new Promise((res) => c.toBlob(res, "image/png"));
   if (!blob) throw new Error("thumbnail encode failed");
   return { blob, w: c.width, h: c.height };
 }
 
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+/** A list of rects with finite corners: what measurePage gives for a page
+ *  it measured. Its "failed" (the op list couldn't be read) is never kept:
+ *  that is this session's answer only, so the next one measures again. */
+const picturesOk = (p) => Array.isArray(p) && p.every((r) => r && isNum(r.x0) && isNum(r.y0) && isNum(r.x1) && isNum(r.y1));
+
 /** Persisted record for `sheetKey`, or null when absent / rastered narrower
- *  than this screen now wants (a 1× thumb re-renders on a 2× screen). */
+ *  than this screen now wants (a 1× thumb re-renders on a 2× screen).
+ *  Pictures that are malformed (a stored "failed" included), or were
+ *  measured under another revision of the rule (`pp`, pictures.ts
+ *  PICTURE_PARAMS_HASH), are dropped: the record loads as not measured, and
+ *  the rest of it stands. */
 export async function loadThumb(sheetKey, minW = thumbPixelWidth()) {
   try {
     const rec = await metaGet(keyOf(sheetKey));
     if (!rec || !(rec.blob instanceof Blob) || !(rec.w >= minW)) return null;
+    if (("pictures" in rec || "pp" in rec) && !(rec.pp === PICTURE_PARAMS_HASH && picturesOk(rec.pictures))) {
+      const { pictures: _p, pp: _h, ...rest } = rec;
+      return rest;
+    }
     return rec;
   } catch { return null; }
 }
 
 /** Best-effort persist; a quota failure only costs the next open a re-render. */
 export function saveThumb(sheetKey, rec) {
-  return metaPut(keyOf(sheetKey), { w: rec.w, h: rec.h, blob: rec.blob, label: rec.label ?? null, det: rec.det ?? null, ts: Date.now() }).catch(() => {});
+  // textLayer: false when the page is a scan (#471; planIndex's
+  // indexIsScanLike), so a reopened gallery can offer Read page text on it
+  // without loading its PDF. Left out when unknown, so an old record and a
+  // new unknown one read alike. pictures (#489): the page's unread pictures
+  // once measured, stamped with the rule's hash (pp) so a change to the
+  // rule measures them again; left out when not measured, and when the op
+  // list couldn't be read ("failed": the next session measures again).
+  const out = { w: rec.w, h: rec.h, blob: rec.blob, label: rec.label ?? null, det: rec.det ?? null, ts: Date.now() };
+  if (typeof rec.textLayer === "boolean") out.textLayer = rec.textLayer;
+  if (picturesOk(rec.pictures)) { out.pictures = rec.pictures; out.pp = PICTURE_PARAMS_HASH; }
+  return metaPut(keyOf(sheetKey), out).catch(() => {});
 }
 
 /** Drop every thumb for these FILE names — persisted AND the live object

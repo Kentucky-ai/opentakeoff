@@ -3,7 +3,7 @@
 // with the metric display port.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, dimLabel, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../src/lib/units.js";
+import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, dimLabel, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr, volVal, volUnit, M3_PER_CF } from "../src/lib/units.js";
 import { STANDARD_SCALES, RENDER_SCALE } from "../src/lib/sheets.js";
 import { totalsToCsv } from "../src/lib/totals.js";
 
@@ -214,4 +214,13 @@ test("dimension spinner steps suit the system they're typed in", () => {
   assert.equal(heightStep("metric"), 0.05);
   assert.equal(thickStep("imperial"), 0.25);
   assert.equal(thickStep("metric"), 1);
+});
+
+// ── volume readout (area × H): CY in imperial, m³ in metric ──────────────────
+test("volVal/volUnit: 27 cubic feet is one cubic yard, and the metric cube", () => {
+  assert.equal(volVal(27, "imperial"), 1);
+  assert.equal(volUnit("imperial"), "CY");
+  assert.ok(Math.abs(volVal(1, "metric") - M3_PER_CF) < 1e-12);
+  assert.ok(Math.abs(volVal(35.3147, "metric") - 1) < 1e-4); // ~35.31 CF per m³
+  assert.equal(volUnit("metric"), "m³");
 });

@@ -1,7 +1,7 @@
 // Report theme import: map a Claude Design (DTCG-flavored) tokens.json onto the
 // small internal theme model the report/marked-set renderers consume, then
 // project that model onto the app's real CSS custom-property names.
-import { test } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseThemeFile, themeToCssVars, activeThemeVars, activeTheme } from "../src/lib/reportTheme.js";
@@ -146,3 +146,8 @@ test("activeTheme exposes vars + name + warnings for the UI, and is empty when n
     delete (globalThis as any).localStorage;
   }
 });
+
+// Node 24 also exposes Web Storage; explicitly isolate these browser-storage fixtures.
+const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+before(() => { delete (globalThis as any).localStorage; });
+after(() => { if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor); });

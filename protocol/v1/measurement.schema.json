@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/measurement.schema.json",
+  "title": "Measurement (draft)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sheet_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "condition_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "measure_role": {
+      "enum": [
+        "floor_area",
+        "deduct",
+        "linear",
+        "surface_area",
+        "count"
+      ]
+    },
+    "verts_norm": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/point"
+      },
+      "minItems": 1
+    },
+    "verts_norm_holes": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "common.schema.json#/$defs/point"
+        }
+      }
+    },
+    "computed": {
+      "$ref": "common.schema.json#/$defs/computed"
+    },
+    "height_ft": {
+      "type": "number"
+    },
+    "rise_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Linear runs only: this run's own vertical leg UP in feet, overriding the condition's rise_ft (0 included). Absent means the condition default applies."
+    },
+    "drop_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Linear runs only: this run's own vertical leg DOWN in feet, overriding the condition's drop_ft (0 included). Absent means the condition default applies."
+    },
+    "label": {
+      "type": "string"
+    },
+    "curved": {
+      "type": "boolean"
+    },
+    "cuts_shape_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "origin": {
+      "$ref": "provenance.schema.json"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "updated_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "author": {
+      "type": "string"
+    },
+    "updated_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "sheet_id",
+    "condition_id",
+    "measure_role",
+    "verts_norm",
+    "computed"
+  ],
+  "additionalProperties": true,
+  "description": "One existing shape record. Legacy curved=true means spline control points; new baked arcs use ordinary vertices and origin.curved. Do not conflate or regenerate them."
+}

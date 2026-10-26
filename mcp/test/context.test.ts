@@ -23,7 +23,7 @@ const KEY = "sample-plan.pdf";
 
 async function pair(): Promise<Client> {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  const server = buildServer(new Session());
+  const server = buildServer(new Session(), { oneClick: true });
   await server.connect(st);
   const client = new Client({ name: "context-test", version: "0.0.0" });
   await client.connect(ct);

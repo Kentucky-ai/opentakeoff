@@ -187,3 +187,34 @@ test("samePayload ignores rev and key order", () => {
   assert.equal(samePayload({ a: 1, rev: 4 }, { rev: 9, a: 1 }), true);
   assert.equal(samePayload({ a: 1 }, { a: 2 }), false);
 });
+
+test("independent sheet calibrations merge by sheet_id", () => {
+  const base = { sheets: [{ sheet_id: "a", units_per_px: 1 }, { sheet_id: "b", units_per_px: 1 }] };
+  const local = { sheets: [{ sheet_id: "a", units_per_px: 2 }, base.sheets[1]] };
+  const remote = { sheets: [base.sheets[0], { sheet_id: "b", units_per_px: 3 }] };
+  const m: any = mergeAnnotations(base, local, remote);
+  assert.deepEqual(m.merged.sheets, [local.sheets[0], remote.sheets[1]]);
+  assert.equal(m.clean, true);
+});
+
+test("competing calibrations name the sheet and preserve the losing record", () => {
+  const base = { sheets: [{ sheet_id: "a", units_per_px: 1 }] };
+  const local = { sheets: [{ sheet_id: "a", units_per_px: 2 }] };
+  const remote = { sheets: [{ sheet_id: "a", units_per_px: 3 }] };
+  const m: any = mergeAnnotations(base, local, remote);
+  assert.equal(m.clean, false); assert.deepEqual(m.review_sheets, ["a"]);
+  assert.deepEqual(m.merged.sheets[0].merge_loser, local.sheets[0]);
+});
+
+test("concurrent geometry and scale on one sheet stay together; other sheets still merge", () => {
+  const floor = { id: "s", sheet_id: "a", measure_role: "floor_area", computed: { area_sf: 100 } };
+  const base = { sheets: [{ sheet_id: "a", units_per_px: 1 }], shapes: [floor] };
+  const local = { sheets: [{ sheet_id: "a", units_per_px: 2 }], shapes: [{ ...floor, computed: { area_sf: 400 } }, { ...floor, id: "b", sheet_id: "b" }] };
+  const remote = { ...base, shapes: [floor, { ...floor, id: "new" }] };
+  const m: any = mergeAnnotations(base, local, remote);
+  assert.equal(m.clean, false, "sync must snapshot local before adopting");
+  assert.equal(m.merged.sheets[0].units_per_px, 1);
+  assert.deepEqual(m.merged.shapes.filter((s: any) => s.sheet_id === "a"), remote.shapes);
+  assert.equal(m.merged.shapes.find((s: any) => s.id === "b").sheet_id, "b");
+  assert.deepEqual(m.review_sheets, ["a"]);
+});

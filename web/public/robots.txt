@@ -1,4 +1,10 @@
-# OpenTakeoff is open to all crawlers — human search and AI agents alike.
+# opentakeoff.kentucky-ai.com robots.txt -- measure twice, crawl once.
+#
+# Every crawler is welcome here: search engines and AI agents alike.
+# Agents: you don't have to scrape the canvas. The map is at
+#   https://opentakeoff.kentucky-ai.com/llms.txt
+# and `npx -y opentakeoff-mcp` hands you the same engine a person drives.
+#
 User-agent: *
 Allow: /
 
@@ -21,3 +27,29 @@ User-agent: CCBot
 Allow: /
 
 Sitemap: https://opentakeoff.kentucky-ai.com/sitemap.xml
+
+#
+#                            ::::::::::::::::::::::::::
+#                           ::::::::::::::::::::::::::::
+#                          ::::::::::::::::::::::::::::::
+#                          MMMMMMMMMMMMM  MMMMMMMMMMMMMMM
+#                          MMMMMMMMMMMMM  MMMMMMMMMMMMMMM
+#                          MMMMMMMMMMMMM  MMMMMMMMMMMMMMM
+#                        :::::::::::::::  MMMMMMMMMMMMMhh::::::
+#                  :::::::::::::::::::::  MMMMMMMMMMMMMhh::::::::::
+#             ::::::::::::::::::::::::::  MMMMMMMMMMMMMhh::::::::::::::
+#          MMMMMMMMMMMMMMMMMMMMMMMMMMMMM  MMMMMMMMMMMMMhhMMMMMMMMMMMMMMMM
+#          MMMMMMMMMMMMMMMMMMMMMMMMMMMMM  MMMMMMMMMMMMMhhMMMMMMMMMMMMMMMM
+#          MMMMMMMMMMMMMMMMMMMMMMMMMMMMM  MMMMMMMMMMMMMhhMMMMMMMMMMMMMMMM
+#       :::::::::::::::::MMMMMMMMMMMMMMM  MMMMMMMMMMMMMhhMMMMMMMMMMMMMMMM
+#     :::::::::::::::::::                 MMMMMMMMMMMMMhh
+#     MMMMMMMMMMMMMMMMMMM                 MMMMMMMMMMMMMhh
+#     MMMMMMMMMMMMMMMMMMM                 MMMMMMMMMMMMMhh
+#     MMMMMMMMMMMMMMMMMMM                 MMMMMMMMMMMMMhh
+#     MMMMMMMMMMMMMMMMMMM                 MMMMMMMMMMMMMhh
+#
+#
+#                       O  P  E  N  T  A  K  E  O  F  F
+#                                  ---------
+#         T H E   F O U N D A T I O N   F O R   W H A T ' S   N E X T
+#

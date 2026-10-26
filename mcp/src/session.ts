@@ -37,14 +37,22 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // passes at a One-Click. This server used to call the raw floodRegion on
 // scale-unpinned masks here, so an MCP trace and a canvas click at the same
 // seed measured DIFFERENT square footage under the same origin.method.
-import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
+import { sweepCommitRefusal } from "./sweepGuard.ts";
+import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodSurroundsLabelPx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
+// The canvas's three-point arc (Curve mode): a curved wall is a circle, so an
+// agent states the bow point and the server lays the unique arc through it.
+import { flattenArcRing } from "../../web/src/lib/arc.js";
+import { recalibrateShapes, linearVerticalFt } from "../../web/src/lib/shapeMetrics.js";
 import { deriveTransitionRuns, type SheetFrame, type TransitionSourceShape } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
 // headless cut and the app's Eraser can never disagree about what a hole holds.
 import { subtractCutout, recomposeCutouts, ringFullyInside, cutRun } from "../../web/src/lib/cutout.js";
+// Scope collision (#366) — the canvas's own module, so the badge on the
+// condition row and scope_duplicates over the wire measure the same shared floor.
+import { scopeCollisions, subtractWinner, SCOPE_NEAR_TOTAL } from "../../web/src/lib/scopeCollision.js";
 // Correction rules (#88 / #207) — the canvas's own pure module, imported as-is
 // (the approvals/totals precedent): apply_rules re-runs an imported rule with
 // the exact predicate engine the canvas's Preview→Apply runs, so a headless
@@ -55,19 +63,21 @@ import { applyRuleToProject, type Rule, type RuleShape, type SheetRuleData } fro
 // mints and a seal the canvas mints share ONE implementation of minting,
 // load-gating, and exact-restore inverses.
 import { sanitizeApprovals as sanitizeApprovalsJs, applyApprovalCommand as applyApprovalCommandJs } from "../../web/src/lib/approvals.js";
+// the RFI register's pure half (web/src/lib/rfi.js): the panel's numbering and
+// its tombstone rule, one implementation for both surfaces
+import { nextRfiNumber, liveRfis } from "../../web/src/lib/rfi.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
+import { priceEstimate, sanitizePricing, sanitizeEstimateSettings, priceValue } from "../../web/src/lib/estimate.js";
+import { sanitizeBidProposal } from "../../web/src/lib/bidProposal.js";
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLfByShape } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
 
-// Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
-// snap behavior minted here are identical to the browser's. PALETTE/HATCH_IDS
-// are user data — never re-theme them.
-const SNAP_CELL = 24; // snap-grid bucket, raster px
-const SNAP_TOL = 7;   // one-click vertex-snap tolerance, image px
-const PALETTE = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#1f2937", "#dc2626", "#0891b2"];
-// (2026-07: dropped a drifted "fleur" entry that never existed in this app's
-// HATCHES, restoring "dots", and appended the signal-set ids.)
-const HATCH_IDS = ["solid", "diag", "diag2", "cross", "diagdense", "horiz", "vert", "grid", "brick", "plank", "herring", "basket", "checker", "wave", "dots", "speckle", "iso", "honeycomb", "scan", "plus", "circuit", "topo", "woodgrain", "chevron", "pinwheel", "harlequin", "hexagon", "penny", "octagondot", "fleur", "concrete"];
+// Conditions and snap behavior minted here are identical to the browser's
+// because both read the same module: web/src/lib/takeoffConstants.ts (the
+// hand-mirrored copies that used to live here drifted once, in 2026-07).
+import { SNAP_CELL, SNAP_TOL, TAKEOFF_SCHEMA, nextHatchId, nextPaletteColor } from "../../web/src/lib/takeoffConstants.ts";
+import { buildTakeoffDocument, sheetEntry } from "../../web/src/lib/takeoffDocument.js";
+import { hasFields, qtyLabels, resolveNote } from "../../web/src/lib/noteFields.ts";
 // uid mirrors web/src/lib/provenance.js mintUuid: crypto.randomUUID is a
 // global in Node 20+, with the same non-secure-context fallback the browser
 // build carries so the two sides mint identically-shaped ids.
@@ -79,7 +89,27 @@ const uid = (p: string): string => `${p}-${mintUuid()}`;
 // mirrors web/src/lib/provenance.js nowIso — a twin is born now, not when its parent was
 const nowIso = (): string => new Date().toISOString();
 
-export const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1"; // web/src/lib/store.js
+export const ANN_SCHEMA = TAKEOFF_SCHEMA;
+
+/** The takeoff document as buildTakeoffDocument writes it. Optional keys are
+ * the app's additive, omit-when-empty fields; `units` is absent for imperial. */
+export interface TakeoffDocument extends Record<string, unknown> {
+  schema: string;
+  project_name: string;
+  units?: "metric";
+  sheets: { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: false }[];
+  conditions: Condition[];
+  shapes: Shape[];
+  markups: Markup[];
+  rfis: Rfi[];
+  approvals?: Approval[];
+  proposals?: TakeoffProposal[];
+  condition_edit_proposals?: ConditionEditProposal[];
+  sheet_group: unknown[];
+  last_group: unknown[];
+  sheet_tabs: unknown[];
+  sheet_levels?: Record<string, string>;
+}
 
 export type MeasureRole = "floor_area" | "deduct" | "linear" | "surface_area" | "count";
 
@@ -100,6 +130,54 @@ export interface MaterialRow {
   unit: string;
   round: boolean;
   note?: string;
+  /** $ per this row's own unit (bag, pail, roll) — lib/estimate.js. Absent =
+   * not entered, never $0. Set by set_pricing; never carried by templates. */
+  price?: number;
+}
+
+/** A takeoff proposal (#365): a named batch of pending agent shapes with one
+ * identity. Opened by propose_takeoff; every agent commit that follows
+ * attaches to the newest open proposal (origin.proposal_id). revise_proposal
+ * replaces the batch's still-pending shapes as one journal step,
+ * withdraw_proposal removes them; shapes the estimator already accepted are
+ * never touched by either. Rides the takeoff payload (transport, like RFIs)
+ * so the canvas can show one Accept per proposal instead of one per shape. */
+export interface TakeoffProposal {
+  id: string;
+  label: string;
+  rationale: string;
+  created_at: string;
+  /** Set by withdraw_proposal — the record stays (the label is history) but
+   * no commit attaches to a withdrawn proposal. */
+  withdrawn_at?: string;
+}
+
+/** The fields a condition-edit proposal may carry — the same knobs
+ * edit_condition writes, plus the finish tag itself (a rename). */
+export interface ConditionEditFields {
+  finish_tag?: string;
+  waste_pct?: number;
+  multiplier?: number;
+  height_ft?: number;
+  rise_ft?: number;
+  drop_ft?: number;
+  roll_setup?: Record<string, unknown> | null;
+}
+
+/** The knobs edit_condition writes — one type, three call sites. */
+export type ConditionKnobPatch = { waste_pct?: number; multiplier?: number; height_ft?: number; rise_ft?: number; drop_ft?: number; roll_setup?: Record<string, unknown> | null };
+
+/** A condition-edit proposal (#365): a diff against a condition held as
+ * pending. Nothing about the condition changes until the estimator accepts
+ * it from the panel; until then the report carries the current values with
+ * the proposed ones beside them. One pending proposal per condition — a
+ * second proposal on the same condition replaces the first (journaled). */
+export interface ConditionEditProposal {
+  id: string;
+  condition_id: string;
+  proposed: ConditionEditFields;
+  rationale: string;
+  proposed_at: string;
 }
 
 export interface Condition {
@@ -110,14 +188,32 @@ export interface Condition {
   hatch: string;
   multiplier: number;
   waste_pct: number;
+  /** ISO-8601 mint time. The canvas stamps every condition it mints; the
+   * server does the same since 0.9.86 (twins already did). Files from
+   * before either may lack it, so readers treat it as optional. */
+  created_at?: string;
   /** Wall height in feet — the canvas's H knob; surface_area = traced LF × this. */
   height_ft?: number;
+  /** Drop and Rise (#441): the vertical legs, in feet, every linear run of
+   * this condition adds to its plan length — LF = plan + rise + drop. These
+   * are the DEFAULTS; a run may carry its own (Shape.rise_ft / drop_ft).
+   * Derived runs (base, transitions) never take a leg. */
+  rise_ft?: number;
+  drop_ft?: number;
   /** Roll-goods opt-in (#136): presence of a usable setup is what makes the
    * condition roll goods — material class + the packing engine's spec fields,
    * exactly the object the canvas persists (web/src/lib/rollTakeoff.js). */
   roll_setup?: Record<string, unknown>;
+  /** The estimate's prices for this condition (lib/estimate.js): a unit and
+   * material / labor $ per unit. Absent fields are not entered, never $0. */
+  pricing?: ConditionPricing;
   materials: MaterialRow[];
 }
+
+export interface ConditionPricing { unit?: "SF" | "SY" | "LF" | "EA"; material?: number; labor?: number }
+/** The project-level estimate records (canvas: estimate_settings, bid_proposal,
+ * client_info) — one snapshot type for set_estimate_settings' undo. */
+export interface EstimateRecords { estimate_settings: Record<string, unknown> | null; bid_proposal: Record<string, unknown> | null; client_info: Record<string, string> }
 
 /** Shape provenance (contribution.v2 vocabulary — mirrors the canvas +
  * web/src/lib/provenance.js). Truthfulness rules: `actor` is omitted for a
@@ -133,6 +229,11 @@ export interface ShapeOrigin {
   actor?: "agent" | "rule";
   /** A human affirmed this shape at an explicit review gate. */
   reviewed?: boolean;
+  /** The trace was drawn with arcs (the canvas's Curve mode, or arc_through
+   * over MCP) and baked to ordinary vertices at commit — the same stamp the
+   * canvas writes. Legacy `curved: true` ON THE SHAPE means spline control
+   * points and is a different thing; never conflate them. */
+  curved?: true;
   /** one_click: the flood-fill seed, normalized to sheet dims. */
   seed_norm?: [number, number];
   hatch_filtered?: true;
@@ -215,6 +316,13 @@ export interface ShapeOrigin {
    * — a machine correcting itself is a different event, and merging the two
    * would corrupt the correction signal the capture layer grades on. */
   agent_edits?: number;
+  /** Proposals (#365): the batch this agent shape was committed under —
+   * propose_takeoff's id. Stamped centrally at commit() while a proposal is
+   * open, so every commit path attaches and none can forget. The estimator
+   * accepts, rejects, or the agent revises/withdraws the batch as ONE unit;
+   * a shape that has been accepted (reviewed: true) keeps the id as history
+   * but is no longer part of the batch's pending set. */
+  proposal_id?: string;
   /** symbol_sweep: how this count marker matched the seed exemplar — the
    * evidence that made it a commit (score against the commit bar, and the
    * symmetry-group element it matched under). Phase 2 adds `seed`, WHERE the
@@ -244,10 +352,17 @@ export interface Shape {
   verts_norm: [number, number][];
   /** count shapes carry {count} alone (canvas commitCount) — recompute skips
    * them, so they never grow area fields; every other role carries both. */
-  computed: { area_sf?: number; perimeter_lf?: number; count?: number };
+  computed: { area_sf?: number; perimeter_lf?: number; count?: number; plan_lf?: number; vertical_lf?: number };
   /** surface_area only: the height this shape was quantified at (canvas
    * commitSurface snapshots the condition's H onto the shape). */
   height_ft?: number;
+  /** linear only (#441): this run's OWN vertical legs, overriding the
+   * condition's defaults field by field — 0 included ("no drop on this run"
+   * is a fact). Absent = the condition's default applies, live. perimeter_lf
+   * is the TOTAL (plan + rise + drop); plan_lf / vertical_lf ride in computed
+   * only when a vertical exists. */
+  rise_ft?: number;
+  drop_ft?: number;
   /** The room (or phase, or area) this shape belongs to — the canvas's
    * per-shape label (#112, web/src/lib/shapeLabels.js), which is what the
    * Report groups by and what the workbook's floor × room tab reads. Optional
@@ -337,6 +452,47 @@ export interface Approval {
   text?: string;
 }
 
+/** An RFI — a Request For Information, the register's record (RfiPanel.jsx /
+ *  lib/rfi.js). Field-identical to what the canvas's Raise RFI mints, so an
+ *  agent-raised one loads in the app's register unchanged. A markup links to
+ *  it via markup.rfi_id === rfi.id (one RFI ↔ many markups) and the linked
+ *  set is DERIVED from that, never stored twice.
+ *
+ *  Two additive fields carry what the panel's own records never need:
+ *  `origin` — who asked. Every RFI this server mints is
+ *    `{actor: "agent", reviewed: false}`: PENDING until an estimator accepts
+ *    it in the panel, the same reviewed flag every agent shape carries. An
+ *    RFI goes to the architect, so nothing sends without a human; a record
+ *    with no origin is the estimator's own.
+ *  `deleted` — the tombstone. delete_rfi never removes the record: its number
+ *    stays reserved (the register and the marked set keep the gap) and it
+ *    prints nowhere. See liveRfis in lib/rfi.js. */
+export interface Rfi {
+  id: string;
+  /** "RFI-001" — nextRfiNumber over EVERY record, tombstones included. */
+  number: string;
+  created_at?: string;
+  subject: string;
+  question: string;
+  status: "open" | "answered" | "closed" | "void";
+  to: string;
+  priority: string;
+  cost_impact: boolean;
+  schedule_impact: boolean;
+  /** YYYY-MM-DD opened. */
+  date: string;
+  response: string;
+  /** YYYY-MM-DD, stamped on the transition into answered (the canvas rule). */
+  response_date: string;
+  sheet_id: string;
+  origin?: { actor: "agent" | "estimator"; reviewed?: boolean };
+  /** ISO-8601, resolve_rfi's own stamp beside the canvas's date-only field. */
+  resolved_at?: string;
+  resolved_by?: "agent";
+  deleted?: true;
+  deleted_at?: string;
+}
+
 /** The pure apply's command vocabulary (approvals.js) — what the journal
  * stores as the exact-restore inverse of a verdict mutation. */
 export type ApprovalCommand =
@@ -410,6 +566,13 @@ export const CONTEXT_MIN_LEN_PX = 2.0;   // one PDF point at render scale 2.0 �
 export const CONTEXT_MAX_SEGMENTS = 4000; // cap, applied longest-first (walls survive, hatch strokes go)
 export const CONTEXT_MAX_SEGMENTS_CEIL = 20000;
 
+/** get_sheet_vectors paging defaults (#367) — the raw extractor output is the
+ * densest payload the server emits (a dense E-size sheet runs to hundreds of
+ * thousands of segments), so the page size is declared, the ceiling is hard,
+ * and every reply carries offset + returned + dropped === total. */
+export const VECTORS_DEFAULT_LIMIT = 20000;
+export const VECTORS_LIMIT_CEIL = 100000;
+
 /** Does the segment intersect the axis-aligned rect? Liang–Barsky boolean —
  * endpoints untouched, this is a KEEP test, never a clip-and-rewrite. */
 function segIntersectsRect(x1: number, y1: number, x2: number, y2: number, r: { x0: number; y0: number; x1: number; y1: number }): boolean {
@@ -423,6 +586,20 @@ function segIntersectsRect(x1: number, y1: number, x2: number, y2: number, r: { 
     else { if (t < t0) return false; if (t < t1) t1 = t; }
   }
   return true;
+}
+
+/** Per-segment subpath ordinal (#367): the extractor states subpaths as
+ * contiguous index RANGES (one entry per figure); a wire reader wants the
+ * inverse — which figure each segment belongs to. −1 = outside every range.
+ * Built once per geometry and cached by identity, like the sheet's mask. */
+const subpathIndexCache = new WeakMap<VectorGeometry, Int32Array>();
+function subpathIndex(geo: VectorGeometry): Int32Array {
+  let idx = subpathIndexCache.get(geo);
+  if (idx) return idx;
+  idx = new Int32Array(geo.segs.length >> 2).fill(-1);
+  (geo.subpaths || []).forEach((sp, k) => { for (let i = sp.i0; i < sp.i1; i++) idx[i] = k; });
+  subpathIndexCache.set(geo, idx);
+  return idx;
 }
 
 const rectsOverlap = (a: [number, number, number, number], r: { x0: number; y0: number; x1: number; y1: number }): boolean =>
@@ -469,11 +646,13 @@ export const UNDO_CAP = 100;
  * actually made. */
 export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
+  | { op: "scale"; tool: string; sheet_id: string; upp: number | null; source?: string; confirmed?: boolean; shapes: Shape[] }
   | { op: "edit"; tool: string; before: Shape }
+  | { op: "annotation_text"; tool: string; id: string; before: string }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[]; dropped_before?: string[];
       family?: { condition_id: string; before: MaterialRow[]; dropped_before?: string[] }[] }
-  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } }
+  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; rise_ft?: number; drop_ft?: number; roll_setup?: Record<string, unknown> } }
   | { op: "duplicate_condition"; tool: string; condition_id: string; parent_id: string; parent_had_family: boolean }
   | { op: "split_condition"; tool: string; condition_id: string; before: { variant_of?: string; materials?: unknown; materials_dropped?: string[] } }
   | { op: "approval"; tool: string; inverse: ApprovalCommand }
@@ -486,7 +665,31 @@ export type JournalPayload =
   // cut_out on an open RUN: the run keeps its id and takes what survives; the
   // far side of a middle cut lands as its own shape. Undo puts the run back
   // whole and unmints the far side, one gesture like every cut
-  | { op: "runcut"; tool: string; target_id: string; target_prev: CutoutParentPrev; minted_ids: string[] };
+  | { op: "runcut"; tool: string; target_id: string; target_prev: CutoutParentPrev; minted_ids: string[] }
+  // RFIs (#364): each verb is one entry carrying its exact inverse. A create
+  // unmints the record and puts every linked markup's previous rfi_id back; a
+  // resolve restores the pre-answer record verbatim; a delete swaps the
+  // tombstone back for the record it replaced and re-links its markups.
+  // Every op here MUST also appear in outputs.ts undoLastOutput's op enum —
+  // the wire validates the reply against it, and a missing member fails the
+  // undo call itself (the over-the-wire test is what catches it).
+  | { op: "rfi_create"; tool: string; id: string; links: { markup_id: string; prev_rfi_id: string }[] }
+  | { op: "rfi_resolve"; tool: string; before: Rfi }
+  | { op: "rfi_delete"; tool: string; before: Rfi; unlinked: string[] }
+  // Proposals (#365). Every op here is ONE step over the whole batch — the
+  // finish line is "40 pending shapes revise, withdraw, or accept in one
+  // journal step and one undo_last".
+  | { op: "proposal_open"; tool: string; proposal: TakeoffProposal; prev_current: string | null }
+  | { op: "proposal_revise"; tool: string; proposal_id: string; removed: { shape: Shape; index: number }[]; ids: string[] }
+  | { op: "proposal_withdraw"; tool: string; proposal_id: string; removed: { shape: Shape; index: number }[]; was_current: boolean }
+  | { op: "condition_proposal"; tool: string; proposal: ConditionEditProposal; replaced?: ConditionEditProposal }
+  | { op: "condition_proposal_withdraw"; tool: string; proposal: ConditionEditProposal; index: number }
+  | { op: "condition_proposal_accept"; tool: string; proposal: ConditionEditProposal; index: number; before: Condition }
+  // estimate (lib/estimate.js): a price write snapshots the condition's pricing
+  // and every material row's price; a settings write snapshots the three
+  // project records. Each undoes verbatim.
+  | { op: "pricing"; tool: string; condition_id: string; before: { pricing?: ConditionPricing; prices: { id: string; price?: number }[] } }
+  | { op: "estimate_settings"; tool: string; before: EstimateRecords };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -517,6 +720,19 @@ export class Session {
   /** Approval-family records (#176) — estimator seals arrive only by import;
    * agent verdicts mint through markVerdict and nothing else. */
   approvals: Approval[] = [];
+  /** The RFI register (#364) — the panel's own records, tombstones included
+   * (a withdrawn RFI keeps its number reserved). Read through liveRfis() for
+   * anything that prints or exports. */
+  rfis: Rfi[] = [];
+  /** Proposals (#365): the batches propose_takeoff opened, and the
+   * condition-edit diffs held pending. Both ride export_takeoff /
+   * import_takeoff as transport. */
+  proposals: TakeoffProposal[] = [];
+  conditionEditProposals: ConditionEditProposal[] = [];
+  /** The proposal new agent commits attach to — the newest open one, or
+   * null when none is open (commits then land un-batched, exactly as before
+   * #365). */
+  private currentProposalId: string | null = null;
   /** The last assign-from-schedule run's unresolved rooms (0.9.18) — what the
    * marked-set cover discloses as withheld. Replaced per assign run, cleared
    * with the rest of the session on a non-merge load_plan. Seeds ride
@@ -528,6 +744,13 @@ export class Session {
    * stays behind the canvas's human Preview→Apply gate). apply_rules re-runs
    * them; applied_to mirrors the canvas's audit-trail semantics. */
   rules: Rule[] = [];
+  /** The project's estimate records, the canvas's own fields: markups
+   * (estimate_settings), proposal layout and text (bid_proposal) and who it is
+   * for (client_info). null / {} until set_estimate_settings writes them or an
+   * import carries them; export_takeoff writes them back out. */
+  estimateSettings: Record<string, unknown> | null = null;
+  bidProposal: Record<string, unknown> | null = null;
+  clientInfo: Record<string, string> = {};
 
   /** Newest-last. Capped at UNDO_CAP; the oldest entry falls off the front. */
   private journal: JournalEntry[] = [];
@@ -568,11 +791,18 @@ export class Session {
       this.shapes = [];
       this.markups = [];
       this.approvals = [];
+      this.rfis = [];
+      this.proposals = [];
+      this.conditionEditProposals = [];
+      this.currentProposalId = null;
       this.file = null;
       this.filePath = null;
       this.nextOrd = 1;
       this.scheduleWithheld = [];
       this.rules = [];
+      this.estimateSettings = null;
+      this.bidProposal = null;
+      this.clientInfo = {};
       // the journal's entries reference shapes that no longer exist — undoing
       // across a document swap would be a lie, so the history goes with them
       this.journal = [];
@@ -832,6 +1062,89 @@ export class Session {
     };
   }
 
+  /** get_sheet_vectors (#367): the extractor's own output for a sheet — the
+   * array the canvas engine is fed, unclassified and undecimated, so a reader
+   * can run its own geometry against exactly what the app sees. Where
+   * sheet_context CLASSIFIES (hatch families, longest-first decimation), this
+   * verb only PAGES: segments arrive in extraction order, whole, with every
+   * per-segment channel the extractor emits (meta byte, luminance, subpath
+   * ordinal, layer index). The region test is the same keep test
+   * sheet_context uses (a segment intersects the rect, endpoints untouched),
+   * so `total` here equals sheet_context's total_in_region for the same rect.
+   *
+   * Paging is exact by construction: `cursor` is a segment index into the
+   * sheet's array, the reply walks forward from it collecting matches until
+   * `limit`, and `next_cursor` is the index after the last one kept. The
+   * ledger `offset + returned + dropped === total` holds on every page, so a
+   * dense sheet never clips silently — a reader either walks the cursor to
+   * the end or knows exactly how many segments it never saw. */
+  async sheetVectors(name: string, opts: { region?: { x0: number; y0: number; x1: number; y1: number }; limit?: number; cursor?: number }) {
+    const s = this.sheet(name);
+    const geo = await this.ensureGeometry(s);
+    const nSeg = geo.segs.length >> 2;
+    if (!nSeg) {
+      throw new UserError(`${s.key} has no vector linework — it is a scan (or a flattened raster export), and get_sheet_vectors reads the drawn segments, of which a scan has none. There is nothing to return here: view_sheet renders the region as pixels and is the path on a scan; one_click and detect_rooms still flood it through the raster fallback.`);
+    }
+    const clampX = (v: number) => Math.max(0, Math.min(v, s.widthPx));
+    const clampY = (v: number) => Math.max(0, Math.min(v, s.heightPx));
+    const r = opts.region
+      ? { x0: clampX(opts.region.x0), y0: clampY(opts.region.y0), x1: clampX(opts.region.x1), y1: clampY(opts.region.y1) }
+      : { x0: 0, y0: 0, x1: s.widthPx, y1: s.heightPx };
+    if (!(r.x1 - r.x0 >= 1 && r.y1 - r.y0 >= 1)) {
+      throw new UserError(`Empty region — need x1 > x0 and y1 > y0 in image px inside the sheet (${s.widthPx} × ${s.heightPx}).`);
+    }
+    const limit = opts.limit ?? VECTORS_DEFAULT_LIMIT;
+    const cursor = opts.cursor ?? 0;
+    if (cursor > nSeg) throw new UserError(`cursor ${cursor} is past the end of ${s.key}'s ${nSeg} segments — cursors come from a previous reply's next_cursor.`);
+
+    // the whole-sheet case needs no test; a region walks every segment once
+    const full = !opts.region || (r.x0 === 0 && r.y0 === 0 && r.x1 === s.widthPx && r.y1 === s.heightPx);
+    const keep = (i: number): boolean => full || segIntersectsRect(geo.segs[i * 4], geo.segs[i * 4 + 1], geo.segs[i * 4 + 2], geo.segs[i * 4 + 3], r);
+
+    let offset = 0, total = 0;
+    const kept: number[] = [];
+    let next: number | undefined;
+    for (let i = 0; i < nSeg; i++) {
+      if (!keep(i)) continue;
+      total++;
+      if (i < cursor) { offset++; continue; }
+      if (kept.length < limit) kept.push(i);
+      else if (next === undefined) next = i;
+    }
+
+    const subOf = subpathIndex(geo);
+    const points: number[] = new Array(kept.length * 4);
+    const meta: number[] = new Array(kept.length);
+    const lum: number[] = geo.lum ? new Array(kept.length) : [];
+    const subpath: number[] = new Array(kept.length);
+    const layerOf: number[] = geo.layerOf ? new Array(kept.length) : [];
+    kept.forEach((i, k) => {
+      points[k * 4] = round2(geo.segs[i * 4]); points[k * 4 + 1] = round2(geo.segs[i * 4 + 1]);
+      points[k * 4 + 2] = round2(geo.segs[i * 4 + 2]); points[k * 4 + 3] = round2(geo.segs[i * 4 + 3]);
+      meta[k] = geo.meta[i];
+      if (geo.lum) lum[k] = geo.lum[i];
+      subpath[k] = subOf[i];
+      if (geo.layerOf) layerOf[k] = geo.layerOf[i];
+    });
+
+    const dropped = total - offset - kept.length;
+    const { rasterEligible, vectorViable } = this.rasterPolicy(s, geo);
+    return {
+      sheet: s.key,
+      page: s.pageNum,
+      sheet_px: [s.widthPx, s.heightPx],
+      region: [round1(r.x0), round1(r.y0), round1(r.x1), round1(r.y1)],
+      points, meta, lum, subpath,
+      image_area: Math.round(geo.imageArea),
+      layer_ids: geo.layerIds || [],
+      layer_of: layerOf,
+      total, offset, returned: kept.length, dropped,
+      limit,
+      ...(next !== undefined ? { next_cursor: next } : {}),
+      ...(rasterEligible && !vectorViable ? { note: `${s.key} is a scan wrapper: a placed image covers the sheet and these ${nSeg} segments are its frame, not the drawing. The drawing is pixels — view_sheet is the path.` } : {}),
+    };
+  }
+
   private async ensureGeometry(s: SheetState): Promise<VectorGeometry> {
     if (!s.geo) {
       const opList = await s.page.operatorList();
@@ -1028,6 +1341,21 @@ export class Session {
     } else {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
+    if (!Number.isFinite(upp) || upp <= 0) throw new UserError("Scale must be a finite positive number.");
+    if (s.upp !== upp) {
+      const before = this.shapes.filter((sh) => sh.sheet_id === s.key);
+      if (before.some((sh) => sh.measure_role !== "count" && sh.origin?.reviewed === true)) {
+        throw new UserError("This sheet contains human-reviewed measurements. Recalibrate it in the canvas, then import the updated takeoff into a fresh session.");
+      }
+      const dims = { w: s.widthPx, h: s.heightPx };
+      const repriced: Shape[] = recalibrateShapes(before, dims, upp, this.conditions);
+      // Initial calibration without geometry has nothing to undo. A changed
+      // calibration and its quantities restore together before older edits.
+      if (s.upp !== null || before.length) this.record({ op: "scale", tool: "set_scale", sheet_id: s.key,
+        upp: s.upp, source: s.scaleSource, confirmed: s.scaleConfirmed, shapes: structuredClone(before) });
+      const byId = new Map(repriced.map((sh) => [sh.id, sh]));
+      this.shapes = this.shapes.map((sh) => byId.get(sh.id) ?? sh);
+    }
     // Mask-cache eviction on recalibration — canvas parity (rescaleSheet):
     // the vector mask bakes the scale in (its hatch-pitch cap, seal radii,
     // wedge caps and minimum-passage rule are feet-true via mppf), so a mask
@@ -1081,14 +1409,15 @@ export class Session {
   private conditionFor(tag: string): Condition {
     let c = this.conditions.find((x) => x.finish_tag === tag);
     if (!c) {
-      // field-identical to the canvas's addCondition, palette rotation included
-      const lc = PALETTE[this.conditions.length % PALETTE.length];
+      // field-identical to the canvas's mintCondition, palette rotation included
+      const lc = nextPaletteColor(this.conditions.length);
       c = {
         id: uid("cnd"),
+        created_at: nowIso(),
         finish_tag: tag,
         color: lc,
         fill: lc,
-        hatch: HATCH_IDS[1 + (this.conditions.length % (HATCH_IDS.length - 1))],
+        hatch: nextHatchId(this.conditions.length),
         multiplier: 1,
         waste_pct: 0,
         materials: [],
@@ -1135,6 +1464,15 @@ export class Session {
     };
   }
 
+  /** Proposals (#365): an agent origin minted while a proposal is open joins
+   * that batch. The ONE stamp for every path that pushes a shape — commit()
+   * and the two verbs that mint a shape directly (cut_out's deduct receipt,
+   * a run cut's surviving pieces) — so no future path can ship un-batched. */
+  private stampProposal<T extends ShapeOrigin>(origin: T): T {
+    if (origin.actor === "agent" && this.currentProposalId && !origin.proposal_id) return { ...origin, proposal_id: this.currentProposalId };
+    return origin;
+  }
+
   private commit(s: SheetState, tag: string, role: MeasureRole, vertsPx: Point[], computed: Shape["computed"], origin?: Shape["origin"], flood?: FloodEvidence): Shape {
     // Flood provenance + confidence (RFC #60) stamp HERE, exactly where the
     // assignment provenance already stamps: a commit path that hands over its
@@ -1142,6 +1480,11 @@ export class Session {
     // openings, door wedges, min-passage — minted onto origin centrally, so
     // no flood commit path can ship an unscored shape.
     if (origin && flood) origin = { ...origin, ...Session.floodStamp(flood, computed.area_sf) };
+    if (origin?.actor === "agent") origin = { ...origin, reviewed: false };
+    // proposals (#365) stamp HERE too: while a proposal is open every agent
+    // commit — hand trace, sweep, derive, cut — attaches to it, so the batch
+    // the estimator sees is exactly what the agent did after propose_takeoff.
+    if (origin) origin = this.stampProposal(origin);
     // assignment provenance (0.9.18) defaults HERE, not at the seven call
     // sites: an agent commit that stated no source asserted the tag itself,
     // and stamping centrally means no future commit path can ship unstamped.
@@ -1312,7 +1655,7 @@ export class Session {
     if (assign) {
       if (s.upp == null) throw new UserError(this.scaleGate(s));   // no silent px-only preview wearing a success reply
       graph = await this.ensureGraph();
-      if (!graph.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, not empty.");
+      if (!graph.available) throw new UserError("This set has no text layer (a raster image) — the sheet graph is unavailable, not empty.");
       if (!graph.tables.some((t) => t.kind === "room-finish")) {
         throw new UserError("No room-finish schedule in the working set — load_plan the schedule sheet with merge: true, or pass condition to commit every room under one tag.");
       }
@@ -1347,7 +1690,7 @@ export class Session {
     // Trace every label first (ladder + bubble guard per label). Nothing
     // commits in this pass — withholding has to be decided across the whole
     // batch (dedupe needs to see every ring).
-    const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0, unresolved: 0 };
+    const withheld = { degenerate: 0, duplicate: 0, bubble: 0, unowned: 0, implausible: 0, unresolved: 0 };
     const unresolved: { label: string; reason: string; area_sf: number; perimeter_lf: number; seed: [number, number] }[] = [];
     type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; ev: FloodEvidence; merged: string[] };
     const byRing = new Map<string, Cand>();
@@ -1358,7 +1701,7 @@ export class Session {
     const sweepMppf = raster ? (s.upp ? mask.ws / s.upp : 0) : (mask.mppf || 0);
     for (const lb of labels) {
       let ring: Point[] | null = null, ev: FloodEvidence | null = null, seed: [number, number] | null = null;
-      let sawBubble = false, sawDegenerate = false;
+      let sawBubble = false, sawDegenerate = false, sawUnowned = false;
       for (const probe of seedLadderPx(lb.bbox)) {
         // the sealed engine at each ladder rung — floodAtSeed, the ONE entry
         // point every non-canvas surface floods through (web detectRooms.ts),
@@ -1372,12 +1715,20 @@ export class Session {
           : snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
         if (r.length < 3) { sawDegenerate = true; continue; }
         if (isLabelBubblePx(r as [number, number][], lb.bbox)) { sawBubble = true; continue; }
+        // ownership (#373): a rung that steps past the room's wall floods the
+        // NEIGHBOURING space or a door pocket — on Dublin A-601 the below-box
+        // rung under restroom 110 flooded a 10 SF swing pocket and it would
+        // have committed as "110". The flood must surround the label's box
+        // (the canvas's own test, floodSurroundsLabelPx) or it is not this
+        // label's room; withheld as unowned, never committed under the tag.
+        if (!floodSurroundsLabelPx(f, lb.bbox)) { sawUnowned = true; continue; }
         // harvest the scalar evidence now; the region bitmap goes with `f`
         ring = r; ev = Session.floodEvidence(f, raster, sweepMppf); seed = probe;
         break;
       }
       if (!ring || !ev || !seed) {
-        if (sawBubble) withheld.bubble++;            // only its own bubble ever flooded clean
+        if (sawBubble && !sawUnowned) withheld.bubble++;   // only its own bubble ever flooded clean
+        else if (sawUnowned) withheld.unowned++;             // every clean flood was some other space's
         else if (sawDegenerate) withheld.degenerate++;
         // a label with no clean flood at any probe simply isn't counted as a
         // seed that traced — same as the historical single-seed gate
@@ -1469,7 +1820,7 @@ export class Session {
         seed_norm: [u.seed[0] / s.widthPx, u.seed[1] / s.heightPx] as [number, number],
       }));
     }
-    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.bubble + withheld.implausible + withheld.unresolved;
+    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.bubble + withheld.unowned + withheld.implausible + withheld.unresolved;
     return {
       detected: rooms.length,
       rooms,
@@ -1483,36 +1834,78 @@ export class Session {
       ...(assign ? { unresolved } : {}),
       ...(s.detected?.multi ? { multiple_scales: true as const } : {}),
       ...(withheldTotal
-        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable${assign ? `, ${withheld.unresolved} unresolved against the schedule (see unresolved[])` : ""}.` }
+        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.unowned} unowned (every clean flood was a neighbouring space or door pocket — one_click inside the room), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable${assign ? `, ${withheld.unresolved} unresolved against the schedule (see unresolved[])` : ""}.` }
         : {}),
       ...(s.upp == null ? { warning: `No scale set for ${s.key} — quantities unavailable. Call set_scale${s.detected ? ` (detected: ${s.detected.label})` : ""}.` } : {}),
     };
   }
 
-  measurePolygon(name: string, verts: Point[], opts: { condition?: string; role: "floor_area" | "deduct" }) {
+  /** Bend a trace the way the canvas's Curve mode does (#284): `arcThrough`
+   * lists the indices of points that are the MIDDLE of a three-point arc —
+   * the boundary runs pts[i-1] → pts[i] → pts[i+1] as the unique circle
+   * through those three instead of two chords. The arc is baked to ordinary
+   * vertices here (the canvas's flattenArcRing, same steps, same budget), so
+   * SF/LF, the marked set, edit_shape and every export keep seeing a plain
+   * polygon — and the shape's origin carries `curved: true`, the canvas's own
+   * stamp. Refusal over guessing: an index off the trace, a bow point at the
+   * end of an open run (no far corner to bend to), or two bows in a row (no
+   * clean triple) refuse whole rather than silently demoting to a corner. */
+  private bend(pts: Point[], arcThrough: number[] | undefined, closed: boolean, tool: string): { pts: Point[]; arcs: number } {
+    if (!arcThrough?.length) return { pts, arcs: 0 };
+    const n = pts.length;
+    const marks = [...new Set(arcThrough)].sort((a, b) => a - b);
+    for (const i of marks) {
+      if (!Number.isInteger(i) || i < 0 || i >= n) throw new UserError(`${tool}: arc_through index ${i} is off the trace (${n} points, indices 0–${n - 1}).`);
+      if (!closed && (i === 0 || i === n - 1)) throw new UserError(`${tool}: arc_through ${i} is an END of the open run — a bow needs a corner on both sides. State the arc's start, its bow, and its far end as three consecutive points and mark the middle one.`);
+    }
+    for (let k = 1; k < marks.length; k++) {
+      if (marks[k] - marks[k - 1] === 1 || (closed && marks[0] === 0 && marks[marks.length - 1] === n - 1)) {
+        throw new UserError(`${tool}: arc_through marks ${marks[k - 1]} and ${marks[k]} are adjacent — every arc needs a corner between it and the next. Put a plain vertex where one arc ends and the next begins.`);
+      }
+    }
+    if (n < 3) throw new UserError(`${tool}: an arc needs three points (start, bow, far end); got ${n}.`);
+    const flat = flattenArcRing(pts, marks, closed) as Point[];
+    return { pts: flat, arcs: marks.length };
+  }
+
+  measurePolygon(name: string, verts: Point[], opts: { condition?: string; role: "floor_area" | "deduct"; arc_through?: number[] }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
-    const met = closedMetrics(verts);
-    const area_sf = round2(met.area * s.upp * s.upp);
-    const perimeter_lf = round2(met.perim * s.upp);
+    const { pts: ring, arcs } = this.bend(verts, opts.arc_through, true, "measure_polygon");
+    const { area_sf = 0, perimeter_lf = 0 } = this.quantify(s, opts.role, ring);
     let shape_id: string | undefined;
     // agent-supplied coordinates are a hand trace by a machine hand: manual
     // method, agent actor — and never reviewed (no human affirmed anything).
-    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }, { method: "manual", actor: "agent" }).id;
+    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, ring, { area_sf, perimeter_lf }, { method: "manual", actor: "agent", ...(arcs ? { curved: true as const } : {}) }).id;
     this.flushCommits("measure_polygon");
-    const mixed = this.scaleWarningFor(s, verts);
-    return { area_sf, perimeter_lf, nverts: verts.length, ...(shape_id ? { shape_id } : {}), ...(mixed ? { warning: mixed } : {}) };
+    const mixed = this.scaleWarningFor(s, ring);
+    return { area_sf, perimeter_lf, nverts: ring.length, ...(arcs ? { arcs } : {}), ...(shape_id ? { shape_id } : {}), ...(mixed ? { warning: mixed } : {}) };
   }
 
-  measureLine(name: string, pts: Point[], opts: { condition?: string }) {
+  measureLine(name: string, pts: Point[], opts: { condition?: string; arc_through?: number[]; rise_ft?: number; drop_ft?: number }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
-    const length_lf = round2(openLen(pts) * s.upp);
+    const { pts: run, arcs } = this.bend(pts, opts.arc_through, false, "measure_line");
+    // #441 — the run's legs: its own rise/drop where passed, else the
+    // condition's defaults. Without a condition there is nothing to default
+    // from, so a bare measurement carries only what the call states.
+    const own = { ...(opts.rise_ft !== undefined ? { rise_ft: opts.rise_ft } : {}), ...(opts.drop_ft !== undefined ? { drop_ft: opts.drop_ft } : {}) };
+    const vertical = this.verticalFor(opts.condition, own);
+    const computed = this.quantify(s, "linear", run, undefined, vertical);
+    const length_lf = computed.perimeter_lf ?? 0;
     let shape_id: string | undefined;
     // area_sf stays 0 — the canvas only mints border SF when the condition has a thickness
-    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual", actor: "agent" }).id;
+    if (opts.condition) {
+      const shape = this.commit(s, opts.condition, "linear", run, computed, { method: "manual", actor: "agent", ...(arcs ? { curved: true as const } : {}) });
+      Object.assign(shape, own);   // the run's OWN legs persist so a later condition edit cannot silently re-flow them
+      shape_id = shape.id;
+    }
     this.flushCommits("measure_line");
-    return { length_lf, npts: pts.length, ...(shape_id ? { shape_id } : {}) };
+    return {
+      length_lf, npts: run.length,
+      ...(computed.vertical_lf ? { plan_lf: computed.plan_lf, vertical_lf: computed.vertical_lf, rise_ft: vertical.rise, drop_ft: vertical.drop } : {}),
+      ...(arcs ? { arcs } : {}), ...(shape_id ? { shape_id } : {}),
+    };
   }
 
   /** Surface Area — the canvas's Surface tool (commitSurface): an OPEN run
@@ -1521,9 +1914,12 @@ export class Session {
    * here writes that knob first, exactly like typing H before tracing — and
    * that write journals as its own condition step, so undo stays exact.
    * The refusal path mints nothing: no height, no condition side effects. */
-  measureSurface(name: string, pts: Point[], opts: { condition: string; height_ft?: number }) {
+  measureSurface(name: string, pts: Point[], opts: { condition: string; height_ft?: number; arc_through?: number[] }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
+    // bend BEFORE the height gate so a bad arc refuses with nothing minted
+    const bent = this.bend(pts, opts.arc_through, false, "measure_surface");
+    pts = bent.pts;
     const existing = this.conditions.find((x) => x.finish_tag === opts.condition);
     const h = opts.height_ft ?? (Number(existing?.height_ft) || 0);
     if (!(h > 0)) {
@@ -1537,8 +1933,394 @@ export class Session {
     const LF = openLen(pts) * s.upp;
     const shape = this.commit(s, opts.condition, "surface_area", pts, { area_sf: round2(LF * h), perimeter_lf: round2(LF) }, { method: "manual", actor: "agent" });
     shape.height_ft = h;
+    if (bent.arcs && shape.origin) shape.origin = { ...shape.origin, curved: true };
     this.flushCommits("measure_surface");
-    return { condition: c.finish_tag, height_ft: h, length_lf: round2(LF), area_sf: round2(LF * h), npts: pts.length, shape_id: shape.id };
+    return { condition: c.finish_tag, height_ft: h, length_lf: round2(LF), area_sf: round2(LF * h), npts: pts.length, ...(bent.arcs ? { arcs: bent.arcs } : {}), shape_id: shape.id };
+  }
+
+  // ── Proposals (#365) ──────────────────────────────────────────────────────
+  // A shape an agent commits lands reviewed:false and the estimator accepts
+  // or deletes it — that covers SHAPES, one at a time. A proposal is the unit
+  // above that: a named batch with one identity the agent can revise or
+  // withdraw as a whole, and the estimator accepts as ONE decision. A
+  // condition-edit proposal is the same idea for the knobs: a diff held
+  // pending instead of a silent edit_condition.
+
+  /** The shapes still pending under a proposal: attached to it AND not yet
+   * affirmed by a human. Accepted shapes keep the id as history and drop out
+   * of the batch — no agent verb reaches them (the ink rule, unchanged). */
+  private proposalPending(id: string): { shape: Shape; index: number }[] {
+    return this.shapes
+      .map((shape, index) => ({ shape, index }))
+      .filter(({ shape }) => shape.origin?.proposal_id === id && shape.origin?.reviewed !== true);
+  }
+
+  private proposalOrError(id: string): TakeoffProposal {
+    const p = this.proposals.find((x) => x.id === id);
+    if (!p) {
+      const open = this.proposals.filter((x) => !x.withdrawn_at).map((x) => `${x.id} (${x.label})`);
+      throw new UserError(`No proposal with id ${JSON.stringify(id)}.${open.length ? ` Open proposals: ${open.join(", ")}.` : " Nothing has opened a proposal yet — propose_takeoff first."}`);
+    }
+    return p;
+  }
+
+  /** A linear run's quantities from its plan length and vertical legs (#441)
+   * — the server twin of shapeMetrics' linear branch: perimeter_lf is the
+   * TOTAL the summers read; plan_lf / vertical_lf appear only when a leg
+   * exists, so a flat run's record is what it always was. area_sf stays 0 —
+   * the canvas mints border SF only from a condition thickness. */
+  private static linearQty(planLf: number, vertical?: { rise: number; drop: number }): Shape["computed"] {
+    const vert = (vertical?.rise ?? 0) + (vertical?.drop ?? 0);
+    const plan = round2(planLf);
+    return { area_sf: 0, perimeter_lf: round2(planLf + vert), ...(vert > 0 ? { plan_lf: plan, vertical_lf: round2(vert) } : {}) };
+  }
+
+  /** The legs a linear run resolves to: its own rise_ft / drop_ft where
+   * given, else the condition's defaults (by tag — the condition may not
+   * exist yet on a first commit, in which case there are no defaults). */
+  private verticalFor(tag: string | undefined, own: { rise_ft?: number; drop_ft?: number }): { rise: number; drop: number } {
+    const cond = tag ? this.conditions.find((x) => Session.tagKey(x.finish_tag) === Session.tagKey(tag)) : undefined;
+    return linearVerticalFt(own, cond);
+  }
+
+  /** The quantities a shape of `role` carries for `verts` on sheet `s` — the
+   * same arithmetic measure_polygon / measure_line / measure_surface /
+   * place_count run, in one place so a revised batch measures exactly as a
+   * fresh commit would. */
+  private quantify(s: SheetState, role: MeasureRole, verts: Point[], heightFt?: number, vertical?: { rise: number; drop: number }): Shape["computed"] {
+    if (role === "count") return { count: 1 };
+    const upp = s.upp ?? 0;
+    if (role === "linear") return Session.linearQty(openLen(verts) * upp, vertical);
+    if (role === "surface_area") { const LF = openLen(verts) * upp; return { area_sf: round2(LF * (heightFt ?? 0)), perimeter_lf: round2(LF) }; }
+    const met = closedMetrics(verts);
+    return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
+  }
+
+  /** propose_takeoff: open a named batch. Every agent commit from here on
+   * attaches to it (stamped centrally in commit()) until another proposal is
+   * opened or this one is withdrawn. Opening is its own journal step so
+   * undo_last walks back exactly. */
+  proposeTakeoff(label: string, rationale: string) {
+    const cleanLabel = String(label ?? "").trim();
+    const cleanRationale = String(rationale ?? "").trim();
+    if (!cleanLabel) throw new UserError("label is required — name the batch the way the estimator will read it on the Accept pill ('Level 2 rooms per finish schedule').");
+    if (!cleanRationale) throw new UserError("rationale is required — say what decided the batch (the schedule row, the sheet, the rule) so the estimator can judge it as one unit.");
+    const proposal: TakeoffProposal = { id: uid("prop"), label: cleanLabel, rationale: cleanRationale, created_at: nowIso() };
+    this.record({ op: "proposal_open", tool: "propose_takeoff", proposal, prev_current: this.currentProposalId });
+    this.proposals.push(proposal);
+    this.currentProposalId = proposal.id;
+    return {
+      proposal_id: proposal.id, label: proposal.label, rationale: proposal.rationale,
+      note: "Open. Every shape you commit from now on (measure_*, sweeps, derives, cut_out) attaches to this proposal until you open another or withdraw it; the estimator sees the batch as one Accept. revise_proposal replaces its pending shapes as one step, withdraw_proposal removes them.",
+    };
+  }
+
+  /** revise_proposal: replace EVERY still-pending shape in the batch with a
+   * new set, as one journal step. All-or-nothing — the whole replacement is
+   * validated before the first pending shape is removed, so a malformed last
+   * shape leaves the batch exactly as it was. Accepted shapes are untouched
+   * and the replacement shapes attach to the same proposal. */
+  reviseProposal(id: string, shapes: { sheet: string; condition: string; role: MeasureRole; verts: Point[]; label?: string; height_ft?: number }[]) {
+    const p = this.proposalOrError(id);
+    if (p.withdrawn_at) throw new UserError(`Proposal ${id} (${p.label}) was withdrawn — open a new one with propose_takeoff.`);
+    if (!Array.isArray(shapes) || !shapes.length) throw new UserError("shapes is empty — to remove the batch, call withdraw_proposal instead.");
+    // validate everything first; refuse whole, never half-revise
+    const plan = shapes.map((r, i) => {
+      const s = this.sheet(r.sheet);
+      const min = r.role === "count" ? 1 : (r.role === "linear" || r.role === "surface_area") ? 2 : 3;
+      if (!Array.isArray(r.verts) || r.verts.length < min) throw new UserError(`shapes[${i}]: a ${r.role} shape needs at least ${min} vert${min === 1 ? "ex" : "ices"} — got ${Array.isArray(r.verts) ? r.verts.length : 0}. Nothing was revised.`);
+      if (r.role !== "count" && s.upp == null) throw new UserError(`shapes[${i}]: ${this.scaleGate(s)} Nothing was revised.`);
+      const tag = String(r.condition ?? "").trim();
+      if (!tag) throw new UserError(`shapes[${i}]: condition is required. Nothing was revised.`);
+      let height: number | undefined;
+      if (r.role === "surface_area") {
+        const existing = this.conditions.find((x) => x.finish_tag === tag);
+        height = r.height_ft ?? (Number(existing?.height_ft) || 0);
+        if (!(height > 0)) throw new UserError(`shapes[${i}]: a surface_area shape needs a height — pass height_ft, or set it on ${tag} with edit_condition. Nothing was revised.`);
+      }
+      return { s, tag, role: r.role, verts: r.verts, label: r.label?.trim() || undefined, height };
+    });
+    const removed = this.proposalPending(id);
+    const dead = new Set(removed.map((r) => r.shape.id));
+    this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+    const prevCurrent = this.currentProposalId;
+    this.currentProposalId = id;   // the replacements attach to THIS batch, whatever is current
+    try {
+      for (const r of plan) {
+        const shape = this.commit(r.s, r.tag, r.role, r.verts, this.quantify(r.s, r.role, r.verts, r.height), { method: "manual", actor: "agent" });
+        if (r.label) shape.label = r.label;
+        if (r.role === "surface_area") shape.height_ft = r.height;
+      }
+    } finally {
+      this.currentProposalId = prevCurrent;
+    }
+    const ids = this.pendingCommits;
+    this.pendingCommits = [];
+    this.record({ op: "proposal_revise", tool: "revise_proposal", proposal_id: id, removed, ids });
+    return { proposal_id: id, label: p.label, replaced: removed.length, committed: ids.length, shape_ids: ids, note: "One journal step — undo_last puts the previous pending batch back exactly. Accepted shapes were not touched." };
+  }
+
+  /** withdraw_proposal: remove every still-pending shape in the batch, as one
+   * journal step. The proposal record stays, marked withdrawn (the label is
+   * history the estimator may still read); accepted shapes stay ink. */
+  withdrawProposal(id: string) {
+    const p = this.proposalOrError(id);
+    if (p.withdrawn_at) throw new UserError(`Proposal ${id} (${p.label}) is already withdrawn.`);
+    const removed = this.proposalPending(id);
+    const dead = new Set(removed.map((r) => r.shape.id));
+    this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+    const wasCurrent = this.currentProposalId === id;
+    if (wasCurrent) this.currentProposalId = null;
+    p.withdrawn_at = nowIso();
+    this.record({ op: "proposal_withdraw", tool: "withdraw_proposal", proposal_id: id, removed, was_current: wasCurrent });
+    const kept = this.shapes.filter((x) => x.origin?.proposal_id === id).length;
+    return { proposal_id: id, label: p.label, withdrawn: removed.length, accepted_kept: kept, note: kept ? `${kept} shape(s) the estimator had already accepted stay — reviewed work is ink.` : "Every shape in the batch was still pending; all removed. undo_last restores the batch." };
+  }
+
+  /** The proposal ledger takeoff_summary carries: per batch, what is still
+   * pending, what the estimator accepted, and whether it was withdrawn. */
+  proposalRows() {
+    return this.proposals.map((p) => {
+      const mine = this.shapes.filter((x) => x.origin?.proposal_id === p.id);
+      return {
+        proposal_id: p.id, label: p.label, rationale: p.rationale,
+        pending: mine.filter((x) => x.origin?.reviewed !== true).length,
+        accepted: mine.filter((x) => x.origin?.reviewed === true).length,
+        ...(p.withdrawn_at ? { withdrawn: true } : {}),
+        ...(this.currentProposalId === p.id ? { current: true } : {}),
+      };
+    });
+  }
+
+  /** The canonical tag key — case- and space-insensitive, the canvas's own
+   * identity rule for a finish tag (importTakeoff.js tagKey). */
+  private static tagKey(t: unknown): string { return String(t ?? "").trim().toUpperCase(); }
+
+  /** propose_condition_edit: hold a diff against a condition as pending. The
+   * condition itself does not change, so takeoff_summary and export_report
+   * keep reporting the current values (with the proposal beside them) until
+   * the estimator accepts from the panel. One pending proposal per condition;
+   * proposing again replaces it (journaled, so undo restores the earlier one). */
+  proposeConditionEdit(tag: string, proposed: ConditionEditFields, rationale: string) {
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet."}`);
+    }
+    const cleanRationale = String(rationale ?? "").trim();
+    if (!cleanRationale) throw new UserError("rationale is required — the estimator accepts a reason, not a number.");
+    const diff: ConditionEditFields = {};
+    if (proposed.finish_tag !== undefined) {
+      const next = String(proposed.finish_tag).trim();
+      if (!next) throw new UserError("finish_tag cannot be empty.");
+      if (Session.tagKey(next) !== Session.tagKey(c.finish_tag)) {
+        const clash = this.conditions.find((x) => x.id !== c.id && Session.tagKey(x.finish_tag) === Session.tagKey(next));
+        if (clash) throw new UserError(`A condition already carries the tag ${JSON.stringify(clash.finish_tag)} — two conditions sharing a tag would make one permanently unreachable. Propose a different tag, or measure under ${clash.finish_tag} directly.`);
+      }
+      if (next !== c.finish_tag) diff.finish_tag = next;
+    }
+    if (proposed.waste_pct !== undefined && proposed.waste_pct !== c.waste_pct) diff.waste_pct = proposed.waste_pct;
+    if (proposed.multiplier !== undefined && proposed.multiplier !== c.multiplier) diff.multiplier = proposed.multiplier;
+    if (proposed.height_ft !== undefined && proposed.height_ft !== c.height_ft) diff.height_ft = proposed.height_ft;
+    if (proposed.rise_ft !== undefined && proposed.rise_ft !== (c.rise_ft ?? 0)) diff.rise_ft = proposed.rise_ft;
+    if (proposed.drop_ft !== undefined && proposed.drop_ft !== (c.drop_ft ?? 0)) diff.drop_ft = proposed.drop_ft;
+    if (proposed.roll_setup !== undefined) {
+      if (proposed.roll_setup === null) { if (c.roll_setup) diff.roll_setup = null; }
+      else diff.roll_setup = structuredClone(proposed.roll_setup);
+    }
+    if (!Object.keys(diff).length) throw new UserError(`Nothing to propose — every value given already matches ${c.finish_tag} (waste ${c.waste_pct}%, ×${c.multiplier}${c.height_ft !== undefined ? `, height ${c.height_ft} ft` : ""}).`);
+    const i = this.conditionEditProposals.findIndex((x) => x.condition_id === c.id);
+    const replaced = i >= 0 ? this.conditionEditProposals[i] : undefined;
+    const proposal: ConditionEditProposal = { id: uid("cprop"), condition_id: c.id, proposed: diff, rationale: cleanRationale, proposed_at: nowIso() };
+    if (i >= 0) this.conditionEditProposals[i] = proposal; else this.conditionEditProposals.push(proposal);
+    this.record({ op: "condition_proposal", tool: "propose_condition_edit", proposal, ...(replaced ? { replaced } : {}) });
+    return {
+      proposal_id: proposal.id, condition: c.finish_tag, condition_id: c.id,
+      current: Session.conditionKnobs(c), proposed: diff, rationale: cleanRationale,
+      ...(replaced ? { replaced_proposal_id: replaced.id } : {}),
+      note: "Pending. The condition is unchanged until the estimator accepts in the canvas; takeoff_summary and export_report show the current values with this diff beside them.",
+    };
+  }
+
+  /** withdraw_condition_edit: drop a pending diff without touching the
+   * condition. undo_last re-seats it. */
+  withdrawConditionEdit(id: string) {
+    const i = this.conditionEditProposals.findIndex((x) => x.id === id);
+    if (i < 0) {
+      const open = this.conditionEditProposals.map((x) => `${x.id} (${this.conditions.find((c) => c.id === x.condition_id)?.finish_tag ?? x.condition_id})`);
+      throw new UserError(`No condition-edit proposal with id ${JSON.stringify(id)}.${open.length ? ` Pending: ${open.join(", ")}.` : " Nothing is pending."}`);
+    }
+    const [proposal] = this.conditionEditProposals.splice(i, 1);
+    this.record({ op: "condition_proposal_withdraw", tool: "withdraw_condition_edit", proposal, index: i });
+    const c = this.conditions.find((x) => x.id === proposal.condition_id);
+    return { proposal_id: id, condition: c?.finish_tag ?? proposal.condition_id, withdrawn: true };
+  }
+
+  /** The estimator's acceptance — a HOST verb, deliberately not registered as
+   * an agent tool (only the reviewing surface turns a pending diff into
+   * ink). Applies the diff through the same applyConditionKnobs path
+   * edit_condition uses, so the resulting report is byte-identical to a direct
+   * edit; a rename lands on the condition's finish_tag. One journal step. */
+  acceptConditionEdit(id: string) {
+    const i = this.conditionEditProposals.findIndex((x) => x.id === id);
+    if (i < 0) throw new UserError(`No condition-edit proposal with id ${JSON.stringify(id)}.`);
+    const proposal = this.conditionEditProposals[i];
+    const c = this.conditions.find((x) => x.id === proposal.condition_id);
+    if (!c) throw new UserError(`The condition this proposal targets (${proposal.condition_id}) no longer exists.`);
+    if (proposal.proposed.finish_tag !== undefined) {
+      const clash = this.conditions.find((x) => x.id !== c.id && Session.tagKey(x.finish_tag) === Session.tagKey(proposal.proposed.finish_tag));
+      if (clash) throw new UserError(`Cannot accept: ${JSON.stringify(clash.finish_tag)} now exists on another condition. Withdraw or re-propose.`);
+    }
+    const before = structuredClone(c);
+    const { finish_tag, ...knobs } = proposal.proposed;
+    this.applyConditionKnobs(c, knobs);
+    if (knobs.rise_ft !== undefined || knobs.drop_ft !== undefined) this.reflowLinears(c);
+    if (finish_tag !== undefined) c.finish_tag = finish_tag;
+    this.conditionEditProposals.splice(i, 1);
+    this.record({ op: "condition_proposal_accept", tool: "accept_condition_edit", proposal, index: i, before });
+    return { proposal_id: id, condition: c.finish_tag, condition_id: c.id, applied: proposal.proposed };
+  }
+
+  private static conditionKnobs(c: Condition) {
+    return {
+      finish_tag: c.finish_tag, waste_pct: c.waste_pct, multiplier: c.multiplier,
+      ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}),
+      ...(c.rise_ft !== undefined ? { rise_ft: c.rise_ft } : {}),
+      ...(c.drop_ft !== undefined ? { drop_ft: c.drop_ft } : {}),
+      ...(c.roll_setup ? { roll_setup: c.roll_setup } : {}),
+    };
+  }
+
+  /** Re-price every linear run of `c` from its geometry and the legs it now
+   * resolves to (#441) — the canvas's setCondParam re-flow, on the server. A
+   * run carrying its own rise_ft / drop_ft keeps that field; a derived run
+   * never takes a leg. Nothing is journaled here: the condition step that
+   * called it is the undo unit, and undo calls it again with the old values. */
+  private reflowLinears(c: Condition): void {
+    for (const sh of this.shapes) {
+      if (sh.condition_id !== c.id || sh.measure_role !== "linear") continue;
+      const s = this.sheets.get(sh.sheet_id);
+      if (!s || s.upp == null) continue;
+      const px: Point[] = sh.verts_norm.map(([nx, ny]) => [nx * s.widthPx, ny * s.heightPx]);
+      const vertical = sh.origin?.derived ? { rise: 0, drop: 0 } : linearVerticalFt(sh, c);
+      sh.computed = { ...sh.computed, ...Session.linearQty(openLen(px) * (s.upp ?? 0), vertical) };
+      if (!vertical.rise && !vertical.drop) { delete sh.computed.plan_lf; delete sh.computed.vertical_lf; }
+    }
+  }
+
+  /** The pending condition diffs as the report and the summary print them:
+   * current values beside proposed, per condition. */
+  proposedConditionEdits() {
+    return this.conditionEditProposals.flatMap((p) => {
+      const c = this.conditions.find((x) => x.id === p.condition_id);
+      if (!c) return [];
+      return [{ proposal_id: p.id, condition: c.finish_tag, condition_id: c.id, current: Session.conditionKnobs(c), proposed: p.proposed, rationale: p.rationale, proposed_at: p.proposed_at }];
+    });
+  }
+
+  // ── Scope collision (#366) ────────────────────────────────────────────────
+  // Two conditions can claim the same floor and nothing said so: detect_rooms
+  // under CPT-1, then a polygon in the same room under LVT-2, and every total
+  // downstream counts that floor twice. The measurement already existed in the
+  // room eval's harness; these verbs put it where the estimator can see it.
+
+  /** The sheet frame the collision module measures in: px dims + feet per
+   * px. An unscaled sheet reports its shapes UNMEASURED rather than as zero. */
+  private scopeFrame = (sheetId: string) => {
+    const s = this.sheetOrNull(sheetId);
+    if (!s) return null;
+    return { w: s.widthPx, h: s.heightPx, upp: s.upp ?? 0 };
+  };
+
+  private scopeCollisions(shapes: Shape[] = this.shapes, minFraction?: number) {
+    return scopeCollisions(shapes, this.conditions, this.scopeFrame, { minFraction });
+  }
+
+  /** scope_duplicates: every pair of floor shapes on different conditions
+   * whose intersection exceeds a stated fraction of the smaller, with the
+   * shared area and which condition each belongs to; same-condition overlaps
+   * (a double trace) as their own list. Read-only. */
+  scopeDuplicates(opts: { sheet?: string; min_fraction?: number } = {}) {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    let shapes = this.shapes;
+    if (opts.sheet) { const s = this.sheet(opts.sheet); shapes = shapes.filter((x) => x.sheet_id === s.key); }
+    const r = this.scopeCollisions(shapes, opts.min_fraction);
+    const floors = shapes.filter((x) => x.measure_role === "floor_area").length;
+    return {
+      ...r,
+      floor_shapes: floors,
+      min_fraction: opts.min_fraction ?? 0.05,
+      note: !floors ? "No floor_area shapes to compare."
+        : r.collisions.length ? `${r.collisions.length} pair(s) on different conditions share floor — every total downstream counts that floor twice. scope_merge a pair with the winner stated, or view_sheet its look region and re-trace.`
+        : r.duplicates.length ? "No cross-condition collision; the same-condition pairs listed are double traces — delete_shape one of each."
+        : "No shared floor on the compared sheets.",
+    };
+  }
+
+  /** scope_merge: given a pair and a winner, the loser gives up the shared
+   * floor — trimmed to its remainder (an exact boolean difference, the
+   * cut_out module's arithmetic) or deleted outright when the overlap is
+   * near-total. ONE journal step either way; undo_last restores the loser
+   * verbatim. The ink rule holds absolutely: a loser the estimator accepted is
+   * refused, so with both shapes accepted this is the estimator's call in the
+   * canvas (the collision badge is theirs), not the agent's. */
+  scopeMerge(opts: { shape_a: string; shape_b: string; winner?: string }) {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    const A = this.shapes.find((x) => x.id === opts.shape_a);
+    const B = this.shapes.find((x) => x.id === opts.shape_b);
+    if (!A) throw new UserError(`No shape with id ${JSON.stringify(opts.shape_a)} — scope_duplicates or list_shapes for real ids.`);
+    if (!B) throw new UserError(`No shape with id ${JSON.stringify(opts.shape_b)} — scope_duplicates or list_shapes for real ids.`);
+    if (A.id === B.id) throw new UserError("shape_a and shape_b are the same shape.");
+    for (const x of [A, B]) if (x.measure_role !== "floor_area") throw new UserError(`Shape ${x.id} is ${x.measure_role} — only floor_area shapes claim floor. A deduct subtracts, a run has no area to share.`);
+    if (A.sheet_id !== B.sheet_id) throw new UserError(`Shapes on different sheets (${A.sheet_id} / ${B.sheet_id}) cannot share floor.`);
+    const s = this.sheet(A.sheet_id);
+    if (s.upp == null) throw new UserError(this.scaleGate(s));
+    const pair = this.scopeCollisions([A, B], 0).collisions[0] ?? this.scopeCollisions([A, B], 0).duplicates[0];
+    if (!pair) throw new UserError(`${A.id} and ${B.id} share no floor — nothing to merge.`);
+    let winner: Shape, loser: Shape;
+    if (opts.winner !== undefined) {
+      if (opts.winner !== A.id && opts.winner !== B.id) throw new UserError(`winner must be ${A.id} or ${B.id}.`);
+      winner = opts.winner === A.id ? A : B; loser = winner === A ? B : A;
+    } else {
+      const ra = A.origin?.reviewed === true, rb = B.origin?.reviewed === true;
+      if (ra && rb) throw new UserError(`Both shapes were affirmed by the estimator — which one keeps the ${pair.shared_sf} SF is their call: the collision shows on both condition rows in the canvas. An agent verb does not pick between two pieces of ink.`);
+      if (!ra && !rb) throw new UserError(`Neither shape is reviewed — state the winner (winner: "${A.id}" or "${B.id}"). The verb does not guess which condition the floor belongs to.`);
+      winner = ra ? A : B; loser = ra ? B : A;
+    }
+    if (loser.origin?.reviewed === true) {
+      throw new UserError(`Shape ${loser.id} (${pair.a.shape_id === loser.id ? pair.a.condition : pair.b.condition}) was affirmed by a human — reviewed work is ink, and trimming or deleting it would mutate what the estimator signed. Name the other shape as the loser, or leave the collision for the canvas.`);
+    }
+    if (this.shapes.some((x) => x.cuts_shape_id === loser.id)) {
+      throw new UserError(`Shape ${loser.id} carries reconciled cutouts — trimming it would strand their restore snapshots. delete_shape the cuts first, or re-trace the room.`);
+    }
+    const i = this.shapes.findIndex((x) => x.id === loser.id);
+    const upp = s.upp;
+    const loserArea = pair.a.shape_id === loser.id ? pair.a.area_sf : pair.b.area_sf;
+    const fractionOfLoser = loserArea > 0 ? pair.shared_sf / loserArea : 1;
+    if (fractionOfLoser >= SCOPE_NEAR_TOTAL) {
+      this.shapes.splice(i, 1);
+      this.record({ op: "delete", tool: "scope_merge", removed: [{ shape: loser, index: i }] });
+      return {
+        action: "deleted" as const, winner: winner.id, loser: loser.id, shared_sf: pair.shared_sf,
+        loser_before_sf: loserArea, loser_after_sf: 0, shape_count: this.shapes.length,
+        note: `${Math.round(fractionOfLoser * 100)}% of the loser was shared floor — the same space claimed twice, so it is gone rather than kept as a sliver. One undo step restores it.`,
+      };
+    }
+    const r = subtractWinner(loser, winner, { w: s.widthPx, h: s.heightPx });
+    if (!r) throw new UserError(`Taking the ${pair.shared_sf} SF out of ${loser.id} would split it into disjoint pieces (or leave nothing) — that is a re-trace decision, not a merge: measure_polygon the remainder as its own room.`);
+    const before = structuredClone(loser);
+    const toNorm = (ring: number[][]): [number, number][] => ring.map(([x, y]) => [x / s.widthPx, y / s.heightPx]);
+    loser.verts_norm = toNorm(r.outer);
+    if (r.holes.length) loser.verts_norm_holes = r.holes.map(toNorm); else delete loser.verts_norm_holes;
+    loser.computed = { area_sf: round2(r.area * upp * upp), perimeter_lf: round2(r.perim * upp) };
+    if (loser.origin) loser.origin = { ...loser.origin, agent_edits: (loser.origin.agent_edits ?? 0) + 1 };
+    this.record({ op: "edit", tool: "scope_merge", before });
+    return {
+      action: "trimmed" as const, winner: winner.id, loser: loser.id, shared_sf: pair.shared_sf,
+      loser_before_sf: loserArea, loser_after_sf: loser.computed.area_sf ?? 0,
+      loser_holes: r.holes.length, shape_count: this.shapes.length,
+      note: `The loser keeps its remainder (exact boolean difference, the cut_out arithmetic); its quantities are re-measured from the result. One undo step restores it verbatim.`,
+    };
   }
 
   /** derive_base (#148): the estimator's most mechanical derivation — wall
@@ -1729,7 +2511,7 @@ export class Session {
       // face value for the hover label — totals skip it, the parent nets it
       computed: { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) },
       cuts_shape_id: parent.id,
-      origin: { method: "cutout_v1", actor: "agent", reviewed: false, cuts_shape_id: parent.id, parent_prev: parentPrev },
+      origin: this.stampProposal({ method: "cutout_v1", actor: "agent", reviewed: false, cuts_shape_id: parent.id, parent_prev: parentPrev }),
     };
     const prevNet = parentPrev.computed?.area_sf ?? 0;
     parent.verts_norm = toNorm(r.outer);
@@ -1759,6 +2541,10 @@ export class Session {
    * curved run (whose verts are control points, not the line) refuses and says
    * what to do instead. */
   private cutRunOut(parent: Shape, verts: Point[]) {
+    const derived = parent.origin?.derived;
+    if (derived && "openings_lf" in derived && derived.openings_lf > 0) {
+      throw new UserError("This derived base already has numeric openings with no stored locations. Use measure_line for the installed runs; clipping this gross perimeter would lose the existing allowance.");
+    }
     if (parent.origin?.reviewed === true) {
       throw new UserError(`Shape ${parent.id} was affirmed by a human — reviewed work is ink, and clipping it would mutate what the estimator signed.`);
     }
@@ -1783,22 +2569,30 @@ export class Session {
     };
     const wasLf = parent.computed?.perimeter_lf ?? 0;
     const wasSf = parent.computed?.area_sf ?? 0;
-    const qty = (lenPx: number) => {
-      const lf = round2(lenPx * upp);
-      const k = wasLf > 0 ? lf / wasLf : 0;
-      return { area_sf: round2(wasSf * k), perimeter_lf: lf };
+    // #441 — a run's legs stay with the piece that keeps the parent's id; the
+    // pieces minted from the cut carry NO leg (rise_ft/drop_ft: 0 stated on
+    // them, so a condition default cannot re-attach one). SF scales with the
+    // PLAN length, which is what a ring on the sheet actually removes.
+    const parentCond = this.conditions.find((x) => x.id === parent.condition_id);
+    const parentLegs = parent.origin?.derived ? { rise: 0, drop: 0 } : linearVerticalFt(parent, parentCond);
+    const wasPlan = parent.computed?.plan_lf ?? wasLf;
+    const qty = (lenPx: number, legs: { rise: number; drop: number }) => {
+      const plan = round2(lenPx * upp);
+      const k = wasPlan > 0 ? plan / wasPlan : 0;
+      return { ...Session.linearQty(plan, legs), area_sf: round2(wasSf * k) };
     };
     const toNorm = (run: number[][]): [number, number][] => run.map(([x, y]) => [x / s.widthPx, y / s.heightPx]);
     const survivors = r.runs ?? [];
     const [head, ...rest] = survivors;
     if (!head) throw new UserError(`That ring covers the whole of ${parent.id}. Removing a run outright is delete_shape, not a cut.`);
     parent.verts_norm = toNorm(head);
-    parent.computed = qty(openLen(head));
+    parent.computed = qty(openLen(head), parentLegs);
     const minted: Shape[] = rest.map((piece) => ({
       ...structuredClone(parent),
       id: uid("shp"),
       verts_norm: toNorm(piece),
-      computed: qty(openLen(piece)),
+      ...(parentLegs.rise || parentLegs.drop ? { rise_ft: 0, drop_ft: 0 } : {}),
+      computed: qty(openLen(piece), { rise: 0, drop: 0 }),
     }));
     this.shapes.push(...minted);
     this.record({ op: "runcut", tool: "cut_out", target_id: parent.id, target_prev, minted_ids: minted.map((m) => m.id) });
@@ -1810,7 +2604,7 @@ export class Session {
       removed_lf: round2(Math.max(0, wasLf - pieces.reduce((n, p) => n + p.lf, 0))),
       removed_sf: round2(Math.max(0, wasSf - pieces.reduce((n, p) => n + p.sf, 0))),
       note: minted.length
-        ? `The cut fell inside the run, so it comes back in ${pieces.length} pieces — same condition, same height, each measured on its own. One undo_last puts the run back whole.`
+        ? `The cut fell inside the run, so it comes back in ${pieces.length} pieces — same condition, same height, each measured on its own${parentLegs.rise || parentLegs.drop ? `; the run's rise/drop stay on ${parent.id}, the new piece(s) carry none (rise_ft/drop_ft 0 — edit_shape to move a leg)` : ""}. One undo_last puts the run back whole.`
         : "The run keeps its id and its condition; only its length (and the SF that rides on it) changed. One undo_last puts it back whole.",
     };
   }
@@ -1983,13 +2777,13 @@ export class Session {
 
     // mark vocabulary: stated, or read off the schedule tables' row keys —
     // a compound key ("R1 / E1") contributes each of its marks
-    type RowCite = { sheet: string; key: string; table: string };
+    type RowCite = { sheet: string; key: string; table: string; kind: string };
     const rowCite = new Map<string, RowCite>();
     for (const tb of graph.tables) {
       const table = tb.title?.text || `${tb.kind} schedule`;
       for (const row of tb.rows) {
         for (const part of canon(row.key).split("/").filter(Boolean)) {
-          if (!rowCite.has(part)) rowCite.set(part, { sheet: tb.sheet, key: row.key, table });
+          if (!rowCite.has(part)) rowCite.set(part, { sheet: tb.sheet, key: row.key, table, kind: tb.kind });
         }
       }
     }
@@ -2032,7 +2826,7 @@ export class Session {
     }
 
     const VAL_RE = /^[0-9][0-9,]{0,6}$/;
-    type Hit = { at: Point; value: string; sheet: string };
+    type Hit = { at: Point; value?: string; sheet: string; by: "value" | "label" };
     type WithheldOcc = { at: Point; sheet: string; reason: string };
     const perMark = new Map<string, { counted: Hit[]; withheld: WithheldOcc[] }>();
     for (const m of marks) perMark.set(m, { counted: [], withheld: [] });
@@ -2056,7 +2850,7 @@ export class Session {
             Math.abs((v.x0 + v.x1) / 2 - cx) <= Math.max(sp.x1 - sp.x0, 1.5 * h) &&
             v.y0 >= sp.y1 - 0.4 * h && v.y0 <= sp.y1 + 2.4 * h);
           if (paired) {
-            rec.counted.push({ at: [round1(cx), round1(cy)], value: paired.str.trim(), sheet: sh.key });
+            rec.counted.push({ at: [round1(cx), round1(cy)], value: paired.str.trim(), sheet: sh.key, by: "value" });
             counts[m] = (counts[m] || 0) + 1;
           } else {
             if (segs === null) segs = (await this.ensureGeometry(sh)).segs;
@@ -2066,6 +2860,20 @@ export class Session {
             for (let i = 0; i + 3 < segs.length && n < 3; i += 4) {
               if (segs[i] >= bx0 && segs[i] <= bx1 && segs[i + 1] >= by0 && segs[i + 1] <= by1 &&
                   segs[i + 2] >= bx0 && segs[i + 2] <= bx1 && segs[i + 3] >= by0 && segs[i + 3] <= by1) n++;
+            }
+            // An EQUIPMENT mark is annotated by a leader to its drawn device,
+            // never by a value under it — the tag-over-value rule is the air
+            // device / fixture convention. A scheduled equipment mark drawn
+            // amid linework IS an instance, counted BY LABEL and said so;
+            // the bare-text case (a note mentioning it) still withholds.
+            const equipmentRow = rowCite.get(m)?.kind === "equipment";
+            // a device drawn to its own size (a heater bar, a fan) is long
+            // linework that only CROSSES the pad box — count segments that
+            // touch it, not only those that fit inside it
+            if (equipmentRow && Session.lineworkNear(segs, [sp.x0, sp.y0, sp.x1, sp.y1], pad) >= 3) {
+              rec.counted.push({ at: [round1(cx), round1(cy)], sheet: sh.key, by: "label" });
+              counts[m] = (counts[m] || 0) + 1;
+              continue;
             }
             rec.withheld.push({
               at: [round1(cx), round1(cy)], sheet: sh.key,
@@ -2113,10 +2921,12 @@ export class Session {
         const cite = rowCite.get(m);
         const c = cap(rec.counted, 150);
         const w = cap(rec.withheld, 60);
+        const byLabel = rec.counted.filter((h) => h.by === "label").length;
         return {
           mark: m,
           count: rec.counted.length,
-          ...(cite ? { row: cite } : { unscheduled: true }),
+          ...(byLabel ? { counted_by_label: byLabel } : {}),
+          ...(cite ? { row: { sheet: cite.sheet, key: cite.key, table: cite.table } } : { unscheduled: true }),
           occurrences: c.list,
           ...(c.elided ? { occurrences_elided: c.elided } : {}),
           withheld: w.list,
@@ -2145,6 +2955,19 @@ export class Session {
       matches: named.slice(off, off + matches.length),
       withheld: named.slice(off + matches.length),
     };
+  }
+
+  /** Segments whose extent touches the box padded by `pad` — a leader, a device
+   * outline crossing it, a tick — capped at 3 (the callers only ask "≥ 3?"). */
+  private static lineworkNear(segs: ArrayLike<number>, bbox: [number, number, number, number], pad: number): number {
+    const bx0 = bbox[0] - pad, by0 = bbox[1] - pad, bx1 = bbox[2] + pad, by1 = bbox[3] + pad;
+    let n = 0;
+    for (let i = 0; i + 3 < segs.length && n < 3; i += 4) {
+      const sx0 = Math.min(segs[i], segs[i + 2]), sx1 = Math.max(segs[i], segs[i + 2]);
+      const sy0 = Math.min(segs[i + 1], segs[i + 3]), sy1 = Math.max(segs[i + 1], segs[i + 3]);
+      if (sx1 >= bx0 && sx0 <= bx1 && sy1 >= by0 && sy0 <= by1) n++;
+    }
+    return n;
   }
 
   private static labelFields(l: PlacementLabel | null | undefined): { label?: string; label_via?: "adjacent" | "leader" } {
@@ -2251,6 +3074,7 @@ export class Session {
     rotations?: boolean;
     mirror?: boolean;
     tolerancePx?: number;
+    variantGuard?: boolean;
     exclude?: [Point, Point][];
     luminanceTolerance?: number;
     commitSeed?: boolean;
@@ -2287,6 +3111,11 @@ export class Session {
       rotations: opts.rotations ?? true,
       mirror: opts.mirror ?? true,
       tolPx: opts.tolerancePx ?? SWEEP_TOL_PX,
+      // whole-symbol mode: richer-variant placements demote to withheld;
+      // stands down inside the engine when negatives are in play. NOT wired
+      // for sweep_schedule_row — tag-text corroboration already discriminates
+      // variants there, and its matches still carry the `extra` disclosure.
+      ...(opts.variantGuard ? { variantGuard: true } : {}),
       // #260 — the stated stroke-luminance gate. The tolerance travels in the
       // shared opts; the CHANNEL is per target sheet, passed at each match.
       ...(typeof opts.luminanceTolerance === "number" ? { lumTol: opts.luminanceTolerance } : {}),
@@ -2336,7 +3165,10 @@ export class Session {
       if (!s.spans) s.spans = textSpans(s.page);
       const lbl = this.sweepLabels(s.spans, geo, fp.center, res.matches, res.withheld);
       let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
-      if (opts.commit && (res.matches.length || opts.commitSeed)) {
+      // #376 — a small seed that clears a crowd of placements does not commit
+      // on shape alone; the placements are still returned, the refusal says why.
+      const refusal = opts.commit ? sweepCommitRefusal({ seedSegments: fp.segments, found: res.matches.length, variantGuard: !!opts.variantGuard, negatives: negatives.length }) : null;
+      if (opts.commit && !refusal && (res.matches.length || opts.commitSeed)) {
         // #296 — commit_seed puts the seed instance first in the SAME batch:
         // one undo step covers the whole gesture, seed included.
         const points = [...(opts.commitSeed ? [fp.center] : []), ...res.matches.map((m) => m.at)];
@@ -2361,8 +3193,8 @@ export class Session {
       return {
         scope,
         found: res.matches.length,
-        matches: res.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...Session.labelFields(lbl.matches[i]) })),
-        withheld: res.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...Session.labelFields(lbl.withheld[i]), reason: w.reason })),
+        matches: res.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...(m.extra !== undefined ? { extra: m.extra } : {}), ...Session.labelFields(lbl.matches[i]) })),
+        withheld: res.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...(w.extra !== undefined ? { extra: w.extra } : {}), ...Session.labelFields(lbl.withheld[i]), reason: w.reason })),
         seed: { ...seedOut, ...Session.labelFields(lbl.seed) },
         ...(res.rejected.length ? { rejected: res.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         ...(res.negatives ? { negatives: res.negatives.filter((n) => !!n).map((n) => ({ mode: n!.mode, segments: n!.segments, center: [round1(n!.center[0]), round1(n!.center[1])] as [number, number] })) } : {}),
@@ -2376,9 +3208,10 @@ export class Session {
           ea_total: committed.ea_total,
           ...(opts.commitSeed ? { seed_committed: true } : {}),
         } : {}),
+        ...(refusal ? { committed: 0, commit_refused: refusal } : {}),
         ...((): { note?: string } => {
           const parts: string[] = [];
-          if (opts.commit && !res.matches.length && !opts.commitSeed) parts.push("commit requested but nothing cleared the bar — no shapes were committed.");
+          if (opts.commit && !refusal && !res.matches.length && !opts.commitSeed) parts.push("commit requested but nothing cleared the bar — no shapes were committed.");
           // #296 — a count that excludes something the estimator can see must
           // say so: the seed is almost always installed work in sheet scope.
           if (committed && !opts.commitSeed) parts.push(`The seed instance at (${round1(fp.center[0])}, ${round1(fp.center[1])}) is NOT in this count — if it is installed work, re-run with commit_seed: true or place_count it.`);
@@ -2452,7 +3285,8 @@ export class Session {
 
     const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
     let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
-    if (opts.commit && found) {
+    const refusal = opts.commit ? sweepCommitRefusal({ seedSegments: fp.segments, found, variantGuard: !!opts.variantGuard, negatives: negatives.length }) : null;   // #376
+    if (opts.commit && !refusal && found) {
       const ids: string[] = [];
       for (const ps of perSheet) {
         for (const m of ps.matches) {
@@ -2475,7 +3309,7 @@ export class Session {
     const capped = perSheet.filter((p) => p.candidates.dropped > 0);
     const notes: string[] = [];
     if (!perSheet.length) notes.push("No plan-role sheet in the set was sweepable — nothing was counted; skipped[] says why, sheet by sheet.");
-    if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar on any plan sheet — no shapes were committed.");
+    if (opts.commit && !refusal && !found) notes.push("commit requested but nothing cleared the bar on any plan sheet — no shapes were committed.");
     // #186 disclosure. A ratio that was APPLIED is reported because the count
     // depends on it; a ratio that was ASSUMED is reported harder when the
     // sweep came back empty, because that pairing — unknown scale, zero found
@@ -2522,8 +3356,8 @@ export class Session {
       sheets: perSheet.map((p) => ({
         sheet: p.state.key,
         found: p.matches.length,
-        matches: p.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...Session.labelFields(p.labels.matches[i]) })),
-        withheld: p.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...Session.labelFields(p.labels.withheld[i]), reason: w.reason })),
+        matches: p.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...(m.extra !== undefined ? { extra: m.extra } : {}), ...Session.labelFields(p.labels.matches[i]) })),
+        withheld: p.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...(w.extra !== undefined ? { extra: w.extra } : {}), ...Session.labelFields(p.labels.withheld[i]), reason: w.reason })),
         ...(p.rejected.length ? { rejected: p.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         ...(p.lum_gate ? { lum_gate: p.lum_gate } : {}),
         candidates: p.candidates,
@@ -2535,6 +3369,7 @@ export class Session {
       complete: perSheet.every((p) => p.complete),
       skipped,
       ...(committed ?? {}),
+      ...(refusal ? { committed: 0, commit_refused: refusal } : {}),
       ...(notes.length ? { note: notes.join(" ") } : {}),
       ...(capped.length ? { warning: `Work ceiling: candidate placements were dropped un-scored on ${capped.map((p) => p.state.key).join(", ")} — counts there are FLOORS, not totals. The seed's linework is too common there for an exhaustive sweep; tighten the seed rect around more distinctive geometry, or sweep those sheets singly and reconcile the counts.` } : {}),
     };
@@ -2627,8 +3462,26 @@ export class Session {
         .sort((a, b) => a.cy - b.cy || a.cx - b.cx);
     };
     const occBySheet = planSheets.map((sh) => ({ sh, occ: occOf(sh, t) }));
-    const totalOcc = occBySheet.reduce((n, e) => n + e.occ.length, 0);
+    // a tag occurrence inside a schedule table's own region is that table's
+    // row label, never an instance (the census's rule, applied here too)
+    const tableRegionsOf = (key: string): Bbox[] => graph.tables.filter((x) => x.sheet === key).map((x) => x.region);
+    const amidLinework = (segs: ArrayLike<number>, o: Occ): boolean => Session.lineworkNear(segs, o.bbox, 2.5 * o.h) >= 3;
+    const inTable = (key: string, o: Occ): boolean => tableRegionsOf(key).some((r) => o.cx >= r[0] && o.cx <= r[2] && o.cy >= r[1] && o.cy <= r[3]);
+    // Only a tag DRAWN amid linework can anchor a fingerprint or corroborate
+    // one: a general note that mentions the mark ("SEE EBB-1 FOR …") is an
+    // occurrence of the text and nothing else — asking the fingerprint to
+    // recur there guaranteed a false "does not recur" and pushed a perfectly
+    // drawn device down to a label count.
+    const drawnBySheet: { sh: SheetState; occ: Occ[] }[] = [];
+    for (const { sh, occ } of occBySheet) {
+      const geo = await this.ensureGeometry(sh);
+      const drawn = geo.segs.length ? occ.filter((o) => !inTable(sh.key, o) && amidLinework(geo.segs, o)) : [];
+      drawnBySheet.push({ sh, occ: drawn });
+    }
+    const totalOcc = drawnBySheet.reduce((n, e) => n + e.occ.length, 0);
+    const mentions = occBySheet.reduce((n, e) => n + e.occ.length, 0) - totalOcc;
     if (!totalOcc) {
+      if (mentions) throw new UserError(`Schedule row "${t}" (${table} on ${tb.sheet}) is mentioned ${mentions}× on plan sheets but never drawn — every occurrence is bare text with no linework near it (a note), so there is no instance to count. If the device is drawn without its tag, marquee one instance with symbol_sweep {scope: "set"}.`);
       throw new UserError(`Schedule row "${t}" (${table} on ${tb.sheet}) cannot be geometrically anchored — its tag is not drawn on any plan sheet, and a fingerprint is never guessed from text alone. If the marker is drawn untagged, marquee one instance with symbol_sweep {scope: "set"}.`);
     }
 
@@ -2636,7 +3489,7 @@ export class Session {
     // with the MOST occurrences (ord breaks ties) so corroboration can run on
     // the anchor's own sheet whenever the set allows it; anchor occurrence =
     // first in reading order. Deterministic throughout.
-    const withOcc = occBySheet.filter((e) => e.occ.length > 0)
+    const withOcc = drawnBySheet.filter((e) => e.occ.length > 0)
       .sort((a, b) => b.occ.length - a.occ.length || a.sh.ord - b.sh.ord);
     const anchorSheet = withOcc[0].sh;
     const anchor = withOcc[0].occ[0];
@@ -2700,11 +3553,19 @@ export class Session {
         break;
       }
     }
-    if (!fp || !anchorRect) {
-      throw new UserError(corro
-        ? `Schedule row "${t}" cannot be anchored: the linework around its drawn tag on ${anchorSheet.key} does not recur at the tag's other occurrences — no repeatable marker geometry to fingerprint. Marquee one instance with symbol_sweep instead.`
-        : `Schedule row "${t}" cannot be anchored: no fingerprintable marker linework sits around its drawn tag on ${anchorSheet.key}. Marquee one instance with symbol_sweep instead.`);
-    }
+    // Label-first (equipment convention): a scheduled mark drawn by its tag
+    // with a leader to its device — a baseboard heater bar whose LENGTH is the
+    // unit's size, a fan, a pump — has no repeatable marker geometry, so the
+    // fingerprint can never anchor. That is not "nothing drawn": every drawn
+    // tag outside a schedule table, sitting amid linework, IS one installed
+    // instance, and it is counted BY LABEL and said so. A bare tag with no
+    // linework near it (a note mentioning the mark) stays a question.
+    const labelOnly = !fp || !anchorRect;
+    const labelReason = labelOnly
+      ? (corro
+        ? `the linework around its drawn tag on ${anchorSheet.key} does not recur at the tag's other occurrences — no repeatable marker geometry`
+        : `no fingerprintable marker linework sits around its drawn tag on ${anchorSheet.key}`)
+      : null;
 
     // 4. the full plan-only sweep + tag corroboration per match.
     // The tag-proximity radius is the marker's footprint AS DRAWN ON THE SHEET
@@ -2721,6 +3582,7 @@ export class Session {
       withheld: SweepWithheld[];
       excluded: { at: Point; tag: string }[];
       text_only: { at: Point }[];
+      label_only: { at: Point; tag_at: [number, number, number, number] }[];
       candidates: { considered: number; dropped: number };
       complete: boolean;
       elapsed_ms: number;
@@ -2733,11 +3595,22 @@ export class Session {
         skipped.push({ sheet: sh.key, role: "plan", reason: "no vector linework (likely a scan) — symbol matching reads the drawn segments" });
         continue;
       }
+      if (labelOnly) {
+        const label_only: { at: Point; tag_at: [number, number, number, number] }[] = [];
+        const text_only: { at: Point }[] = [];
+        for (const o of occ) {
+          if (inTable(sh.key, o)) continue;
+          if (amidLinework(g2.segs, o)) label_only.push({ at: [round1(o.cx), round1(o.cy)], tag_at: o.bbox });
+          else text_only.push({ at: [round1(o.cx), round1(o.cy)] });
+        }
+        perSheet.push({ state: sh, matches: [], withheld: [], excluded: [], text_only, label_only, candidates: { considered: 0, dropped: 0 }, complete: true, elapsed_ms: 0, scale: this.sweepRatio(anchorSheet, sh) });
+        continue;
+      }
       const ratio = this.sweepRatio(anchorSheet, sh);
       const t0 = process.hrtime.bigint();
       let res: SymbolMatchResult;
       try {
-        res = matchSymbol(fp, g2.segs, { ...sweepOpts, ...(ratio.scale === 1 ? {} : { scale: ratio.scale }) });
+        res = matchSymbol(fp!, g2.segs, { ...sweepOpts, ...(ratio.scale === 1 ? {} : { scale: ratio.scale }) });
       } catch (e) {
         skipped.push({ sheet: sh.key, role: "plan", reason: e instanceof Error ? e.message : String(e) });
         continue;
@@ -2750,11 +3623,17 @@ export class Session {
       const excluded: { at: Point; tag: string }[] = [];
       const withheld: SweepWithheld[] = [];
       const matchedOcc = new Set<number>();
+      let duplicates = 0;
       for (const m of res.matches) {
         let oi = -1;
         for (let k = 0; k < occ.length; k++) {
           if (Math.hypot(m.at[0] - occ[k].cx, m.at[1] - occ[k].cy) <= R) { oi = k; break; }
         }
+        // one drawn tag is ONE instance: a fingerprint that fires twice around
+        // the same tag (a device drawn as nested rectangles, the pad ladder
+        // matching both) must not count the device twice — measured live on a
+        // heater set where EWH-1 and EBB-8 each read 2 for one drawn unit
+        if (oi >= 0 && matchedOcc.has(oi)) { duplicates++; continue; }
         if (oi >= 0) { matchedOcc.add(oi); matches.push({ ...m, tag_at: occ[oi].bbox }); continue; }
         const sib = sibSpans.find((sp) => Math.hypot(m.at[0] - sp.cx, m.at[1] - sp.cy) <= R);
         if (sib) { excluded.push({ at: m.at, tag: sib.key }); continue; }
@@ -2765,19 +3644,31 @@ export class Session {
         withheld.push(near ? { ...w, reason: `${w.reason} — and the "${t}" tag is drawn beside it` } : w);
       }
       matches.sort(byPos); excluded.sort(byPos); withheld.sort(byPos);
-      const text_only = occ
-        .filter((o, k) => !matchedOcc.has(k) && !res.withheld.some((w) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R))
-        .map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point }));
-      perSheet.push({ state: sh, matches, withheld, excluded, text_only, candidates: res.candidates, complete: res.complete, elapsed_ms, scale: ratio, ...(res.scaled ? { scaled: res.scaled } : {}) });
+      const unmatched = occ.filter((o, k) => !matchedOcc.has(k) && !res.withheld.some((w) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R) && !inTable(sh.key, o));
+      // a tag the geometry did not reach but which sits amid linework is the
+      // label-first case inside a geometry sweep: a variant marker (a longer
+      // heater bar) still tagged with the row's own mark — counted by label
+      const label_only = unmatched.filter((o) => amidLinework(g2.segs, o)).map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point, tag_at: o.bbox }));
+      const text_only = unmatched.filter((o) => !amidLinework(g2.segs, o)).map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point }));
+      if (duplicates) skipped.push({ sheet: sh.key, role: "plan", reason: `${duplicates} extra fingerprint hit(s) around an already-counted tag were folded into their instance — one drawn tag is one unit` });
+      perSheet.push({ state: sh, matches, withheld, excluded, text_only, label_only, candidates: res.candidates, complete: res.complete, elapsed_ms, scale: ratio, ...(res.scaled ? { scaled: res.scaled } : {}) });
     }
 
     // 5. commit — condition minted FROM the row (its key IS the tag), the
     // schedule verdict and the seed citation on every marker, one undo step
-    const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
+    const foundByGeometry = perSheet.reduce((n, p) => n + p.matches.length, 0);
+    const foundByLabel = perSheet.reduce((n, p) => n + p.label_only.length, 0);
+    const found = foundByGeometry + foundByLabel;
     let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
     if (opts.commit && found) {
       const ids: string[] = [];
       for (const ps of perSheet) {
+        for (const l of ps.label_only) {
+          ids.push(this.commit(ps.state, t, "count", [l.at], { count: 1 }, {
+            method: "manual", actor: "agent", reviewed: false,
+            assignment: { source: "schedule", schedule_sheet: tb.sheet },
+          }).id);
+        }
         for (const m of ps.matches) {
           ids.push(this.commit(ps.state, t, "count", [m.at], { count: 1 }, {
             method: "symbol_sweep",
@@ -2804,7 +3695,9 @@ export class Session {
     const firstCell = r.cells[Object.keys(r.cells)[0]];
     const capped = perSheet.filter((p) => p.candidates.dropped > 0);
     const notes: string[] = [];
-    if (!corroborated) notes.push(`The tag "${t}" is drawn ${totalOcc === 1 ? "exactly once" : "too sparsely to cross-check"} — the fingerprint could not corroborate at a second occurrence; audit the matches with view_sheet before trusting the count.`);
+    if (labelOnly) notes.push(`Counted BY LABEL: ${labelReason} — so every drawn "${t}" tag amid linework on a plan sheet counts as one instance (${foundByLabel}), and a bare mention counts for nothing. Look at each before pricing.`);
+    else if (foundByLabel) notes.push(`${foundByLabel} of ${found} counted BY LABEL: the tag is drawn there amid linework the marker fingerprint did not reach (a variant of the device — a different length or size — or a rotated placement outside the sweep's reach).`);
+    if (!corroborated && !labelOnly) notes.push(`The tag "${t}" is drawn ${totalOcc === 1 ? "exactly once" : "too sparsely to cross-check"} — the fingerprint could not corroborate at a second occurrence; audit the matches with view_sheet before trusting the count.`);
     if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar — no shapes were committed.");
     // #186, same disclosure discipline as symbol_sweep: a ratio the count
     // depends on is stated, and an assumed ratio over an empty sheet is named
@@ -2826,16 +3719,19 @@ export class Session {
         cells,
         citation: { sheet: tb.sheet, text: `${table} row ${t}`, bbox: Session.wireBox(firstCell?.bbox || tb.region) },
       },
-      anchor: {
+      anchor: labelOnly ? null : {
         sheet: anchorSheet.key,
         at: [round1(anchor.cx), round1(anchor.cy)],
-        rect: [round1(anchorRect[0][0]), round1(anchorRect[0][1]), round1(anchorRect[1][0]), round1(anchorRect[1][1])],
-        segments: fp.segments,
-        length_px: round1(fp.totalLen),
+        rect: [round1(anchorRect![0][0]), round1(anchorRect![0][1]), round1(anchorRect![1][0]), round1(anchorRect![1][1])],
+        segments: fp!.segments,
+        length_px: round1(fp!.totalLen),
         corroborated,
         occurrences: totalOcc,
       },
       found,
+      found_by_geometry: foundByGeometry,
+      found_by_label: foundByLabel,
+      counted_by: foundByLabel === 0 ? "geometry" : foundByGeometry === 0 ? "label" : "mixed",
       sheets: perSheet.map((p) => ({
         sheet: p.state.key,
         found: p.matches.length,
@@ -2843,6 +3739,7 @@ export class Session {
         withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
         excluded: p.excluded.map((e) => ({ at: [round1(e.at[0]), round1(e.at[1])], tag: e.tag })),
         text_only: p.text_only,
+        label_only: p.label_only.map((l) => ({ at: l.at, tag_at: Session.wireBox(l.tag_at) })),
         candidates: p.candidates,
         complete: p.complete,
         elapsed_ms: p.elapsed_ms,
@@ -2886,6 +3783,7 @@ export class Session {
         reviewed: x.origin?.reviewed === true,
         ...(x.origin?.assignment ? { assignment: x.origin.assignment.source } : {}),
         ...(x.origin?.agent_edits ? { agent_edits: x.origin.agent_edits } : {}),
+        ...(x.origin?.proposal_id ? { proposal_id: x.origin.proposal_id } : {}),
       })),
       count: rows.length,
     };
@@ -2898,7 +3796,22 @@ export class Session {
     // Scale gate: name every sheet whose scale is agent-set and unconfirmed —
     // a totals reply must say what its numbers stand on
     const unconfirmed = [...this.sheets.values()].filter((s) => s.upp != null && s.scaleConfirmed === false).map((s) => s.key);
-    return { conditions: lean, totals: grandTotals(rows), ...(unconfirmed.length ? { scale_unconfirmed: unconfirmed } : {}) };
+    // proposals (#365): the batch ledger and the pending condition diffs ride
+    // the summary only when any exist — the totals above are the CURRENT
+    // values; a pending diff changes nothing until the estimator accepts it.
+    const proposals = this.proposalRows();
+    const proposedEdits = this.proposedConditionEdits();
+    // scope collision (#366): shared floor across the whole takeoff, ALWAYS a
+    // number — the one that has to read zero before a total means anything
+    const scope = this.scopeCollisions();
+    return {
+      conditions: lean, totals: grandTotals(rows),
+      shared_floor_sf: scope.shared_floor_sf,
+      ...(scope.unmeasured.length ? { shared_floor_unmeasured: scope.unmeasured } : {}),
+      ...(unconfirmed.length ? { scale_unconfirmed: unconfirmed } : {}),
+      ...(proposals.length ? { proposals } : {}),
+      ...(proposedEdits.length ? { proposed_condition_edits: proposedEdits } : {}),
+    };
   }
 
   deleteShape(id: string) {
@@ -2974,15 +3887,23 @@ export class Session {
    * layer exists to collect. Freezing proposed_verts_norm stays correct on the
    * human's first edit, because the geometry a reviewer saw IS the agent's
    * final revision, not its first draft. */
-  editShape(id: string, patch: { verts?: Point[]; condition?: string; role?: MeasureRole; label?: string }) {
+  editShape(id: string, patch: { verts?: Point[]; condition?: string; role?: MeasureRole; label?: string; rise_ft?: number | null; drop_ft?: number | null }) {
     const i = this.shapes.findIndex((x) => x.id === id);
     if (i < 0) throw new UserError(`No shape with id ${JSON.stringify(id)}.`);
     const cur = this.shapes[i];
     if (cur.origin?.reviewed === true) {
       throw new UserError(`Shape ${JSON.stringify(id)} was affirmed by a human — reviewed work is ink, not pencil, and cannot be edited by an agent.`);
     }
-    if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined && patch.label === undefined) {
-      throw new UserError("Nothing to change — pass at least one of verts, condition, role, label.");
+    if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined && patch.label === undefined && patch.rise_ft === undefined && patch.drop_ft === undefined) {
+      throw new UserError("Nothing to change — pass at least one of verts, condition, role, label, rise_ft, drop_ft.");
+    }
+    // #441 — legs belong to a linear run (the role AFTER this call)
+    const roleAfter = patch.role ?? cur.measure_role;
+    if ((patch.rise_ft !== undefined || patch.drop_ft !== undefined) && roleAfter !== "linear") {
+      throw new UserError(`rise_ft / drop_ft are a linear run's vertical legs — ${JSON.stringify(id)} ${patch.role !== undefined ? `would be ${roleAfter}` : `is ${roleAfter}`}. A wall's vertical is its height_ft.`);
+    }
+    if (cur.origin?.derived && (patch.rise_ft !== undefined || patch.drop_ft !== undefined)) {
+      throw new UserError(`Shape ${JSON.stringify(id)} is a derived run (base or transition) — a floor-level line by construction; it never takes a rise or drop. Trace the vertical run with measure_line.`);
     }
     // #206 — a reconciled cutout pair is one geometry, not two shapes to edit
     // independently. Moving/re-roling the deduct would desync the hole it cut
@@ -3022,9 +3943,21 @@ export class Session {
       if (!(h > 0)) throw new UserError(`Surface Area needs a height — set height_ft on ${cond?.finish_tag ?? "the condition"} with edit_condition first.`);
       return h;
     };
+    // linear legs: null CLEARS a field (the condition's default applies again),
+    // a number sets it for this run, absent keeps what the shape carries
+    const legs: { rise_ft?: number; drop_ft?: number } = role === "linear" ? {
+      ...(cur.rise_ft !== undefined ? { rise_ft: cur.rise_ft } : {}),
+      ...(cur.drop_ft !== undefined ? { drop_ft: cur.drop_ft } : {}),
+    } : {};
+    for (const k of ["rise_ft", "drop_ft"] as const) {
+      const v = patch[k];
+      if (v === null) delete legs[k];
+      else if (v !== undefined) legs[k] = v;
+    }
+    const condTagAfter = patch.condition !== undefined ? patch.condition : this.conditions.find((x) => x.id === cur.condition_id)?.finish_tag;
     const computed =
       role === "count" ? { count: cur.computed.count ?? 1 }
-      : role === "linear" ? { area_sf: 0, perimeter_lf: round2(openLen(vertsPx) * upp) }
+      : role === "linear" ? Session.linearQty(openLen(vertsPx) * upp, cur.origin?.derived ? { rise: 0, drop: 0 } : this.verticalFor(condTagAfter, legs))
       : role === "surface_area" ? (() => {
           const LF = openLen(vertsPx) * upp;
           return { area_sf: round2(LF * heightFor()), perimeter_lf: round2(LF) };
@@ -3048,6 +3981,7 @@ export class Session {
       computed,
       ...(nextLabel ? { label: nextLabel } : {}),
       ...(role === "surface_area" ? { height_ft: Number(cur.height_ft) || heightFor() } : {}),
+      ...legs,
       ...(cur.origin ? { origin: {
         ...cur.origin,
         agent_edits: (cur.origin.agent_edits ?? 0) + 1,
@@ -3060,6 +3994,9 @@ export class Session {
     // the spread above carried the old label through — clearing means the key
     // GOES, so an export never ships label: "" for "no room"
     if (!nextLabel) delete this.shapes[i].label;
+    // a cleared leg, or a role flip away from linear, drops the key outright
+    if (legs.rise_ft === undefined) delete this.shapes[i].rise_ft;
+    if (legs.drop_ft === undefined) delete this.shapes[i].drop_ft;
     this.record({ op: "edit", tool: "edit_shape", before });
 
     const changed = [
@@ -3067,6 +4004,8 @@ export class Session {
       ...(patch.condition !== undefined ? ["condition"] : []),
       ...(patch.role !== undefined ? ["role"] : []),
       ...(patch.label !== undefined ? ["label"] : []),
+      ...(patch.rise_ft !== undefined ? ["rise_ft"] : []),
+      ...(patch.drop_ft !== undefined ? ["drop_ft"] : []),
     ];
     return {
       shape_id: id,
@@ -3227,22 +4166,16 @@ export class Session {
     return { seamByShape: seamLfByShape(byCond) as Map<string, number> };
   }
 
-  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }) {
-    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined && opts.roll_setup === undefined) {
-      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft, roll_setup.");
-    }
-    const c = this.conditions.find((x) => x.finish_tag === tag);
-    if (!c) {
-      const known = this.conditions.map((x) => x.finish_tag);
-      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
-    }
-    const before = {
-      waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft,
-      roll_setup: c.roll_setup ? structuredClone(c.roll_setup) : undefined,
-    };
+  /** The ONE place a condition's quantity knobs are written — edit_condition
+   * and a condition-edit proposal's acceptance (#365) both land here, which
+   * is what makes "after acceptance the report matches a direct
+   * edit_condition byte for byte" true by construction, not by testing. */
+  private applyConditionKnobs(c: Condition, opts: ConditionKnobPatch): void {
     if (opts.waste_pct !== undefined) c.waste_pct = opts.waste_pct;
     if (opts.multiplier !== undefined) c.multiplier = opts.multiplier;
     if (opts.height_ft !== undefined) c.height_ft = opts.height_ft;
+    if (opts.rise_ft !== undefined) c.rise_ft = opts.rise_ft;
+    if (opts.drop_ft !== undefined) c.drop_ft = opts.drop_ft;
     if (opts.roll_setup !== undefined) {
       if (opts.roll_setup === null) {
         delete c.roll_setup; // opt out — the condition is trade-agnostic again
@@ -3257,7 +4190,26 @@ export class Session {
         c.roll_setup = { ...base, ...given, material };
       }
     }
+  }
+
+  editCondition(tag: string, opts: ConditionKnobPatch) {
+    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined && opts.rise_ft === undefined && opts.drop_ft === undefined && opts.roll_setup === undefined) {
+      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft, rise_ft, drop_ft, roll_setup.");
+    }
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
+    }
+    const before = {
+      waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft, rise_ft: c.rise_ft, drop_ft: c.drop_ft,
+      roll_setup: c.roll_setup ? structuredClone(c.roll_setup) : undefined,
+    };
+    this.applyConditionKnobs(c, opts);
     this.record({ op: "condition", tool: "edit_condition", condition_id: c.id, before });
+    // #441 — the defaults re-flow every linear run of the condition that does
+    // not carry its own leg for that field (the canvas's setCondParam rule)
+    if (opts.rise_ft !== undefined || opts.drop_ft !== undefined) this.reflowLinears(c);
 
     // when the condition is roll goods AND floor shapes exist on scaled sheets,
     // echo the figured order right on the reply — the agent should not need an
@@ -3272,6 +4224,8 @@ export class Session {
     return {
       condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier,
       ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}),
+      ...(c.rise_ft !== undefined ? { rise_ft: c.rise_ft } : {}),
+      ...(c.drop_ft !== undefined ? { drop_ft: c.drop_ft } : {}),
       ...(c.roll_setup ? { roll_setup: c.roll_setup } : {}),
       ...(roll ? { roll } : {}),
     };
@@ -3327,7 +4281,7 @@ export class Session {
     }
     const { twin, parentPatch } = mintTwin(src as unknown as VariantCond, {
       label: lab, tag: newTag, mintId: (p: string) => uid(p), nowIso,
-      nextHatch: HATCH_IDS[1 + ((this.conditions.length + 1) % (HATCH_IDS.length - 1))],
+      nextHatch: nextHatchId(this.conditions.length + 1),
     });
     if (parentPatch) Object.assign(src, parentPatch);
     this.conditions.push(twin as unknown as Condition);
@@ -3380,7 +4334,17 @@ export class Session {
     for (let k = 0; k < n; k++) {
       const e = this.journal.pop();
       if (!e) break;
-      if (e.op === "commit") {
+      if (e.op === "scale") {
+        const s = this.sheet(e.sheet_id);
+        s.upp = e.upp;
+        s.scaleSource = e.source;
+        s.scaleConfirmed = e.confirmed;
+        s.mask = undefined;
+        s.rmask = undefined;
+        const before = new Map(e.shapes.map((sh) => [sh.id, sh]));
+        this.shapes = this.shapes.map((sh) => before.get(sh.id) ?? sh);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.shapes.length });
+      } else if (e.op === "commit") {
         const dead = new Set(e.ids);
         this.shapes = this.shapes.filter((x) => !dead.has(x.id));
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.ids.length });
@@ -3390,6 +4354,10 @@ export class Session {
         // shape that is gone is a no-op on geometry, not an error
         if (i >= 0) this.shapes[i] = e.before;
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: i >= 0 ? 1 : 0 });
+      } else if (e.op === "annotation_text") {
+        const m = this.markups.find((x) => x.id === e.id);
+        if (m) m.text = e.before;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "materials") {
         // the write may have PROPAGATED (variants.ts — the same
         // propagate-on-write the canvas runs), so the entry carries snapshots
@@ -3412,9 +4380,33 @@ export class Session {
           c.multiplier = e.before.multiplier;
           if (e.before.height_ft === undefined) delete c.height_ft;
           else c.height_ft = e.before.height_ft;
+          if (e.before.rise_ft === undefined) delete c.rise_ft;
+          else c.rise_ft = e.before.rise_ft;
+          if (e.before.drop_ft === undefined) delete c.drop_ft;
+          else c.drop_ft = e.before.drop_ft;
           if (e.before.roll_setup === undefined) delete c.roll_setup;
           else c.roll_setup = e.before.roll_setup;
+          this.reflowLinears(c);
         }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "pricing") {
+        const c = this.conditions.find((x) => x.id === e.condition_id);
+        if (c) {
+          if (e.before.pricing === undefined) delete c.pricing;
+          else c.pricing = e.before.pricing;
+          const prev = new Map(e.before.prices.map((p) => [p.id, p.price]));
+          for (const m of c.materials) {
+            if (!prev.has(m.id)) continue;
+            const v = prev.get(m.id);
+            if (v === undefined) delete m.price;
+            else m.price = v;
+          }
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "estimate_settings") {
+        this.estimateSettings = e.before.estimate_settings;
+        this.bidProposal = e.before.bid_proposal;
+        this.clientInfo = e.before.client_info;
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "duplicate_condition") {
         // a twin is removed whole — and the family_id the mint may have stamped on the PARENT
@@ -3459,6 +4451,64 @@ export class Session {
         const p = this.shapes.find((x) => x.id === e.parent_id);
         if (p) Session.restoreCutoutSnapshot(p, e.parent_after);
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 1 });
+      } else if (e.op === "rfi_create") {
+        // unmint the record and hand every linked markup its previous link back
+        this.rfis = this.rfis.filter((r) => r.id !== e.id);
+        for (const l of e.links) {
+          const m = this.markups.find((x) => x.id === l.markup_id);
+          if (m) m.rfi_id = l.prev_rfi_id;
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "rfi_resolve") {
+        // the pre-answer record goes back verbatim: status, response, dates
+        const i = this.rfis.findIndex((r) => r.id === e.before.id);
+        if (i >= 0) this.rfis[i] = structuredClone(e.before);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "rfi_delete") {
+        // the tombstone yields to the record it replaced, in place, and the
+        // markups the delete unlinked point at it again
+        const i = this.rfis.findIndex((r) => r.id === e.before.id);
+        if (i >= 0) this.rfis[i] = structuredClone(e.before);
+        else this.rfis.push(structuredClone(e.before));
+        for (const id of e.unlinked) {
+          const m = this.markups.find((x) => x.id === id);
+          if (m) m.rfi_id = e.before.id;
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "proposal_open") {
+        this.proposals = this.proposals.filter((p) => p.id !== e.proposal.id);
+        this.currentProposalId = e.prev_current;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "proposal_revise") {
+        // the replacements go, the previous pending batch returns to its
+        // recorded positions — one step, exactly as one step made it
+        const dead = new Set(e.ids);
+        this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+        for (const { shape, index } of [...e.removed].sort((a, b) => a.index - b.index)) {
+          this.shapes.splice(Math.min(index, this.shapes.length), 0, shape);
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.ids.length + e.removed.length });
+      } else if (e.op === "proposal_withdraw") {
+        for (const { shape, index } of [...e.removed].sort((a, b) => a.index - b.index)) {
+          this.shapes.splice(Math.min(index, this.shapes.length), 0, shape);
+        }
+        const p = this.proposals.find((x) => x.id === e.proposal_id);
+        if (p) delete p.withdrawn_at;
+        if (e.was_current) this.currentProposalId = e.proposal_id;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.removed.length });
+      } else if (e.op === "condition_proposal") {
+        const i = this.conditionEditProposals.findIndex((x) => x.id === e.proposal.id);
+        if (e.replaced) { if (i >= 0) this.conditionEditProposals[i] = e.replaced; else this.conditionEditProposals.push(e.replaced); }
+        else if (i >= 0) this.conditionEditProposals.splice(i, 1);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "condition_proposal_withdraw") {
+        this.conditionEditProposals.splice(Math.min(e.index, this.conditionEditProposals.length), 0, e.proposal);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "condition_proposal_accept") {
+        const ci = this.conditions.findIndex((x) => x.id === e.before.id);
+        if (ci >= 0) this.conditions[ci] = structuredClone(e.before);
+        this.conditionEditProposals.splice(Math.min(e.index, this.conditionEditProposals.length), 0, e.proposal);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "approval") {
         // the stored inverse came from the canvas's own pure apply — exact
         // restore, array order included (a lifted verdict returns to its
@@ -3567,6 +4617,14 @@ export class Session {
       seals = seals.filter((a) => a.shape_id !== undefined && shapeById.get(a.shape_id)?.condition_id === c.id);
     }
     const s0 = this.sheets;
+    // {{qty}} fields (#474): the stored text stays the template; a note that
+    // carries a field also reports what the sheet shows and what wouldn't fill
+    const qtyL = rows.some((m) => hasFields(m.text)) ? qtyLabels(conditionTotals(this.conditions, this.shapes) as { id: string }[]) : new Map<string, string>();
+    const fields = (m: Markup) => {
+      if (!hasFields(m.text)) return {};
+      const r = resolveNote(m.text, m.condition_id, qtyL);
+      return { text_resolved: r.text, ...(r.unresolved.length ? { unresolved_fields: r.unresolved } : {}) };
+    };
     const px = (m: Markup, p?: [number, number]): [number, number] | undefined => {
       const sh = s0.get(m.sheet_id); if (!p || !sh) return undefined;
       return [round1(p[0] * sh.widthPx), round1(p[1] * sh.heightPx)];
@@ -3582,6 +4640,7 @@ export class Session {
         ...(m.to ? { to: px(m, m.to) } : {}),
         ...(m.r != null ? { r: round1(m.r * (s0.get(m.sheet_id)?.widthPx ?? 0)) } : {}),
         ...(m.len_ft != null ? { length_lf: m.len_ft } : {}),
+        ...fields(m),
       })),
       count: rows.length,
       unattached: rows.filter((m) => !m.condition_id).length,
@@ -3603,6 +4662,18 @@ export class Session {
     };
   }
 
+  /** Change only the note text. Verdicts are a separate family and RFI
+   * context must stay attached to the question the estimator is reviewing. */
+  editAnnotation(id: string, text: string): Record<string, unknown> {
+    const m = this.markups.find((x) => x.id === id);
+    if (!m) throw new UserError(`No annotation ${JSON.stringify(id)} — call list_annotations for annotation ids; verdicts cannot be edited here.`);
+    if (m.rfi_id) throw new UserError("This annotation is linked to an RFI. Review its context in the browser RFI register; edit_annotation cannot rewrite it.");
+    if (m.text === text) throw new UserError("The annotation already has that text — nothing changed.");
+    this.record({ op: "annotation_text", tool: "edit_annotation", id, before: m.text });
+    m.text = text;
+    return { id, text, note: "Text updated; geometry, dimensions, links and review records are unchanged. undo_last restores the previous text." };
+  }
+
   /** Attach an existing annotation to a condition, or detach it with "". The
    *  canvas's Attach/Detach, reachable by an agent. */
   linkAnnotation(id: string, condition: string): Record<string, unknown> {
@@ -3615,6 +4686,159 @@ export class Session {
     const c = this.conditionFor(condition);
     m.condition_id = c.id;
     return { id: m.id, condition: c.finish_tag, condition_id: c.id, note: `Attached to ${c.finish_tag}.` };
+  }
+
+  // ── RFIs (#364) — raise, list, answer, withdraw a question on the sheet ───
+  // The register is the canvas's (RfiPanel.jsx): same record, same numbering
+  // (nextRfiNumber), same link rule (markup.rfi_id). What differs is who
+  // asked: everything minted here is origin {actor: "agent", reviewed: false}
+  // — pending until an estimator accepts it in the panel, because an RFI
+  // goes to the architect and nothing sends without a human.
+
+  /** The register without its tombstones — what lists, prints, and exports. */
+  liveRfis(): Rfi[] {
+    return liveRfis(this.rfis) as Rfi[];
+  }
+
+  private rfiById(id: string): Rfi {
+    const r = this.rfis.find((x) => x.id === id);
+    if (!r || r.deleted === true) throw new UserError(`No RFI ${JSON.stringify(id)}${r ? ` — ${r.number} was withdrawn (its number stays reserved)` : ""} — list_rfis has the real ids.`);
+    return r;
+  }
+
+  private rfiRow(r: Rfi): Record<string, unknown> {
+    const tagById = new Map(this.conditions.map((c) => [c.id, c.finish_tag]));
+    const linked = this.markups.filter((m) => m.rfi_id === r.id);
+    return {
+      id: r.id,
+      number: r.number,
+      subject: r.subject,
+      question: r.question,
+      status: r.status,
+      sheet: r.sheet_id,
+      actor: r.origin?.actor ?? "estimator",
+      pending: r.origin?.actor === "agent" && r.origin.reviewed !== true,
+      date: r.date,
+      response: r.response,
+      response_date: r.response_date,
+      linked_markups: linked.map((m) => m.id),
+      // the scopes the question touches, through its markups' condition links
+      conditions: [...new Set(linked.map((m) => tagById.get(m.condition_id) ?? "").filter(Boolean))],
+    };
+  }
+
+  /** Raise an RFI. Next number in the panel's own sequence (gaps and
+   * tombstones included, so a number is never reissued), status open, dated
+   * today, sheet resolved like every other tool. markup_ids link existing
+   * annotations the way the panel's Link control does — a markup already on
+   * another RFI moves (the panel's own overwrite), and the previous link is
+   * journaled so undo puts it back. Every id must exist: a question pinned
+   * to a markup that isn't there is a question about nothing. */
+  createRfi(a: { title: string; question: string; sheet: string; markup_ids?: string[] }): Record<string, unknown> {
+    const s = this.sheet(a.sheet);
+    const title = (a.title ?? "").trim();
+    const question = (a.question ?? "").trim();
+    if (!title) throw new UserError("An RFI needs a title — the one line the register and the schedule print for it.");
+    if (!question) throw new UserError("An RFI needs a question — what you are asking the architect to answer.");
+    const ids = [...new Set(a.markup_ids ?? [])];
+    const marks = ids.map((id) => {
+      const m = this.markups.find((x) => x.id === id);
+      if (!m) throw new UserError(`No annotation ${JSON.stringify(id)} — list_annotations has the real ids; annotate first to give the question something to point at.`);
+      return m;
+    });
+    const now = new Date();
+    const r: Rfi = {
+      id: uid("rfi"),
+      number: nextRfiNumber(this.rfis),
+      created_at: now.toISOString(),
+      subject: title,
+      question,
+      status: "open",
+      to: "",
+      priority: "normal",
+      cost_impact: false,
+      schedule_impact: false,
+      date: now.toISOString().slice(0, 10),
+      response: "",
+      response_date: "",
+      sheet_id: s.key,
+      // actor is the literal on the one line that writes it — no input reaches
+      // it, so no MCP path mints an estimator's own question
+      origin: { actor: "agent", reviewed: false },
+    };
+    const links = marks.map((m) => ({ markup_id: m.id, prev_rfi_id: m.rfi_id }));
+    for (const m of marks) m.rfi_id = r.id;
+    this.rfis.push(r);
+    this.record({ op: "rfi_create", tool: "create_rfi", id: r.id, links });
+    return {
+      ...this.rfiRow(r),
+      note: `Raised ${r.number} as the agent — PENDING in the estimator's register until accepted there (origin.reviewed false). It prints in the marked set's RFI schedule like any other RFI${marks.length ? `; ${marks.length} linked markup${marks.length === 1 ? "" : "s"} carry its number on the sheet` : "; link a cloud or callout (annotate, then markup_ids) so it points at something on the sheet"}.`,
+    };
+  }
+
+  /** Every live RFI with its links resolved: linked markup ids and the finish
+   * tags those markups are attached to. Withdrawn numbers are listed so the
+   * gap in the sequence is explained, never silent. */
+  listRfis(): Record<string, unknown> {
+    const live = this.liveRfis();
+    return {
+      rfis: live.map((r) => this.rfiRow(r)),
+      count: live.length,
+      open: live.filter((r) => r.status === "open").length,
+      pending: live.filter((r) => r.origin?.actor === "agent" && r.origin.reviewed !== true).length,
+      withdrawn: this.rfis.filter((r) => r.deleted === true).map((r) => r.number),
+    };
+  }
+
+  /** Answer an OPEN RFI: the answer lands as the response, status becomes
+   * answered (the panel's own state for "response in" — its lifecycle is
+   * open → answered → closed, with void for withdrawn), and the response
+   * date stamps exactly as the panel's status→date auto-stamp does, plus an
+   * ISO timestamp of the resolve. Anything not open is refused: an answered
+   * or closed question is not re-answered here, and a voided one is not
+   * quietly revived. */
+  resolveRfi(id: string, answer: string): Record<string, unknown> {
+    const r = this.rfiById(id);
+    const text = (answer ?? "").trim();
+    if (!text) throw new UserError(`${r.number} needs an answer — resolve_rfi records the response; to withdraw the question use delete_rfi.`);
+    if (r.status !== "open") {
+      throw new UserError(`${r.number} is ${r.status}, not open — resolve_rfi answers an OPEN question only. list_rfis shows each status; a resolved RFI stays resolved (undo_last reverses your own resolve).`);
+    }
+    const before = structuredClone(r);
+    const now = new Date();
+    r.status = "answered";
+    r.response = text;
+    if (!r.response_date) r.response_date = now.toISOString().slice(0, 10);
+    r.resolved_at = now.toISOString();
+    r.resolved_by = "agent";
+    this.record({ op: "rfi_resolve", tool: "resolve_rfi", before });
+    return {
+      ...this.rfiRow(r),
+      resolved_at: r.resolved_at,
+      note: `${r.number} answered — status answered, response recorded${r.origin?.actor === "agent" && r.origin.reviewed !== true ? "; it is still pending the estimator's acceptance in the register" : ""}.`,
+    };
+  }
+
+  /** Withdraw an RFI: a TOMBSTONE, never a removal. The record stays with
+   * deleted: true so its number is never reissued — the register and the
+   * marked set keep printing a gap where it was — and every linked markup
+   * loses its link (the canvas's own delete rule: clear the pointer, keep
+   * the note). Undo swaps the record back and re-links. */
+  deleteRfi(id: string): Record<string, unknown> {
+    const r = this.rfiById(id);
+    const before = structuredClone(r);
+    const unlinked = this.markups.filter((m) => m.rfi_id === r.id).map((m) => m.id);
+    for (const m of this.markups) if (m.rfi_id === r.id) m.rfi_id = "";
+    const i = this.rfis.indexOf(r);
+    this.rfis[i] = { ...before, status: "void", deleted: true, deleted_at: new Date().toISOString() };
+    this.record({ op: "rfi_delete", tool: "delete_rfi", before, unlinked });
+    return {
+      deleted: r.id,
+      number: r.number,
+      unlinked_markups: unlinked.length,
+      rfis_remaining: this.liveRfis().length,
+      note: `${r.number} withdrawn — a tombstone, not a renumber: the register and the marked set keep the gap, and the next RFI takes ${nextRfiNumber(this.rfis)}. ${unlinked.length ? `${unlinked.length} markup${unlinked.length === 1 ? "" : "s"} kept their note and lost the link.` : "No markups were linked."} undo_last puts it back.`,
+    };
   }
 
   // ── verdict marks (#176) — the agent half of the approval family ───────────
@@ -3774,32 +4998,28 @@ export class Session {
     return { sheet: s, build };
   }
 
-  exportPayload() {
+  exportPayload(): TakeoffDocument {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
-    return {
-      schema: ANN_SCHEMA,
+    // The envelope is the canvas's own writer (web/src/lib/takeoffDocument.js):
+    // key order, omit-when-empty and the units rule are decided there once.
+    // What the server contributes is its field bag; provenance rides the sheet
+    // entries (scale_source for the report, scale_confirmed:false for the gate).
+    // RFIs go through liveRfis(): withdrawn tombstones never reach the app.
+    return buildTakeoffDocument({
       project_name: "",
       units: "imperial",
-      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({
-        sheet_id: s.key, units_per_px: s.upp,
-        // provenance rides the payload (it used to be dropped here): the canvas
-        // hydrates scale_source for its report and scale_confirmed for the
-        // scale gate's confirm affordance — absent = confirmed (pre-flag docs)
-        ...(s.scaleSource ? { scale_source: s.scaleSource } : {}),
-        ...(s.scaleConfirmed === false ? { scale_confirmed: false } : {}),
-      })),
+      client_info: this.clientInfo,
+      estimate_settings: this.estimateSettings,
+      bid_proposal: this.bidProposal,
+      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => sheetEntry({ sheet_id: s.key, units_per_px: s.upp as number, scale_source: s.scaleSource, scale_confirmed: s.scaleConfirmed })),
       conditions: this.conditions,
       shapes: this.shapes,
       markups: this.markups,
-      // approvals ride the payload additively (#176) — present only when any
-      // exist, exactly the canvas buildPayload's convention, so a verdict-free
-      // export stays byte-identical to a pre-#176 one
-      ...(this.approvals.length ? { approvals: this.approvals } : {}),
-      sheet_group: [],
-      last_group: [],
-      sheet_tabs: [],
-      sheet_levels: {},
-    };
+      rfis: this.liveRfis(),
+      approvals: this.approvals,
+      proposals: this.proposals,
+      condition_edit_proposals: this.conditionEditProposals,
+    }) as TakeoffDocument;
   }
 
   /** The computed Report document — "opentakeoff.report.v1", the SAME schema
@@ -3824,9 +5044,123 @@ export class Session {
       bySheet: sheetTotals(this.conditions, this.shapes),
       scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown", scale_confirmed: s.scaleConfirmed !== false })),
       markups: this.markups,
-      rfis: [],
+      rfis: this.liveRfis(),
       rollGoods: rollReportRows(byCond, rows),
+      // proposals (#365): the report prints the CURRENT knobs in its rows and
+      // carries every pending diff beside them — additive, present only when
+      // any exist, so the document is byte-identical otherwise
+      proposedConditionEdits: this.proposedConditionEdits(),
     });
+  }
+
+  // ── estimate (lib/estimate.js) ────────────────────────────────────────────
+  // The prices are the estimator's. set_pricing and set_estimate_settings write
+  // exactly what they are handed; nothing here proposes, fills or defaults a
+  // price, and whatever was never entered stays "not entered" — the engine
+  // reports it, never counts it as a hidden $0.
+
+  /** The same priced estimate the canvas Estimate panel shows: conditionTotals
+   * rows (roll-goods seams included, the exportReport rule) through
+   * priceEstimate with the project's markups. */
+  pricedEstimate(): ReturnType<typeof priceEstimate> {
+    const { dimsFor, uppFor } = this.rollInputs();
+    const { byCond } = computeRollTakeoff(this.conditions, this.shapes, dimsFor, uppFor) as { byCond: Map<string, unknown> };
+    const rows = conditionTotals(this.conditions, this.shapes, { seamByShape: seamLfByShape(byCond) });
+    return priceEstimate({ rows, conditions: this.conditions, settings: this.estimateSettings });
+  }
+
+  setPricing(tag: string, opts: { unit?: ConditionPricing["unit"]; material?: number | null; labor?: number | null; materials?: { name: string; price: number | null }[] }) {
+    if (opts.unit === undefined && opts.material === undefined && opts.labor === undefined && !opts.materials?.length) {
+      throw new UserError("Nothing to change — pass unit, material, labor, or materials: [{name, price}].");
+    }
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement first."}`);
+    }
+    const key = (n: string) => n.trim().toLowerCase();
+    const rows = new Map(c.materials.filter((m) => m && m.name).map((m) => [key(m.name), m]));
+    for (const r of opts.materials ?? []) {
+      if (!rows.has(key(r.name))) {
+        throw new UserError(`${tag} has no material row ${JSON.stringify(r.name)}.${rows.size ? ` Its rows: ${[...rows.values()].map((m) => m.name).join(", ")}.` : " It has no material rows — add them with edit_materials first."}`);
+      }
+    }
+    const before = { pricing: c.pricing ? { ...c.pricing } : undefined, prices: c.materials.map((m) => ({ id: m.id, price: m.price })) };
+    const next: Record<string, unknown> = { ...(sanitizePricing(c.pricing) ?? {}) };
+    if (opts.unit !== undefined) next.unit = opts.unit;
+    for (const k of ["material", "labor"] as const) {
+      if (opts[k] === null) delete next[k];
+      else if (opts[k] !== undefined) next[k] = opts[k];
+    }
+    const clean = sanitizePricing(next) as ConditionPricing | undefined;
+    if (clean) c.pricing = clean;
+    else delete c.pricing;
+    for (const r of opts.materials ?? []) {
+      const m = rows.get(key(r.name)) as MaterialRow;
+      const v = priceValue(r.price);
+      if (v === null) delete m.price;
+      else m.price = v;
+    }
+    this.record({ op: "pricing", tool: "set_pricing", condition_id: c.id, before });
+    const line = this.pricedEstimate().lines.find((l) => l.id === c.id) ?? null;
+    return {
+      condition: tag, condition_id: c.id, pricing: c.pricing ?? {},
+      material_prices: c.materials.filter((m) => m && m.name).map((m) => ({ name: m.name, unit: m.unit, price: m.price ?? null })),
+      line,
+      ...(line ? {} : { note: `${tag} has no committed shapes yet. The prices are saved; the line prices once it is measured.` }),
+    };
+  }
+
+  setEstimateSettings(opts: {
+    tax_pct?: number; overhead_pct?: number; profit_pct?: number; profit_mode?: "markup" | "margin";
+    proposal?: { itemized?: boolean; scope_note?: string; inclusions?: string; exclusions?: string; terms?: string; valid_days?: number };
+    client?: { name?: string; address?: string; reference?: string };
+  }) {
+    const markups = (["tax_pct", "overhead_pct", "profit_pct", "profit_mode"] as const).filter((k) => opts[k] !== undefined);
+    if (!markups.length && !opts.proposal && !opts.client) {
+      throw new UserError("Nothing to change — pass tax_pct, overhead_pct, profit_pct, profit_mode, proposal, or client.");
+    }
+    const before: EstimateRecords = {
+      estimate_settings: this.estimateSettings ? { ...this.estimateSettings } : null,
+      bid_proposal: this.bidProposal ? { ...this.bidProposal } : null,
+      client_info: { ...this.clientInfo },
+    };
+    if (markups.length) {
+      const patch = Object.fromEntries(markups.map((k) => [k, opts[k]]));
+      this.estimateSettings = sanitizeEstimateSettings({ ...(this.estimateSettings ?? {}), ...patch }) as Record<string, unknown>;
+    }
+    if (opts.proposal) this.bidProposal = sanitizeBidProposal({ ...(this.bidProposal ?? {}), ...opts.proposal }) as Record<string, unknown>;
+    if (opts.client) {
+      const next = { ...this.clientInfo };
+      for (const [k, field] of [["name", "client_name"], ["address", "client_address"], ["reference", "reference"]] as const) {
+        const v = opts.client[k];
+        if (v === undefined) continue;
+        if (v.trim()) next[field] = v;
+        else delete next[field];
+      }
+      this.clientInfo = next;
+    }
+    this.record({ op: "estimate_settings", tool: "set_estimate_settings", before });
+    return { estimate_settings: this.estimateSettings, bid_proposal: this.bidProposal, client_info: this.clientInfo };
+  }
+
+  estimateSummary() {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    const est = this.pricedEstimate();
+    const missing = est.unpriced.length;
+    return {
+      settings: est.settings,
+      settings_source: this.estimateSettings ? "project" : "unset — 0% markups until set_estimate_settings",
+      lines: est.lines,
+      material: est.material, labor: est.labor, tax: est.tax, cost: est.cost,
+      overhead: est.overhead, profit: est.profit, total: est.total,
+      complete: est.complete, unpriced: est.unpriced, warnings: est.warnings,
+      note: !est.lines.length
+        ? "Nothing measured yet — commit shapes under conditions first."
+        : est.complete
+          ? "Every measured line is priced."
+          : `${missing} line${missing === 1 ? " is" : "s are"} not fully priced; total counts what is missing at $0 ("priced so far"). Get those prices from the estimator — never fill one in yourself.`,
+    };
   }
 
   // ── the sheet graph (#87) ─────────────────────────────────────────────────
@@ -3933,7 +5267,10 @@ export class Session {
   private floorTagFor(g: SheetGraph, tag: string): { tag: string; sheet: string } | { reason: string } {
     const res = resolveTag(g, tag);
     if (res.status !== "resolved") return { reason: res.reason };
-    const floor = res.finishes.find((f) => f.surface === "FLOOR");
+    // the column is "FLOOR" on a one-tier schedule and "FLOOR FINISH" under a
+    // two-tier header (the sub-header takes its parent's name, #374); either
+    // way the surface's first word is the surface
+    const floor = res.finishes.find((f) => f.surface === "FLOOR" || f.surface.startsWith("FLOOR "));
     const code = floor?.code.trim();
     if (!floor || !code) return { reason: `schedule row ${res.tag} states no FLOOR finish` };
     if (/[/,]|\bOR\b/i.test(code)) return { reason: `ambiguous: floor cell "${code}" names more than one finish with no stated split` };
@@ -3970,7 +5307,9 @@ export class Session {
     const g = await this.ensureGraph();
     if (!g.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable.");
     const k = (kind || "").toLowerCase();
-    const want = /room/.test(k) ? "room-finish" : /finish|material|product|code|mark/.test(k) ? "finish" : k;
+    const want = /room/.test(k) ? "room-finish"
+      : /equip|mechanical|mep|hvac|plumb|electr|fan|pump|heater|unit|valve|diffuser|grille|fixture|device/.test(k) ? "equipment"
+      : /finish|material|product|code|mark/.test(k) ? "finish" : k;
     const hits = g.tables.filter((t) => t.kind === want);
     if (!hits.length) {
       const found = g.tables.map((t) => `${t.kind} on ${t.sheet}`).join(" | ");

@@ -27,6 +27,9 @@
 import { sanitizeTemplates } from "./templates.js";
 import { sanitizeMaterialLibrary } from "./materials.js";
 import { sanitizeStampLibrary } from "./stamps.js";
+// A leaf module (no imports): the OCR page cache's hash rules, without pulling
+// any OCR code into the main bundle.
+import { isPdfHash, OCR_CACHE_ROOT, ocrCachePrefix, ocrHashesToDrop, startPdfHash } from "./ocr/pdfHash.ts";
 
 const DB_NAME = "opentakeoff";
 const DB_VERSION = 3;
@@ -51,7 +54,8 @@ const MATLIB_KEY = "material_library";
 // pattern as templates/materials, its own key in the keyPath-less meta store
 // (no DB version bump). Persists across projects; export/import as JSON.
 const STAMPLIB_KEY = "stamp_library";
-const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1";
+import { TAKEOFF_SCHEMA } from "./takeoffConstants.ts";
+const ANN_SCHEMA = TAKEOFF_SCHEMA;
 
 // The empty-project annotations shape. One definition so the local store and the
 // Drive-backed cloud store (cloudStore.js) hydrate a fresh project identically —
@@ -181,11 +185,110 @@ function txAll(db, stores, mode, fn) {
   });
 }
 
+// A readwrite txAll whose result is decided inside a request callback, for a
+// read-check-write that nothing may interleave with. No await can run inside
+// a transaction (it commits the moment the event loop drains), so fn decides
+// in plain callbacks, each wrapped in `step`: what the callback returns is the
+// result, and a throw aborts the whole transaction and becomes the rejection
+// (an explicit abort leaves t.error null, so it would otherwise be lost).
+async function txDecide(db, stores, fn) {
+  const holder = { out: undefined, err: null };
+  try {
+    await txAll(db, stores, "readwrite", (t) => fn(t, (cb) => () => {
+      try { holder.out = cb(); } catch (e) { holder.err = e; t.abort(); }
+    }));
+  } catch (e) {
+    throw holder.err ?? e ?? new Error("The browser's database stopped the save.");
+  }
+  return holder.out;
+}
+
 // SHA-256 of a PDF's bytes as lowercase hex — the identity a revision is keyed
 // on. WebCrypto is available in every target (browsers, the Node 24 test env).
 async function sha256Hex(bytes) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// A legacy record's hash (written before v3, none stored): hashed once per
+// session and not written back here. Only addPdf writes PDF records, and it
+// backfills a legacy hash in the same transaction that reads the record, so
+// the write can't overwrite a revision that landed in between. A null (no
+// crypto.subtle) isn't kept.
+const legacyHashMemo = new Map();
+
+function legacyHash(name, bytes) {
+  let p = legacyHashMemo.get(name);
+  if (!p) {
+    p = startPdfHash(bytes);
+    legacyHashMemo.set(name, p);
+    p.then((h) => { if (h == null && legacyHashMemo.get(name) === p) legacyHashMemo.delete(name); });
+  }
+  return p;
+}
+
+// pdfHash, memoized per name for the session (#471): reading a record loads
+// the whole PDF, and the reader and the gallery each ask once per file per
+// session. Only an answer is kept. addPdf and removePdf forget the name (after their write too, so a
+// hash read from the old record meanwhile never outlives it).
+const pdfHashMemo = new Map();
+
+function forgetPdfHash(name) {
+  pdfHashMemo.delete(name);
+  legacyHashMemo.delete(name);
+}
+
+// Whether the meta store has any key starting with one of `prefixes`: a key
+// cursor, so no values load. removePdf asks it before walking every PDF record.
+function metaHasAnyPrefix(prefixes) {
+  if (!prefixes.length) return Promise.resolve(false);
+  return withDb((db) => new Promise((resolve, reject) => {
+    const t = db.transaction(META_STORE, "readonly");
+    const os = t.objectStore(META_STORE);
+    let found = false;
+    for (const prefix of prefixes) {
+      const req = os.openKeyCursor(IDBKeyRange.bound(prefix, prefix + "\uffff", false, true));
+      req.onsuccess = () => { if (req.result) found = true; };
+    }
+    t.oncomplete = () => resolve(found);
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  }));
+}
+
+// Every hash a stored PDF or revision carries. A legacy current record has
+// none stored; its session-memoized hash counts when there is one.
+// Known limit: a remaining legacy record that nothing hashed this session
+// counts as carrying no hash, so if it shares bytes with a removed file,
+// those cached reads go and the page is read again when next asked.
+async function allStoredHashes() {
+  const out = await withDb((db) => txAll(db, [PDF_STORE, REV_STORE], "readonly", (t) => {
+    const hashes = [];
+    const legacy = [];
+    for (const name of [PDF_STORE, REV_STORE]) {
+      const req = t.objectStore(name).openCursor();
+      req.onsuccess = () => {
+        const c = req.result;
+        if (!c) return;
+        if (c.value.hash) hashes.push(c.value.hash);
+        else if (name === PDF_STORE) legacy.push(c.value.name);
+        c.continue();
+      };
+    }
+    return { hashes, legacy };
+  }));
+  const memo = await Promise.all(out.legacy.map((n) => legacyHashMemo.get(n) ?? null));
+  return [...out.hashes, ...memo];
+}
+
+// One file's hashes, read before it is deleted: its current bytes and every
+// revision. A legacy current record has no stored hash, so its bytes are
+// hashed (outside every transaction).
+async function fileHashes(name) {
+  const cur = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
+  const hashes = (await localStore.listPdfRevisions(name)).map((r) => r.hash);
+  if (cur && !cur.hash) hashes.push(await legacyHash(name, cur.bytes));
+  return hashes;
 }
 
 export const localStore = {
@@ -211,34 +314,68 @@ export const localStore = {
     // event loop drains, so ALL hashing happens outside every transaction.
     const bytes = await file.arrayBuffer();
     const hash = await sha256Hex(bytes);
+    forgetPdfHash(file.name);
     const ts = Date.now();
-    const existing = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(file.name)));
-    if (!existing) {
-      await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.put({ name: file.name, bytes, hash, rev: 1, ts })));
-      return { name: file.name, rev: 1 };
-    }
-    // de-dupe by name, but never by silent overwrite: same bytes are a no-op,
-    // different bytes archive the old record as a revision first (CO-1).
-    // Records written before v3 carry no hash/rev — hash their bytes now and
-    // treat them as rev 1, so legacy sheets version correctly on first re-drop.
-    const prevRev = existing.rev || 1;
-    const prevHash = existing.hash || await sha256Hex(existing.bytes);
-    if (prevHash === hash) {
-      if (!existing.hash || !existing.rev) {
-        // backfill the legacy record's identity so the next compare is cheap
-        await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.put({ ...existing, hash: prevHash, rev: prevRev, ts: existing.ts ?? ts })));
-      }
-      return { name: file.name, rev: prevRev, unchanged: true };
-    }
-    // one transaction across both stores: archive + swap commit atomically
-    await withDb((db) => txAll(db, [PDF_STORE, REV_STORE], "readwrite", (t) => {
-      t.objectStore(REV_STORE).put({ key: revKey(file.name, prevRev), name: file.name, rev: prevRev, hash: prevHash, ts: existing.ts ?? ts, bytes: existing.bytes });
-      t.objectStore(PDF_STORE).put({ name: file.name, bytes, hash, rev: prevRev + 1, ts });
+    // Records written before v3 carry no hash/rev. Peek first and hash a
+    // legacy record's bytes here, outside the transaction below. Only addPdf
+    // writes pdfs and it always stores a hash, so a record can turn from
+    // legacy to hashed in the meantime but never back: a peek that saw no
+    // record or a hashed one never needs this hash.
+    const peek = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(file.name)));
+    const peekHash = peek && !peek.hash ? await sha256Hex(peek.bytes) : null;
+    // Read, compare and write in ONE readwrite transaction (#493). The
+    // database runs readwrite transactions over the same stores one at a
+    // time, across connections and tabs, so two adds of one name can't both
+    // read the same record and then overwrite each other's file.
+    const out = await withDb((db) => txDecide(db, [PDF_STORE, REV_STORE], (t, step) => {
+      const pdfs = t.objectStore(PDF_STORE);
+      const req = pdfs.get(file.name);
+      req.onsuccess = step(() => {
+        const existing = req.result;
+        if (!existing) {
+          pdfs.put({ name: file.name, bytes, hash, rev: 1, ts });
+          return { name: file.name, rev: 1 };
+        }
+        // de-dupe by name, but never by silent overwrite: same bytes are a
+        // no-op, different bytes archive the old record as a revision first
+        // (CO-1). A legacy record counts as rev 1, so it versions correctly
+        // on its first re-drop.
+        const prevRev = existing.rev || 1;
+        const prevHash = existing.hash || peekHash;
+        // a legacy record the peek didn't see: only a build older than v3
+        // could write one, and it can't open this database
+        if (!prevHash) throw new Error(`${file.name} changed while it was being added — try again.`);
+        if (prevHash === hash) {
+          if (!existing.hash || !existing.rev) {
+            // backfill the legacy record's identity so the next compare is cheap
+            pdfs.put({ ...existing, hash: prevHash, rev: prevRev, ts: existing.ts ?? ts });
+          }
+          return { name: file.name, rev: prevRev, unchanged: true };
+        }
+        // archive + swap in the same transaction: they commit together or not at all
+        t.objectStore(REV_STORE).put({ key: revKey(file.name, prevRev), name: file.name, rev: prevRev, hash: prevHash, ts: existing.ts ?? ts, bytes: existing.bytes });
+        pdfs.put({ name: file.name, bytes, hash, rev: prevRev + 1, ts });
+        return { name: file.name, rev: prevRev + 1, prev_rev: prevRev, revised: true };
+      });
     }));
-    return { name: file.name, rev: prevRev + 1, prev_rev: prevRev, revised: true };
+    forgetPdfHash(file.name);
+    return out;
   },
 
   async removePdf(name) {
+    // Cached OCR reads (#471) of this file's bytes go with it, unless another
+    // stored file or revision has the same bytes. That cleanup is bookkeeping:
+    // any failure in it is logged and the removal goes ahead regardless.
+    // Step 1, before the delete: the file's hashes, but only when the meta
+    // store holds any cached read at all (a key-only check), so a project
+    // that never used OCR hashes nothing and reads no revision trail.
+    let removed = [];
+    try {
+      if (await metaHasAnyPrefix([OCR_CACHE_ROOT])) removed = await fileHashes(name);
+    } catch (e) {
+      console.warn("OCR cache: couldn't read the removed file's hashes; its cached reads stay", e);
+      removed = [];
+    }
     // the revision trail goes with the file — locally, close = delete the
     // stored bytes (see closePdf), and keeping orphaned revisions would leak
     // whole PDFs into storage with no surface that ever lists them again
@@ -250,6 +387,52 @@ export const localStore = {
         if (cur) { cur.delete(); cur.continue(); }
       };
     }));
+    forgetPdfHash(name);
+    // Step 2, after: drop each hash's cached reads unless a remaining file or
+    // revision still has those bytes. Walking every record loads every PDF,
+    // so only when one of these hashes has cached reads.
+    try {
+      const candidates = removed.filter(isPdfHash);
+      if (!candidates.length || !(await metaHasAnyPrefix(candidates.map(ocrCachePrefix)))) return;
+      for (const h of ocrHashesToDrop(candidates, await allStoredHashes())) {
+        await metaDeletePrefix(ocrCachePrefix(h));
+      }
+    } catch (e) {
+      console.warn("OCR cache: couldn't clear a removed file's cached reads", e);
+    }
+  },
+
+  // sha256 of a stored PDF's bytes: the OCR page cache's identity for it
+  // (#471). The record's stored hash; a legacy record is hashed once per
+  // session (see legacyHashMemo). null when the file isn't stored, is empty,
+  // or can't be hashed (no crypto.subtle outside a secure context).
+  pdfHash(name) {
+    const had = pdfHashMemo.get(name);
+    if (had) return had;
+    const p = (async () => {
+      const rec = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
+      if (!rec) return null;
+      if (rec.hash) return isPdfHash(rec.hash) ? rec.hash : null;
+      return legacyHash(name, rec.bytes);
+    })();
+    pdfHashMemo.set(name, p);
+    const drop = () => { if (pdfHashMemo.get(name) === p) pdfHashMemo.delete(name); };
+    p.then((h) => { if (h == null) drop(); }, drop);
+    return p;
+  },
+
+  // The hash without hashing anything (#471): the session memo, else the
+  // stored record's hash (an IndexedDB read, no network), memoized like
+  // pdfHash's answer. A legacy record with no stored hash is null here (only
+  // pdfHash hashes its bytes). For background lookups.
+  pdfHashIfKnown(name) {
+    const had = pdfHashMemo.get(name);
+    if (had) return had.catch(() => null);
+    return withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name))).then((rec) => {
+      const h = rec?.hash && isPdfHash(rec.hash) ? rec.hash : null;
+      if (h && !pdfHashMemo.has(name)) pdfHashMemo.set(name, Promise.resolve(h));
+      return h;
+    }, () => null);
   },
 
   // Revision metadata for one file, newest first, current included — never the

@@ -1,0 +1,432 @@
+{
+  "name": "mq-sg605-letters-style",
+  "kind": "marquee",
+  "note": "sheetgraphFinish.test.ts:605 — a letters-only row naming its item in STYLE / COLOR / SIZE",
+  "spans": [
+    {
+      "str": "CODE",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "STYLE",
+      "x": 760,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "SIZE",
+      "x": 1240,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "CPT-1",
+      "x": 100,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "LOOP 20",
+      "x": 760,
+      "y": 38,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "GREY 101",
+      "x": 1000,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "12' W",
+      "x": 1240,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "RB",
+      "x": 100,
+      "y": 76,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "COVE",
+      "x": 760,
+      "y": 76,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "BLACK 505",
+      "x": 1000,
+      "y": 76,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "4\"",
+      "x": 1240,
+      "y": 76,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "RB-1",
+      "x": 100,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "STRAIGHT",
+      "x": 760,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 506",
+      "x": 1000,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "6\"",
+      "x": 1240,
+      "y": 114,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "RB-2",
+      "x": 100,
+      "y": 152,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "COVE",
+      "x": 760,
+      "y": 152,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "GREY 507",
+      "x": 1000,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "4\"",
+      "x": 1240,
+      "y": 152,
+      "w": 16,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "",
+          "manufacturer": "",
+          "style": "LOOP 20",
+          "spec_color": "GREY 101",
+          "size": "12' W",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "",
+          "manufacturer": "",
+          "style": "COVE",
+          "spec_color": "BLACK 505",
+          "size": "4\"",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "",
+          "manufacturer": "",
+          "style": "STRAIGHT",
+          "spec_color": "GREY 506",
+          "size": "6\"",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "",
+          "manufacturer": "",
+          "style": "COVE",
+          "spec_color": "GREY 507",
+          "size": "4\"",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    },
+    "parseSchedule": [
+      {
+        "finish_tag": "CPT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "",
+        "manufacturer": "",
+        "style": "LOOP 20",
+        "spec_color": "GREY 101",
+        "size": "12' W",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "",
+        "manufacturer": "",
+        "style": "COVE",
+        "spec_color": "BLACK 505",
+        "size": "4\"",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "",
+        "manufacturer": "",
+        "style": "STRAIGHT",
+        "spec_color": "GREY 506",
+        "size": "6\"",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-2",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "",
+        "manufacturer": "",
+        "style": "COVE",
+        "spec_color": "GREY 507",
+        "size": "4\"",
+        "remarks": "",
+        "suggested": true
+      }
+    ],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1",
+              "bbox": [
+                100,
+                38,
+                140,
+                55
+              ]
+            },
+            "STYLE": {
+              "text": "LOOP 20",
+              "bbox": [
+                760,
+                38,
+                816,
+                55
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 101",
+              "bbox": [
+                1000,
+                38,
+                1064,
+                55
+              ]
+            },
+            "SIZE": {
+              "text": "12' W",
+              "bbox": [
+                1240,
+                38,
+                1280,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB",
+              "bbox": [
+                100,
+                76,
+                116,
+                93
+              ]
+            },
+            "STYLE": {
+              "text": "COVE",
+              "bbox": [
+                760,
+                76,
+                792,
+                93
+              ]
+            },
+            "COLOR": {
+              "text": "BLACK 505",
+              "bbox": [
+                1000,
+                76,
+                1072,
+                93
+              ]
+            },
+            "SIZE": {
+              "text": "4\"",
+              "bbox": [
+                1240,
+                76,
+                1256,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-1",
+              "bbox": [
+                100,
+                114,
+                132,
+                131
+              ]
+            },
+            "STYLE": {
+              "text": "STRAIGHT",
+              "bbox": [
+                760,
+                114,
+                824,
+                131
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 506",
+              "bbox": [
+                1000,
+                114,
+                1064,
+                131
+              ]
+            },
+            "SIZE": {
+              "text": "6\"",
+              "bbox": [
+                1240,
+                114,
+                1256,
+                131
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-2",
+              "bbox": [
+                100,
+                152,
+                132,
+                169
+              ]
+            },
+            "STYLE": {
+              "text": "COVE",
+              "bbox": [
+                760,
+                152,
+                792,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 507",
+              "bbox": [
+                1000,
+                152,
+                1064,
+                169
+              ]
+            },
+            "SIZE": {
+              "text": "4\"",
+              "bbox": [
+                1240,
+                152,
+                1256,
+                169
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

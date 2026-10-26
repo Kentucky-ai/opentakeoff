@@ -1,0 +1,18 @@
+# Coverage is a signal, not a gate: uploads are informational and never turn a
+# PR red. The engine's correctness gate stays the tests + bench diff in ci.yml.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+comment:
+  layout: "diff, flags, files"
+  require_changes: true
+ignore:
+  - "**/test/**"
+  - "**/bench/**"
+  - "**/scripts/**"
+  - "**/dist/**"

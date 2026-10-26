@@ -29,6 +29,67 @@ test("shapesDetail: signs and roles — deduct negative, count carries EA only, 
   assert.equal(l.area_sf, 20);
 });
 
+test("shapesDetail: reconciled cutout stays in the audit with zero additive area", () => {
+  const shapes = [
+    floor("parent", 90),
+    {
+      id: "cutout", sheet_id: "sh1", condition_id: "ct", measure_role: "deduct",
+      cuts_shape_id: "parent", computed: { area_sf: 10 }, origin: { method: "cutout_v1" },
+    },
+  ] as any;
+  const rows = shapesDetail(conds, shapes);
+  const [total] = conditionTotals(conds, shapes);
+
+  assert.deepEqual(rows.map((r: any) => r.shape_id), ["parent", "cutout"]);
+  assert.equal(rows[1].role, "deduct");
+  assert.equal(rows[1].origin, "cutout_v1");
+  assert.equal(rows[1].area_sf, 0);
+  assert.equal(rows.reduce((n: number, r: any) => n + r.area_sf, 0), total.floor_sf);
+  assert.equal(total.floor_sf, 90);
+
+  const csvLines = shapesToCsv(rows).split("\n");
+  assert.equal(csvLines[0], "# Per-shape measured quantities — no multiplier or waste; standalone deducts negative; reconciled cutouts stay as audit rows with zero additive area because the parent is already net; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop");
+  assert.equal(csvLines[3], "cutout,sh1,sh1,CT-1,deduct,0,0,0,0,,0,0,cutout_v1");
+
+  const json = shapesToJson(rows, "Job 42");
+  assert.equal(json.schema, "opentakeoff.shapes.v1");
+  assert.deepEqual(json.shapes.map((r: any) => r.shape_id), ["parent", "cutout"]);
+  assert.equal(json.shapes[1].role, "deduct");
+  assert.equal(json.shapes[1].area_sf, 0);
+  assert.equal(json.shapes.reduce((n: number, r: any) => n + r.area_sf, 0), total.floor_sf);
+});
+
+test("shapesDetail: standalone deduct stays negative and reconciles with conditionTotals", () => {
+  const shapes = [
+    floor("parent", 100),
+    { id: "deduct", sheet_id: "sh1", condition_id: "ct", measure_role: "deduct", computed: { area_sf: 10 } },
+  ] as any;
+  const rows = shapesDetail(conds, shapes);
+  const [total] = conditionTotals(conds, shapes);
+
+  assert.deepEqual(rows.map((r: any) => r.shape_id), ["parent", "deduct"]);
+  assert.equal(rows[1].area_sf, -10);
+  assert.equal(rows.reduce((n: number, r: any) => n + r.area_sf, 0), total.floor_sf);
+  assert.equal(total.floor_sf, 90);
+  assert.equal(shapesToCsv(rows).split("\n")[3], "deduct,sh1,sh1,CT-1,deduct,-10,0,0,0,,0,0,untracked");
+});
+
+test("shapesDetail: multiple and dangling reconciled cutouts follow the totals marker rule", () => {
+  const shapes = [
+    floor("parent", 80),
+    { id: "cutout-1", sheet_id: "sh1", condition_id: "ct", measure_role: "deduct", cuts_shape_id: "parent", computed: { area_sf: 10 } },
+    { id: "cutout-2", sheet_id: "sh1", condition_id: "ct", measure_role: "deduct", cuts_shape_id: "parent", computed: { area_sf: 10 } },
+    { id: "orphan-cutout", sheet_id: "sh1", condition_id: "ct", measure_role: "deduct", cuts_shape_id: "missing-parent", computed: { area_sf: 5 } },
+  ] as any;
+  const rows = shapesDetail(conds, shapes);
+  const [total] = conditionTotals(conds, shapes);
+
+  assert.deepEqual(rows.map((r: any) => r.shape_id), ["parent", "cutout-1", "cutout-2", "orphan-cutout"]);
+  assert.deepEqual(rows.slice(1).map((r: any) => r.area_sf), [0, 0, 0]);
+  assert.equal(rows.reduce((n: number, r: any) => n + r.area_sf, 0), total.floor_sf);
+  assert.equal(total.floor_sf, 80);
+});
+
 test("shapesDetail: shape rows reconcile with conditionTotals (multiplier 1, no waste)", () => {
   const shapes = [
     floor("a", 120.5, 44),
@@ -90,7 +151,7 @@ test("shapesToCsv: empty project — semantics line + header only", () => {
   const csv = shapesToCsv(shapesDetail(conds, []));
   const lines = csv.split("\n");
   assert.ok(lines[0].startsWith("# Per-shape measured quantities"));
-  assert.equal(lines[1], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Origin");
+  assert.equal(lines[1], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Rise ft,Drop ft,Origin");
   assert.equal(lines[2], "");
   assert.equal(lines.length, 3);
 });
@@ -110,18 +171,33 @@ test("shapesToCsv: title, semantics line, exact header, quoting, negative deduct
   const csv = shapesToCsv(shapesDetail(conds2, shapes), "Job 42");
   const lines = csv.split("\n");
   assert.equal(lines[0], "# Job 42 — OpenTakeoff shapes");
-  assert.equal(lines[1], "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF");
-  assert.equal(lines[2], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Origin");
+  assert.equal(lines[1], "# Per-shape measured quantities — no multiplier or waste; standalone deducts negative; reconciled cutouts stay as audit rows with zero additive area because the parent is already net; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop");
+  assert.equal(lines[2], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Rise ft,Drop ft,Origin");
   assert.ok(lines[3].includes('"CT-1, honed"'));
   // full-line equality: the -12.5 deduct is a NUMBER cell — a type-blind
   // formula guard would emit '-12.5 and includes("-12.5") would still pass
-  assert.equal(lines[4], 'd,sh1,sh1,"CT-1, honed",deduct,-12.5,0,0,0,,untracked');
+  assert.equal(lines[4], 'd,sh1,sh1,"CT-1, honed",deduct,-12.5,0,0,0,,0,0,untracked');
   assert.ok(csv.endsWith("\n"));
 });
 
 test("shapesToCsv: no title line without a project name", () => {
   const csv = shapesToCsv(shapesDetail(conds, [floor("a", 10)]));
   assert.ok(csv.startsWith("# Per-shape measured quantities"));
+});
+
+test("shapesToCsv: metric export converts per-shape area and length columns", () => {
+  const rows = shapesDetail(conds, [{
+    id: "a",
+    sheet_id: "sh1",
+    condition_id: "ct",
+    measure_role: "floor_area",
+    computed: { area_sf: 100, perimeter_lf: 40 },
+    height_ft: 9,
+  }]);
+  const csv = shapesToCsv(rows, "", "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  assert.equal(lines[1], "Shape,Sheet,Sheet ID,Finish,Role,Area m2,m,EA,Height m,Height override,Rise m,Drop m,Origin");
+  assert.equal(lines[2], "a,sh1,sh1,CT-1,floor_area,9.29,12.19,0,2.74,,0,0,untracked");
 });
 
 test("shapesDetail: sheetLabel drives the display label; sheet_id stays raw; omitted falls back", () => {
@@ -141,4 +217,21 @@ test("shapesToJson: schema envelope wraps the rows", () => {
   assert.equal(j.generated_with, "OpenTakeoff");
   assert.deepEqual(j.shapes, rows);
   assert.equal(shapesToJson(rows, "").project_name, null);
+});
+
+// #441 — a linear row's LF is the total; Rise/Drop columns split the legs out.
+test("shapesDetail: linear rise/drop columns — condition default, per-run override, non-linear rows 0", () => {
+  const conds2 = [{ id: "ec", finish_tag: "EC-1", rise_ft: 2, drop_ft: 8 }];
+  const shapes = [
+    { id: "r1", sheet_id: "sh1", condition_id: "ec", measure_role: "linear", computed: { perimeter_lf: 52, plan_lf: 42, vertical_lf: 10, area_sf: 0 } },
+    { id: "r2", sheet_id: "sh1", condition_id: "ec", measure_role: "linear", drop_ft: 0, computed: { perimeter_lf: 44, plan_lf: 42, vertical_lf: 2, area_sf: 0 } },
+    { id: "w", sheet_id: "sh1", condition_id: "ec", measure_role: "surface_area", computed: { area_sf: 90, perimeter_lf: 10 }, height_ft: 9 },
+  ];
+  const [r1, r2, w] = shapesDetail(conds2, shapes);
+  assert.equal(r1.lf, 52); assert.equal(r1.rise_ft, 2); assert.equal(r1.drop_ft, 8);
+  assert.equal(r2.rise_ft, 2); assert.equal(r2.drop_ft, 0);   // the run's own 0 wins over the condition's 8
+  assert.equal(w.rise_ft, 0); assert.equal(w.drop_ft, 0);
+  const lines = shapesToCsv([r1, r2, w]).split("\n");
+  assert.equal(lines[2], "r1,sh1,sh1,EC-1,linear,0,52,0,0,,2,8,untracked");
+  assert.equal(lines[3], "r2,sh1,sh1,EC-1,linear,0,44,0,0,,2,0,untracked");
 });

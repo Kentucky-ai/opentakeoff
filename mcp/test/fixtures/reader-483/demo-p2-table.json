@@ -1,0 +1,2028 @@
+{
+  "name": "demo-p2-table",
+  "page": 2,
+  "rect": {
+    "x0": 2950,
+    "y0": 250,
+    "x1": 4720,
+    "y1": 1900
+  },
+  "readScheduleSpans": {
+    "rows": [
+      {
+        "finish_tag": "CPT-1",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "BROADLOOM CARPET",
+        "manufacturer": "J+J INVISION",
+        "style": "PAY DAY",
+        "spec_color": "1408 HIGH ROLLER",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CPT-2",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "MODULAR CARPET TILE",
+        "manufacturer": "J+J INVISION",
+        "style": "CITY BLOCKS",
+        "spec_color": "1304 HARVARD SQUARE",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "VCT-1",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "VINYL COMPOSITION TILE",
+        "manufacturer": "ARMSTRONG",
+        "style": "STANDARD EXCELON IMPERIAL",
+        "spec_color": "FORTRESS WHITE 51839",
+        "size": "12\" x 12\"",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "PT-1",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "PORCELAIN CERAMIC TILE",
+        "manufacturer": "DALTILE",
+        "style": "KEYSTONES MOSAIC",
+        "spec_color": "PEPPER WHITE D137",
+        "size": "2\" x 2\"",
+        "remarks": "GROUT: MAPEI KERACOLOR - 107 IRON",
+        "suggested": true
+      },
+      {
+        "finish_tag": "PT-2",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "PORCELAIN CERAMIC TILE",
+        "manufacturer": "DALTILE",
+        "style": "KEYSTONES MOSAIC",
+        "spec_color": "URBAN PUTTY D161",
+        "size": "2\" x 2\"",
+        "remarks": "GROUT: MAPEI KERACOLOR - 107 IRON",
+        "suggested": true
+      },
+      {
+        "finish_tag": "C",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "CONCRETE SEALER",
+        "manufacturer": "SHERWIN WILLIALS",
+        "style": "H&C DECORATIVE CONCRETE SEALER",
+        "spec_color": "CLEAR",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-1",
+        "section": "BASE",
+        "category": "base",
+        "category_source": "heading",
+        "description": "RESILIENT BASE",
+        "manufacturer": "VPI FLOORING",
+        "style": "RUBBER WALL BASE",
+        "spec_color": "97 FAWN",
+        "size": "4\"",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CBT-1",
+        "section": "BASE",
+        "category": "base",
+        "category_source": "heading",
+        "description": "CARPET WALL BASE",
+        "manufacturer": "J+J INVISION",
+        "style": "PAY DAY",
+        "spec_color": "1408 HIGH ROLLER",
+        "size": "4\"",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CT-3",
+        "section": "BASE",
+        "category": "base",
+        "category_source": "heading",
+        "description": "CERAMC WALL TILE",
+        "manufacturer": "DALTILE",
+        "style": "COLORWHEEL CLASSIC FLAT TOP COVE...",
+        "spec_color": "WHITE 0100",
+        "size": "6\" x 6\"",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "P-1",
+        "section": "WALLS",
+        "category": "wall",
+        "category_source": "heading",
+        "description": "PAINT",
+        "manufacturer": "BENJAMIN MOORE",
+        "style": "ECO SPEC EGGSHELL",
+        "spec_color": "WHITE 962",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "P-2",
+        "section": "WALLS",
+        "category": "wall",
+        "category_source": "heading",
+        "description": "PAINT",
+        "manufacturer": "BENJAMIN MOORE",
+        "style": "ECO SPEC EGGSHELL",
+        "spec_color": "SMOKEY MOUNTAIN AC-18",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "P-3",
+        "section": "WALLS",
+        "category": "wall",
+        "category_source": "heading",
+        "description": "PAINT",
+        "manufacturer": "BENJAMIN MOORE",
+        "style": "ECO SPEC EGGSHELL",
+        "spec_color": "SHAKER BEIGE HC-45",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CT-1",
+        "section": "WALLS",
+        "category": "wall",
+        "category_source": "heading",
+        "description": "CERAMIC WALL TILE",
+        "manufacturer": "DALTILE",
+        "style": "COLORWHEEL CLASSIC",
+        "spec_color": "WHITE 0100",
+        "size": "3\" x 6\"",
+        "remarks": "GROUT: MAPEI KERACOLOR - 00 WHITE",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CT-2",
+        "section": "WALLS",
+        "category": "wall",
+        "category_source": "heading",
+        "description": "CERAMIC WALL TILE",
+        "manufacturer": "DALTILE",
+        "style": "FESTIVA",
+        "spec_color": "WILLOW QF42",
+        "size": "3\" x 6\"",
+        "remarks": "GROUT: MAPEI KERACOLOR - 00 WHITE",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CT-4",
+        "section": "WALLS",
+        "category": "wall",
+        "category_source": "heading",
+        "description": "CERAMIC WALL TILE",
+        "manufacturer": "DALTILE",
+        "style": "SEMI GLOSS",
+        "spec_color": "ALMOND PL22",
+        "size": "4.25\" X 4.25\"",
+        "remarks": "GROUT: MAPEI KERACOLOR - 00 WHITE",
+        "suggested": true
+      },
+      {
+        "finish_tag": "SC-1",
+        "section": "WALLS",
+        "category": "wall",
+        "category_source": "heading",
+        "description": "SPECIAL COATING",
+        "manufacturer": "BENJAMIN MOORE",
+        "style": "COROTECH POLYAMIDE EPOXY COATING",
+        "spec_color": "TINTABLE WHITE - TINT TO SHAKE...",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "PLAM-1",
+        "section": "MILLWORK",
+        "category": "other",
+        "category_source": "heading",
+        "description": "PLASTIC LAMINATE",
+        "manufacturer": "WILSONART",
+        "style": "STANDARD HPL",
+        "spec_color": "MANITOBA MAPLE 7911",
+        "size": "",
+        "remarks": "60 MATTE",
+        "suggested": false
+      },
+      {
+        "finish_tag": "PLAM-2",
+        "section": "MILLWORK",
+        "category": "other",
+        "category_source": "heading",
+        "description": "PLASTIC LAMINATE",
+        "manufacturer": "WILSONART",
+        "style": "STANDARD HPL",
+        "spec_color": "RIVER CHERRY 7937",
+        "size": "",
+        "remarks": "38 FINE VELVET",
+        "suggested": false
+      },
+      {
+        "finish_tag": "S-1",
+        "section": "MILLWORK",
+        "category": "other",
+        "category_source": "heading",
+        "description": "SOLID SURFACE",
+        "manufacturer": "LH HAUSYS",
+        "style": "HI-MACS",
+        "spec_color": "R118 REST",
+        "size": "",
+        "remarks": "MATTE",
+        "suggested": false
+      },
+      {
+        "finish_tag": "S-2",
+        "section": "MILLWORK",
+        "category": "other",
+        "category_source": "heading",
+        "description": "SOLID SURFACE SINK",
+        "manufacturer": "LH HAUSYS",
+        "style": "HI-MACS SINK BOWL 1612-AC",
+        "spec_color": "IVORY",
+        "size": "",
+        "remarks": "",
+        "suggested": false
+      },
+      {
+        "finish_tag": "ACT-1",
+        "section": "CEILINGS",
+        "category": "ceiling",
+        "category_source": "heading",
+        "description": "ACOUSTIAL CEILING TILE",
+        "manufacturer": "USG",
+        "style": "2110 RADAR BASIC ACOUSTICAL PANELS",
+        "spec_color": "WHITE",
+        "size": "2' x 2'",
+        "remarks": "",
+        "suggested": false
+      },
+      {
+        "finish_tag": "ACT-2",
+        "section": "CEILINGS",
+        "category": "ceiling",
+        "category_source": "heading",
+        "description": "ACOUSTIAL CEILING TILE",
+        "manufacturer": "USG",
+        "style": "RADAR CERAMIC ACOUSTICAL PANELS",
+        "spec_color": "WHITE",
+        "size": "2' x 2'",
+        "remarks": "",
+        "suggested": false
+      },
+      {
+        "finish_tag": "PR-1",
+        "section": "MISC",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "METAL TILE TRIM",
+        "manufacturer": "SCHLUTER",
+        "style": "QUADEC",
+        "spec_color": "SATIN NICKEL ANODIZED",
+        "size": "TO FIT TILE",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "TS-1",
+        "section": "MISC",
+        "category": "transition",
+        "category_source": "text",
+        "description": "METAL TRANSITION STRIP",
+        "manufacturer": "SCHLUTER",
+        "style": "RENO-U",
+        "spec_color": "SATIN NICKEL ANODIZED",
+        "size": "TO FIT TILE",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "TS-2",
+        "section": "MISC",
+        "category": "transition",
+        "category_source": "text",
+        "description": "VINYL TRANSITION STRIP",
+        "manufacturer": "JOHNSONITE",
+        "style": "CTA-63-D",
+        "spec_color": "63 BURNT UMBER",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "HR-1",
+        "section": "MISC",
+        "category": "wall_protection",
+        "category_source": "text",
+        "description": "HANDRAIL",
+        "manufacturer": "ACROVYN",
+        "style": "HRB-4CN",
+        "spec_color": "#100 EGGSHELL",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CR-1",
+        "section": "MISC",
+        "category": "wall_protection",
+        "category_source": "text",
+        "description": "CRASH RAIL",
+        "manufacturer": "ACROVYN",
+        "style": "SCR-48N",
+        "spec_color": "#100 EGGSHELL",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CG-1",
+        "section": "MISC",
+        "category": "wall_protection",
+        "category_source": "text",
+        "description": "CORNER GUARDS",
+        "manufacturer": "ACROVYN",
+        "style": "SSM-25AN",
+        "spec_color": "#100 EGGSHELL",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      }
+    ]
+  },
+  "finishRows": {
+    "otherFamily": false,
+    "rows": [
+      {
+        "key": "CPT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CPT-1",
+            "bbox": [
+              2986.1,
+              452.4,
+              3034.3,
+              469.2
+            ]
+          },
+          "MATERIAL": {
+            "text": "BROADLOOM CARPET",
+            "bbox": [
+              3082.6,
+              452.4,
+              3262.7,
+              469.2
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "J+J INVISION",
+            "bbox": [
+              3330.5,
+              452.4,
+              3434.5,
+              469.2
+            ]
+          },
+          "STYLE": {
+            "text": "PAY DAY",
+            "bbox": [
+              3558.2,
+              452.4,
+              3630.1,
+              469.2
+            ]
+          },
+          "COLOR": {
+            "text": "1408 HIGH ROLLER",
+            "bbox": [
+              3924,
+              452.4,
+              4078.7,
+              469.2
+            ]
+          }
+        },
+        "section": "FLOORING"
+      },
+      {
+        "key": "CPT-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CPT-2",
+            "bbox": [
+              2986.1,
+              491.3,
+              3034.3,
+              508.1
+            ]
+          },
+          "MATERIAL": {
+            "text": "MODULAR CARPET TILE",
+            "bbox": [
+              3082.6,
+              491.3,
+              3277.8,
+              508.1
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "J+J INVISION",
+            "bbox": [
+              3330.5,
+              491.3,
+              3434.5,
+              508.1
+            ]
+          },
+          "STYLE": {
+            "text": "CITY BLOCKS",
+            "bbox": [
+              3558.2,
+              491.3,
+              3668.1,
+              508.1
+            ]
+          },
+          "COLOR": {
+            "text": "1304 HARVARD SQUARE",
+            "bbox": [
+              3924,
+              491.3,
+              4122.1,
+              508.1
+            ]
+          }
+        },
+        "section": "FLOORING"
+      },
+      {
+        "key": "VCT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "VCT-1",
+            "bbox": [
+              2986.1,
+              530,
+              3034.3,
+              546.7
+            ]
+          },
+          "MATERIAL": {
+            "text": "VINYL COMPOSITION TILE",
+            "bbox": [
+              3082.6,
+              530,
+              3293.4,
+              546.7
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "ARMSTRONG",
+            "bbox": [
+              3330.5,
+              530,
+              3438.6,
+              546.7
+            ]
+          },
+          "STYLE": {
+            "text": "STANDARD EXCELON IMPERIAL",
+            "bbox": [
+              3558.2,
+              530,
+              3816.4,
+              546.7
+            ]
+          },
+          "COLOR": {
+            "text": "FORTRESS WHITE 51839",
+            "bbox": [
+              3924,
+              530,
+              4124.1,
+              546.7
+            ]
+          },
+          "SIZE": {
+            "text": "12\" x 12\"",
+            "bbox": [
+              4231,
+              530,
+              4297.4,
+              546.7
+            ]
+          }
+        },
+        "section": "FLOORING"
+      },
+      {
+        "key": "PT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "PT-1",
+            "bbox": [
+              2986.1,
+              568.8,
+              3022.3,
+              585.6
+            ]
+          },
+          "MATERIAL": {
+            "text": "PORCELAIN CERAMIC TILE",
+            "bbox": [
+              3082.6,
+              568.8,
+              3299.9,
+              585.6
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "DALTILE",
+            "bbox": [
+              3330.5,
+              568.8,
+              3398.1,
+              585.6
+            ]
+          },
+          "STYLE": {
+            "text": "KEYSTONES MOSAIC",
+            "bbox": [
+              3558.2,
+              568.8,
+              3730.2,
+              585.6
+            ]
+          },
+          "COLOR": {
+            "text": "PEPPER WHITE D137",
+            "bbox": [
+              3924,
+              568.8,
+              4094.4,
+              585.6
+            ]
+          },
+          "SIZE": {
+            "text": "2\" x 2\"",
+            "bbox": [
+              4231,
+              568.8,
+              4278.7,
+              585.6
+            ]
+          },
+          "REMARKS": {
+            "text": "GROUT: MAPEI KERACOLOR - 107 IRON",
+            "bbox": [
+              4364.2,
+              568.8,
+              4683.5,
+              585.6
+            ]
+          }
+        },
+        "section": "FLOORING"
+      },
+      {
+        "key": "PT-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "PT-2",
+            "bbox": [
+              2986.1,
+              606.3,
+              3022.3,
+              623
+            ]
+          },
+          "MATERIAL": {
+            "text": "PORCELAIN CERAMIC TILE",
+            "bbox": [
+              3082.6,
+              606.3,
+              3299.9,
+              623
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "DALTILE",
+            "bbox": [
+              3330.5,
+              606.3,
+              3398.1,
+              623
+            ]
+          },
+          "STYLE": {
+            "text": "KEYSTONES MOSAIC",
+            "bbox": [
+              3558.2,
+              606.3,
+              3730.2,
+              623
+            ]
+          },
+          "COLOR": {
+            "text": "URBAN PUTTY D161",
+            "bbox": [
+              3924,
+              606.3,
+              4085.7,
+              623
+            ]
+          },
+          "SIZE": {
+            "text": "2\" x 2\"",
+            "bbox": [
+              4231,
+              606.3,
+              4278.7,
+              623
+            ]
+          },
+          "REMARKS": {
+            "text": "GROUT: MAPEI KERACOLOR - 107 IRON",
+            "bbox": [
+              4364.2,
+              606.3,
+              4683.5,
+              623
+            ]
+          }
+        },
+        "section": "FLOORING"
+      },
+      {
+        "key": "C",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "C",
+            "bbox": [
+              2986.1,
+              643.7,
+              2998.2,
+              660.5
+            ]
+          },
+          "MATERIAL": {
+            "text": "CONCRETE SEALER",
+            "bbox": [
+              3082.6,
+              643.7,
+              3246.3,
+              660.5
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "SHERWIN WILLIALS",
+            "bbox": [
+              3330.5,
+              643.7,
+              3489,
+              660.5
+            ]
+          },
+          "STYLE": {
+            "text": "H&C DECORATIVE CONCRETE SEALER",
+            "bbox": [
+              3558.2,
+              643.7,
+              3874.7,
+              660.5
+            ]
+          },
+          "COLOR": {
+            "text": "CLEAR",
+            "bbox": [
+              3924,
+              643.7,
+              3979.3,
+              660.5
+            ]
+          }
+        },
+        "section": "FLOORING"
+      },
+      {
+        "key": "RB-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "RB-1",
+            "bbox": [
+              2986.1,
+              759.9,
+              3024,
+              776.6
+            ]
+          },
+          "MATERIAL": {
+            "text": "RESILIENT BASE",
+            "bbox": [
+              3082.6,
+              759.9,
+              3217.8,
+              776.6
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "VPI FLOORING",
+            "bbox": [
+              3330.5,
+              759.9,
+              3448.9,
+              776.6
+            ]
+          },
+          "STYLE": {
+            "text": "RUBBER WALL BASE",
+            "bbox": [
+              3558.2,
+              759.9,
+              3726.6,
+              776.6
+            ]
+          },
+          "COLOR": {
+            "text": "97 FAWN",
+            "bbox": [
+              3924,
+              759.9,
+              3996.3,
+              776.6
+            ]
+          },
+          "SIZE": {
+            "text": "4\"",
+            "bbox": [
+              4231,
+              759.9,
+              4246,
+              776.6
+            ]
+          }
+        },
+        "section": "BASE"
+      },
+      {
+        "key": "CBT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CBT-1",
+            "bbox": [
+              2986.1,
+              798.5,
+              3034.3,
+              815.3
+            ]
+          },
+          "MATERIAL": {
+            "text": "CARPET WALL BASE",
+            "bbox": [
+              3082.6,
+              798.5,
+              3249.3,
+              815.3
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "J+J INVISION",
+            "bbox": [
+              3330.5,
+              798.5,
+              3434.5,
+              815.3
+            ]
+          },
+          "STYLE": {
+            "text": "PAY DAY",
+            "bbox": [
+              3558.2,
+              798.5,
+              3630.1,
+              815.3
+            ]
+          },
+          "COLOR": {
+            "text": "1408 HIGH ROLLER",
+            "bbox": [
+              3924,
+              798.5,
+              4078.7,
+              815.3
+            ]
+          },
+          "SIZE": {
+            "text": "4\"",
+            "bbox": [
+              4231,
+              798.5,
+              4246,
+              815.3
+            ]
+          }
+        },
+        "section": "BASE"
+      },
+      {
+        "key": "CT-3",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CT-3",
+            "bbox": [
+              2986.1,
+              836.2,
+              3023.2,
+              853
+            ]
+          },
+          "MATERIAL": {
+            "text": "CERAMC WALL TILE",
+            "bbox": [
+              3082.6,
+              836.2,
+              3244.5,
+              853
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "DALTILE",
+            "bbox": [
+              3330.5,
+              836.2,
+              3398.1,
+              853
+            ]
+          },
+          "STYLE": {
+            "text": "COLORWHEEL CLASSIC FLAT TOP COVE...",
+            "bbox": [
+              3558.2,
+              836.2,
+              3902.7,
+              853
+            ]
+          },
+          "COLOR": {
+            "text": "WHITE 0100",
+            "bbox": [
+              3924,
+              836.2,
+              4019.5,
+              853
+            ]
+          },
+          "SIZE": {
+            "text": "6\" x 6\"",
+            "bbox": [
+              4231,
+              836.2,
+              4278.7,
+              853
+            ]
+          }
+        },
+        "section": "BASE"
+      },
+      {
+        "key": "P-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "P-1",
+            "bbox": [
+              2986.1,
+              952.4,
+              3012,
+              969.1
+            ]
+          },
+          "MATERIAL": {
+            "text": "PAINT",
+            "bbox": [
+              3082.6,
+              952.4,
+              3131.4,
+              969.1
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "BENJAMIN MOORE",
+            "bbox": [
+              3330.5,
+              952.4,
+              3482.1,
+              969.1
+            ]
+          },
+          "STYLE": {
+            "text": "ECO SPEC EGGSHELL",
+            "bbox": [
+              3558.2,
+              952.4,
+              3738.9,
+              969.1
+            ]
+          },
+          "COLOR": {
+            "text": "WHITE 962",
+            "bbox": [
+              3924,
+              952.4,
+              4010.4,
+              969.1
+            ]
+          }
+        },
+        "section": "WALLS"
+      },
+      {
+        "key": "P-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "P-2",
+            "bbox": [
+              2986.1,
+              991,
+              3012,
+              1007.8
+            ]
+          },
+          "MATERIAL": {
+            "text": "PAINT",
+            "bbox": [
+              3082.6,
+              991,
+              3131.4,
+              1007.8
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "BENJAMIN MOORE",
+            "bbox": [
+              3330.5,
+              991,
+              3482.1,
+              1007.8
+            ]
+          },
+          "STYLE": {
+            "text": "ECO SPEC EGGSHELL",
+            "bbox": [
+              3558.2,
+              991,
+              3738.9,
+              1007.8
+            ]
+          },
+          "COLOR": {
+            "text": "SMOKEY MOUNTAIN AC-18",
+            "bbox": [
+              3924,
+              991,
+              4140.2,
+              1007.8
+            ]
+          }
+        },
+        "section": "WALLS"
+      },
+      {
+        "key": "P-3",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "P-3",
+            "bbox": [
+              2986.1,
+              1029.9,
+              3012,
+              1046.6
+            ]
+          },
+          "MATERIAL": {
+            "text": "PAINT",
+            "bbox": [
+              3082.6,
+              1029.9,
+              3131.4,
+              1046.6
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "BENJAMIN MOORE",
+            "bbox": [
+              3330.5,
+              1029.9,
+              3482.1,
+              1046.6
+            ]
+          },
+          "STYLE": {
+            "text": "ECO SPEC EGGSHELL",
+            "bbox": [
+              3558.2,
+              1029.9,
+              3738.9,
+              1046.6
+            ]
+          },
+          "COLOR": {
+            "text": "SHAKER BEIGE HC-45",
+            "bbox": [
+              3924,
+              1029.9,
+              4100.8,
+              1046.6
+            ]
+          }
+        },
+        "section": "WALLS"
+      },
+      {
+        "key": "CT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CT-1",
+            "bbox": [
+              2986.1,
+              1068.5,
+              3023.2,
+              1085.3
+            ]
+          },
+          "MATERIAL": {
+            "text": "CERAMIC WALL TILE",
+            "bbox": [
+              3082.6,
+              1068.5,
+              3249,
+              1085.3
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "DALTILE",
+            "bbox": [
+              3330.5,
+              1068.5,
+              3398.1,
+              1085.3
+            ]
+          },
+          "STYLE": {
+            "text": "COLORWHEEL CLASSIC",
+            "bbox": [
+              3558.2,
+              1068.5,
+              3752.5,
+              1085.3
+            ]
+          },
+          "COLOR": {
+            "text": "WHITE 0100",
+            "bbox": [
+              3924,
+              1068.5,
+              4019.5,
+              1085.3
+            ]
+          },
+          "SIZE": {
+            "text": "3\" x 6\"",
+            "bbox": [
+              4231,
+              1068.5,
+              4278.7,
+              1085.3
+            ]
+          },
+          "REMARKS": {
+            "text": "GROUT: MAPEI KERACOLOR - 00 WHITE",
+            "bbox": [
+              4364.2,
+              1068.5,
+              4686.4,
+              1085.3
+            ]
+          }
+        },
+        "section": "WALLS"
+      },
+      {
+        "key": "CT-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CT-2",
+            "bbox": [
+              2986.1,
+              1107.4,
+              3023.2,
+              1124.2
+            ]
+          },
+          "MATERIAL": {
+            "text": "CERAMIC WALL TILE",
+            "bbox": [
+              3082.6,
+              1107.4,
+              3249,
+              1124.2
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "DALTILE",
+            "bbox": [
+              3330.5,
+              1107.4,
+              3398.1,
+              1124.2
+            ]
+          },
+          "STYLE": {
+            "text": "FESTIVA",
+            "bbox": [
+              3558.2,
+              1107.4,
+              3627.5,
+              1124.2
+            ]
+          },
+          "COLOR": {
+            "text": "WILLOW QF42",
+            "bbox": [
+              3924,
+              1107.4,
+              4038.2,
+              1124.2
+            ]
+          },
+          "SIZE": {
+            "text": "3\" x 6\"",
+            "bbox": [
+              4231,
+              1107.4,
+              4278.7,
+              1124.2
+            ]
+          },
+          "REMARKS": {
+            "text": "GROUT: MAPEI KERACOLOR - 00 WHITE",
+            "bbox": [
+              4364.2,
+              1107.4,
+              4686.4,
+              1124.2
+            ]
+          }
+        },
+        "section": "WALLS"
+      },
+      {
+        "key": "CT-4",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CT-4",
+            "bbox": [
+              2986.1,
+              1144.8,
+              3023.2,
+              1161.6
+            ]
+          },
+          "MATERIAL": {
+            "text": "CERAMIC WALL TILE",
+            "bbox": [
+              3082.6,
+              1144.8,
+              3249,
+              1161.6
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "DALTILE",
+            "bbox": [
+              3330.5,
+              1144.8,
+              3398.1,
+              1161.6
+            ]
+          },
+          "STYLE": {
+            "text": "SEMI GLOSS",
+            "bbox": [
+              3558.2,
+              1144.8,
+              3660.9,
+              1161.6
+            ]
+          },
+          "COLOR": {
+            "text": "ALMOND PL22",
+            "bbox": [
+              3924,
+              1144.8,
+              4038.7,
+              1161.6
+            ]
+          },
+          "SIZE": {
+            "text": "4.25\" X 4.25\"",
+            "bbox": [
+              4231,
+              1144.8,
+              4328.1,
+              1161.6
+            ]
+          },
+          "REMARKS": {
+            "text": "GROUT: MAPEI KERACOLOR - 00 WHITE",
+            "bbox": [
+              4364.2,
+              1144.8,
+              4686.4,
+              1161.6
+            ]
+          }
+        },
+        "section": "WALLS"
+      },
+      {
+        "key": "SC-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "SC-1",
+            "bbox": [
+              2986.1,
+              1183.5,
+              3024,
+              1200.2
+            ]
+          },
+          "MATERIAL": {
+            "text": "SPECIAL COATING",
+            "bbox": [
+              3082.6,
+              1183.5,
+              3233.4,
+              1200.2
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "BENJAMIN MOORE",
+            "bbox": [
+              3330.5,
+              1183.5,
+              3482.1,
+              1200.2
+            ]
+          },
+          "STYLE": {
+            "text": "COROTECH POLYAMIDE EPOXY COATING",
+            "bbox": [
+              3558.2,
+              1183.5,
+              3897.4,
+              1200.2
+            ]
+          },
+          "COLOR": {
+            "text": "TINTABLE WHITE - TINT TO SHAKE...",
+            "bbox": [
+              3924,
+              1183.5,
+              4216.4,
+              1200.2
+            ]
+          }
+        },
+        "section": "WALLS"
+      },
+      {
+        "key": "PLAM-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "PLAM-1",
+            "bbox": [
+              2986.1,
+              1261,
+              3046,
+              1277.8
+            ]
+          },
+          "MATERIAL": {
+            "text": "PLASTIC LAMINATE",
+            "bbox": [
+              3082.6,
+              1261,
+              3239.9,
+              1277.8
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "WILSONART",
+            "bbox": [
+              3330.5,
+              1261,
+              3429.5,
+              1277.8
+            ]
+          },
+          "STYLE": {
+            "text": "STANDARD HPL",
+            "bbox": [
+              3558.2,
+              1261,
+              3686.8,
+              1277.8
+            ]
+          },
+          "COLOR": {
+            "text": "MANITOBA MAPLE 7911",
+            "bbox": [
+              3924,
+              1261,
+              4114,
+              1277.8
+            ]
+          },
+          "REMARKS": {
+            "text": "60 MATTE",
+            "bbox": [
+              4364.2,
+              1261,
+              4443.7,
+              1277.8
+            ]
+          }
+        },
+        "section": "MILLWORK"
+      },
+      {
+        "key": "PLAM-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "PLAM-2",
+            "bbox": [
+              2986.1,
+              1299.9,
+              3046,
+              1316.6
+            ]
+          },
+          "MATERIAL": {
+            "text": "PLASTIC LAMINATE",
+            "bbox": [
+              3082.6,
+              1299.9,
+              3239.9,
+              1316.6
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "WILSONART",
+            "bbox": [
+              3330.5,
+              1299.9,
+              3429.5,
+              1316.6
+            ]
+          },
+          "STYLE": {
+            "text": "STANDARD HPL",
+            "bbox": [
+              3558.2,
+              1299.9,
+              3686.8,
+              1316.6
+            ]
+          },
+          "COLOR": {
+            "text": "RIVER CHERRY 7937",
+            "bbox": [
+              3924,
+              1299.9,
+              4091.2,
+              1316.6
+            ]
+          },
+          "REMARKS": {
+            "text": "38 FINE VELVET",
+            "bbox": [
+              4364.2,
+              1299.9,
+              4493.7,
+              1316.6
+            ]
+          }
+        },
+        "section": "MILLWORK"
+      },
+      {
+        "key": "S-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "S-1",
+            "bbox": [
+              2986.1,
+              1338.5,
+              3012,
+              1355.3
+            ]
+          },
+          "MATERIAL": {
+            "text": "SOLID SURFACE",
+            "bbox": [
+              3082.6,
+              1338.5,
+              3216.6,
+              1355.3
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "LH HAUSYS",
+            "bbox": [
+              3330.5,
+              1338.5,
+              3424.5,
+              1355.3
+            ]
+          },
+          "STYLE": {
+            "text": "HI-MACS",
+            "bbox": [
+              3558.2,
+              1338.5,
+              3628.2,
+              1355.3
+            ]
+          },
+          "COLOR": {
+            "text": "R118 REST",
+            "bbox": [
+              3924,
+              1338.5,
+              4012.5,
+              1355.3
+            ]
+          },
+          "REMARKS": {
+            "text": "MATTE",
+            "bbox": [
+              4364.2,
+              1338.5,
+              4420.7,
+              1355.3
+            ]
+          }
+        },
+        "section": "MILLWORK"
+      },
+      {
+        "key": "S-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "S-2",
+            "bbox": [
+              2986.1,
+              1377.4,
+              3012,
+              1394.2
+            ]
+          },
+          "MATERIAL": {
+            "text": "SOLID SURFACE SINK",
+            "bbox": [
+              3082.6,
+              1377.4,
+              3260.3,
+              1394.2
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "LH HAUSYS",
+            "bbox": [
+              3330.5,
+              1377.4,
+              3424.5,
+              1394.2
+            ]
+          },
+          "STYLE": {
+            "text": "HI-MACS SINK BOWL 1612-AC",
+            "bbox": [
+              3558.2,
+              1377.4,
+              3796.2,
+              1394.2
+            ]
+          },
+          "COLOR": {
+            "text": "IVORY",
+            "bbox": [
+              3924,
+              1377.4,
+              3975.7,
+              1394.2
+            ]
+          }
+        },
+        "section": "MILLWORK"
+      },
+      {
+        "key": "ACT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "ACT-1",
+            "bbox": [
+              2986.1,
+              1493.6,
+              3034.3,
+              1510.3
+            ]
+          },
+          "MATERIAL": {
+            "text": "ACOUSTIAL CEILING TILE",
+            "bbox": [
+              3082.6,
+              1493.6,
+              3288.1,
+              1510.3
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "USG",
+            "bbox": [
+              3330.5,
+              1493.6,
+              3366.6,
+              1510.3
+            ]
+          },
+          "STYLE": {
+            "text": "2110 RADAR BASIC ACOUSTICAL PANELS",
+            "bbox": [
+              3558.2,
+              1493.6,
+              3894.6,
+              1510.3
+            ]
+          },
+          "COLOR": {
+            "text": "WHITE",
+            "bbox": [
+              3924,
+              1493.6,
+              3977.9,
+              1510.3
+            ]
+          },
+          "SIZE": {
+            "text": "2' x 2'",
+            "bbox": [
+              4231,
+              1493.6,
+              4273.3,
+              1510.3
+            ]
+          }
+        },
+        "section": "CEILINGS"
+      },
+      {
+        "key": "ACT-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "ACT-2",
+            "bbox": [
+              2986.1,
+              1532.2,
+              3034.3,
+              1549
+            ]
+          },
+          "MATERIAL": {
+            "text": "ACOUSTIAL CEILING TILE",
+            "bbox": [
+              3082.6,
+              1532.2,
+              3288.1,
+              1549
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "USG",
+            "bbox": [
+              3330.5,
+              1532.2,
+              3366.6,
+              1549
+            ]
+          },
+          "STYLE": {
+            "text": "RADAR CERAMIC ACOUSTICAL PANELS",
+            "bbox": [
+              3558.2,
+              1532.2,
+              3879.5,
+              1549
+            ]
+          },
+          "COLOR": {
+            "text": "WHITE",
+            "bbox": [
+              3924,
+              1532.2,
+              3977.9,
+              1549
+            ]
+          },
+          "SIZE": {
+            "text": "2' x 2'",
+            "bbox": [
+              4231,
+              1532.2,
+              4273.3,
+              1549
+            ]
+          }
+        },
+        "section": "CEILINGS"
+      },
+      {
+        "key": "PR-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "PR-1",
+            "bbox": [
+              2986.1,
+              1648.6,
+              3024,
+              1665.4
+            ]
+          },
+          "MATERIAL": {
+            "text": "METAL TILE TRIM",
+            "bbox": [
+              3082.6,
+              1648.6,
+              3223.2,
+              1665.4
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "SCHLUTER",
+            "bbox": [
+              3330.5,
+              1648.6,
+              3420.1,
+              1665.4
+            ]
+          },
+          "STYLE": {
+            "text": "QUADEC",
+            "bbox": [
+              3558.2,
+              1648.6,
+              3629.4,
+              1665.4
+            ]
+          },
+          "COLOR": {
+            "text": "SATIN NICKEL ANODIZED",
+            "bbox": [
+              3924,
+              1648.6,
+              4128.3,
+              1665.4
+            ]
+          },
+          "SIZE": {
+            "text": "TO FIT TILE",
+            "bbox": [
+              4231,
+              1648.6,
+              4323.5,
+              1665.4
+            ]
+          }
+        },
+        "section": "MISC"
+      },
+      {
+        "key": "TS-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "TS-1",
+            "bbox": [
+              2986.1,
+              1687.5,
+              3022.3,
+              1704.2
+            ]
+          },
+          "MATERIAL": {
+            "text": "METAL TRANSITION STRIP",
+            "bbox": [
+              3082.6,
+              1687.5,
+              3297.3,
+              1704.2
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "SCHLUTER",
+            "bbox": [
+              3330.5,
+              1687.5,
+              3420.1,
+              1704.2
+            ]
+          },
+          "STYLE": {
+            "text": "RENO-U",
+            "bbox": [
+              3558.2,
+              1687.5,
+              3623.9,
+              1704.2
+            ]
+          },
+          "COLOR": {
+            "text": "SATIN NICKEL ANODIZED",
+            "bbox": [
+              3924,
+              1687.5,
+              4128.3,
+              1704.2
+            ]
+          },
+          "SIZE": {
+            "text": "TO FIT TILE",
+            "bbox": [
+              4231,
+              1687.5,
+              4323.5,
+              1704.2
+            ]
+          }
+        },
+        "section": "MISC"
+      },
+      {
+        "key": "TS-2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "TS-2",
+            "bbox": [
+              2986.1,
+              1726.1,
+              3022.3,
+              1742.9
+            ]
+          },
+          "MATERIAL": {
+            "text": "VINYL TRANSITION STRIP",
+            "bbox": [
+              3082.6,
+              1726.1,
+              3289.6,
+              1742.9
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "JOHNSONITE",
+            "bbox": [
+              3330.5,
+              1726.1,
+              3437.9,
+              1742.9
+            ]
+          },
+          "STYLE": {
+            "text": "CTA-63-D",
+            "bbox": [
+              3558.2,
+              1726.1,
+              3633,
+              1742.9
+            ]
+          },
+          "COLOR": {
+            "text": "63 BURNT UMBER",
+            "bbox": [
+              3924,
+              1726.1,
+              4069.1,
+              1742.9
+            ]
+          }
+        },
+        "section": "MISC"
+      },
+      {
+        "key": "HR-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "HR-1",
+            "bbox": [
+              2986.1,
+              1765,
+              3024.9,
+              1781.8
+            ]
+          },
+          "MATERIAL": {
+            "text": "HANDRAIL",
+            "bbox": [
+              3082.6,
+              1765,
+              3166.5,
+              1781.8
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "ACROVYN",
+            "bbox": [
+              3330.5,
+              1765,
+              3412.4,
+              1781.8
+            ]
+          },
+          "STYLE": {
+            "text": "HRB-4CN",
+            "bbox": [
+              3558.2,
+              1765,
+              3632,
+              1781.8
+            ]
+          },
+          "COLOR": {
+            "text": "#100 EGGSHELL",
+            "bbox": [
+              3924,
+              1765,
+              4055.7,
+              1781.8
+            ]
+          }
+        },
+        "section": "MISC"
+      },
+      {
+        "key": "CR-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CR-1",
+            "bbox": [
+              2986.1,
+              1803.6,
+              3024.9,
+              1820.4
+            ]
+          },
+          "MATERIAL": {
+            "text": "CRASH RAIL",
+            "bbox": [
+              3082.6,
+              1803.6,
+              3182.4,
+              1820.4
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "ACROVYN",
+            "bbox": [
+              3330.5,
+              1803.6,
+              3412.4,
+              1820.4
+            ]
+          },
+          "STYLE": {
+            "text": "SCR-48N",
+            "bbox": [
+              3558.2,
+              1803.6,
+              3629.1,
+              1820.4
+            ]
+          },
+          "COLOR": {
+            "text": "#100 EGGSHELL",
+            "bbox": [
+              3924,
+              1803.6,
+              4055.7,
+              1820.4
+            ]
+          }
+        },
+        "section": "MISC"
+      },
+      {
+        "key": "CG-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CG-1",
+            "bbox": [
+              2986.1,
+              1842.5,
+              3025.9,
+              1859.3
+            ]
+          },
+          "MATERIAL": {
+            "text": "CORNER GUARDS",
+            "bbox": [
+              3082.6,
+              1842.5,
+              3230.3,
+              1859.3
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "ACROVYN",
+            "bbox": [
+              3330.5,
+              1842.5,
+              3412.4,
+              1859.3
+            ]
+          },
+          "STYLE": {
+            "text": "SSM-25AN",
+            "bbox": [
+              3558.2,
+              1842.5,
+              3641.4,
+              1859.3
+            ]
+          },
+          "COLOR": {
+            "text": "#100 EGGSHELL",
+            "bbox": [
+              3924,
+              1842.5,
+              4055.7,
+              1859.3
+            ]
+          }
+        },
+        "section": "MISC"
+      }
+    ]
+  }
+}

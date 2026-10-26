@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/takeoff-document.schema.json",
+  "title": "TakeoffDocument v1 (draft)",
+  "description": "Proposed document identifier over the existing persisted record shape. No application writer emits this format yet; validation is structural, not migration, referential integrity, authority, or a complete evidence audit.",
+  "allOf": [
+    {
+      "$ref": "document-fields.schema.json"
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "opentakeoff.takeoff-document.v1"
+    }
+  },
+  "required": [
+    "schema",
+    "conditions",
+    "shapes",
+    "sheets"
+  ]
+}

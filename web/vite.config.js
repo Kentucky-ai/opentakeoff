@@ -19,6 +19,14 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 export default defineConfig({
   plugins: [react()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // On-device OCR (#469): ppu-paddle-ocr imports the bare `onnxruntime-web`,
+  // which would bundle ORT's default (jsep) build and ship a second ~24 MB
+  // wasm. Point it at the webgpu entry voice already uses, so both share the
+  // one asyncify runtime. A regex, not a string key: a string also matches
+  // `onnxruntime-web/…` prefixes and would break voice's own subpath imports.
+  resolve: {
+    alias: [{ find: /^onnxruntime-web$/, replacement: "onnxruntime-web/webgpu" }],
+  },
   // The STT worker (stt.worker.ts, RFC #59) lazy-imports its engine adapter,
   // which needs code-splitting inside the worker bundle — only the ES format
   // supports that (Vite's default iife errors on split worker builds).

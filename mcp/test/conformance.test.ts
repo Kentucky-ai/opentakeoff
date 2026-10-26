@@ -26,6 +26,11 @@ import {
   exportReportOutput, sheetGraphOutput, resolveTagOutput, findScheduleOutput,
   symbolSweepOutput, sweepScheduleRowOutput, annotateOutput, listAnnotationsOutput,
   markVerdictOutput, deleteVerdictOutput, duplicateConditionOutput, splitConditionOutput,
+  getSheetVectorsOutput,
+  createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
+  proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
+  proposeConditionEditOutput, withdrawConditionEditOutput, listShapesOutput,
+  scopeDuplicatesOutput, scopeMergeOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -45,6 +50,7 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   export_takeoff: z.object(exportTakeoffOutput),
   delete_shape: z.object(deleteShapeOutput),
   read_sheet_text: z.object(readSheetTextOutput),
+  get_sheet_vectors: z.object(getSheetVectorsOutput),
   find_text: z.object(findTextOutput),
   edit_materials: z.object(editMaterialsOutput),
   edit_condition: z.object(editConditionOutput),
@@ -61,13 +67,26 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   delete_verdict: z.object(deleteVerdictOutput),
   duplicate_condition: z.object(duplicateConditionOutput),
   split_condition: z.object(splitConditionOutput),
+  create_rfi: z.object(createRfiOutput),
+  list_rfis: z.object(listRfisOutput),
+  resolve_rfi: z.object(resolveRfiOutput),
+  delete_rfi: z.object(deleteRfiOutput),
+  list_shapes: z.object(listShapesOutput),
+  propose_takeoff: z.object(proposeTakeoffOutput),
+  revise_proposal: z.object(reviseProposalOutput),
+  withdraw_proposal: z.object(withdrawProposalOutput),
+  propose_condition_edit: z.object(proposeConditionEditOutput),
+  withdraw_condition_edit: z.object(withdrawConditionEditOutput),
+  scope_duplicates: z.object(scopeDuplicatesOutput),
+  scope_merge: z.object(scopeMergeOutput),
 };
 
 async function pair() {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(new Session()).connect(st);
+  await buildServer(new Session(), { oneClick: true }).connect(st);
   const client = new Client({ name: "conformance", version: "0.0.0" });
   await client.connect(ct);
+  await client.listTools(); // prime the SDK JSON Schema output validators, as real clients do
   return client;
 }
 
@@ -198,6 +217,12 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   const empty = await callOk(client, "read_sheet_text", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10, y1: 10 } });
   assert.deepEqual({ items: empty.items, text: empty.text }, { items: [], text: "" });
 
+  // get_sheet_vectors (#367): the raw layer, whole — the demo plan's six segments in one page
+  const vec = await callOk(client, "get_sheet_vectors", { sheet: KEY });
+  assert.equal(vec.total, infoBefore.seg_count);
+  assert.deepEqual({ returned: vec.returned, offset: vec.offset, dropped: vec.dropped }, { returned: vec.total, offset: 0, dropped: 0 });
+  assert.equal(vec.points.length, vec.total * 4);
+
   // "101" substring-matches both the room label and the sheet number ("A-101")
   const found = await callOk(client, "find_text", { sheet: KEY, q: "101" });
   assert.equal(found.count, 2);
@@ -273,6 +298,53 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
 
   const del = await callOk(client, "delete_shape", { shape_id: clicked.shape_id });
   assert.deepEqual(del, { deleted: clicked.shape_id, shape_count: 2 });
+
+  // proposals (#365) over the wire: every verb's reply validates against its
+  // schema, the summary and the report carry the ledger beside the current
+  // values, and every new journal op survives undo_last's output enum
+  const prop = await callOk(client, "propose_takeoff", { label: "Level 1 rooms", rationale: "finish schedule row CPT-1" });
+  const batched = await callOk(client, "measure_polygon", { sheet: KEY, verts: [[800, 800], [1160, 800], [1160, 1160], [800, 1160]], condition: "CPT-1" });
+  const revised = await callOk(client, "revise_proposal", { proposal_id: prop.proposal_id, shapes: [
+    { sheet: KEY, condition: "CPT-1", role: "floor_area", verts: [[800, 800], [1520, 800], [1520, 1160], [800, 1160]], label: "OFFICE 101" },
+    { sheet: KEY, condition: "TH-1", role: "count", verts: [[810, 810]] },
+  ] });
+  assert.deepEqual([revised.replaced, revised.committed], [1, 2]);
+  assert.equal((await callOk(client, "list_shapes", {})).shapes.some((x: any) => x.id === batched.shape_id), false);
+  const withLedger = await callOk(client, "takeoff_summary");
+  assert.deepEqual(withLedger.proposals.map((r: any) => [r.label, r.pending, r.accepted, r.current]), [["Level 1 rooms", 2, 0, true]]);
+  const cedit = await callOk(client, "propose_condition_edit", { condition: "CPT-1", waste_pct: 10, rationale: "spec 09 68 13" });
+  assert.deepEqual(cedit.proposed, { waste_pct: 10 });
+  const reportPending = await callOk(client, "export_report");
+  assert.equal(reportPending.conditions.find((r: any) => r.finish_tag === "CPT-1").waste_pct, 0, "the report prints the current knob");
+  assert.deepEqual(reportPending.proposed_condition_edits.map((r: any) => [r.condition, r.proposed.waste_pct]), [["CPT-1", 10]], "with the diff beside it");
+  await callOk(client, "withdraw_condition_edit", { proposal_id: cedit.proposal_id });
+  const withdrawn = await callOk(client, "withdraw_proposal", { proposal_id: prop.proposal_id });
+  assert.deepEqual([withdrawn.withdrawn, withdrawn.accepted_kept], [2, 0]);
+  await callErr(client, "revise_proposal", { proposal_id: prop.proposal_id, shapes: [{ sheet: KEY, condition: "CPT-1", role: "floor_area", verts: [[0, 0], [10, 0], [10, 10]] }] });
+  const propUndo = await callOk(client, "undo_last", { n: 6 });
+  assert.deepEqual(propUndo.steps.map((x: any) => x.op), ["proposal_withdraw", "condition_proposal_withdraw", "condition_proposal", "proposal_revise", "commit", "proposal_open"], "every proposal op validates on the wire");
+  assert.equal((await callOk(client, "sheet_info", { sheet: KEY })).shape_count, 2, "the session is exactly as it was before the proposal");
+  assert.equal((await callOk(client, "takeoff_summary")).proposals, undefined);
+
+  // scope collision (#366) over the wire: the shipped takeoff on the bundled
+  // plan reads 0 shared floor; a deliberate collision is caught, merged with
+  // the winner stated, and the merge is one undo step
+  const clean = await callOk(client, "scope_duplicates", {});
+  assert.deepEqual([clean.collisions, clean.duplicates, clean.shared_floor_sf, clean.unmeasured], [[], [], 0, []], "the bundled sample plan's takeoff shares no floor");
+  assert.equal((await callOk(client, "takeoff_summary")).shared_floor_sf, 0);
+  const collide = await callOk(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [460, 100], [460, 460], [100, 460]], condition: "LVT-9" });
+  const dup = await callOk(client, "scope_duplicates", { sheet: KEY });
+  assert.equal(dup.collisions.length, 1);
+  assert.deepEqual([dup.collisions[0].a.condition, dup.collisions[0].b.condition, dup.collisions[0].fraction_of_smaller], ["VCT-1", "LVT-9", 1]);
+  assert.equal(dup.shared_floor_sf, dup.collisions[0].shared_sf);
+  assert.equal((await callOk(client, "takeoff_summary")).shared_floor_sf, dup.shared_floor_sf);
+  await callErr(client, "scope_merge", { shape_a: poly.shape_id, shape_b: collide.shape_id });   // neither reviewed, no winner stated
+  const merged = await callOk(client, "scope_merge", { shape_a: poly.shape_id, shape_b: collide.shape_id, winner: poly.shape_id });
+  assert.deepEqual([merged.action, merged.loser, merged.shape_count], ["deleted", collide.shape_id, 2]);
+  assert.equal((await callOk(client, "takeoff_summary")).shared_floor_sf, 0);
+  const mergeUndo = await callOk(client, "undo_last", { n: 2 });
+  assert.deepEqual(mergeUndo.steps.map((x: any) => x.op), ["delete", "commit"]);
+  assert.equal((await callOk(client, "sheet_info", { sheet: KEY })).shape_count, 2);
 
   const infoAfter = await callOk(client, "sheet_info", { sheet: KEY });
   assert.equal(infoAfter.scale_set, true);
@@ -381,6 +453,9 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "delete_shape", {});                                         // missing shape_id
   await callViolation(client, "read_sheet_text", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "export_takeoff", { path: 42 });                             // path not a string
+  await callViolation(client, "get_sheet_vectors", { sheet: KEY, limit: 0 });               // limit below min 1
+  await callViolation(client, "get_sheet_vectors", { sheet: KEY, cursor: -1 });             // cursor below 0
+  await callViolation(client, "get_sheet_vectors", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "view_sheet", { sheet: KEY, px: 50 });                       // px below the 200 floor
   await callViolation(client, "view_sheet", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "find_text", { sheet: KEY });                                // missing q
@@ -797,6 +872,38 @@ test("mark_verdict / delete_verdict / list_annotations verdicts: replies validat
   assert.equal(alive.verdict_count, 1, "the violations changed nothing");
 });
 
+// {{qty}} in a note (#474): the stored text keeps the field, list_annotations
+// reports what the sheet shows, and the number follows the next count. A note
+// whose field can't fill says which one, and the reply still round-trips.
+test("list_annotations: {{qty}} resolves to the linked condition's measured quantity and follows the count", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: PLAN });
+  await callOk(client, "set_scale", { sheet: KEY, use_detected: true });
+  // place_count's reply isn't in this file's schema table — call it raw, assert it landed
+  const count = async (points: number[][]) => {
+    const res: any = await client.callTool({ name: "place_count", arguments: { sheet: KEY, points, condition: "EM-1" } });
+    assert.equal(!!res.isError, false, res.content?.[0]?.text);
+  };
+  await count([[200, 200], [260, 200], [320, 200], [380, 200], [440, 200]]);
+  const live = await callOk(client, "annotate", { sheet: KEY, type: "text", at: [600, 600], text: "Provide x{{qty}} emergency lights", condition: "EM-1" });
+  const loose = await callOk(client, "annotate", { sheet: KEY, type: "text", at: [600, 700], text: "x{{qty}} spare" });
+  await callOk(client, "annotate", { sheet: KEY, type: "text", at: [600, 800], text: "plain note" });
+
+  let listed = await callOk(client, "list_annotations", {});
+  assert.deepEqual(z.object(listAnnotationsOutput).parse(listed), listed, "text_resolved / unresolved_fields are fully stated");
+  const byId = (id: string) => listed.annotations.find((a: any) => a.id === id);
+  assert.equal(byId(live.id).text, "Provide x{{qty}} emergency lights", "the stored text keeps the template");
+  assert.equal(byId(live.id).text_resolved, "Provide x5 EA emergency lights");
+  assert.equal(byId(live.id).unresolved_fields, undefined);
+  assert.equal(byId(loose.id).text_resolved, "x{{qty}} spare", "an unlinked note leaves the field literal");
+  assert.deepEqual(byId(loose.id).unresolved_fields, ["{{qty}}"]);
+  assert.equal(listed.annotations.find((a: any) => a.text === "plain note").text_resolved, undefined, "a note with no field adds nothing");
+
+  await count([[500, 200]]);
+  listed = await callOk(client, "list_annotations", {});
+  assert.equal(byId(live.id).text_resolved, "Provide x6 EA emergency lights", "the note follows the takeoff");
+});
+
 // 0.9.18 — assign-from-schedule's output contract. The deepEqual is the
 // load-bearing assertion: zod strips unknown keys, so a bare parse would pass
 // with an incomplete schema — equality proves the schema states EVERY field
@@ -809,4 +916,46 @@ test("detect_rooms assign mode: reply validates AND round-trips the schema unstr
   assert.deepEqual(z.object(detectRoomsOutput).parse(r), r, "schema states every returned field — nothing stripped");
   assert.ok(Array.isArray(r.unresolved), "assign mode always states the answer, empty array included");
   assert.equal(r.withheld.unresolved, r.unresolved.length, "the counter and the array agree");
+});
+
+// #364 — the RFI verbs' output contract, both directions. deepEqual is the
+// load-bearing half: zod strips unknown keys, so equality proves each schema
+// states EVERY field the tool returns.
+test("create_rfi / list_rfis / resolve_rfi / delete_rfi: replies validate and round-trip the schema unstripped; misuse is clean", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: PLAN });
+  const cloud = await callOk(client, "annotate", { sheet: KEY, type: "cloud", text: "conflict", rect: [[400, 900], [800, 1200]], condition: "CPT-1" });
+
+  const made = await callOk(client, "create_rfi", { title: "Room 102 finish conflict", question: "CPT-1 or VCT-1?", sheet: KEY, markup_ids: [cloud.id] });
+  assert.deepEqual(z.object(createRfiOutput).parse(made), made, "schema states every returned field");
+  assert.equal(made.number, "RFI-001");
+  const listed = await callOk(client, "list_rfis", {});
+  assert.deepEqual(z.object(listRfisOutput).parse(listed), listed);
+  assert.equal(listed.count, 1);
+  const done = await callOk(client, "resolve_rfi", { rfi_id: made.id, answer: "VCT-1 governs" });
+  assert.deepEqual(z.object(resolveRfiOutput).parse(done), done);
+  assert.equal(done.status, "answered");
+  const gone = await callOk(client, "delete_rfi", { rfi_id: made.id });
+  assert.deepEqual(z.object(deleteRfiOutput).parse(gone), gone);
+  const undo = await callOk(client, "undo_last", { n: 3 });
+  assert.deepEqual(undo.steps.map((s: any) => s.op), ["rfi_delete", "rfi_resolve", "rfi_create"], "every RFI op names itself through undoLastOutput's enum");
+
+  // semantic misuse is a clean isError surface
+  await callErr(client, "create_rfi", { title: "x", question: "q", sheet: KEY, markup_ids: ["mk-nope"] });   // unknown markup
+  await callErr(client, "create_rfi", { title: "x", question: "q", sheet: "Z-999" });                       // unknown sheet
+  await callErr(client, "create_rfi", { title: "  ", question: "q", sheet: KEY });                          // blank title
+  const live = await callOk(client, "create_rfi", { title: "y", question: "q", sheet: KEY });
+  await callOk(client, "resolve_rfi", { rfi_id: live.id, answer: "a" });
+  await callErr(client, "resolve_rfi", { rfi_id: live.id, answer: "b" });                                   // not open
+  await callErr(client, "resolve_rfi", { rfi_id: "rfi-nope", answer: "b" });                                // unknown id
+  await callOk(client, "delete_rfi", { rfi_id: live.id });
+  await callErr(client, "delete_rfi", { rfi_id: live.id });                                                 // already withdrawn
+
+  // schema violations are -32602, session unharmed
+  await callViolation(client, "create_rfi", { question: "q", sheet: KEY });                                 // missing title
+  await callViolation(client, "create_rfi", { title: "x", question: "q", sheet: KEY, markup_ids: "mk-1" }); // wrong type
+  await callViolation(client, "resolve_rfi", { rfi_id: live.id });                                          // missing answer
+  await callViolation(client, "delete_rfi", {});                                                            // missing id
+  const alive = await callOk(client, "list_rfis", {});
+  assert.deepEqual({ count: alive.count, withdrawn: alive.withdrawn }, { count: 0, withdrawn: ["RFI-001"] }, "the violations changed nothing");
 });

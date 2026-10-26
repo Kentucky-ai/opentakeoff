@@ -67,9 +67,8 @@ class HeuristicAdapter:
     def parse_schedule(self, image_b64: str, width: int, height: int) -> dict:
         # No model here on purpose. Reading a schedule off a SCANNED sheet needs
         # OCR or a vision-language model — that's exactly what you'd plug in via
-        # OPENTAKEOFF_ADAPTER. Ship empty so the client's scan path is wired end
-        # to end and degrades gracefully (the dialog just says "nothing found")
-        # until a real model returns rows. A real adapter would decode image_b64
+        # OPENTAKEOFF_ADAPTER. Ship empty so the route answers with no rows until
+        # a real model returns them. A real adapter would decode image_b64
         # (a PNG crop, `width`×`height`), run OCR/VLM, and return ScheduleRow-
         # shaped dicts — see the response contract in adapters/base.py.
         return {

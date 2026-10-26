@@ -1,0 +1,129 @@
+{
+  "name": "mep-p2-register-box",
+  "page": 2,
+  "rect": {
+    "x0": 100,
+    "y0": 575,
+    "x1": 1200,
+    "y1": 860
+  },
+  "readScheduleSpans": {
+    "rows": [
+      {
+        "finish_tag": "CPT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "CARPET TILE — 24 x 24 MODULAR",
+        "manufacturer": "EXAMPLECO",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-1",
+        "section": "",
+        "category": "base",
+        "category_source": "text",
+        "description": "RESILIENT BASE — 4 IN COVE",
+        "manufacturer": "EXAMPLECO",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      }
+    ]
+  },
+  "finishRows": {
+    "otherFamily": false,
+    "rows": [
+      {
+        "key": "CPT-1",
+        "sheet": "crop",
+        "cells": {
+          "MARK": {
+            "text": "CPT-1",
+            "bbox": [
+              120,
+              798,
+              172,
+              816
+            ]
+          },
+          "MATERIAL": {
+            "text": "CARPET TILE",
+            "bbox": [
+              240,
+              798,
+              356,
+              816
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "EXAMPLECO",
+            "bbox": [
+              520,
+              798,
+              632,
+              816
+            ]
+          },
+          "DESCRIPTION": {
+            "text": "24 x 24 MODULAR",
+            "bbox": [
+              800,
+              798,
+              954,
+              816
+            ]
+          }
+        }
+      },
+      {
+        "key": "RB-1",
+        "sheet": "crop",
+        "cells": {
+          "MARK": {
+            "text": "RB-1",
+            "bbox": [
+              120,
+              830,
+              161,
+              848
+            ]
+          },
+          "MATERIAL": {
+            "text": "RESILIENT BASE",
+            "bbox": [
+              240,
+              830,
+              386.1,
+              848
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "EXAMPLECO",
+            "bbox": [
+              520,
+              830,
+              632,
+              848
+            ]
+          },
+          "DESCRIPTION": {
+            "text": "4 IN COVE",
+            "bbox": [
+              800,
+              830,
+              889,
+              848
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

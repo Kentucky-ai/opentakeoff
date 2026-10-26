@@ -1,0 +1,75 @@
+{
+  "browser": "153.0.8010.12",
+  "plan": "bundled sample-finish-plan.pdf",
+  "layout": "Classic",
+  "workers": 5,
+  "snapshots": [
+    {
+      "flips": 0,
+      "fonts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "canvases": [
+        {
+          "width": 6048,
+          "height": 4320,
+          "sha256": "9d3f845f35d635d88ba6e275b5266fc208df2b1055444e63bede75411f7a8258"
+        },
+        {
+          "width": 300,
+          "height": 150,
+          "sha256": "ec5a689d3fdf19351fc26dadaae55e6968fe42c9d18d760dd35f74981bd20115"
+        }
+      ]
+    },
+    {
+      "flips": 10,
+      "fonts": [
+        55,
+        55,
+        55,
+        55,
+        55
+      ],
+      "canvases": [
+        {
+          "width": 6048,
+          "height": 4320,
+          "sha256": "9d3f845f35d635d88ba6e275b5266fc208df2b1055444e63bede75411f7a8258"
+        },
+        {
+          "width": 300,
+          "height": 150,
+          "sha256": "ec5a689d3fdf19351fc26dadaae55e6968fe42c9d18d760dd35f74981bd20115"
+        }
+      ]
+    },
+    {
+      "flips": 30,
+      "fonts": [
+        155,
+        155,
+        155,
+        155,
+        155
+      ],
+      "canvases": [
+        {
+          "width": 6048,
+          "height": 4320,
+          "sha256": "9d3f845f35d635d88ba6e275b5266fc208df2b1055444e63bede75411f7a8258"
+        },
+        {
+          "width": 300,
+          "height": 150,
+          "sha256": "ec5a689d3fdf19351fc26dadaae55e6968fe42c9d18d760dd35f74981bd20115"
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

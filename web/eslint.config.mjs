@@ -13,23 +13,6 @@ export default [
     files: ["src/**/*.{js,jsx}"],
     ...js.configs.recommended,
   },
-  // Netlify functions (Node runtime) — lint them too, above all for no-undef:
-  // these .mjs files get NO tsc/vite checking and their handler isn't unit-tested
-  // (tests import only the pure helpers), so a stray reference reaches production
-  // as a runtime ReferenceError → 502. Exactly what shipped when ALLOWED_HD was
-  // renamed to ALLOWED_HDS but one handler call site kept the old name.
-  {
-    files: ["netlify/functions/**/*.mjs"],
-    ...js.configs.recommended,
-    languageOptions: {
-      ecmaVersion: 2024,
-      sourceType: "module",
-      globals: { ...globals.node, fetch: "readonly" },
-    },
-    rules: {
-      "no-unused-vars": ["error", { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^_", ignoreRestSiblings: true }],
-    },
-  },
   {
     files: ["src/**/*.{js,jsx}"],
     languageOptions: {

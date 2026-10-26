@@ -1,0 +1,317 @@
+{
+ "reference_id": "roseburg-a03a-estimator-trace-v2",
+ "profile": "estimator-trace",
+ "source": {
+  "path": "evals/mcp-workflow-bench/plan-set/roseburg/va-roseburg-a03a.pdf",
+  "sha256": "ff80f35af4702e874d823d5da04f1de141af710559173083b6a9b10e4e73135f",
+  "page": 1,
+  "pdf_points": {
+   "width": 3024,
+   "height": 2160
+  },
+  "render_scale": 2,
+  "page_rotation_note": "displayed landscape; source page rotation 270",
+  "kind": "real VA solicitation floor plan; reference traced from PDF vector linework by an agent; not yet human-reviewed"
+ },
+ "scale": {
+  "feet_per_image_px": 0.015151515151515152,
+  "description": "Sheet is NOT TO SCALE and its room boxes do not agree with the printed net SF (as drawn, D105A is larger than D105; the printed NSF say the opposite). Nominal scale = a 3 ft 0 in door leaf over the 198 px door openings drawn on this sheet. SF values under this scale are geometry checks only, not building areas; see notes.",
+  "basis": "door-width assumption, 3 ft / 198 px",
+  "printed_nsf_consistent_with_drawing": false
+ },
+ "wall_semantics": "interior-face",
+ "rooms": [
+  {
+   "label": "D105B STORAGE",
+   "finish": "VSF",
+   "verts_px": [
+    [
+     2872.8,
+     1850.8
+    ],
+    [
+     3183.2,
+     1850.8
+    ],
+    [
+     3183.2,
+     1913.8
+    ],
+    [
+     3250.8,
+     1913.8
+    ],
+    [
+     3250.8,
+     1927.3
+    ],
+    [
+     3264.3,
+     1927.3
+    ],
+    [
+     3264.3,
+     2116.3
+    ],
+    [
+     3250.8,
+     2116.3
+    ],
+    [
+     3250.8,
+     2314.3
+    ],
+    [
+     2872.8,
+     2314.3
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A-05 finish schedule, row D105B, FLOOR FINISH column = VSF (note 1: vinyl sheet flooring)",
+   "vertex_sources": [
+    "NW: isect V x=2872.8 (y1850.8-2314.3, exterior wall interior face) x H y=1850.8 (x2872.8-3183.2, north wall interior face)",
+    "pilaster west face: H y=1850.8 meets V x=3183.2 (y1850.8-1913.8) -- structural column pilaster projecting into room, rule 5",
+    "pilaster south face: V x=3183.2 meets H y=1913.8 (x3183.2-3250.8)",
+    "pilaster SE / east-wall corner: H y=1913.8 meets V x=3250.8 (y1913.8-1927.3), which is the D105B-side face of the D105B/D105A partition (companion face x=3277.8 is the D105A side)",
+    "door north jamb on face: V x=3250.8 down to y=1927.3 (door gap in x=3277.8/x=3250.8 wall pair runs y1927.3-2116.3, width 188.5px)",
+    "door notch turn-in: centerline x=(3250.8+3277.8)/2=3264.3, rule 3",
+    "door notch far jamb on centerline: down to y=2116.3",
+    "door notch back to face: x=3250.8, y=2116.3 (south jamb, where V x=3250.8 y2116.3-2314.3 resumes)",
+    "SE corner: V x=3250.8 meets H y=2314.3 (x2872.8-3250.8, south wall interior face, solid -- no door to NO WORK room)",
+    "SW corner: H y=2314.3 meets V x=2872.8 (west/exterior wall)"
+   ],
+   "notes": "NE corner pilaster is a structural steel column (I-beam plan symbol at x~3183-3265,y~1844-1936, confirmed by direct crop) embedded in/projecting from the exterior wall corner; it intrudes into D105B only, not into D105A (D105A's face at x=3277.8 stays flat through this zone). One door, to D105A, on the east wall; south wall (to NO WORK, not traced) and west/north (exterior) are solid. Printed NSF on the sheet is a space-inventory figure, not the drawn area; do not reconcile the ring to it.",
+   "printed_nsf_on_sheet": 58.6
+  },
+  {
+   "label": "D105A OFFICE",
+   "finish": "VSF",
+   "verts_px": [
+    [
+     3277.8,
+     1841.8
+    ],
+    [
+     3277.8,
+     1927.3
+    ],
+    [
+     3264.3,
+     1927.3
+    ],
+    [
+     3264.3,
+     2116.3
+    ],
+    [
+     3277.8,
+     2116.3
+    ],
+    [
+     3277.8,
+     2359.3
+    ],
+    [
+     4092.4,
+     2359.3
+    ],
+    [
+     4092.4,
+     2370.55
+    ],
+    [
+     4290.4,
+     2370.55
+    ],
+    [
+     4290.4,
+     2359.3
+    ],
+    [
+     4303.8,
+     2359.3
+    ],
+    [
+     4303.8,
+     2118.6
+    ],
+    [
+     4126.1,
+     2118.6
+    ],
+    [
+     4126.1,
+     1841.8
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A-05 finish schedule, row D105A, FLOOR FINISH column = VSF",
+   "vertex_sources": [
+    "NW: isect V x=3277.8 (y1841.8-1927.3, west wall interior face, D105A side of D105B/D105A partition) x H y=1841.8 (x3277.8-4126.1, north/exterior wall interior face)",
+    "door (to D105B) north jamb: down face to y=1927.3",
+    "notch to centerline x=3264.3",
+    "notch across to y=2116.3",
+    "back to face x=3277.8, y=2116.3",
+    "SW corner: V x=3277.8 continues to y=2359.3, meets H y=2359.3 (x3277.8-3970.8 continuing to 4092.4, south wall interior face, D105A side of the D105A/D105 wall)",
+    "door (to D105) west jamb: east along face to x=4092.4 (gap in y=2359.3/2381.8 wall pair runs x4092.4-4290.4, width 198.0px)",
+    "notch to centerline y=(2359.3+2381.8)/2=2370.55",
+    "notch across to x=4290.4",
+    "back to face y=2359.3",
+    "up pier inner face: V x=4290.4 (y2118.6-2359.3, D105A-facing face of the dogleg pier between D105A and 113.6-OFFICE) to y=2118.6",
+    "west along jog: H y=2118.6 (x4126.1-4303.8, D105A takes the x4126.1-4290.4 portion) to x=4126.1",
+    "up divider face: V x=4126.1 (y1841.8-2118.6, D105A/113.6-OFFICE partition, D105A side) back to y=1841.8, closing at NW"
+   ],
+   "notes": "East boundary steps around a dogleg pier shared with the small 113.6 NSF office to the east (not a target room; not traced) -- rule 5 stepped/offset faces. Confirmed by direct zoom crop (roseburg/pier-zoom2.png, roseburg/pier-check.png) that the pier's inner (D105A-facing) corner is a single continuous line at x=4126.1 -> y=2118.6 -> x=4290.4, both endpoints literally shared with the horizontal jog segment. Two doors: west to D105B, south to D105 (each notched per rule 3). North and NE walls are exterior; no further openings found there besides the D105/113.6-office door pair (which belongs to D105 and the 113.6 office, not to D105A). Printed NSF on the sheet is a space-inventory figure, not the drawn area; do not reconcile the ring to it. v2: east stub face 4290.4 -> 4303.8 (jamb corner at 4290.4,2359.3 kept; face runs 4290.4->4303.8 at y 2359.3 then north). The 4280.6/4290.4 pair is the drawn door leaf standing open (rule 1: a leaf never defines the boundary); the hatch runs to 4303.8, the wall face. Found by zoom after the first blind candidate run; changed on the rule, not to match the candidate.",
+   "printed_nsf_on_sheet": 165.2
+  },
+  {
+   "label": "D104 OFFICE",
+   "finish": "VSF",
+   "verts_px": [
+    [
+     3228.2,
+     2379.6
+    ],
+    [
+     3876.4,
+     2379.6
+    ],
+    [
+     3876.4,
+     2927.5
+    ],
+    [
+     3862.8,
+     2927.5
+    ],
+    [
+     3862.8,
+     2937.65
+    ],
+    [
+     3664.8,
+     2937.65
+    ],
+    [
+     3664.8,
+     2927.5
+    ],
+    [
+     3228.2,
+     2927.5
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A-05 finish schedule, row D104, FLOOR FINISH column = VSF",
+   "vertex_sources": [
+    "NW: isect V x=3228.2 (y2379.6-2927.5, west wall interior face, shared with NO WORK room -- drawn at heavier 1.68pt lineweight for y2379.6-2591.0 then 0.12pt for y2591.0-2927.5, but it is one continuous, ungapped face; no door to NO WORK) x H y=2379.6 (x3120.2-3876.4, north wall interior face, D104 side of the D105A/D104 wall)",
+    "NE corner: east along north face to x=3876.4, meets V x=3876.4 (y2379.6-2927.5, D104-facing face of the D104/D105 divider) -- continuous, no door to D105",
+    "SE corner: down divider face to y=2927.5, meets H y=2927.5 (south wall interior face, shared with corridor E124)",
+    "door (to E124) east jamb: west along face to x=3862.8 (gap in y=2927.5/2937.6 wall pair runs x3664.8-3862.8, width 198.0px, keyed note 3 callout)",
+    "notch to centerline y=(2927.5+2947.8)/2=2937.65",
+    "notch across to x=3664.8",
+    "back to face y=2927.5",
+    "SW corner: west along face to x=3228.2, closing at NW"
+   ],
+   "notes": "Only one door (south, to corridor E124). Small (~9px) breaks in the south-wall H segments between the jamb ticks are wall-corner drafting artifacts, not additional doors or notches -- confirmed no gap wider than the two real door openings in this run. Printed NSF on the sheet is a space-inventory figure, not the drawn area; do not reconcile the ring to it.",
+   "printed_nsf_on_sheet": 129.6
+  },
+  {
+   "label": "D105 OFFICE",
+   "finish": "VSF",
+   "verts_px": [
+    [
+     3903.4,
+     2381.8
+    ],
+    [
+     4092.4,
+     2381.8
+    ],
+    [
+     4092.4,
+     2370.55
+    ],
+    [
+     4290.4,
+     2370.55
+    ],
+    [
+     4290.4,
+     2381.8
+    ],
+    [
+     4344.4,
+     2381.8
+    ],
+    [
+     4344.4,
+     2371.75
+    ],
+    [
+     4542.4,
+     2371.75
+    ],
+    [
+     4542.4,
+     2381.8
+    ],
+    [
+     4615.4,
+     2381.8
+    ],
+    [
+     4615.4,
+     2927.5
+    ],
+    [
+     4452.4,
+     2927.5
+    ],
+    [
+     4452.4,
+     2937.65
+    ],
+    [
+     4254.4,
+     2937.65
+    ],
+    [
+     4254.4,
+     2927.5
+    ],
+    [
+     3903.4,
+     2927.5
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A-05 finish schedule, row D105, FLOOR FINISH column = VSF",
+   "vertex_sources": [
+    "NW: isect V x=3903.4 (y2381.8-2927.5, D105-facing face of the D104/D105 divider) x H y=2381.8 (D105-facing face of the D105A/113.6-office over D105 wall)",
+    "door (to D105A) west jamb: east along face to x=4092.4",
+    "notch to centerline y=2370.55, across to x=4290.4, back to face -- same door/centerline as D105A's south-wall notch (shared wall)",
+    "mullion: east along face (H y=2381.8 x4290.4-4344.4, len 54.0) to x=4344.4",
+    "door (to 113.6-OFFICE) west jamb; notch to centerline y=(2381.8+2361.6)/2=2371.75 (far face y=2361.6 is the 113.6-office side, per V x=4344.4/4542.4 y2361.6-2381.8 jamb ticks), across to x=4542.4, back to face",
+    "east along face (H y=2381.8 x4542.4-4615.3) to NE corner x=4615.4, meeting the building exterior wall (V x=4615.4, continuous y153.7-3716.8)",
+    "SE corner: down exterior face to y=2927.5 (south wall interior face); a short jamb tick at x=4609.8 falls 5.6px short of x=4615.4 at this corner -- used the long exterior-wall line (4615.4) as the more literal citation; see notes.md open question",
+    "door (to E124) east jamb: west along face to x=4452.4 (gap x4254.4-4452.4, width 198.0px, keyed note 3 callout)",
+    "notch to centerline y=2937.65, across to x=4254.4, back to face",
+    "SW corner: west along face to x=3903.4, closing at NW"
+   ],
+   "notes": "Largest, reference room for scale derivation. Three doors: two side-by-side in the north wall (to D105A and to the small 113.6 NSF office, mirror-image swing arcs sharing a ~54px mullion, confirmed by direct zoom crop roseburg/office113-full.png and roseburg/pier-zoom.png) and one south to corridor E124. The two north doors' swing arcs are drawn resting flush against the adjacent pier walls when open, which is what made the hinge geometry legible. Printed NSF on the sheet is a space-inventory figure, not the drawn area; do not reconcile the ring to it.",
+   "printed_nsf_on_sheet": 231.6
+  }
+ ],
+ "tolerances": {
+  "area_percent": 0.75,
+  "overlap_iou": 0.985,
+  "boundary_max_px": 2.5
+ },
+ "review": {
+  "prepared_by": "agent (Claude Sonnet) from PDF vectors via PyMuPDF",
+  "human_reviewed": false,
+  "reviewer": null,
+  "revision_note": "v2 (2026-09-12): corrected from the PDF linework after zoom inspection of a blind candidate run exposed defects in v1 (see plan-set/BLIND-RUNS-2026-09-12.md); v1 kept as reference-v1.json. Still agent-prepared, not human-reviewed."
+ }
+}

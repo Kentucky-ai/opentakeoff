@@ -1,0 +1,492 @@
+{
+  "name": "mq-sg613-cpt-above-cpt1",
+  "kind": "marquee",
+  "note": "sheetgraphFinish.test.ts:613 — group label above dashless codes",
+  "spans": [
+    {
+      "str": "TAG",
+      "x": 100,
+      "y": 0,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "STYLE",
+      "x": 760,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "SIZE",
+      "x": 1240,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "REMARKS",
+      "x": 1400,
+      "y": 0,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "CPT",
+      "x": 100,
+      "y": 38,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "CPT1",
+      "x": 100,
+      "y": 76,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "BROADLOOM CARPET",
+      "x": 220,
+      "y": 76,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CPT2",
+      "x": 100,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "CARPET TILE",
+      "x": 220,
+      "y": 114,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "RB-1",
+      "x": 100,
+      "y": 152,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "RUBBER WALL BASE",
+      "x": 220,
+      "y": 152,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-B",
+      "x": 520,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "COVE",
+      "x": 760,
+      "y": 152,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "BLACK 505",
+      "x": 1000,
+      "y": 152,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "4\"",
+      "x": 1240,
+      "y": 152,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "RB-2",
+      "x": 100,
+      "y": 190,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "RESILIENT BASE",
+      "x": 220,
+      "y": 190,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-B",
+      "x": 520,
+      "y": 190,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "STRAIGHT",
+      "x": 760,
+      "y": 190,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 506",
+      "x": 1000,
+      "y": 190,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "6\"",
+      "x": 1240,
+      "y": 190,
+      "w": 16,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [
+        {
+          "finish_tag": "CPT1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "BROADLOOM CARPET",
+          "manufacturer": "VENDOR-A",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "CPT2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "CARPET TILE",
+          "manufacturer": "VENDOR-A",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-1",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RUBBER WALL BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "COVE",
+          "spec_color": "BLACK 505",
+          "size": "4\"",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-2",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RESILIENT BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "STRAIGHT",
+          "spec_color": "GREY 506",
+          "size": "6\"",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    },
+    "parseSchedule": [
+      {
+        "finish_tag": "CPT1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "BROADLOOM CARPET",
+        "manufacturer": "VENDOR-A",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CPT2",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "CARPET TILE",
+        "manufacturer": "VENDOR-A",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-1",
+        "section": "",
+        "category": "base",
+        "category_source": "text",
+        "description": "RUBBER WALL BASE",
+        "manufacturer": "VENDOR-B",
+        "style": "COVE",
+        "spec_color": "BLACK 505",
+        "size": "4\"",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-2",
+        "section": "",
+        "category": "base",
+        "category_source": "text",
+        "description": "RESILIENT BASE",
+        "manufacturer": "VENDOR-B",
+        "style": "STRAIGHT",
+        "spec_color": "GREY 506",
+        "size": "6\"",
+        "remarks": "",
+        "suggested": true
+      }
+    ],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "CPT1",
+          "sheet": "fx",
+          "cells": {
+            "TAG": {
+              "text": "CPT1",
+              "bbox": [
+                100,
+                76,
+                132,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "BROADLOOM CARPET",
+              "bbox": [
+                220,
+                76,
+                348,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "CPT2",
+          "sheet": "fx",
+          "cells": {
+            "TAG": {
+              "text": "CPT2",
+              "bbox": [
+                100,
+                114,
+                132,
+                131
+              ]
+            },
+            "MATERIAL": {
+              "text": "CARPET TILE",
+              "bbox": [
+                220,
+                114,
+                308,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-1",
+          "sheet": "fx",
+          "cells": {
+            "TAG": {
+              "text": "RB-1",
+              "bbox": [
+                100,
+                152,
+                132,
+                169
+              ]
+            },
+            "MATERIAL": {
+              "text": "RUBBER WALL BASE",
+              "bbox": [
+                220,
+                152,
+                348,
+                169
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                152,
+                584,
+                169
+              ]
+            },
+            "STYLE": {
+              "text": "COVE",
+              "bbox": [
+                760,
+                152,
+                792,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "BLACK 505",
+              "bbox": [
+                1000,
+                152,
+                1072,
+                169
+              ]
+            },
+            "SIZE": {
+              "text": "4\"",
+              "bbox": [
+                1240,
+                152,
+                1256,
+                169
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-2",
+          "sheet": "fx",
+          "cells": {
+            "TAG": {
+              "text": "RB-2",
+              "bbox": [
+                100,
+                190,
+                132,
+                207
+              ]
+            },
+            "MATERIAL": {
+              "text": "RESILIENT BASE",
+              "bbox": [
+                220,
+                190,
+                332,
+                207
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                190,
+                584,
+                207
+              ]
+            },
+            "STYLE": {
+              "text": "STRAIGHT",
+              "bbox": [
+                760,
+                190,
+                824,
+                207
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 506",
+              "bbox": [
+                1000,
+                190,
+                1064,
+                207
+              ]
+            },
+            "SIZE": {
+              "text": "6\"",
+              "bbox": [
+                1240,
+                190,
+                1256,
+                207
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

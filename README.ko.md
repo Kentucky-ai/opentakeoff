@@ -2,13 +2,17 @@
 
 # OpenTakeoff
 
+> 이 번역의 일부 기능 설명은 영어판보다 오래되었을 수 있습니다. 현재 사용 가능 여부는 [영어 README](README.md)와 [공통 Wiki](docs/wiki/README.md)를 확인하세요.
+
+> **One-Click Area is temporarily gated.** The flood engine is being re-validated against a wider plan corpus. Until that finishes the One-Click tool is off the canvas rail (`O` reports the gate) and the `one_click` / `detect_rooms` MCP verbs are **not registered** (a default build ships <!--tool-count-->58<!--/tool-count--> tools). Trace rooms with **Area** (`A`) in the canvas and `measure_polygon` over MCP; every other tool, sweep and derivation is unchanged. A build lifts the gate with `VITE_ONE_CLICK=1` (canvas) / `OPENTAKEOFF_ONE_CLICK=1` (server). Sections and videos below that show One-Click describe the engine as it returns — see [`docs/design/ONE_CLICK_GATE.md`](docs/design/ONE_CLICK_GATE.md).
+
 **사람과 AI 에이전트 모두를 위해 만들어진 최초의 물량 산출 캔버스.**
 
 건축 도면을 열어 측정하세요 — 직접 실을 트레이스하거나, **동일한 엔진**에 AI 에이전트를 붙이거나.
 모든 측정값이 그 **축척**과 **어떻게 측정되었는지**를 함께 지닙니다. 무료, 오픈소스,
 브라우저에서 실행 — 계정 없음, 업로드 없음, 설치 없음.
 
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#기술-스택)
 
@@ -110,7 +114,7 @@ MCP 클라이언트가 구동할 수 있는 stdio 서버로, 명령 하나면 �
 OpenTakeoff는 자기 부서가 쓰는 AI를 직접 만드는 현직 상업 바닥 마감 적산 담당자가 운영하는
 응용 연구 프로그램([Kentucky AI](https://kentucky-ai.com))의 "열린 절반"입니다. 그 경계는
 의도적이며, 좋은 오픈코어 과학 소프트웨어가 긋는 것과 같은 선입니다 —
-**측정 엔진(렌더링, 축척, 지오메트리, 내보내기, MCP 서버)은 Apache-2.0으로 계속 열려 있고,
+**측정 엔진(렌더링, 축척, 지오메트리, 내보내기, MCP 서버)은 AGPL-3.0으로 계속 열려 있고,
 자사 적산 아카이브로 학습시킨 AI 모델은 독점입니다.** 좌석 라이선스 없는 진짜 도구를 얻고,
 우리는 우리 데이터로만 만들 수 있는 부분을 지킵니다.
 
@@ -119,7 +123,7 @@ OpenTakeoff는 자기 부서가 쓰는 AI를 직접 만드는 현직 상업 바�
 
 ## 위에 얹어 만들기
 
-OpenTakeoff는 **Apache-2.0**입니다. 포크하고, 고치고, 출시하세요 — 당신 팀을 위해서든,
+OpenTakeoff는 **AGPL-3.0**입니다. 포크하고, 고치고, 출시하세요 — 당신 팀을 위해서든,
 당신 제품의 토대로든. 코드베이스는 의도적으로 작고 읽기 쉽게 유지됩니다:
 
 - **지오메트리와 측정** — [`web/src/lib/oneclick.ts`](web/src/lib/oneclick.ts), [`web/src/lib/sheets.ts`](web/src/lib/sheets.ts) (타입 지정 + 테스트 완료)
@@ -155,7 +159,9 @@ OpenTakeoff는 미리보기가 아니라 **실제로 쓰이는 도구**입니다
 
 ## 라이선스
 
-[Apache License 2.0](LICENSE) — 쓰고, 포크하고, 출시하고, 그 위에 만드세요.
+[GNU Affero General Public License v3.0](LICENSE)(AGPL-3.0-only) — 쓰고, 포크하고, 출시하고, 그 위에 만드세요.
+수정한 버전을 다른 사람에게 제공한다면(호스팅 포함) 같은 라이선스로 변경 사항을 공개하세요.
+커밋 `84c7f48e`(태그 `apache-2.0-final`)까지는 Apache-2.0이었고, 그 코드는 계속 Apache-2.0입니다.
 저작자 표시는 [NOTICE](NOTICE)를 참고하세요.
 
 ---

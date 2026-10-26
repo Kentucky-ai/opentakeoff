@@ -14,6 +14,8 @@
 // entangling per-project cloud state with browser-wide libraries.
 
 import { localStore, ANN_SCHEMA, emptyAnnotations } from "./store.js";
+import { isPdfHash, startPdfHash } from "./ocr/pdfHash.ts";
+import { createByteCache } from "./pdfBytes.ts";
 
 const PDF_MIME = "application/pdf";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -26,9 +28,11 @@ const SIDECAR_NAME = ".opentakeoff";
 /**
  * @param {string} folderId               the project's Drive folder
  * @param {ReturnType<import('./google/drive.js').createDrive>} drive
- * @param {{ local?: typeof localStore }} [opts]  inject localStore for tests
+ * @param {{ local?: typeof localStore, maxPdfBytes?: number }} [opts]  inject
+ *   localStore for tests; `maxPdfBytes`: how many bytes of downloaded PDFs to
+ *   keep for the session (0, the default: none)
  */
-export function createCloudStore(folderId, drive, { local = localStore } = {}) {
+export function createCloudStore(folderId, drive, { local = localStore, maxPdfBytes = 0 } = {}) {
   // ── sidecar folder resolution ────────────────────────────────────────────
   // annotations.json / sheets.json live inside <project>/.opentakeoff/. Two
   // resolvers, split by intent so a read-only viewer never litters empty
@@ -217,6 +221,62 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
     return run;
   }
 
+  // ── PDF content hashes (the OCR page cache's identity, #471) ────────────
+  // Per session, by name: name -> Promise<hash | null>. The canvas's
+  // document cache hands over the digest of the bytes it just downloaded
+  // (beginPdfHash), so pdfHash needs no download of its own; asked before
+  // that, pdfHash downloads the file. Only a real hash stays memoized.
+  // addPdf/removePdf forget the name and bump its generation: a hash that
+  // settles after a forget (of bytes read before a re-add) is neither kept
+  // nor returned. Re-adding or removing a file drops its copy together with
+  // its hash.
+  const hashMemo = new Map();
+  const hashGen = new Map();
+  const genOf = (name) => hashGen.get(name) ?? 0;
+  function forgetHash(name) {
+    hashGen.set(name, genOf(name) + 1);
+    hashMemo.delete(name);
+    pdfBytes.forget(name);
+  }
+  // `gen`: the generation the hashed bytes were read under (by default,
+  // now). A hash begun under an older one is of bytes that may be gone: it
+  // isn't memoized.
+  function memoHash(name, pending, gen = genOf(name)) {
+    const p = Promise.resolve(pending).then((h) => (isPdfHash(h) ? h : null));
+    if (gen !== genOf(name)) return p.then(() => null);
+    hashMemo.set(name, p);
+    const drop = () => { if (hashMemo.get(name) === p) hashMemo.delete(name); };
+    p.then((h) => { if (h == null || genOf(name) !== gen) drop(); }, drop);
+    return p;
+  }
+  async function hashOf(name) {
+    if (!globalThis.crypto?.subtle) return null;
+    for (;;) {
+      const gen = genOf(name);
+      const known = await hashMemo.get(name)?.catch(() => null);
+      if (known && genOf(name) === gen) return known;
+      if (genOf(name) !== gen) continue;
+      const h = await memoHash(name, loadBytes(name).then(startPdfHash));
+      if (genOf(name) === gen) return h;
+    }
+  }
+
+  // A document the canvas let go opens again from here, not a second
+  // download; Drive itself has no cache.
+  const pdfBytes = createByteCache({ load: downloadBytes, maxBytes: maxPdfBytes });
+  const loadBytes = (name) => pdfBytes.get(name);
+  async function downloadBytes(name) {
+    // Resolve by id from the manifest: picked files may live in SUBFOLDERS, so
+    // a findChild-by-name in the project folder wouldn't find them.
+    await ensureManifest();
+    const entry = manifestFiles.find((f) => f.name === name);
+    if (!entry) throw new Error(`PDF not in project sheet set: ${name}`);
+    const bytes = await drive.getFileBytes(entry.id);
+    // a fresh view; pdfBytes hands each caller its own copy of it (pdf.js
+    // getDocument({data}) may detach what it's given)
+    return new Uint8Array(bytes);
+  }
+
   return {
     async listSheets() {
       // Metadata/JSON only — deliberately NO getFileBytes on any PDF. Read the
@@ -226,15 +286,42 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
       return manifestFiles.map((f) => ({ name: f.name }));
     },
 
-    async loadPdfData(name) {
-      // Resolve by id from the manifest: picked files may live in SUBFOLDERS, so
-      // a findChild-by-name in the project folder wouldn't find them.
-      await ensureManifest();
-      const entry = manifestFiles.find((f) => f.name === name);
-      if (!entry) throw new Error(`PDF not in project sheet set: ${name}`);
-      const bytes = await drive.getFileBytes(entry.id);
-      // hand pdf.js a fresh view each call — getDocument({data}) may detach it
-      return new Uint8Array(bytes);
+    loadPdfData(name) {
+      return loadBytes(name);
+    },
+
+    /** sha256 hex of a sheet's bytes, or null when it can't be hashed (no
+     * crypto.subtle outside a secure context: then nothing downloads). */
+    pdfHash(name) {
+      return hashOf(name);
+    },
+
+    /** The hash only if this session already has it (the document cache's,
+     * or an earlier pdfHash): never a download. null otherwise. For
+     * background lookups that must not fetch a file. */
+    async pdfHashIfKnown(name) {
+      const gen = genOf(name);
+      const h = await (hashMemo.get(name)?.catch(() => null) ?? null);
+      return h && genOf(name) === gen ? h : null;
+    },
+
+    /** Remember a hash promise begun on bytes already in hand. */
+    rememberPdfHash(name, hashPromise) {
+      memoHash(name, hashPromise).catch(() => {});
+    },
+
+    /** The document cache's hook, safe against a forget while the bytes
+     * load: call when the load starts; the returned remember(hashPromise) is
+     * dropped if forgetPdfHash, addPdf or removePdf ran in between (the bytes
+     * hashed may be the old ones). */
+    beginPdfHash(name) {
+      const gen = genOf(name);
+      return (hashPromise) => { memoHash(name, hashPromise, gen).catch(() => {}); };
+    },
+
+    /** Drop a name's memoized hash (evictDoc: its bytes may change). */
+    forgetPdfHash(name) {
+      forgetHash(name);
     },
 
     /**
@@ -280,6 +367,9 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
       // Remove from the working set only — do NOT delete the Drive file, which
       // may be a shared spec book owned by someone else. No-op (no write) when
       // the name isn't in the set.
+      // Cached OCR reads stay: the file is still in Drive (and in the local
+      // meta store, keyed by content hash, not by this project).
+      forgetHash(name);
       await ensureManifest();
       if (!manifestFiles.some((f) => f.name === name)) return;
       await mutateManifest((cur) => cur.filter((f) => f.name !== name));
@@ -291,6 +381,7 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
       // needs the id, so resolve it from the manifest entry first. No-op when the
       // name isn't in the set (e.g. a sheet that never came from this manifest) —
       // there's no id to delete, and we must not guess one.
+      forgetHash(name);
       await ensureManifest();
       const entry = manifestFiles.find((f) => f.name === name);
       if (!entry) return;
@@ -301,6 +392,8 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
     },
 
     async addPdf(file) {
+      // re-adding a name may replace its bytes
+      forgetHash(file.name);
       const bytes = new Uint8Array(await file.arrayBuffer());
       // de-dupe by name: a re-dropped file replaces the existing bytes
       const existing = await drive.findChild(folderId, file.name);
@@ -312,6 +405,8 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
         const created = await drive.uploadFile({ name: file.name, parentId: folderId, mimeType: PDF_MIME, bytes });
         fileId = created.id;
       }
+      // and again: a hash begun during the upload read the old bytes
+      forgetHash(file.name);
       // a dropped PDF joins the working set (dedupe by id/name in addSheets)
       await this.addSheets([{ id: fileId, name: file.name }]);
       return { name: file.name };

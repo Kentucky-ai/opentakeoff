@@ -1,0 +1,96 @@
+{
+  "layout": "Actual OCR code readings placed in a constructed table; invented headers and descriptions. This measures dialog behavior, not image table extraction. Combined guard case is separately constructed.",
+  "browser": "153.0.8010.12",
+  "errors": [],
+  "blockedRequests": [
+    "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+  ],
+  "times": [
+    {
+      "baselineMs": 6581.599999964237,
+      "checkedMs": 7436.699999988079
+    },
+    {
+      "baselineMs": 5948.399999976158,
+      "checkedMs": 7174.5
+    },
+    {
+      "baselineMs": 6069.800000071526,
+      "checkedMs": 7324.899999976158
+    }
+  ],
+  "flags": [
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Check code: S-3 / SS-3",
+      "selected": false
+    },
+    {
+      "text": "Check code: wwC / WC",
+      "selected": false
+    },
+    {
+      "text": "Check code: wvC / WC",
+      "selected": false
+    },
+    {
+      "text": "Check code: ST.1 / ST-1",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    }
+  ],
+  "groupSelectionSkipsWarnings": true,
+  "explicitSelectionWorks": true,
+  "correctedTagCreated": "SS-3",
+  "selectedTags": [
+    "SS-3"
+  ],
+  "mobile": {
+    "width": 356,
+    "scrollWidth": 356
+  },
+  "combinedCreated": [
+    "S-2",
+    "PT-1"
+  ],
+  "combinedMobile": {
+    "width": 356,
+    "scrollWidth": 356
+  },
+  "remainingCreated": [
+    "P-110",
+    "SS-2"
+  ],
+  "stableAgreementHeld": true,
+  "recoveredNumericCodeRequiresEdit": true
+}

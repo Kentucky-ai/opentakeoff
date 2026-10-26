@@ -1,33 +1,38 @@
 {
   "name": "opentakeoff-mcp",
-  "version": "0.9.65",
+  "version": "0.9.100",
   "mcpName": "io.github.Kentucky-ai/opentakeoff",
   "type": "module",
   "description": "OpenTakeoff MCP server — drive the takeoff engine from your MCP client over stdio.",
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "dev": "node --import tsx server.ts",
     "start": "node dist/server.js",
-    "build": "esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server-core.js && node scripts/finish-build.mjs",
+    "build": "npm run check:protocol-resources && npm run check:wiki && esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server-core.js && node scripts/finish-build.mjs",
     "smoke:dist": "node scripts/smoke-dist.mjs",
     "mcpb": "npm run build && node scripts/build-mcpb.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "typecheck": "tsc --noEmit",
-    "check:tool-count": "node scripts/check-tool-count.mjs",
-    "test": "node --import tsx --test test/conformance.test.ts test/context.test.ts test/dxf.test.ts test/e2e.test.ts test/labels.test.ts test/overlap.test.ts test/parity.test.ts test/raster.test.ts test/resources.test.ts test/safewrite.test.ts test/scalewarn.test.ts test/session.test.ts test/staging.test.ts test/tools.test.ts test/transitions.test.ts test/twins.test.ts test/view.test.ts"
+    "check:protocol-resources": "node scripts/check-protocol-resources.mjs",
+    "check:wiki": "node scripts/check-wiki.mjs",
+    "check:versions": "node ../scripts/check-version-consistency.mjs",
+    "check:tool-count": "node --import tsx scripts/check-tool-count.mjs",
+    "test": "node --import tsx --test test/arc.test.ts test/checkers.test.ts test/conformance.test.ts test/constants.test.ts test/context.test.ts test/document.test.ts test/dxf.test.ts test/e2e.test.ts test/estimate.test.ts test/finishSchedule.test.ts test/gate.test.ts test/graphEvalRowsym.test.ts test/labels.test.ts test/mep.test.ts test/overlap.test.ts test/pageSpans.test.ts test/parity.test.ts test/proposals.test.ts test/raster.test.ts test/resources.test.ts test/safewrite.test.ts test/scalewarn.test.ts test/scheduleImport.test.ts test/scope.test.ts test/session.test.ts test/splittags.test.ts test/staging.test.ts test/sweepguard.test.ts test/tools.test.ts test/transitions.test.ts test/twins.test.ts test/view.test.ts test/wiki.test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@turf/boolean-contains": "^7.4.0",
     "@turf/boolean-overlap": "^7.4.0",
     "@turf/difference": "^7.4.0",
     "@turf/helpers": "^7.4.0",
+    "fflate": "^0.8.3",
+    "jsts": "^2.12.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
-    "zod": "^3.24.1"
+    "zod": "^4.6.7"
   },
   "optionalDependencies": {
     "@napi-rs/canvas": "^0.1.100"

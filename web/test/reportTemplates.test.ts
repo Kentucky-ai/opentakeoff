@@ -3,7 +3,7 @@
 // prefs). Invariants: quota/private-mode safe (no localStorage → [] / no throw),
 // sanitize + dedupe-by-name on load, save-as overwrites a same-name template
 // (keeping its id), delete/rename by id, round-trip through the store.
-import { test } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { sanitizeTemplates, loadTemplates, saveTemplate, deleteTemplate, renameTemplate, mergeTemplates, overwriteTemplates } from "../src/lib/reportTemplates.js";
 
@@ -173,3 +173,8 @@ test("overwriteTemplates: sanitizes, persists, and returns the stored set (Load 
     assert.deepEqual(loadTemplates().map((t: any) => t.name), ["New"]);   // replaced Old, persisted
   });
 });
+
+// Node 24 also exposes Web Storage; explicitly isolate these browser-storage fixtures.
+const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+before(() => { delete (globalThis as any).localStorage; });
+after(() => { if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor); });

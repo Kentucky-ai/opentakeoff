@@ -55,7 +55,7 @@ export function assignmentDisclosure(
 // destructuring DEFAULTS (credit = null ⇒ "null only"), so a typed facade at
 // the boundary states the real contract instead of the inferred one.
 const buildMarkedSetPdf = buildMarkedSetPdfJs as unknown as
-  (opts: Record<string, unknown>) => Promise<{ bytes: Uint8Array; filename: string }>;
+  (opts: Record<string, unknown>) => Promise<{ bytes: Uint8Array; filename: string; pages: number }>;
 
 export interface MarkedPdfOpts {
   path?: string;
@@ -67,8 +67,10 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   const { file, filePath } = session;
   if (!file || !filePath) throw new UserError("No plan loaded — call load_plan first.");
   // a sheet carrying only an approval mark still exports (markedset.js's own
-  // rule — a seal is work on paper), so verdicts count toward "anything to mark"
-  if (!session.shapes.length && !session.markups.length && !session.approvals.length) {
+  // rule — a seal is work on paper), so verdicts count toward "anything to mark";
+  // so does a live RFI (the builder's RFI-only rule: cover + schedule)
+  const rfis = session.liveRfis();
+  if (!session.shapes.length && !session.markups.length && !session.approvals.length && !rfis.length) {
     throw new UserError("Nothing to mark yet — commit shapes (one_click / detect_rooms / measure_polygon / measure_line with a condition) or annotate before exporting the marked set.");
   }
 
@@ -121,11 +123,19 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   // the marked set draws shapes in full condition colors — so the document
   // itself must say a machine traced it and a human hasn't signed off yet.
   const machine = session.shapes.filter((s) => s.origin?.reviewed !== true).length;
-  const credit = machine
-    ? `Machine-traced via OpenTakeoff MCP — ${machine} shape${machine === 1 ? "" : "s"} pending human review`
+  // agent-raised RFIs (#364) are the same disclosure: pending until an
+  // estimator accepts them in the register. The row prints like any other;
+  // the credit line says how many are still pencil.
+  const pendingRfis = rfis.filter((r) => r.origin?.actor === "agent" && r.origin.reviewed !== true).length;
+  const creditParts = [
+    ...(machine ? [`${machine} shape${machine === 1 ? "" : "s"} pending human review`] : []),
+    ...(pendingRfis ? [`${pendingRfis} agent-raised RFI${pendingRfis === 1 ? "" : "s"} pending acceptance`] : []),
+  ];
+  const credit = creditParts.length
+    ? `${machine ? "Machine-traced" : "Agent-raised"} via OpenTakeoff MCP — ${creditParts.join(" · ")}`
     : null;
 
-  const { bytes } = await buildMarkedSetPdf({
+  const { bytes, pages } = await buildMarkedSetPdf({
     projectName: opts.project_name || base,
     dark: false,
     units: "imperial",
@@ -136,7 +146,9 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
     // AGENT diamonds burn in above the markups, and the cover tallies the
     // ink/pencil split — the same builder path the canvas's MARKED SET uses
     approvals: session.approvals,
-    rfis: [],
+    // the RFI schedule page (#364): the same rows the canvas's MARKED SET
+    // prints, tombstones already stripped, agent-raised ones indistinguishable
+    rfis,
     conditions: session.conditions,
     getPage,
     loadPdfData,
@@ -150,11 +162,14 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   const markedKeys = new Set([...session.shapes.map((s) => s.sheet_id), ...session.markups.map((m) => m.sheet_id), ...session.approvals.map((a) => a.sheet_id)]);
   return {
     path: outPath,
-    pages: 1 + markedKeys.size,
+    // the builder's own count: cover + RFI schedule page(s) when any RFI is
+    // live + one page per marked sheet
+    pages,
     sheets_marked: markedKeys.size,
     shapes_drawn: session.shapes.length,
     annotations_drawn: session.markups.length,
     approvals_drawn: session.approvals.length,
+    rfis_printed: rfis.length,
     note: "The takeoff burned into the plan sheets, with a legend cover — hand this to the user to review. To revise in the app, import the export_takeoff payload; agent shapes arrive as pencil proposals there until accepted.",
   };
 }

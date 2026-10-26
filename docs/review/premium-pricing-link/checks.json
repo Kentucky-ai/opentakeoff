@@ -1,0 +1,48 @@
+{
+  "base": "http://localhost:5191/",
+  "checks": [
+    {
+      "name": "Gallery \"Premium plans\" opens the pricing section in a new tab",
+      "ok": true,
+      "detail": "https://kentucky-ai.com/#pricing"
+    },
+    {
+      "name": "Gallery \"Premium plans\" shows no in-app plans dialog",
+      "ok": true
+    },
+    {
+      "name": "every Premium button reads \"Premium plans\"",
+      "ok": true,
+      "detail": [
+        "Premium plans"
+      ]
+    },
+    {
+      "name": "Workspace \"Premium plans\" opens the pricing section in a new tab",
+      "ok": true,
+      "detail": "https://kentucky-ai.com/#pricing"
+    },
+    {
+      "name": "Workspace \"Premium plans\" shows no in-app plans dialog",
+      "ok": true
+    },
+    {
+      "name": "Classic ⋯ menu is reachable",
+      "ok": true
+    },
+    {
+      "name": "⋯ menu \"Premium plans\" opens the pricing section in a new tab",
+      "ok": true,
+      "detail": "https://kentucky-ai.com/#pricing"
+    },
+    {
+      "name": "⋯ menu \"Premium plans\" shows no in-app plans dialog",
+      "ok": true
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

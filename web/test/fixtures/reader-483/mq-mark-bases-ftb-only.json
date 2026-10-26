@@ -1,0 +1,85 @@
+{
+  "name": "mq-mark-bases-ftb-only",
+  "kind": "marquee",
+  "note": "MARK | DESCRIPTION | REMARKS + BASES + only FTB-01 CUT (C) / FTB-02 COVE",
+  "spans": [
+    {
+      "str": "MARK",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "DESCRIPTION",
+      "x": 220,
+      "y": 0,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "REMARKS",
+      "x": 760,
+      "y": 0,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "BASES",
+      "x": 100,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "FTB-01 CUT (C)",
+      "x": 100,
+      "y": 76,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "TILE BASE",
+      "x": 220,
+      "y": 76,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-F",
+      "x": 760,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "FTB-02 COVE",
+      "x": 100,
+      "y": 114,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "TILE BASE",
+      "x": 220,
+      "y": 114,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-F",
+      "x": 760,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [],
+      "refused": "no-table"
+    },
+    "parseSchedule": [],
+    "finishRows": null
+  }
+}

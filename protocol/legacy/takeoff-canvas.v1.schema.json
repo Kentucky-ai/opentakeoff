@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/legacy/takeoff-canvas.v1.schema.json",
+  "title": "takeoff_canvas.v1 structural profile (draft)",
+  "description": "Descriptive profile for complete current browser/MCP records. The existing import gate is more permissive; acceptance by that gate does not establish conformance. This schema does not replace it.",
+  "allOf": [
+    {
+      "$ref": "../v1/document-fields.schema.json"
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "opentakeoff.takeoff_canvas.v1"
+    }
+  },
+  "required": [
+    "schema",
+    "conditions",
+    "shapes"
+  ]
+}

@@ -160,10 +160,16 @@ export function createTileCompositor() {
     levelsFor(sheetKey, imgW, imgH);
     if (opened.has(sheetKey)) return;
     opened.add(sheetKey);
-    const ready = dataPromise.then((data) => {
+    // resetAll (or a reopen of the same key) supersedes this open: its bytes
+    // must not open a sheet nothing will close, and the pool rejecting it on
+    // close is a cancellation, not a failure (#513 review)
+    const current = () => readyBySheet.get(sheetKey) === ready;
+    const ready: Promise<void> = dataPromise.then((data) => {
+      if (!current()) return;
       const buf = data instanceof Uint8Array ? data.slice().buffer : data;
       return pool.openSheet(sheetKey, pageNum, buf);
     }).catch((err) => {
+      if (!current()) return;
       opened.delete(sheetKey);
       // A sheet that never opens is a permanently blank panel, not a
       // recoverable/expected case (unlike a superseded/cancelled tile) — this

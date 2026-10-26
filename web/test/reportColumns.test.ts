@@ -1,7 +1,7 @@
 // Column-selection library: profiles, prefs, getters, and the column-driven
 // CSV. The default-CSV assertion here deliberately overlaps the golden test —
 // it locks CSV_PROFILE itself (defaults + order + headers) to the same bytes.
-import { test } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { conditionTotals, grandTotals, sheetTotals, totalsToCsv, round2 } from "../src/lib/totals.js";
@@ -305,8 +305,29 @@ test("specColProfile: a field-column appears only when some condition carries th
   const one = specColProfile([{ id: "a", spec: { manufacturer: "Vendor A" } }] as any);
   assert.deepEqual(one.map((c: any) => c.key), ["spec:manufacturer"]);
   // headers cover every SPEC_FIELD, and none collides with the appearance "Color".
-  // "Description" is appended last so shipped spec-column order is preserved.
-  assert.deepEqual(SPEC_FIELDS.map((f: any) => f.header), ["Manufacturer", "Style", "Spec Color", "Size", "Description"]);
+  // "Description" and then "Schedule Remarks" are appended last so shipped
+  // spec-column order is preserved.
+  assert.deepEqual(SPEC_FIELDS.map((f: any) => f.header), ["Manufacturer", "Style", "Spec Color", "Size", "Description", "Schedule Remarks"]);
+});
+
+test("specColProfile: remarks is a \"Schedule Remarks\" column, appended last, only when populated", () => {
+  const withRemarks = specColProfile([
+    { id: "ct1", spec: { manufacturer: "Vendor A", description: "PORCELAIN TILE", remarks: "SEE NOTE 4" } },
+  ] as any);
+  assert.deepEqual(withRemarks.map((c: any) => [c.key, c.header]), [
+    ["spec:manufacturer", "Manufacturer"],
+    ["spec:description", "Description"],
+    ["spec:remarks", "Schedule Remarks"],
+  ]);
+  const ctx = { specByCond: new Map([["ct1", { remarks: "SEE NOTE 4" }]]) };
+  assert.equal(withRemarks[2].get({ id: "ct1" }, ctx), "SEE NOTE 4");
+  // no condition carries remarks (absent, empty, whitespace-only) → no column
+  const noRemarks = specColProfile([
+    { id: "a", spec: { manufacturer: "Vendor A" } },
+    { id: "b", spec: { manufacturer: "Vendor B", remarks: "" } },
+    { id: "c", spec: { manufacturer: "Vendor C", remarks: "  " } },
+  ] as any);
+  assert.deepEqual(noRemarks.map((c: any) => c.key), ["spec:manufacturer"]);
 });
 
 test("specColProfile: description is a spec column, appended after size, only when populated", () => {
@@ -389,3 +410,8 @@ test("rollColProfile: empty without figured layouts; ×N-applied getters through
   assert.equal(mSeam.header, "Seam m");
   assert.equal(mSeam.get(row, ctx), round2(90 * 0.3048));
 });
+
+// Node 24 also exposes Web Storage; explicitly isolate these browser-storage fixtures.
+const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+before(() => { delete (globalThis as any).localStorage; });
+after(() => { if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor); });

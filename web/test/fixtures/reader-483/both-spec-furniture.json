@@ -1,0 +1,464 @@
+{
+  "name": "both-spec-furniture",
+  "kind": "both",
+  "note": "spec-section furniture table: 12 50 00 FURNITURE in the key column",
+  "spans": [
+    {
+      "str": "MARK",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "DESCRIPTION",
+      "x": 220,
+      "y": 0,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "QTY",
+      "x": 1000,
+      "y": 0,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "12 50 00 FURNITURE",
+      "x": 100,
+      "y": 38,
+      "w": 144,
+      "h": 17
+    },
+    {
+      "str": "F-1",
+      "x": 100,
+      "y": 76,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "LOUNGE CHAIR",
+      "x": 220,
+      "y": 76,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-Q",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "12",
+      "x": 1000,
+      "y": 76,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "F-2",
+      "x": 100,
+      "y": 114,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "SIDE TABLE",
+      "x": 220,
+      "y": 114,
+      "w": 80,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-Q",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "4",
+      "x": 1000,
+      "y": 114,
+      "w": 8,
+      "h": 17
+    }
+  ],
+  "whole": {
+    "extractTable": {
+      "kind": "finish",
+      "sheet": "fx",
+      "title": null,
+      "headers": [
+        "MARK",
+        "DESCRIPTION",
+        "MANUFACTURER"
+      ],
+      "rows": [
+        {
+          "key": "F-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "F-1",
+              "bbox": [
+                100,
+                76,
+                124,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "LOUNGE CHAIR",
+              "bbox": [
+                220,
+                76,
+                316,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-Q",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "F-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "F-2",
+              "bbox": [
+                100,
+                114,
+                124,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "SIDE TABLE",
+              "bbox": [
+                220,
+                114,
+                300,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-Q",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ],
+      "region": [
+        100,
+        0,
+        616,
+        131
+      ],
+      "anchors": [
+        {
+          "label": "MARK",
+          "x": 116
+        },
+        {
+          "label": "DESCRIPTION",
+          "x": 264
+        },
+        {
+          "label": "MANUFACTURER",
+          "x": 568
+        }
+      ]
+    },
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "F-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "F-1",
+              "bbox": [
+                100,
+                76,
+                124,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "LOUNGE CHAIR",
+              "bbox": [
+                220,
+                76,
+                316,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-Q",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "F-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "F-2",
+              "bbox": [
+                100,
+                114,
+                124,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "SIDE TABLE",
+              "bbox": [
+                220,
+                114,
+                300,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-Q",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "graphTables": [
+      {
+        "kind": "finish",
+        "sheet": "fx",
+        "title": null,
+        "headers": [
+          "MARK",
+          "DESCRIPTION",
+          "MANUFACTURER"
+        ],
+        "rows": [
+          {
+            "key": "F-1",
+            "sheet": "fx",
+            "cells": {
+              "MARK": {
+                "text": "F-1",
+                "bbox": [
+                  100,
+                  76,
+                  124,
+                  93
+                ]
+              },
+              "DESCRIPTION": {
+                "text": "LOUNGE CHAIR",
+                "bbox": [
+                  220,
+                  76,
+                  316,
+                  93
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-Q",
+                "bbox": [
+                  520,
+                  76,
+                  584,
+                  93
+                ]
+              }
+            }
+          },
+          {
+            "key": "F-2",
+            "sheet": "fx",
+            "cells": {
+              "MARK": {
+                "text": "F-2",
+                "bbox": [
+                  100,
+                  114,
+                  124,
+                  131
+                ]
+              },
+              "DESCRIPTION": {
+                "text": "SIDE TABLE",
+                "bbox": [
+                  220,
+                  114,
+                  300,
+                  131
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-Q",
+                "bbox": [
+                  520,
+                  114,
+                  584,
+                  131
+                ]
+              }
+            }
+          }
+        ],
+        "region": [
+          100,
+          0,
+          616,
+          131
+        ],
+        "anchors": [
+          {
+            "label": "MARK",
+            "x": 116
+          },
+          {
+            "label": "DESCRIPTION",
+            "x": 264
+          },
+          {
+            "label": "MANUFACTURER",
+            "x": 568
+          }
+        ]
+      }
+    ],
+    "graphNotes": [
+      "1 numbered tag(s) on plan sheets are NOT counted as rooms — no name drawn with them and no schedule row answers for them; see unmatched_tags (they are listed, never dropped)"
+    ],
+    "resolve": {
+      "F-1": {
+        "status": "unresolved",
+        "tag": "F-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "F-2": {
+        "status": "unresolved",
+        "tag": "F-2",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      }
+    }
+  },
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [],
+      "refused": "foreign-header"
+    },
+    "parseSchedule": [],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "F-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "F-1",
+              "bbox": [
+                100,
+                76,
+                124,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "LOUNGE CHAIR",
+              "bbox": [
+                220,
+                76,
+                316,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-Q",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "F-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "F-2",
+              "bbox": [
+                100,
+                114,
+                124,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "SIDE TABLE",
+              "bbox": [
+                220,
+                114,
+                300,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-Q",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

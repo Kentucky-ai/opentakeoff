@@ -22,9 +22,12 @@ import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
 import { reportWorkbook, buildXlsx } from "../lib/xlsx.js";
 import { buildContribution, sendContribution, isContributeConfigured } from "../lib/contribute.js";
 import { activeTheme, saveActiveThemeFile, clearActiveTheme } from "../lib/reportTheme.js";
-import { normalizeLogoToPng, loadProfiles, saveProfiles, activeProfile, updateActiveProfile, addProfile, setActiveProfile, removeProfile } from "../lib/identity.js";
-import { resolveBranding, loadBrandingSelection, saveBrandingSelection } from "../lib/branding.js";
+import { activeProfile, loadProfiles } from "../lib/identity.js";
+import { useCompanyProfiles, CompanyIdentityFields } from "./CompanyIdentity.jsx";
+import { resolveBranding, loadBrandingSelection, saveBrandingSelection, OT_WATERMARK } from "../lib/branding.js";
 import { projectIdFromUrl } from "../lib/store.js";
+import { describeConditionEdit, proposedConditionEditRows } from "../lib/proposals.js";
+import { qtyLabels, resolveNote } from "../lib/noteFields.ts";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
@@ -46,7 +49,12 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null, conditionEditProposals = [], onOpenCompanySetup = null, companyRev = 0, onEstimate = null }) {
+  // proposals (#365): a pending condition-edit diff prints BESIDE the current
+  // values — the row's numbers are always the current knobs; the chip says
+  // what the agent proposed, and the JSON export carries the same rows.
+  const editProposalByCond = useMemo(() => new Map((Array.isArray(conditionEditProposals) ? conditionEditProposals : []).filter((p) => p && p.condition_id).map((p) => [p.condition_id, p])), [conditionEditProposals]);
+  const proposedEditRows = useMemo(() => proposedConditionEditRows(conditions, conditionEditProposals), [conditions, conditionEditProposals]);
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   // imported report theme → { vars, name, warnings }. vars are spread onto this
@@ -82,6 +90,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // makes every seam_lf row read 0 — the honest answer before a layout exists.
   const seamCtx = useMemo(() => ({ seamByShape: seamLfByShape(rollByCond) }), [rollByCond]);
   const rows = useMemo(() => conditionTotals(conditions, shapes, seamCtx).filter((r) => r.shape_count > 0), [conditions, shapes, seamCtx]);
+  const noteQty = useMemo(() => qtyLabels(rows, units), [rows, units]);   // {{qty}} in the annotations table (#474)
   const bySheet = useMemo(() => sheetTotals(conditions, shapes), [conditions, shapes]);
   const g = useMemo(() => grandTotals(rows), [rows]);
   const matSummary = useMemo(() => materialsSummary(rows), [rows]);
@@ -101,7 +110,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     let alive = true;
     loadBrandingSelection(projectId).then((s) => { if (alive) setBrandSel(s); });
     return () => { alive = false; };
-  }, [identityRev, projectId]);
+  }, [identityRev, companyRev, projectId]);   // companyRev: Company setup (opened from the canvas) saved
   // resolveBranding decides the masthead identity, the export title tag, and the
   // end credit. company is null in default mode → the firm block renders the
   // OpenTakeoff brand name instead of a trade-name identity (read only inside the
@@ -317,7 +326,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const baseName = (projectName || "takeoff").replace(/[^\w.-]+/g, "_");
   const exportCsv = () => downloadText(`${baseName}.csv`, totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx, byLabelExport.length ? byLabelExport : null, brand.brandName, units), "text/csv");
   const exportJson = () => downloadText(`${baseName}.json`,
-    JSON.stringify(reportJson({ projectName, rows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport, displayUnits: units, rollGoods: rollReportRows(rollByCond, rows) }), null, 2),
+    JSON.stringify(reportJson({ projectName, rows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport, displayUnits: units, rollGoods: rollReportRows(rollByCond, rows), proposedConditionEdits: proposedEditRows }), null, 2),
     "application/json");
   const exportRfisCsv = () => downloadText(`${baseName}_rfis.csv`, rfisToCsv(rfis, markups, projectName, sheetLabel, brand.brandName), "text/csv");
   const exportRfisJson = () => downloadText(`${baseName}_rfis.json`,
@@ -329,7 +338,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     const bytes = await buildXlsx(sheets);
     downloadText(`${baseName}.xlsx`, bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   };
-  const exportShapesCsv = () => downloadText(`${baseName}_shapes.csv`, shapesToCsv(shapesDetail(conditions, shapes, sheetLabel), projectName, brand.brandName), "text/csv");
+  const exportShapesCsv = () => downloadText(`${baseName}_shapes.csv`, shapesToCsv(shapesDetail(conditions, shapes, sheetLabel), projectName, brand.brandName, units), "text/csv");
   const exportShapesJson = () => downloadText(`${baseName}_shapes.json`,
     JSON.stringify(shapesToJson(shapesDetail(conditions, shapes, sheetLabel), projectName), null, 2),
     "application/json");
@@ -387,6 +396,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{r.finish_tag}</strong>
               {r.multiplier > 1 && <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>×{r.multiplier}</span>}
             </span>
+            {/* proposals (#365): the pending diff beside the current values —
+                the numbers in this row are what the takeoff stands on today */}
+            {editProposalByCond.get(r.id) && (
+              <span data-proposed-edit={editProposalByCond.get(r.id).id} title={`Proposed by the agent, pending your acceptance in the Takeoffs panel${editProposalByCond.get(r.id).rationale ? ` — ${editProposalByCond.get(r.id).rationale}` : ""}. This row shows the current values.`}
+                style={{ display: "block", marginTop: 3, fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--cobalt)", whiteSpace: "nowrap" }}>
+                proposed: {describeConditionEdit(conditions.find((c) => c.id === r.id), editProposalByCond.get(r.id)).map((d) => `${d.field} ${d.from} → ${d.to}`).join(" · ")}
+              </span>
+            )}
           </td>
         );
       case "shapes":
@@ -429,6 +446,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={() => setShowInfo(true)}
           title="Your company identity and the client/job details for the print header and marked-set cover">Project info</button>
+        {onEstimate && <button className="btn-ghost" onClick={onEstimate} title="Price this takeoff — material and labor per unit, markups, Excel">Estimate</button>}
         {/* always rendered, even with zero custom columns — Sheet grouping
             is useful on its own */}
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap" }}
@@ -634,6 +652,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             overlap the last row of intermediate pages */}
         <table className="report-flow"><thead><tr><td>
           {projectName || "Untitled project"} — {DISCLAIMER}
+          {/* the OpenTakeoff line on every printed page, in every branding mode */}
+          <span style={{ float: "right" }}>{OT_WATERMARK}</span>
         </td></tr></thead><tbody><tr><td>
         {/* print-only masthead — hidden on screen via app.css. Title-block header
             (logo/firm row · project title · bordered fact grid), the drafting-
@@ -855,9 +875,9 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             </p>
           </div>
         )}
-        {markups.some((m) => m.type !== "svg") && (
+        {markups.some((m) => m.type !== "svg" && m.type !== "image") && (
           <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
-            {/* svg symbols are decorative vector stamps, not revision notes — excluded */}
+            {/* svg symbols and image markups aren't revision notes — excluded */}
             <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>Revisions noted</h3>
             <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
               <thead>
@@ -868,7 +888,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 </tr>
               </thead>
               <tbody>
-                {markups.filter((m) => m.type !== "svg").map((m) => (
+                {markups.filter((m) => m.type !== "svg" && m.type !== "image").map((m) => (
                   <tr key={m.id}>
                     <td style={{ ...td, textAlign: "left" }}>
                       <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", border: "1px solid var(--ink-faint)", padding: "1px 6px", color: "var(--ink-soft)" }}>
@@ -876,7 +896,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                       </span>
                     </td>
                     <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}</td>
-                    <td style={{ ...td, textAlign: "left", whiteSpace: "normal", width: "60%" }}>{m.text || "—"}</td>
+                    <td style={{ ...td, textAlign: "left", whiteSpace: "normal", width: "60%" }}>{resolveNote(m.text, m.condition_id, noteQty).text || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -938,7 +958,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
       )}
       {showInfo && (
         <ProjectInfoModal clientInfo={clientInfo} onClientInfo={onClientInfo}
-          onSaved={() => setIdentityRev((r) => r + 1)} onClose={() => setShowInfo(false)} />
+          onSaved={() => setIdentityRev((r) => r + 1)} onClose={() => setShowInfo(false)}
+          onOpenCompanySetup={onOpenCompanySetup && (() => { setShowInfo(false); onOpenCompanySetup(); })} />
       )}
     </div>
   );
@@ -948,40 +969,13 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
 // localStorage), client/job fields are per-project (onClientInfo → autosave).
 // Company edits save on every change, so an overlay-click close loses nothing;
 // onSaved bumps identityRev so the print masthead re-reads immediately.
-function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
+function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose, onOpenCompanySetup }) {
   // trade-name profiles: the picker chooses which trade name is active for
   // EDITING; the active one still mirrors to the legacy company key (backward
   // compat). Which trade name BRANDS a project is the separate per-project
   // branding selection below (resolveBranding), not this active-id.
-  const [profs, setProfs] = useState(loadProfiles);
-  const active = activeProfile(profs) || {};
-  const [logoErr, setLogoErr] = useState("");
-  const [saveFailed, setSaveFailed] = useState(false);
-  // pick sequence: normalizeLogoToPng is async, so a slow first pick must not
-  // clobber a faster second pick — resurrect a logo removed meanwhile — or land
-  // after the modal closes (a pick still normalizing would otherwise persist
-  // from the dead fiber)
-  const logoSeq = useRef(0);
-  useEffect(() => () => { logoSeq.current++; }, []);   // unmount invalidates in-flight picks
-
-  // one commit path: a producer runs against the CURRENT state (functional set,
-  // so a slow logo normalize can't revert a name typed meanwhile), persists, and
-  // bumps the masthead via onSaved. saveProfiles also mirrors the active profile
-  // to the legacy company key (backward compat).
-  const commit = (produce) => {
-    setProfs((prev) => {
-      const next = produce(prev);
-      const ok = saveProfiles(next);
-      setSaveFailed(!ok);
-      if (ok && onSaved) onSaved();
-      return next;
-    });
-  };
-  // edit the active profile's fields — creates a first profile if none exists yet
-  const editActive = (fields) => commit((prev) => (prev.profiles.length ? updateActiveProfile(prev, fields) : addProfile(prev, fields).state));
-  const switchProfile = (id) => commit((prev) => setActiveProfile(prev, id));
-  const addTradeName = () => commit((prev) => addProfile(prev, {}).state);
-  const deleteActive = () => commit((prev) => removeProfile(prev, prev.activeId));
+  const company = useCompanyProfiles(onSaved);
+  const { profs } = company;
 
   // branding mode — per-project (meta KV, keyed on the project id). Toggling
   // clear-label on brands the deliverables as the trade name; off (default) is
@@ -1008,28 +1002,10 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
   // brands as (profiles[0]) instead of highlighting nothing
   const brandProfileId = activeProfile({ profiles: profs.profiles, activeId: brandSel.profileId })?.id || null;
 
-  const onLogoFile = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ""; // re-picking the same file must still fire onChange
-    if (!file) return;
-    setLogoErr("");
-    const seq = ++logoSeq.current;
-    try {
-      const logo = await normalizeLogoToPng(file);
-      if (seq !== logoSeq.current) return;   // superseded by a later pick/remove/close
-      editActive({ logo });
-    } catch (err) {
-      if (seq !== logoSeq.current) return;   // stale failure — don't flash its error
-      setLogoErr(err.message || String(err));
-    }
-  };
-  // bump the seq so an in-flight pick can't resurrect the removed logo; "" clears
-  const removeLogo = () => { logoSeq.current++; editActive({ logo: "" }); };
   const client = (field) => (e) => onClientInfo && onClientInfo({ ...clientInfo, [field]: e.target.value });
 
   const section = { fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" };
   const row = { display: "block", margin: "8px 0" };
-  const err = { margin: "6px 0 0", fontSize: 11.5, color: "var(--c-danger)" };
 
   return (
     <div onClick={onClose} className="report-modal" style={{ position: "absolute", inset: 0, zIndex: 60, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -1040,45 +1016,11 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
         </div>
         <div style={{ padding: 16, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
           <div style={section}>Company — your trade names, saved on this device</div>
-          {/* trade-name picker: choose which identity prints on the report + marked-set */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0" }}>
-            <select name="trade-name" aria-label="Active trade name" value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
-              className="field-input" style={{ flex: 1, minWidth: 0 }} disabled={!profs.profiles.length}>
-              {profs.profiles.length === 0 && <option value="">No trade name yet — add one</option>}
-              {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || "Untitled trade name"}</option>)}
-            </select>
-            <button onClick={addTradeName} className="btn-ghost" title="Add another trade name (e.g. a second brand)"
-              style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>+ Add</button>
-            {profs.profiles.length > 1 && (
-              <button onClick={deleteActive} title="Delete the selected trade name"
-                style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Delete</button>
-            )}
-          </div>
-          <label style={row}>
-            <span className="field-label">Name</span>
-            <input name="company-name" autoComplete="organization" value={active.name || ""} onChange={(e) => editActive({ name: e.target.value })}
-              placeholder="Your trade name" className="field-input" style={{ marginTop: 4 }} />
-          </label>
-          <label style={row}>
-            <span className="field-label">Address</span>
-            <textarea name="company-address" autoComplete="street-address" value={active.address || ""} onChange={(e) => editActive({ address: e.target.value })}
-              rows={2} placeholder={"Street\nCity, ST"} className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
-          </label>
-          <div style={row}>
-            <span className="field-label">Logo</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-              <input name="company-logo" type="file" accept="image/*" onChange={onLogoFile} style={{ fontSize: 12, minWidth: 0 }} />
-              {active.logo && (
-                <>
-                  <img src={active.logo} alt="Company logo" style={{ width: 120, height: "auto", flex: "none", border: "1px solid var(--ink-faint)", background: "var(--well)" }} />
-                  <button onClick={removeLogo}
-                    style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: 0, whiteSpace: "nowrap" }}>Remove logo</button>
-                </>
-              )}
-            </div>
-            {logoErr && <p style={err}>{logoErr}</p>}
-          </div>
-          {saveFailed && <p style={err}>Couldn't save on this device</p>}
+          <CompanyIdentityFields company={company} />
+          {onOpenCompanySetup && (
+            <button onClick={onOpenCompanySetup} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 12 }}
+              title="Phone, email, license, markups and proposal terms">Company setup — markups and proposal terms…</button>
+          )}
 
           {/* branding mode — per project. Off = OpenTakeoff (default); on brands
               the report + marked set as the selected trade name, keeping a subtle

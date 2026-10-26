@@ -1,0 +1,63 @@
+{
+  "sheet_id": "va-roseburg-a03a.pdf",
+  "shapes_on_sheet": 4,
+  "deduct_shapes": [],
+  "reference_id": "roseburg-a03a-estimator-trace-v2",
+  "profile": "estimator-trace",
+  "metadata_error": null,
+  "rooms": [
+    {
+      "label": "D105B STORAGE",
+      "finish": "VSF",
+      "area_sf": {
+        "expected": 39.82913223140479,
+        "actual": 39.83,
+        "percent_error": 0.0021787283493018626
+      },
+      "overlap_iou": 0.9998516607512595,
+      "boundary_vertex_edge_px": 0.05656854249487236,
+      "geometry_area_sf": 39.834917355372205,
+      "pass": true
+    },
+    {
+      "label": "D105A OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+        "expected": 111.69573921028514,
+        "actual": 111.71,
+        "percent_error": 0.0127675324194824
+      },
+      "overlap_iou": 0.9998778358761601,
+      "boundary_vertex_edge_px": 0.044721359549955125,
+      "geometry_area_sf": 111.70560495867745,
+      "pass": true
+    },
+    {
+      "label": "D104 OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+        "expected": 81.99230486685043,
+        "actual": 87.23,
+        "percent_error": 6.388032561903473
+      },
+      "overlap_iou": 0.9398062410911736,
+      "boundary_vertex_edge_px": 107.96000000000004,
+      "geometry_area_sf": 87.22707768595035,
+      "pass": false
+    },
+    {
+      "label": "D105 OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+        "expected": 90.62568870523374,
+        "actual": 90.63,
+        "percent_error": 0.004757254623770489
+      },
+      "overlap_iou": 0.9997246161958873,
+      "boundary_vertex_edge_px": 0.0806225774831096,
+      "geometry_area_sf": 90.63002975206675,
+      "pass": true
+    }
+  ],
+  "pass": false
+}

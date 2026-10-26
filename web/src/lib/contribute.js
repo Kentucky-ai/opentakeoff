@@ -137,6 +137,8 @@ export function buildContribution({ conditions, shapes, scaleInfo = [], counters
       computed: s.computed,              // SF / LF / EA
       ...(s.curved ? { curved: true } : {}), // curved linear: verts_norm are spline control points, not a polyline
       ...(s.height_ft ? { height_ft: s.height_ft } : {}),
+      ...(s.rise_ft != null ? { rise_ft: s.rise_ft } : {}),   // #441 per-run vertical override
+      ...(s.drop_ft != null ? { drop_ft: s.drop_ft } : {}),
       ...(s.id ? { id: s.id } : {}),     // opaque UUID — links re-contributions, carries no content
       ...(s.created_at ? { created_at: s.created_at } : {}), // legacy shapes predate stamping — omitted
       ...(origin ? { origin } : {}),     // whitelisted provenance; updated_at/edit timing NEVER ride
@@ -148,6 +150,8 @@ export function buildContribution({ conditions, shapes, scaleInfo = [], counters
     hatch: c.hatch || "solid",
     multiplier: c.multiplier || 1,
     waste_pct: Number(c.waste_pct) || 0,
+    ...(c.rise_ft > 0 ? { rise_ft: c.rise_ft } : {}),   // #441 condition defaults for its runs
+    ...(c.drop_ft > 0 ? { drop_ft: c.drop_ft } : {}),
   }));
 
   // strip color/id from the totals — keep just the numbers + labels

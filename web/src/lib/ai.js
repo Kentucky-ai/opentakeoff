@@ -1,11 +1,11 @@
 // Bring-your-own-AI — strictly opt-in, dormant until configured.
 //
-// OpenTakeoff can ask a vision model YOU provide to read things off the plan —
-// starting with the drawn scale when the sheet text doesn't state one. You
-// point it at an endpoint you control: a hosted API or a local runtime on your
-// own machine (most local runtimes speak the OpenAI-style protocol). Nothing is
-// ever sent anywhere except the single, user-initiated request to YOUR
-// endpoint; unconfigured builds make zero AI network calls. No telemetry.
+// The in-canvas takeoff agent (agentLoop.js) runs on a vision model YOU
+// provide. You point it at an endpoint you control: a hosted API or a local
+// runtime on your own machine (most local runtimes speak the OpenAI-style
+// protocol). Nothing is ever sent anywhere except the agent's requests to YOUR
+// endpoint, while a run you started is going; unconfigured builds make zero AI
+// network calls. No telemetry.
 // The code is open so anyone can audit exactly this.
 //
 // Config lives per-browser (localStorage) with build-time VITE_* fallbacks for

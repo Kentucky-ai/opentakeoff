@@ -191,9 +191,10 @@ export async function ingestFiles(
         if (!paths.length) { skipped.push({ name: baseName(name), reason: "no plans found in zip" }); return; }
         for (const path of paths) {
           const bn = baseName(path);
-          if (isPdf(bn)) pushPdf(new File([entries[path]], bn, { type: "application/pdf" }));
-          else if (isImage(bn)) { onProgress?.(`Converting ${bn}…`); pushPdf(await imageToPdf(new File([entries[path]], bn))); }
-          else if (isZip(bn)) await process(new File([entries[path]], bn, { type: "application/zip" }), depth + 1);
+          // Each extracted file has the same failure boundary as a dropped file:
+          // one unreadable image must not discard the remaining plan set.
+          const type = isPdf(bn) ? "application/pdf" : isZip(bn) ? "application/zip" : "";
+          await process(new File([entries[path]], bn, { type }), depth + 1);
         }
         return;
       }

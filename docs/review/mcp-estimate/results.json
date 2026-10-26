@@ -1,0 +1,117 @@
+{
+  "server": "mcp/dist/server.js",
+  "passed": 11,
+  "total": 11,
+  "checks": [
+    {
+      "name": "tools/list carries the five estimate verbs",
+      "ok": true,
+      "detail": 58
+    },
+    {
+      "name": "set_pricing: SY material on the waste-adjusted order, labor on the measured SY",
+      "ok": true,
+      "detail": {
+        "id": "cnd-537944f1-2b16-495e-bc40-d7b7bb3129ca",
+        "finish_tag": "CPT-1",
+        "unit": "SY",
+        "material_qty": 110,
+        "labor_qty": 100,
+        "material_rate": 20,
+        "labor_rate": 5,
+        "material_cost": 2200,
+        "labor_cost": 500,
+        "materials": [
+          {
+            "name": "Adhesive",
+            "unit": "pail",
+            "qty": 3,
+            "price": null,
+            "cost": 0,
+            "priced": false
+          }
+        ],
+        "materials_cost": 0,
+        "total": 2700,
+        "status": "partial",
+        "missing": [
+          "material row: Adhesive"
+        ]
+      }
+    },
+    {
+      "name": "an unpriced supply row is named, never counted",
+      "ok": true,
+      "detail": [
+        {
+          "id": "cnd-537944f1-2b16-495e-bc40-d7b7bb3129ca",
+          "finish_tag": "CPT-1",
+          "status": "partial",
+          "missing": [
+            "material row: Adhesive"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an unknown material row is refused with the condition's rows",
+      "ok": true,
+      "detail": "{\"error\":\"CPT-1 has no material row \\\"Grout\\\". Its rows: Adhesive.\"}"
+    },
+    {
+      "name": "estimate_summary total equals the hand math",
+      "ok": true,
+      "detail": {
+        "total": 4025.61,
+        "expected": 4025.61
+      }
+    },
+    {
+      "name": "export_estimate: Estimate + Materials tabs, the base bid cell, the watermark",
+      "ok": true,
+      "detail": [
+        "Estimate",
+        "Materials"
+      ]
+    },
+    {
+      "name": "export_proposal: one page, itemized, the engine's base bid, complete",
+      "ok": true,
+      "detail": {
+        "path": "/var/folders/7h/m2d9n3bx1h3fzg427hmhqdnr0000gn/T/ot-mcp-estimate-dCRKIO/proposal.pdf",
+        "pages": 1,
+        "base_bid": 4025.61,
+        "itemized": true,
+        "complete": true,
+        "unpriced": []
+      }
+    },
+    {
+      "name": "proposal rendered to PNG",
+      "ok": true
+    },
+    {
+      "name": "undo_last reverses the settings write as one step",
+      "ok": true,
+      "detail": [
+        {
+          "seq": 8,
+          "op": "estimate_settings",
+          "tool": "set_estimate_settings",
+          "shapes": 0
+        }
+      ]
+    },
+    {
+      "name": "export_takeoff carries pricing, estimate_settings and client_info",
+      "ok": true
+    },
+    {
+      "name": "a fresh server's import_takeoff prices the same total",
+      "ok": true,
+      "detail": {
+        "total": 4025.61
+      }
+    }
+  ]
+}

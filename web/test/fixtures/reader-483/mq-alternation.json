@@ -1,0 +1,392 @@
+{
+  "name": "mq-alternation",
+  "kind": "marquee",
+  "note": "alternation CPT-1, EPOX, RB-1, CONC, PT-1 (EPOX, CONC filled)",
+  "spans": [
+    {
+      "str": "CODE",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "CPT-1",
+      "x": 100,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "BROADLOOM CARPET",
+      "x": 220,
+      "y": 38,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 101",
+      "x": 1000,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "EPOX",
+      "x": 100,
+      "y": 76,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "EPOXY FLOORING",
+      "x": 220,
+      "y": 76,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-L",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 901",
+      "x": 1000,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "RB-1",
+      "x": 100,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "RUBBER BASE",
+      "x": 220,
+      "y": 114,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-B",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "BLACK 505",
+      "x": 1000,
+      "y": 114,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "CONC",
+      "x": 100,
+      "y": 152,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "SEALED CONCRETE",
+      "x": 220,
+      "y": 152,
+      "w": 120,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-D",
+      "x": 520,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CLEAR",
+      "x": 1000,
+      "y": 152,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "PT-1",
+      "x": 100,
+      "y": 190,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "PAINT",
+      "x": 220,
+      "y": 190,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-E",
+      "x": 520,
+      "y": 190,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "WHITE 601",
+      "x": 1000,
+      "y": 190,
+      "w": 72,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "BROADLOOM CARPET EPOXY FLOORING",
+          "manufacturer": "VENDOR-A VENDOR-L",
+          "style": "",
+          "spec_color": "GREY 101 GREY 901",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-1",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RUBBER BASE SEALED CONCRETE",
+          "manufacturer": "VENDOR-B VENDOR-D",
+          "style": "",
+          "spec_color": "BLACK 505 CLEAR",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "PT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "PAINT",
+          "manufacturer": "VENDOR-E",
+          "style": "",
+          "spec_color": "WHITE 601",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    },
+    "parseSchedule": [
+      {
+        "finish_tag": "CPT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "BROADLOOM CARPET EPOXY FLOORING",
+        "manufacturer": "VENDOR-A VENDOR-L",
+        "style": "",
+        "spec_color": "GREY 101 GREY 901",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-1",
+        "section": "",
+        "category": "base",
+        "category_source": "text",
+        "description": "RUBBER BASE SEALED CONCRETE",
+        "manufacturer": "VENDOR-B VENDOR-D",
+        "style": "",
+        "spec_color": "BLACK 505 CLEAR",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "PT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "PAINT",
+        "manufacturer": "VENDOR-E",
+        "style": "",
+        "spec_color": "WHITE 601",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      }
+    ],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1 EPOX",
+              "bbox": [
+                100,
+                38,
+                140,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "BROADLOOM CARPET EPOXY FLOORING",
+              "bbox": [
+                220,
+                38,
+                348,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A VENDOR-L",
+              "bbox": [
+                520,
+                38,
+                584,
+                93
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 101 GREY 901",
+              "bbox": [
+                1000,
+                38,
+                1064,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-1 CONC",
+              "bbox": [
+                100,
+                114,
+                132,
+                169
+              ]
+            },
+            "MATERIAL": {
+              "text": "RUBBER BASE SEALED CONCRETE",
+              "bbox": [
+                220,
+                114,
+                340,
+                169
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B VENDOR-D",
+              "bbox": [
+                520,
+                114,
+                584,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "BLACK 505 CLEAR",
+              "bbox": [
+                1000,
+                114,
+                1072,
+                169
+              ]
+            }
+          }
+        },
+        {
+          "key": "PT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "PT-1",
+              "bbox": [
+                100,
+                190,
+                132,
+                207
+              ]
+            },
+            "MATERIAL": {
+              "text": "PAINT",
+              "bbox": [
+                220,
+                190,
+                260,
+                207
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-E",
+              "bbox": [
+                520,
+                190,
+                584,
+                207
+              ]
+            },
+            "COLOR": {
+              "text": "WHITE 601",
+              "bbox": [
+                1000,
+                190,
+                1072,
+                207
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,11 +1,18 @@
 # OpenTakeoff — Agent Brief
 
-The one-pager. If you're an agent about to work *on* this repo, read
+Start at the [knowledge index](docs/wiki/README.md), also exposed as
+`takeoff://wiki` to MCP clients. Read the page for the current task.
+
+If you're an agent about to work *on* this repo, read
 [`AGENTS.md`](AGENTS.md) next. If you're an agent about to *drive the takeoff engine*, read
 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) instead—that's your manual, this is orientation.
 
+For the draft persisted-record contract and known compatibility gaps, read
+[`docs/TAKEOFF_PROTOCOL.md`](docs/TAKEOFF_PROTOCOL.md). The draft changes no current
+tool behavior or saved-file format.
+
 **Repo:** <https://github.com/Kentucky-ai/opentakeoff> · **Live:**
-<https://opentakeoff.kentucky-ai.com> · **License:** Apache-2.0
+<https://opentakeoff.kentucky-ai.com> · **License:** AGPL-3.0-only
 
 ---
 
@@ -13,17 +20,19 @@ The one-pager. If you're an agent about to work *on* this repo, read
 
 A takeoff is the act of measuring quantities off a construction drawing—how much floor, how
 much wall, how many fixtures, at what scale, on which sheet. OpenTakeoff is an open-source
-engine for doing that, with two front ends over identical geometry:
+engine for doing that, with a browser canvas and an MCP server sharing geometry and quantity modules:
 
-- **A stdio MCP server** (`npx -y opentakeoff-mcp`)—40 tools plus browsable sheet resources.
-  An agent opens a plan, reads the title block, sets the scale, floods the rooms, checks its own
+- **A stdio MCP server** (`npx -y opentakeoff-mcp`)—<!--tool-count-->58<!--/tool-count--> tools plus browsable sheet and wiki resources (One-Click's two verbs are temporarily gated and not registered; see `docs/design/ONE_CLICK_GATE.md`).
+  An agent opens a plan, reads the title block, sets the scale, measures source-backed boundaries, checks its own
   work on a rendered overlay, and hands back a marked-up planset.
 - **A browser canvas**—client-only React. An estimator drags in a plan set and traces it. No
   backend, no database, no account, no upload.
 
-Neither wraps the other. `mcp/` imports `web/src/lib/{oneclick,sheets,geometry,totals}` directly,
-so a shape committed by an agent is field-identical to one committed by a hand at the canvas—same
-flood mask, same corner snap, same waste math, same refusal messages.
+Neither wraps the other. `mcp/` imports shared web modules, so both surfaces use shared quantity
+math and exchange takeoff records. Shared modules do not guarantee identical detector boundaries:
+the browser and MCP room-detection paths currently differ, and One-Click remains gated while that
+boundary is re-validated. Actor, review and transport support differ; see the [compatibility
+matrix](protocol/COMPATIBILITY.md) before claiming a lossless round trip.
 
 ## Why it exists
 
@@ -45,8 +54,9 @@ front ends:
 
 - **Scale is a gate, not a default.** A detected scale note is a suggestion; adopting it is an
   explicit act. Measuring an unscaled sheet refuses.
-- **The engine traces; the model doesn't invent.** No path accepts a polygon a model imagined
-  and counts it.
+- **Geometry needs source evidence.** Manual measurement tools accept supplied
+  coordinates; they do not prove those coordinates match the drawing. Inspect
+  the overlay and retain source citations before relying on quantities.
 - **Machine work is pencil until a person inks it.** The green `APPROVED` seal has exactly one
   code path—the toolbar button under a human hand.
 - **Withholding is an answer.** Tools that can't answer say why, with coordinates to look at,

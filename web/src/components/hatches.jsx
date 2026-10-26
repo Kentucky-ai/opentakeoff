@@ -45,7 +45,10 @@ export const HATCHES = [
   { id: "fleur", label: "Fleur-de-lis" },
   { id: "concrete", label: "Concrete / stipple" },
 ];
-export const PALETTE = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#1f2937", "#dc2626", "#0891b2"];
+import { PALETTE } from "../lib/takeoffConstants.ts";
+// The colors live in lib/takeoffConstants.ts so the MCP server rotates the same
+// list without importing React; re-exported here for the canvas and popovers.
+export { PALETTE };
 export const NO_FILL = "none";
 
 // SVG <pattern> for a condition (userSpaceOnUse → scales with the plan, CAD-style).

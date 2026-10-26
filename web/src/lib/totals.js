@@ -19,16 +19,23 @@
 // remain stable.
 
 import { round2 } from "./num.js";
+import { REPORT_SCHEMA } from "./takeoffConstants.ts";
 import { csvEsc as esc } from "./csv.js";
 import { GETTERS, CSV_PROFILE, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
 import { attrValue } from "./conditionColumns.js";
 import { shapeLabelValue } from "./shapeLabels.js";
 import { compareSheetKeys } from "./sheetKey"; // NOT ./sheets — that module imports pdfjs-dist
+import { hasFields, qtyLabels, resolveNote } from "./noteFields.ts";
 
 // Re-export so existing consumers (markedset, snapshotDiff, ReportPanel, tests)
 // keep importing round2 from here; num.js is the single definition.
 export { round2 } from "./num.js";
+
+// A supporting-material row that counts: named. conditionTotals keeps exactly
+// these rows, in order — lib/estimate.js relies on the same predicate to line
+// each row's price up with its quantity.
+export const isMaterialLine = (m) => Boolean(m && m.name);
 
 // The role → quantity mapping from the header comment, shared by
 // conditionTotals and sheetTotals. Mutates acc ({ floor, wall, border, lf,
@@ -82,7 +89,7 @@ export function conditionTotals(conditions, shapes, ctx = null) {
     // to whole units (you buy whole buckets/bags). basis = this condition's measured
     // area (SF), linear (LF), count (EA), or figured seam length (LF — weld rod,
     // seam tape). Coverage comes off the product data sheet.
-    const materials = (c.materials || []).filter((m) => m && m.name).map((m) => {
+    const materials = (c.materials || []).filter(isMaterialLine).map((m) => {
       const per = Math.max(0, Number(m.per) || 0);
       const basisVal = m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total;
       let qty = per > 0 ? basisVal / per : 0;
@@ -485,17 +492,18 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
  *   conditionColumns?: Array<{id: string, name: string, values: string[]}>,
  *   attrsByCond?: Map<any, object>|null, shapeLabels?: string[],
  *   byLabel?: Array<{value: string|null, rows: any[]}>, displayUnits?: string,
- *   rollGoods?: any[]}} args
+ *   rollGoods?: any[], proposedConditionEdits?: any[]}} args
  */
-export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInfo = [], markups = [], rfis = [], sheetLabel = null, conditionColumns = [], attrsByCond = null, shapeLabels = [], byLabel = [], displayUnits = "imperial", rollGoods = [] }) {
+export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInfo = [], markups = [], rfis = [], sheetLabel = null, conditionColumns = [], attrsByCond = null, shapeLabels = [], byLabel = [], displayUnits = "imperial", rollGoods = [], proposedConditionEdits = [] }) {
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
+  const noteQty = qtyLabels(rows || [], displayUnits === "metric" ? "metric" : "imperial");
   // destructuring defaults don't apply to an explicit null, and both values can
   // trace back to a corrupted payload — coerce (and drop malformed items) so
   // the export can't throw
   const colDefs = (Array.isArray(conditionColumns) ? conditionColumns : []).filter((cc) => cc && typeof cc === "object" && typeof cc.id === "string");
   const attrs = attrsByCond instanceof Map ? attrsByCond : new Map();
   return {
-    schema: "opentakeoff.report.v1",
+    schema: REPORT_SCHEMA,
     project_name: projectName || null,
     generated_with: "OpenTakeoff",
     // scale_confirmed (scale gate): false = an agent set this sheet's scale and
@@ -528,9 +536,14 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     // resolved finish_tag rather than only the id, so a reader of the export
     // can see WHICH scope an annotation is about without joining two arrays;
     // the id stays authoritative. Unattached markups: "" for both.
+    // text_resolved APPENDS (same rule), and only on a note that carries a
+    // {{field}} — omit-when-empty, so every other markup row is unchanged.
+    // `text` stays the stored note, template and all; text_resolved is what the
+    // sheet shows, {{qty}} filled from the linked condition's measured quantity
+    // (noteFields, #474). An unresolved field stays literal in both.
     markups: markups.map((m) => {
       const c = m.condition_id ? (rows || []).find((r) => r.id === m.condition_id) : null;
-      return { type: m.type, sheet_id: m.sheet_id, sheet: label(m.sheet_id), text: m.text || "", id: m.id ?? null, rfi_id: m.rfi_id || "", condition_id: m.condition_id || "", condition: c?.finish_tag || "" };
+      return { type: m.type, sheet_id: m.sheet_id, sheet: label(m.sheet_id), text: m.text || "", id: m.id ?? null, rfi_id: m.rfi_id || "", condition_id: m.condition_id || "", condition: c?.finish_tag || "", ...(hasFields(m.text) ? { text_resolved: resolveNote(m.text, m.condition_id, noteQty).text } : {}) };
     }),
     // rfis APPENDS after markups (additive-only v1 — old exports had no RFI
     // register). linked_markups/linked_sheets are DERIVED from markup.rfi_id,
@@ -582,6 +595,11 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     // emitted; empty for projects with no roll-goods conditions, so every
     // pre-#136 export round-trips byte-identically except this one key.
     roll_goods: Array.isArray(rollGoods) ? rollGoods : [],
+    // proposed_condition_edits (#365) is the ONE key that is present only when
+    // it has content: the rows above always print the CURRENT knobs, and a
+    // pending diff sits beside them here until the estimator accepts it. A
+    // proposal-free report is byte-identical to a pre-#365 one.
+    ...(Array.isArray(proposedConditionEdits) && proposedConditionEdits.length ? { proposed_condition_edits: proposedConditionEdits } : {}),
   };
 }
 

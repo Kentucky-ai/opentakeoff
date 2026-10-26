@@ -1,0 +1,672 @@
+{
+  "issue": "#519 measure-first",
+  "reader": "on-device stand-in: shipped detector + recognizer, crop scaled 2x both ways",
+  "primary": "web/bench/ocr-codes/checked-browser.json",
+  "modelRev": "ppocrv5-mobile-en-1+ort-1.26.0-dev.20260416-b7804b056c",
+  "platform": "darwin-arm64",
+  "node": "v24.18.0",
+  "results": [
+    {
+      "unit": "crop",
+      "all": {
+        "flagged": 14,
+        "read": {
+          "correct": 12,
+          "wrong": 2,
+          "nothing": 0
+        },
+        "blind": {
+          "clearedCorrect": 3,
+          "clearedWrong": 1,
+          "twoVsOne": 10,
+          "twoVsOneAlternateRight": 9,
+          "keptThird": 0,
+          "keptNothing": 0
+        },
+        "naive": {
+          "settledCorrect": 12,
+          "settledWrong": 2,
+          "brokeCorrect": 0,
+          "kept": 0
+        }
+      },
+      "empty": {
+        "flagged": 1,
+        "read": {
+          "correct": 1,
+          "wrong": 0,
+          "nothing": 0
+        },
+        "blind": {
+          "clearedCorrect": 1,
+          "clearedWrong": 0,
+          "twoVsOne": 0,
+          "twoVsOneAlternateRight": 0,
+          "keptThird": 0,
+          "keptNothing": 0
+        },
+        "naive": {
+          "settledCorrect": 1,
+          "settledWrong": 0,
+          "brokeCorrect": 0,
+          "kept": 0
+        }
+      },
+      "alternate": {
+        "flagged": 13,
+        "read": {
+          "correct": 11,
+          "wrong": 2,
+          "nothing": 0
+        },
+        "blind": {
+          "clearedCorrect": 2,
+          "clearedWrong": 1,
+          "twoVsOne": 10,
+          "twoVsOneAlternateRight": 9,
+          "keptThird": 0,
+          "keptNothing": 0
+        },
+        "naive": {
+          "settledCorrect": 11,
+          "settledWrong": 2,
+          "brokeCorrect": 0,
+          "kept": 0
+        }
+      }
+    },
+    {
+      "unit": "row",
+      "all": {
+        "flagged": 14,
+        "read": {
+          "correct": 11,
+          "wrong": 3,
+          "nothing": 0
+        },
+        "blind": {
+          "clearedCorrect": 3,
+          "clearedWrong": 1,
+          "twoVsOne": 7,
+          "twoVsOneAlternateRight": 7,
+          "keptThird": 3,
+          "keptNothing": 0
+        },
+        "naive": {
+          "settledCorrect": 11,
+          "settledWrong": 3,
+          "brokeCorrect": 0,
+          "kept": 0
+        }
+      },
+      "empty": {
+        "flagged": 1,
+        "read": {
+          "correct": 1,
+          "wrong": 0,
+          "nothing": 0
+        },
+        "blind": {
+          "clearedCorrect": 1,
+          "clearedWrong": 0,
+          "twoVsOne": 0,
+          "twoVsOneAlternateRight": 0,
+          "keptThird": 0,
+          "keptNothing": 0
+        },
+        "naive": {
+          "settledCorrect": 1,
+          "settledWrong": 0,
+          "brokeCorrect": 0,
+          "kept": 0
+        }
+      },
+      "alternate": {
+        "flagged": 13,
+        "read": {
+          "correct": 10,
+          "wrong": 3,
+          "nothing": 0
+        },
+        "blind": {
+          "clearedCorrect": 2,
+          "clearedWrong": 1,
+          "twoVsOne": 7,
+          "twoVsOneAlternateRight": 7,
+          "keptThird": 3,
+          "keptNothing": 0
+        },
+        "naive": {
+          "settledCorrect": 10,
+          "settledWrong": 3,
+          "brokeCorrect": 0,
+          "kept": 0
+        }
+      }
+    }
+  ],
+  "rows": [
+    {
+      "id": "arial-400-216",
+      "expected": "P1",
+      "primary": "P1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "P2",
+      "primary": "P2",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "SS-2",
+      "primary": "SS-2",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "SS-3",
+      "primary": "SS-3",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "VWC",
+      "primary": "VWC",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "WVC",
+      "primary": "WVC",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "ST-1",
+      "primary": "ST-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "S-1",
+      "primary": "S-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "P-1",
+      "primary": "P-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "BK-1",
+      "primary": "BK-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "G-01(C)",
+      "primary": "G-01(C)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-400-216",
+      "expected": "FT-02(E)",
+      "primary": "FT-02(E)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "P1",
+      "primary": "P1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "P2",
+      "primary": "P2",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "SS-2",
+      "primary": "SS-2",
+      "alternates": [
+        ""
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "SS-2",
+        "row": "SS-2"
+      }
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "SS-3",
+      "primary": "55.3",
+      "alternates": [
+        "SS-3"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "SS-3",
+        "row": "SS-3"
+      }
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "VWC",
+      "primary": "VWC",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "WVC",
+      "primary": "WVC",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "ST-1",
+      "primary": "ST.1",
+      "alternates": [
+        "ST-1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "ST-1",
+        "row": "ST-1"
+      }
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "S-1",
+      "primary": "5.1",
+      "alternates": [
+        "S-1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "5.1",
+        "row": "S-1"
+      }
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "P-1",
+      "primary": "P.1",
+      "alternates": [
+        "P-1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "P-1",
+        "row": "P,1"
+      }
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "BK-1",
+      "primary": "BK.1",
+      "alternates": [
+        "BK-1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "BK-1",
+        "row": "BK-1"
+      }
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "G-01(C)",
+      "primary": "G-01(C)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "expected": "FT-02(E)",
+      "primary": "FT-02(E)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "P1",
+      "primary": "P1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "P2",
+      "primary": "P2",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "SS-2",
+      "primary": "SS-2",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "SS-3",
+      "primary": "S-3",
+      "alternates": [
+        "SS-3"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "SS-3",
+        "row": "SS-3"
+      }
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "VWC",
+      "primary": "WWC",
+      "alternates": [
+        "WC"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "WC",
+        "row": "VWC"
+      }
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "WVC",
+      "primary": "WVC",
+      "alternates": [
+        "WC"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "wVC",
+        "row": "WVC"
+      }
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "ST-1",
+      "primary": "ST.1",
+      "alternates": [
+        "ST-1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "ST-1",
+        "row": "ST-1"
+      }
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "S-1",
+      "primary": "S-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "P-1",
+      "primary": "P-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "BK-1",
+      "primary": "BK-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "G-01(C)",
+      "primary": "G-01(C)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "expected": "FT-02(E)",
+      "primary": "FT-02(E)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "P1",
+      "primary": "PL",
+      "alternates": [
+        "P1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "P1",
+        "row": "Pl"
+      }
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "P2",
+      "primary": "P2",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "SS-2",
+      "primary": "S-2",
+      "alternates": [
+        "SS-2"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "SS-2",
+        "row": "SS-2"
+      }
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "SS-3",
+      "primary": "SS-3",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "VWC",
+      "primary": "VWC",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "WVC",
+      "primary": "WVC",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "ST-1",
+      "primary": "ST-1",
+      "alternates": [
+        "S-1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "ST-1",
+        "row": "ST-1"
+      }
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "S-1",
+      "primary": "S-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "P-1",
+      "primary": "P.1",
+      "alternates": [
+        "P-1"
+      ],
+      "flagged": true,
+      "second": {
+        "crop": "P-1",
+        "row": "p-"
+      }
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "BK-1",
+      "primary": "BK-1",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "G-01(C)",
+      "primary": "G-01(C)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "expected": "FT-02(E)",
+      "primary": "FT-02(E)",
+      "alternates": [
+        null
+      ],
+      "flagged": false,
+      "second": {}
+    }
+  ]
+}

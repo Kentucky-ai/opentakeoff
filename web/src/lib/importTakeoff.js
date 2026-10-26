@@ -16,8 +16,10 @@
 // already landed (same-id entries are skipped, so re-importing a file is
 // idempotent — an accepted shape does not come back as a second pencil copy).
 
-import { ANN_SCHEMA } from "./store.js";
+import { TAKEOFF_SCHEMA as ANN_SCHEMA } from "./takeoffConstants.ts";
 import { sanitizeApprovals } from "./approvals.js";
+import { normalizeAgentReview } from "./reviewState.js";
+import { isValidMultiplier } from "./multiplier.js";
 
 /** Parse + gate an import file's text. Throws with copy the message bar shows
  * verbatim — "Couldn't…" is the canvas's danger convention (isDangerMsg), so
@@ -61,8 +63,30 @@ const freeId = (id, taken) => {
  */
 export function mergeTakeoffImport(current, imported, knownFiles = null) {
   const cur = current && typeof current === "object" ? current : {};
-  const impShapes = arr(imported.shapes).filter((s) => s && typeof s === "object" && typeof s.sheet_id === "string" && typeof s.id === "string");
+  const impShapes = arr(imported.shapes).filter((s) => s && typeof s === "object" && typeof s.sheet_id === "string" && typeof s.id === "string").map(normalizeAgentReview);
   const impConds = arr(imported.conditions).filter((c) => c && typeof c === "object" && typeof c.id === "string");
+  // Same rule edit_condition applies at the tool surface (#455): every reader
+  // is `multiplier || 1`, so a 0 would bill at ×1, a negative bills negative
+  // quantities, and a string puts NaN in the report. Refused whole, like the
+  // scale conflict below — a partly-landed file is harder to reason about
+  // than a file that has to be fixed once.
+  const badMult = impConds.filter((c) => !isValidMultiplier(c.multiplier));
+  if (badMult.length) {
+    const list = badMult.map((c) => `${c.finish_tag ?? c.id} (${JSON.stringify(c.multiplier)})`).join(", ");
+    throw new Error(`Couldn't import takeoff: condition multiplier must be a positive number — ${list}. Fix the file and re-import. Nothing was imported.`);
+  }
+  const localScales = new Map(arr(cur.sheets).filter((s) => typeof s?.sheet_id === "string").map((s) => [s.sheet_id, s.units_per_px]));
+  const incomingScales = new Map(arr(imported.sheets).filter((s) => typeof s?.sheet_id === "string").map((s) => [s.sheet_id, s.units_per_px]));
+  const existingIds = new Set(arr(cur.shapes).map((s) => s.id));
+  // Refuse before adoption: retaining local calibration while appending the
+  // source's computed quantities would silently mix two measurement systems.
+  for (const s of impShapes) {
+    if (existingIds.has(s.id) || s.measure_role === "count") continue;
+    const local = localScales.get(s.sheet_id), incoming = incomingScales.get(s.sheet_id);
+    if (local > 0 && (!(incoming > 0) || !Number.isFinite(incoming) || Math.abs(local - incoming) > Math.max(local, incoming) * 1e-9)) {
+      throw new Error(`Couldn't import takeoff: scale conflict on ${s.sheet_id} (current ${local} ft/px; imported ${incoming ?? "missing"}). Align the sheet calibration and re-export before importing measurements. Nothing was imported.`);
+    }
+  }
 
   const unknownFiles = (added) => {
     if (!Array.isArray(knownFiles)) return [];
@@ -73,11 +97,10 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
 
   // Nothing measured or marked up yet → the import IS the project. Seeded
   // default conditions and an untouched tab list are not user work, so they
-  // don't block the clean-replace path (a pre-traced calibration would be rare
-  // enough here that predictability wins over preserving it). Approval seals
+  // don't block the clean-replace path. An existing calibration and approval seals
   // DO block it (#176): a seal is ink someone placed — operator state wins,
   // so a sealed-but-untraced project merges instead of being replaced.
-  if (!arr(cur.shapes).length && !arr(cur.markups).length && !arr(cur.approvals).length) {
+  if (!arr(cur.shapes).length && !arr(cur.markups).length && !arr(cur.approvals).length && !arr(cur.sheets).some((s) => s?.units_per_px > 0)) {
     // …except the VIEW. An MCP export typically carries empty tab/group
     // state (the session has no such concept), and adopting an empty list
     // would close the operator's open sheet and bounce them to the gallery
@@ -85,6 +108,7 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
     // Empty carries no intent; a NON-empty imported view is real state and wins.
     const payload = {
       ...imported,
+      shapes: impShapes,
       ...(arr(imported.sheet_tabs).length ? {} : { sheet_tabs: arr(cur.sheet_tabs) }),
       ...(arr(imported.sheet_group).length ? {} : { sheet_group: arr(cur.sheet_group) }),
       ...(arr(imported.last_group).length ? {} : { last_group: arr(cur.last_group) }),
@@ -144,6 +168,21 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   const addedMarkups = arr(imported.markups).filter((m) => m && typeof m === "object" && (!m.id || !markupIds.has(m.id)));
   const rfiIds = new Set(arr(cur.rfis).map((r) => r?.id).filter(Boolean));
   const addedRfis = arr(imported.rfis).filter((r) => r && typeof r === "object" && r.id && !rfiIds.has(r.id));
+  // ── proposals (#365): transport, not minting ──────────────────────────────
+  // A batch arrives with its shapes (they reference it by origin.proposal_id)
+  // so the canvas can offer one Accept per batch; a pending condition diff
+  // follows its condition through the tag-identity rule above, and a diff that
+  // names a tag already taken here is dropped rather than staged as a collision.
+  const proposalIds = new Set(arr(cur.proposals).map((p) => p?.id).filter(Boolean));
+  const addedProposals = arr(imported.proposals).filter((p) => p && typeof p === "object" && typeof p.id === "string" && !proposalIds.has(p.id));
+  const editIds = new Set(arr(cur.condition_edit_proposals).map((p) => p?.id).filter(Boolean));
+  const takenTags = new Set(conditions.map((c) => tagKey(c.finish_tag)));
+  const addedEdits = arr(imported.condition_edit_proposals)
+    .filter((p) => p && typeof p === "object" && typeof p.id === "string" && !editIds.has(p.id) && p.proposed && typeof p.proposed === "object")
+    .map((p) => (condMap.has(p.condition_id) ? { ...p, condition_id: condMap.get(p.condition_id) } : p))
+    .filter((p) => condIds.has(p.condition_id))
+    .filter((p) => p.proposed.finish_tag === undefined || !takenTags.has(tagKey(p.proposed.finish_tag)) || tagKey(p.proposed.finish_tag) === tagKey(conditions.find((c) => c.id === p.condition_id)?.finish_tag))
+    .filter((p) => !arr(cur.condition_edit_proposals).some((q) => q?.condition_id === p.condition_id));   // one pending diff per condition — the operator's own stays
   // ── approvals (#176): transport, not minting ──────────────────────────────
   // The markup rule (append new ids, skip ones already here) behind the same
   // load gate the canvas hydrate runs — an estimator seal arriving by file
@@ -169,6 +208,8 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
     shapes: [...arr(cur.shapes), ...addedShapes],
     markups: [...arr(cur.markups), ...addedMarkups],
     ...(addedRfis.length ? { rfis: [...arr(cur.rfis), ...addedRfis] } : {}),
+    ...(addedProposals.length ? { proposals: [...arr(cur.proposals), ...addedProposals] } : {}),
+    ...(addedEdits.length ? { condition_edit_proposals: [...arr(cur.condition_edit_proposals), ...addedEdits] } : {}),
     ...(addedApprovals.length ? { approvals: [...arr(cur.approvals), ...addedApprovals] } : {}),
     sheets,
   };

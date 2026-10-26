@@ -1,17 +1,27 @@
 # Driving OpenTakeoff from an AI agent (MCP)
 
 OpenTakeoff ships an [MCP](https://modelcontextprotocol.io) server—[`mcp/`](../mcp/README.md)—that
-puts the real takeoff engine on stdio for your MCP client. Not a wrapper around the UI: the server imports the same
-`web/src/lib` modules the canvas runs, so One-Click Area, scale detection,
-vertex snapping, and the totals math behave identically, and everything it
-commits round-trips into the app as a normal saved takeoff.
+puts the real takeoff engine on stdio for your MCP client. Not a wrapper around the UI: the server imports shared
+`web/src/lib` geometry, calibration and quantity modules. Its measurements
+round-trip into the app as normal saved takeoff records. Room-detection paths
+currently differ between MCP and the browser; shared quantity math does not
+guarantee that the two detectors choose identical boundaries.
 
 This page walks the surface in depth, in the order an agent reaches for it. Two
 shorter reads sit either side of it: [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is the
 operating manual—how a takeoff is run, what withholds, what refuses—and
 [`mcp/README.md`](../mcp/README.md) is the tool-by-tool reference.
 
+> **One-Click is temporarily gated.** `one_click` and `detect_rooms` are not registered on a
+> default build while the flood engine is re-validated against a wider plan corpus; the server
+> says so in its initialize instructions and points at `measure_polygon`. Set
+> `OPENTAKEOFF_ONE_CLICK=1` to register them. The passages below that use the two verbs describe
+> that lifted build. See [`design/ONE_CLICK_GATE.md`](design/ONE_CLICK_GATE.md).
+
 ## Setup
+
+This is the from-source setup for working on the server. To just use it from Claude Code,
+Codex, Cursor or Claude Desktop, follow [`CONNECT.md`](CONNECT.md) instead.
 
 ```bash
 cd web && npm install        # the engine's pdf.js lives here
@@ -34,7 +44,7 @@ Register the server with your MCP client (any stdio client):
 Never point a client config at `npm start`—npm's banner goes to stdout,
 which is the MCP wire. `node --import tsx` is the whole invocation.
 
-By default the server hands every client all forty tool schemas at once. Set
+By default the server hands every client every tool schema at once. Set
 `OPENTAKEOFF_MCP_STAGED_TOOLS=1` in the server's environment to stage the
 surface instead: only the setup tools start enabled, and the agent opens the
 `measure` / `revise` / `handoff` groups on demand with `open_tool_stage` as
@@ -44,11 +54,15 @@ client that honors `tools/list_changed`; leave it unset otherwise.
 
 ## What the agent gets
 
-Forty tools, in the order an agent tends to reach for them:
+Fifty-two tools, in the order an agent tends to reach for them:
 
 - **Open and orient**—`load_plan`, `sheet_info` (including the sheet's PDF
   layer table—Optional Content Groups with a classified role, confidence,
-  and default visibility per layer), `set_scale`, `sheet_context`
+  and default visibility per layer), `set_scale`, `sheet_context`,
+  `get_sheet_vectors` (the sheet's vector layer exactly as the engine is fed
+  it—flat points, meta byte, luminance, subpath and layer index per segment,
+  paged with an exact `dropped` count—so a reader can run its own geometry
+  against what the app sees; refuses on a scan, #367)
 - **Load the set**—`load_plan` (default replaces; `merge: true` adds—plans +
   schedule + addenda as one working set, #152)
 - **Navigate the set**—`sheet_graph` (the plan-set index: sheet roles with
@@ -58,7 +72,11 @@ Forty tools, in the order an agent tends to reach for them:
   schedule row → each code's finish/material definition, every edge carrying
   a citation; unresolved comes back *with a reason*, never as silence),
   `find_schedule` (kind → sheet + title + headers + a `view_sheet`-ready
-  region). Real-set shapes are handled natively (#87 phases 2–3): a
+  region; kinds are `room finish`, `finish`/`material`, and `equipment` —
+  the device schedules of any trade, fans and pumps and heaters and light
+  fixtures and plumbing fixtures and diffusers alike, keyed by mark and
+  proven by a device column such as CFM, WATTS, GPM, LAMPS or NECK; every
+  stacked schedule on a sheet is read, top to bottom). Real-set shapes are handled natively (#87 phases 2–3): a
   schedule **continued across sheets** ("… SCHEDULE — CONT'D") reads as ONE
   table—rows resolve regardless of which sheet carries them, each citing
   the sheet the ink is on, and `find_schedule` returns one match whose
@@ -84,7 +102,11 @@ Forty tools, in the order an agent tends to reach for them:
   merged `WALLS (PLAN DIRECTION)` parent over `N | E | S | W`—anchors each
   sub-column under its parent as `WALLS N` … `WALLS W` with real bounds, so a
   left-aligned wall code never lands in the narrow BASE column beside it; a
-  neighboring legend cannot bleed into the last column; finish tables headed
+  neighboring legend stays out of the last column of a room-finish table and,
+  from 0.9.91, of a finish/material table too; a finish table's printed
+  section headings (FLOORING, WALL BASE, MISC. FINISHES) are consumed rather
+  than read as rows (the engine keeps each row's heading as `TableRow.section`;
+  no tool reply carries it yet); finish tables headed
   `SYMBOL` (no CODE, no MARK) extract and chain; and a **DOOR / WINDOW /
   PARTITION schedule is refused as a finish table** by title—those carry a
   MARK column too, and a finish code chaining to a door mark is a confidently
@@ -153,10 +175,28 @@ Forty tools, in the order an agent tends to reach for them:
   (multi-cut parents rebuild from the pristine snapshot minus survivors—the
   canvas's own delete semantics, ported as the spec)
 - **Revise**—`edit_shape` (all five roles), `edit_materials`,
-  `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
+  `edit_condition` (waste %, ×N multiplier, `height_ft`, `rise_ft` / `drop_ft` — the vertical legs every linear run adds to its plan length (#441), and the roll-goods
   `roll_setup` opt-in—the reply echoes the figured order), `delete_shape`,
   `undo_last`, with `list_shapes` as the mid-session inventory the mutating
   verbs assume you have
+- **Proposals** (#365)—`propose_takeoff` opens a named batch that every
+  commit after it attaches to (the estimator sees ONE Accept per batch, not
+  one per shape); `revise_proposal` replaces the batch's still-pending shapes
+  as one journal step and `withdraw_proposal` removes them, accepted shapes
+  untouched either way. `propose_condition_edit` holds a diff against a
+  condition (tag, waste, multiplier, height, roll setup) pending the
+  estimator's acceptance in the canvas—nothing changes until then, and the
+  summary and report carry the diff beside the current values;
+  `withdraw_condition_edit` drops it. Design: `design/PROPOSALS.md`
+- **Scope collision** (#366)—`takeoff_summary.shared_floor_sf` is the floor
+  claimed by more than one shape across the takeoff (Σ areas − union, once per
+  cell), the number that has to read zero before a total means anything;
+  `scope_duplicates` names every pair on different conditions with the shared
+  SF, both sides' review state and a `view_sheet` look region (same-condition
+  double traces as their own list); `scope_merge` resolves one pair with the
+  winner stated—the loser trimmed to its remainder by an exact boolean
+  difference or deleted when near-total, one undo step, never a shape the
+  estimator affirmed. Design: `design/SCOPE_COLLISION.md`
 - **Condition twins**—`duplicate_condition` (the same finish measured
   somewhere else with its own preparation underneath: the twin arrives carrying
   the original's materials and keeps *following* them, so a coverage-rate fix on
@@ -181,6 +221,15 @@ Forty tools, in the order an agent tends to reach for them:
   in `list_annotations`' `verdicts[]`. The estimator's APPROVED ring is the
   other half and stays human-only: these tools take no actor input, so no
   agent path can mint or lift the human's ink. A verdict touches no quantity)
+- **Ask**—`create_rfi`, `list_rfis`, `resolve_rfi`, `delete_rfi` (the canvas's
+  RFI register, reachable by an agent: when the drawings are the problem—a
+  schedule row the plan never draws, a room the schedule has no row for—raise
+  it as a numbered question instead of a sentence in a reply. Same store, same
+  numbering, same markup link as the panel; everything the agent raises is
+  `origin {actor: "agent", reviewed: false}`—pending until the estimator
+  accepts it in the register, because an RFI goes to the architect and nothing
+  sends without a human. A delete is a tombstone: the number is never reissued
+  and the marked set keeps the gap. All four are journaled for `undo_last`)
 - **Report**—`takeoff_summary` (quantities only—materials stripped),
   `export_takeoff` (the raw `opentakeoff.takeoff_canvas.v1` canvas payload—materials
   as config rows, importable by the app), `export_report` (the
@@ -332,3 +381,72 @@ dense linework (hatching or text).`
   uses, disclosed as `raster_traced` on the reply and on the shape's origin.
   Vector wins wherever it works—a raster ring's corners are unsnapped,
   because a scan has no true endpoints to snap to.
+
+## Calibration and review correctness (0.9.72)
+
+`set_scale` recomputes existing dimensional quantities from geometry, including holes and cutout restore snapshots. Changing an existing calibration records one `undo_last` step that restores the scale, its confirmation/source, and the prior quantities together. Initial calibration of an unmeasured sheet adds no undo step. Counts retain their stored values. A sheet containing human-reviewed dimensional measurements refuses recalibration over MCP, consistent with the existing reviewed-shape edit rules; recalibrate it in the canvas and import the updated takeoff into a fresh session.
+
+`import_takeoff` refuses new dimensional shapes when their source calibration differs from the session's calibration, or is missing while the session has one. The error names the sheet and scales; no session state changes. Align calibrations and re-export, or load a fresh session to adopt the export's calibration. Counts and duplicate IDs are exempt. An existing calibration is preserved even in an untraced session.
+
+New agent measurements, including `measure_polygon` and `measure_line`, explicitly carry `origin.reviewed: false`. Legacy agent records without the flag are normalized on import and browser reload. Explicit prior human approval is preserved. No new review gate is introduced.
+
+## Geometry workflow
+
+[Geometry from source to review](GEOMETRY_WORKFLOW.md) gives the measurement order and verification checks for a real finish takeoff. Discover tools before invoking them so the client validates the declared output contracts.
+
+## Review cleanup and current tool inventory
+
+The [generated tool index](MCP_TOOL_INDEX.md) gives each tool's stage and required
+arguments directly from the running server's schemas. The default surface has
+<!--tool-count-->58<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
+
+Use `list_annotations` → `edit_annotation {annotation_id, text}` to shorten or clear
+a note. One `undo_last` restores the text. Geometry, dimension length, links and
+human review are unchanged. RFI-linked notes refuse; inspect their question in
+the browser register. Verdicts are separate records, not editable annotations.
+
+`scope_duplicates` ignores machine-precision edge residue, but preserves real
+small overlaps with an explanation when SF rounds to zero. A material coverage
+row is not another finish polygon. For a physical opening, clip an explicit
+`measure_line` or `measure_surface` run with `cut_out`; a derived base with numeric
+opening allowances refuses clipping because those openings have no locations.
+
+## Pricing the takeoff and the bid proposal (0.9.99)
+
+The canvas's **Estimate** panel and **Proposal** dialog have agent verbs over the same engine
+(`web/src/lib/estimate.js`):
+
+1. `set_pricing {condition, unit, material, labor, materials:[{name, price}]}` for each
+   condition, with the estimator's prices. Material is priced on the order quantity (waste
+   applied), labor on the measured quantity, supplies per package.
+2. `set_estimate_settings {tax_pct, overhead_pct, profit_pct, profit_mode, proposal, client}`
+   for the project's markups, proposal text and client.
+3. `estimate_summary` to read the result. `complete: false` and `unpriced` name every hole.
+4. `export_estimate` (Excel) and `export_proposal {company}` (PDF, OpenTakeoff watermark on
+   every page) to write the files beside the plan.
+
+Nothing here invents a price. Prices, markups, proposal text and client ride `export_takeoff`
+into the app and back through `import_takeoff`, where a joined condition with no prices takes
+the file's.
+
+## Wiki resources
+
+Read `takeoff://wiki` for the [knowledge index](wiki/README.md), then the one
+`takeoff://wiki/{page}` resource the current task needs. The index and eight
+pages are readable before any plan is loaded, in flat or staged mode. They
+contain public documentation packaged with the MCP version, not project data.
+No additional measurement tool or approval authority is introduced.
+
+The bundle is generated from the repository wiki and tool index; CI checks
+content, source hashes, version and links. Wiki-to-wiki links stay within MCP
+resources. Code/reference links browse repository `main`, which may be newer
+than an installed package. This distinction is stated in each resource reply.
+
+The draft Takeoff Protocol is also available as static resources. Read
+`takeoff://protocol` for the compact index, then the allowlisted schemas under
+`takeoff://protocol/{path}`. This route is available before plan load and in
+staged mode. It is contract/discovery material and introduces no validator tool
+or writer migration. Resource URIs are transport addresses separate from the
+unchanged schema `$id` identifiers; those IDs support offline `$ref` resolution
+and do not promise hosted files. Read `takeoff://wiki/protocol` for scope,
+projection omissions, and validation limits.

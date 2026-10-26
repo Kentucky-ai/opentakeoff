@@ -5,9 +5,11 @@ on:
     branches: [main]
   pull_request:
 
-# least-privilege token: every job only checks out and reads
+# least-privilege token: every job only checks out and reads. id-token lets
+# the Codecov upload authenticate over GitHub OIDC instead of a stored secret.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   web:
@@ -24,17 +26,40 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # Voice and on-device OCR share one onnxruntime-web (#469). Fails if a
+      # transformers bump moved its pin away from web/package.json's.
+      - run: node scripts/check-one-ort.mjs
       # Voice model (RFC #59): ~44 MB, cached between runs; the fetch script
       # is the cache key, so bumping MODEL_REV/files in it invalidates cleanly.
       # With the model staged, the corpus + privacy voice tests run for real
       # (they skip loudly when it's absent, e.g. on forks with cache misses).
+      # models/ocr is excluded: the OCR entry below owns it.
       - uses: actions/cache@v4
         with:
-          path: web/public/models
+          path: |
+            web/public/models
+            !web/public/models/ocr
           key: voice-model-${{ hashFiles('web/scripts/fetch-voice-model.mjs') }}
       - run: node scripts/fetch-voice-model.mjs
+      # On-device OCR models (#469): ~12.7 MB, in their own cache entry keyed on
+      # the stage script (which carries the pins); the voice entry above
+      # excludes this directory, so each entry holds only its own files. The
+      # script re-verifies every file's sha256 and always rewrites the manifest.
+      - uses: actions/cache@v4
+        with:
+          path: web/public/models/ocr
+          key: ocr-model-${{ hashFiles('web/scripts/stage-ocr-model.mjs') }}
+      - run: node scripts/stage-ocr-model.mjs
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run lint
+      - run: npm run test:coverage
+      - name: Upload coverage to Codecov (informational; never gates the PR)
+        uses: codecov/codecov-action@v5
+        with:
+          files: web/coverage/lcov.info
+          flags: web
+          use_oidc: true
+          fail_ci_if_error: false
       # The bench is a ruler, and a ruler that silently stops matching the
       # engine is worse than no ruler (#198): results.json is committed, the
       # runner rewrites it on every run, and nothing used to compare the two —
@@ -48,6 +73,9 @@ jobs:
             exit 1
           }
       - run: npm run build
+      # One ORT wasm in dist, no OpenCV or @napi-rs/canvas code, and a staged
+      # manifest that matches the wasm actually shipped (#469).
+      - run: node scripts/check-ocr-dist.mjs
 
   mcp:
     runs-on: ${{ matrix.os }}
@@ -70,14 +98,47 @@ jobs:
         working-directory: mcp
       - run: npm run typecheck
         working-directory: mcp
-      - run: npm test
+      # Inline rather than a package.json script: any edit to mcp/package.json
+      # trips mcp-version-guard, and a dev-only script is not worth a release.
+      - name: npm test, with lcov coverage from Node's built-in runner
+        run: |
+          mkdir -p coverage
+          node --import tsx --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info test/*.test.ts
         working-directory: mcp
+      - name: Upload coverage to Codecov (informational; never gates the PR)
+        if: runner.os == 'Linux'
+        uses: codecov/codecov-action@v5
+        with:
+          files: mcp/coverage/lcov.info
+          flags: mcp
+          use_oidc: true
+          fail_ci_if_error: false
       - run: npm run check:tool-count
+        working-directory: mcp
+      - run: npm run check:protocol-resources
+        working-directory: mcp
+      - run: npm run check:wiki
         working-directory: mcp
       - run: npm run build
         working-directory: mcp
       - run: npm run smoke:dist
         working-directory: mcp
+      - name: Test workflow scorer rejection cases
+        run: node --test evals/mcp-workflow-bench/score.test.mjs
+      - name: Exercise default MCP workflow over stdio
+        run: node evals/mcp-workflow-bench/run.mjs --out "${{ runner.temp }}/mcp-workflow-bench"
+      - name: Known-answer runs of the estimator-trace plan set (tool conformance, not agent accuracy)
+        run: |
+          node evals/mcp-workflow-bench/run.mjs --reference evals/mcp-workflow-bench/plan-set/stcloud/reference.json --out "${{ runner.temp }}/mcp-workflow-bench/plan-set/stcloud"
+          node evals/mcp-workflow-bench/run.mjs --reference evals/mcp-workflow-bench/plan-set/roseburg/reference.json --out "${{ runner.temp }}/mcp-workflow-bench/plan-set/roseburg"
+          node evals/mcp-workflow-bench/run.mjs --reference evals/mcp-workflow-bench/plan-set/porterville/reference.json --out "${{ runner.temp }}/mcp-workflow-bench/plan-set/porterville"
+      - name: Upload public workflow review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-workflow-${{ matrix.os }}
+          path: ${{ runner.temp }}/mcp-workflow-bench
+          if-no-files-found: warn
 
   # Publishing the MCP server is fully unattended ONCE an mcp-v* tag exists —
   # but nothing ever checked that a change to mcp/ came with a version bump, so
@@ -110,7 +171,16 @@ jobs:
           # a user installs. Demanding a version bump for it would publish a
           # release whose tarball is byte-identical to the one before it, and a
           # version number that means nothing is worse than one nobody bumped.
-          PUBLISHED=(mcp/ ':(exclude)mcp/Dockerfile')
+          # mcp/package-lock.json is excluded for the same reason: it is not in
+          # the tarball either, and the build bundles with --packages=external,
+          # so every installer resolves dependencies by package.json range and
+          # never sees the lockfile. It pins only this repo's own dev, test and
+          # CI installs. A lockfile-only bump (Dependabot's security PRs, #400)
+          # therefore changes nothing anyone installs, and demanding a release
+          # for it would publish the same byte-identical tarball. A dependency
+          # change that DOES reach installers edits package.json, which still
+          # trips the guard.
+          PUBLISHED=(mcp/ ':(exclude)mcp/Dockerfile' ':(exclude)mcp/package-lock.json')
           if git diff --quiet "$BASE" HEAD -- "${PUBLISHED[@]}"; then
             echo "no change to published mcp/ files — nothing to check."
             exit 0
@@ -202,17 +272,44 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+      - name: Test MCP Registry publication recovery
+        run: node --test scripts/publish-mcp-registry.test.mjs
+      - name: Test npm availability wait
+        run: node scripts/wait-for-npm-availability.test.mjs
       - run: node scripts/check-doc-links.mjs
       - name: Nudge on links to closed issues (never gating)
         if: github.event_name == 'push'
         continue-on-error: true
         run: node scripts/check-doc-links.mjs --issues
 
+  protocol:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            mcp/package-lock.json
+            protocol/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm ci --prefix mcp
+      - run: npm ci --prefix protocol
+      - run: npm run check --prefix protocol
+
   capture:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 capture/capture_server.py selftest
+      - run: python3 -m unittest discover -s capture -p 'test_*.py' -v
 
   server:
     runs-on: ubuntu-latest

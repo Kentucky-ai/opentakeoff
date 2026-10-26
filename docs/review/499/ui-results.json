@@ -1,0 +1,36 @@
+{
+  "mobile": {
+    "width": 356,
+    "scrollWidth": 356,
+    "rect": {
+      "x": 16,
+      "y": 234,
+      "width": 358,
+      "height": 376,
+      "top": 234,
+      "right": 374,
+      "bottom": 610,
+      "left": 16
+    }
+  },
+  "before": 11,
+  "after": 13,
+  "originalConditionsUnchanged": true,
+  "shapesUnchanged": true,
+  "tags": [
+    "CPT-1",
+    "BRD-1",
+    "LVT-1",
+    "WD-1",
+    "VCT-1",
+    "SV-1",
+    "CT-1",
+    "RB-1",
+    "TR-1",
+    "G-01C",
+    "G-02",
+    "G-01(W)",
+    "FT-02(E)"
+  ],
+  "shapeCondition": "cnd-3878078c-3161-416f-97bd-ef2600694f18"
+}

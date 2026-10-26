@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/review.schema.json",
+  "title": "Review (draft)",
+  "description": "Existing review-state fragments and approval-family records. Structural validity is not proof of human action; only existing runtime authority may mint human review/approval.",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/shapeReview"
+    },
+    {
+      "$ref": "#/$defs/verdict"
+    }
+  ],
+  "$defs": {
+    "state": {
+      "type": "object",
+      "properties": {
+        "reviewed": {
+          "type": "boolean"
+        },
+        "proposed_ts": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "accepted_ts": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": true,
+      "description": "Inline origin fields. Absence stays absent; never synthesize acceptance."
+    },
+    "shapeReview": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/state"
+        },
+        {
+          "type": "object",
+          "required": [
+            "reviewed"
+          ]
+        }
+      ]
+    },
+    "verdict": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor": {
+          "enum": [
+            "estimator",
+            "agent"
+          ]
+        },
+        "ts": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "sheet_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "$ref": "common.schema.json#/$defs/point"
+        },
+        "shape_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "actor",
+        "sheet_id",
+        "at"
+      ],
+      "additionalProperties": true,
+      "description": "Human APPROVED seal or agent verdict. Imported records may lack ts. Transport of existing seals is not authority to mint one."
+    }
+  }
+}

@@ -61,13 +61,30 @@ export const instantiateTemplate = (t) => ({
   hatch: t.hatch || "solid", multiplier: 1, waste_pct: Number(t.waste_pct) || 0,
   ...(t.height_ft != null ? { height_ft: t.height_ft } : {}),
   ...(t.thickness_in != null ? { thickness_in: t.thickness_in } : {}),
+  ...(t.rise_ft != null ? { rise_ft: t.rise_ft } : {}),   // #441 — a conduit template's legs are part of what it is
+  ...(t.drop_ft != null ? { drop_ft: t.drop_ft } : {}),
   ...(t.laborType != null ? { laborType: t.laborType } : {}),
   ...(t.subfloorType != null ? { subfloorType: t.subfloorType } : {}),
   ...(t.roll_setup ? { roll_setup: { ...t.roll_setup } } : {}),   // #136 — deep-copied like grout: a template's roll spec must never be shared by reference
   // instantiateMaterial (lib/materials.js) deep-copies the nested grout
   // geometry — a shallow spread here aliased the CT-1 seed's one grout object
   // into every fresh-workspace condition across every project in the session
-  materials: (t.materials || []).map((m) => instantiateMaterial(m, uid("mat"))),
+  // prices are per project (lib/estimate.js): a hand-edited template's price never seeds a new job
+  materials: (t.materials || []).map(({ price: _price, ...m }) => instantiateMaterial(m, uid("mat"))),
+});
+// The inverse: a condition saved to the template library ("Save as template").
+export const conditionToTemplate = (c) => ({
+  finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch || "solid",
+  waste_pct: c.waste_pct || 0,
+  ...(c.height_ft != null ? { height_ft: c.height_ft } : {}),
+  ...(c.thickness_in != null ? { thickness_in: c.thickness_in } : {}),
+  ...(c.rise_ft != null ? { rise_ft: c.rise_ft } : {}),
+  ...(c.drop_ft != null ? { drop_ft: c.drop_ft } : {}),
+  ...(c.laborType != null ? { laborType: c.laborType } : {}),
+  ...(c.subfloorType != null ? { subfloorType: c.subfloorType } : {}),
+  ...(c.roll_setup ? { roll_setup: { ...c.roll_setup } } : {}),   // #136 — the roll spec is part of what makes a CPT-1 template CPT-1
+  // ids are minted on instantiation; grout never shared by reference; prices are per project (lib/estimate.js), never carried by a template
+  materials: (c.materials || []).map(({ id: _id, price: _price, ...m }) => (m.grout ? { ...m, grout: { ...m.grout } } : m)),
 });
 // Fresh-workspace seeding reads the user's template library first; the
 // built-in flooring defaults are only the empty-library fallback. Both paths

@@ -6,8 +6,7 @@
 // `faceStyle`/`menuStyle` restyle the trigger and panel (scale chip, account
 // chip), items may be `{ section }`, `"divider"`, `{ note }` (muted footnote),
 // `{ custom }` (arbitrary row, e.g. the fill-sensitivity slider — interacting
-// inside it never closes the menu), and `{ checked, stayOpen }` checkable
-// items that flip in place (render menu). An item may carry `onHover(bool)` to
+// inside it never closes the menu), and `{ checked, stayOpen }` checkable items that flip in place (render menu). An item may carry `onHover(bool)` to
 // preview its effect while pointed at (the scale menu's plan-says item shows
 // the calibrated guide bar on the sheet behind the open menu).
 import React, { useEffect, useRef, useState } from "react";
@@ -19,7 +18,7 @@ const MENU_W = 232;
 export default function ToolMenu({ face, active = false, accent = "cobalt", title = "", items, onOpenChange, faceStyle, menuStyle, disabled = false, flyout = null }) {
   const [open, setOpen] = useState(false);
   const [flip, setFlip] = useState(false);
-  const [flyAt, setFlyAt] = useState(null);   // {left, top} for flyout="right" — fixed, so ancestor overflow can't clip it (the rail)
+  const [flyAt, setFlyAt] = useState(null);   // {left|right, top, maxH?} for fixed positioning off the trigger rect — fixed, so ancestor overflow can't clip it (the rail)
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -60,8 +59,13 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
       if (flyout === "right") {
         setFlyAt({ left: r.right + 6, top: Math.max(8, Math.min(r.top, window.innerHeight - estH - 8)) });
       } else {
-        const left = flipNow ? Math.max(8, r.right - menuW) : Math.min(r.left, window.innerWidth - menuW - 8);
-        setFlyAt({ left, top: r.bottom + 4 });
+        const top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - estH - 8));
+        const maxH = window.innerHeight - top - 8;
+        if (flipNow) {
+          setFlyAt({ right: Math.max(8, window.innerWidth - r.right), top, maxH });
+        } else {
+          setFlyAt({ left: Math.max(8, Math.min(r.left, window.innerWidth - menuW - 8)), top, maxH });
+        }
       }
     }
     setOpen((v) => !v);
@@ -85,7 +89,11 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
       {open && (
         <div style={{
           ...(flyAt
-            ? { position: "fixed", left: flyAt.left, top: flyAt.top }
+            ? {
+              position: "fixed", top: flyAt.top,
+              ...(flyAt.right != null ? { right: flyAt.right, left: "auto" } : { left: flyAt.left }),
+              ...(flyAt.maxH != null ? { maxHeight: flyAt.maxH, overflowY: "auto" } : {}),
+            }
             : { position: "absolute", top: "calc(100% + 4px)", [flip ? "right" : "left"]: 0 }),
           zIndex: 60,
           minWidth: MENU_W, background: "var(--paper-bright)", border: "1px solid var(--ink)",
@@ -103,23 +111,24 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
             if (it.custom) return <div key={it.id || i}>{it.custom}</div>;
             const dis = !!it.disabled;
             const checkable = "checked" in it;
-            const fg = it.danger ? "var(--c-danger)" : "var(--ink)";
+            const hi = !!it.highlight;
+            const fg = hi ? "var(--accent-contrast)" : it.danger ? "var(--c-danger)" : "var(--ink)";
             return (
               <button key={it.id || i} type="button" disabled={dis} title={it.title || ""}
                 onClick={() => { if (!dis) { if (!it.stayOpen) setOpen(false); it.onSelect?.(); } }}
                 style={{
                   display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 12px",
                   border: "none", textAlign: "left", cursor: dis ? "default" : "pointer",
-                  background: it.active ? "var(--paper-cream)" : "transparent",
-                  borderLeft: it.active ? "2px solid var(--cobalt)" : "2px solid transparent",
+                  background: hi ? "var(--cobalt)" : it.active ? "var(--paper-cream)" : "transparent",
+                  borderLeft: hi ? "2px solid var(--cobalt)" : it.active ? "2px solid var(--cobalt)" : "2px solid transparent",
                   opacity: dis ? 0.38 : 1, color: fg,
                 }}
-                onMouseEnter={(e) => { if (!dis && !it.active) e.currentTarget.style.background = "var(--paper-shadow)"; if (!dis) it.onHover?.(true); }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = it.active ? "var(--paper-cream)" : "transparent"; if (!dis) it.onHover?.(false); }}>
-                {checkable && <span style={{ display: "inline-flex", width: 15, justifyContent: "center", color: "var(--c-positive)", visibility: it.checked ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>}
-                {it.icon && <span style={{ display: "inline-flex", width: 17, justifyContent: "center", color: it.tint || fg }}><Icon name={it.icon} size={16} /></span>}
-                <span style={{ flex: 1, fontFamily: "var(--f-body)", fontSize: 13, fontWeight: it.active ? 600 : 400 }}>{it.label}</span>
-                {it.shortcut && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--ink-muted)" }}>{keyText(it.shortcut)}</span>}
+                onMouseEnter={(e) => { if (!dis && hi) e.currentTarget.style.background = "var(--cobalt-deep)"; else if (!dis && !it.active) e.currentTarget.style.background = "var(--paper-shadow)"; if (!dis) it.onHover?.(true); }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = hi ? "var(--cobalt)" : it.active ? "var(--paper-cream)" : "transparent"; if (!dis) it.onHover?.(false); }}>
+                {checkable && <span style={{ display: "inline-flex", width: 15, justifyContent: "center", color: hi ? "var(--accent-contrast)" : "var(--c-positive)", visibility: it.checked ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>}
+                {(it.icon || it.iconNode) && <span style={{ display: "inline-flex", width: 17, justifyContent: "center", color: hi ? "var(--accent-contrast)" : (it.tint || fg) }}>{it.iconNode || <Icon name={it.icon} size={16} />}</span>}
+                <span style={{ flex: 1, fontFamily: "var(--f-body)", fontSize: 13, fontWeight: hi || it.active ? 600 : 400 }}>{it.label}</span>
+                {it.shortcut && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: hi ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: hi ? 0.75 : 1 }}>{keyText(it.shortcut)}</span>}
               </button>
             );
           })}

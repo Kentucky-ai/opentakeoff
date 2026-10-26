@@ -1,3 +1,5 @@
+import { stampWatermark } from "./pdfWatermark.js";
+import { annotationScene, pathString } from './annotationTools.js';
 // Marked-Set PDF export — distribute the takeoff off-app, fully client-side.
 //
 // One click builds a distribution-ready PDF: every sheet that carries takeoff
@@ -38,11 +40,17 @@ export function authorTallyLine(shapes) {
 }
 import { pointInPoly, starPath, arrowheadPath, cloudBezier, chiselRibbon } from "./geometry.js";
 import { transformPath, svgPlacedBox } from "./svgpath.js";
-import { rfiStatus } from "./rfi.js";
-import { RENDER_SCALE } from "./sheets";
+import { imagePlacedBox, pickEmbedFormat, imageDrawParams, sourceCaption } from "./markupImage";
+import { rfiStatus, liveRfis } from "./rfi.js";
+import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
+// Notes burn as the block the canvas drew them as: NOTE_PT, wrapped at three
+// inches, anchored baseline-left (lib/markupText is the one owner of that layout).
+import { NOTE_PT, layoutNote, noteBox, lineBaseline } from "./markupText.js";
 import { dimLabel } from "./units";
+import { sourcePageMode, sourceStampNote, noCanvasForRasterMessage } from "./markedsetSource.js";
+import { qtyLabels, resolveMarkup, FIELD_WARN_INK, FIELD_WARN_INK_DARK } from "./noteFields.ts";
 
 const COBALT = "#1f3fc7";
 const DEDUCT_RED = "#b03a26";
@@ -227,7 +235,21 @@ function invertPixels(cv) {
   ctx.restore();
 }
 
-export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, approvals = [], rfis = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
+export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, approvals = [], rfis: rfisIn = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
+  // a withdrawn RFI is a tombstone (rfi.js liveRfis): its number stays
+  // reserved but it prints nowhere — the schedule keeps the gap. An agent-
+  // raised RFI prints exactly like a panel-raised one; who asked is on the
+  // record (origin.actor), not on the page.
+  markups = (markups || []).filter(m => !m.reference_only);
+  // {{qty}} fields (#474) resolve here, once, against the same measured
+  // quantities the canvas quotes — the burned note reads what the screen read.
+  // An unresolved field prints literally in the danger ink (fieldWarn).
+  const fieldWarn = new Set();
+  {
+    const qtyL = qtyLabels(conditionTotals(conditions || [], shapes || []), units);
+    markups = markups.map((m0) => { const r = resolveMarkup(m0, qtyL); if (r.unresolved.length) fieldWarn.add(m0.id); return r.m; });
+  }
+  const rfis = liveRfis(rfisIn);
   // display-unit edge (lib/units contract): quantities arrive as internal feet;
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
   // the per-shape chips. ASCII "m2" (Helvetica WinAnsi has no superscript 2).
@@ -235,7 +257,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   const uA = (sf) => (M ? sf * 0.09290304 : sf);
   const uL = (lf) => (M ? lf * 0.3048 : lf);
   const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
-  const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle } = await import("pdf-lib");
+  const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle, BlendMode } = await import("pdf-lib");
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   // resolve a linked markup's RFI number for the on-sheet marker (ASCII, WinAnsi-safe)
   const rfiNum = new Map((rfis || []).map((r) => [r.id, r.number]));
@@ -381,7 +403,14 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         shows(uA(r.border_sf)) ? `${num(uA(r.border_sf))} ${AU} border` : "", shows(uL(r.lf)) ? `${num(uL(r.lf))} ${LU}` : "", shows(r.ea, 0) ? `${num(r.ea, 0)} EA` : "",
       ].filter(Boolean).join(" · ");
       draw(qty || "-", { x: 190, y, size: 10, font, color: ink });
-      draw(`${c.hatch && c.hatch !== "solid" ? c.hatch + " · " : ""}waste ${r.waste_pct}% -> ${num(uA(r.total_sf_net))} ${AU}`, { x: 420, y, size: 8.5, font, color: muted });
+      const orderQty = [
+        shows(uA(r.total_sf_net)) ? `${num(uA(r.total_sf_net))} ${AU}` : "",
+        shows(uL(r.lf_net)) ? `${num(uL(r.lf_net))} ${LU}` : "",
+      ].filter(Boolean).join(" · ");
+      // Count totals have no waste-adjusted field. Do not invent an area
+      // quantity for a linear/count condition on the cover.
+      const allowance = orderQty ? `waste ${r.waste_pct}% -> ${orderQty}` : "";
+      draw([c.hatch && c.hatch !== "solid" ? c.hatch : "", allowance].filter(Boolean).join(" · "), { x: 420, y, size: 8.5, font, color: muted });
       y -= 15;
       if (y < 120) break;
     }
@@ -482,7 +511,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     return src;
   };
   for (const sh of marked) {
-    let pg, toPage, chipRot = degrees(0), W, H;
+    let pg, toPage, chipRot = degrees(0), W, H, mode = "vector";
 
     if (sh.stitch) {
       // ── composite stitch page (#200): the stitched surface as ONE page at
@@ -506,7 +535,13 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const plan = stitchPagePlan(members, dims);
       W = plan.extent.w; H = plan.extent.h;
       const pageW = W / RENDER_SCALE, pageH = H / RENDER_SCALE;
-      if (dark) {
+      // an encrypted member cannot be embedded as vector (lib/markedsetSource:
+      // pdf-lib copies ciphertext; embedPage throws at save) — the whole
+      // composite goes the raster way, un-inverted unless the set is dark
+      const encrypted = !dark && (await Promise.all(members.map((m) => srcDocFor(m.file)))).some((d) => d.isEncrypted);
+      mode = sourcePageMode({ dark, encrypted });
+      if (mode === "raster" && typeof document === "undefined") throw new Error(noCanvasForRasterMessage(sh.label));
+      if (mode !== "vector") {
         // one composite raster: members painted seam-clipped onto a white
         // ground (so the gap outside every member inverts to the dark stage),
         // then the whole canvas inverted ONCE — the involution stays exact.
@@ -531,7 +566,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           ctx.drawImage(mc, pm.dx * k, pm.dy * k);
           ctx.restore();
         }
-        invertPixels(cv);
+        if (dark) invertPixels(cv);
         const png = await doc.embedPng(cv.toDataURL("image/png"));
         pg = doc.addPage([pageW, pageH]);
         pg.drawImage(png, { x: 0, y: 0, width: pageW, height: pageH });
@@ -559,15 +594,22 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     const vpR = page.getViewport({ scale: RENDER_SCALE });   // the space verts are normalized to
     W = vpR.width; H = vpR.height;
 
-    if (dark) {
-      // raster → invert → image page (unrotated by construction)
+    // the vector copy needs a source pdf-lib can read; an encrypted source
+    // (owner password, empty user password — pdf.js renders it, so the canvas
+    // never said a word) copies as ciphertext and prints as a blank sheet in
+    // every viewer. Decide before touching the page (lib/markedsetSource).
+    const src = dark ? null : await srcDocFor(sh.file);
+    mode = sourcePageMode({ dark, encrypted: !!src?.isEncrypted });
+    if (mode === "raster" && typeof document === "undefined") throw new Error(noCanvasForRasterMessage(sh.label));
+    if (mode !== "vector") {
+      // raster → (invert when dark) → image page (unrotated by construction)
       const vp1 = page.getViewport({ scale: 1 });
       const s = Math.min(RASTER_MAX / Math.max(vp1.width, vp1.height), 4);
       const vp = page.getViewport({ scale: s });
       const cv = document.createElement("canvas");
       cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
       await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-      invertPixels(cv);
+      if (dark) invertPixels(cv);
       const png = await doc.embedPng(cv.toDataURL("image/png"));
       pg = doc.addPage([vp1.width, vp1.height]);
       pg.drawImage(png, { x: 0, y: 0, width: vp1.width, height: vp1.height });
@@ -576,8 +618,6 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     } else {
       // vector copy of the source page; image px → PDF user space through the
       // inverse viewport transform (rotation + viewBox offsets included)
-      let src = srcDocs.get(sh.file);
-      if (!src) { src = await PDFDocument.load(await loadPdfData(sh.file), { ignoreEncryption: true }); srcDocs.set(sh.file, src); }
       const [copied] = await doc.copyPages(src, [sh.page - 1]);
       pg = doc.addPage(copied);
       const [a, b, c, d, e, f] = vpR.transform;
@@ -598,6 +638,24 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     const text = (t, x, y, size, colorRgb, fnt = font) => {
       const [px, py] = toPage(x, y);
       pg.drawText(winAnsiSafe(t), { x: px, y: py, size, font: fnt, color: colorRgb, rotate: chipRot });
+    };
+    // A note (callout / text note) as a wrapped BLOCK — the canvas's layout at
+    // pure ink size (no screen floor here: the print is exact). Widths are
+    // measured with the PDF face so no line overruns its box; the box itself is
+    // an image-px rectangle through imageDrawParams (proven on rotated pages),
+    // the lines go through text() so they carry the same rotation.
+    const noteBlock = (raw, ax, ay, colorRgb, backing) => {
+      const t = winAnsiSafe(raw);
+      const fs = NOTE_PT / ptScale;   // image px for NOTE_PT on THIS page
+      const L = layoutNote({ text: t, fontPx: fs, measure: (str) => bold.widthOfTextAtSize(str, NOTE_PT) / ptScale });
+      if (!L.lines.length) return;
+      const b = noteBox(ax, ay, L);
+      const dp = imageDrawParams(toPage, b.x0, b.y0, L.w, L.h);
+      pg.drawRectangle({
+        x: dp.x, y: dp.y, width: dp.width, height: dp.height, rotate: degrees(dp.rotateDeg),
+        color: backing, opacity: 0.92, borderColor: colorRgb, borderWidth: 0.7,
+      });
+      L.lines.forEach((ln, i) => { if (ln) text(ln, ax, lineBaseline(ay, L, i), NOTE_PT, colorRgb, bold); });
     };
     const chip = (raw, x, y, borderRgb) => {
       const t = winAnsiSafe(raw);
@@ -669,9 +727,23 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const mCond = m.condition_id ? (conditions || []).find((c) => c.id === m.condition_id) : null;
       const mbase = m.color || mCond?.color || (m.rfi_id ? COBALT : "#c47a10");
       const mcol = rgb(...hex(dark ? boostForDark(mbase) : mbase));
+      const tcol = fieldWarn.has(m.id) ? rgb(...hex(dark ? FIELD_WARN_INK_DARK : FIELD_WARN_INK)) : mcol;   // note text
       const mdash = pdfDashFor(m.line_style || "solid");
       const mw = clampWeight(m.weight);   // stroke-width multiplier (markups only), default ×1
-      if (m.type === "highlight" && (m.pts || []).length >= 2) {
+      if (m.annotation_style && ["arrow", "highlight", "callout", "cloud", "text"].includes(m.type)) {
+        const scene = annotationScene(m, W, H, RENDER_SCALE);
+        const P = ([x, y]) => { const [px, py] = toPage(x, y); return [px, -py]; };
+        for (const ink of scene.paths) pg.drawSvgPath(pathString(ink.commands, P), {
+          x: 0, y: 0,
+          ...(ink.fill ? { color: rgb(...hex(ink.fill)), opacity: ink.opacity } : {}),
+          ...(ink.stroke ? { borderColor: rgb(...hex(ink.stroke)), borderWidth: ink.width * ptScale, borderOpacity: ink.opacity } : {}),
+          ...(ink.dash ? { borderDashArray: ink.dash.map(n => n * ptScale) } : {}),
+          ...(ink.blend ? { blendMode: BlendMode.Multiply } : {}),
+          borderLineCap: LineCapStyle.Round,
+        });
+        for (const ink of scene.texts) text(ink.text, ink.x, ink.y, ink.size * ptScale, rgb(...hex(ink.color)));
+        if (rlabel) { const at = m.at || m.from || m.rect?.[0] || m.pts?.[0]; if (at) text(rlabel, at[0] * W, at[1] * H - 10 / ptScale, 8, mcol, bold); }
+      } else if (m.type === "highlight" && (m.pts || []).length >= 2) {
         // freehand highlighter stroke — ink stays its own color in both export
         // modes (a highlight IS its hue); width is stored as a fraction of sheet
         // width → image px → page points. Weight (×) multiplies like the canvas.
@@ -691,7 +763,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         const r = [[nx0 * W, ny0 * H], [nx1 * W, ny0 * H], [nx1 * W, ny1 * H], [nx0 * W, ny1 * H]];
         pg.drawSvgPath(svgPath(r), { x: 0, y: 0, color: mcol, opacity: 0.18 + alphaBoost / 2, borderColor: mcol, borderWidth: 1 * mw, borderOpacity: 0.9, ...(mdash ? { borderDashArray: mdash } : {}) });
         const t = lbl(m.text);
-        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, mcol, bold);
+        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, tcol, bold);
       } else if (m.type === "cloud" && m.rect) {
         const [[nx0, ny0], [nx1, ny1]] = m.rect;
         // real scallops: cloudBezier's CONTROL POINTS survive the affine page
@@ -703,7 +775,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         for (const [c1, c2, end] of cb.segments) d += ` C${P(c1)} ${P(c2)} ${P(end)}`;
         pg.drawSvgPath(d + " Z", { x: 0, y: 0, borderColor: mcol, borderWidth: 1.3 * mw, borderOpacity: 0.95, ...(mdash ? { borderDashArray: mdash } : {}) });
         const t = lbl(m.text);
-        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, mcol, bold);
+        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, tcol, bold);
         // revision-delta triangle at the top-right corner — clear of the
         // top-left RFI label and the centered note. Absent m.rev → nothing.
         if (Number.isFinite(m.rev) && m.rev > 0) {
@@ -724,7 +796,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         const [ptx, pty] = toPage(m.to[0] * W, m.to[1] * H);
         pg.drawSvgPath(arrowheadPath(pfx, -pfy, ptx, -pty, 6 * mw), { x: 0, y: 0, color: mcol, opacity: 0.95 });
         const t = lbl(m.text);
-        if (t) text(t, (m.from[0] + m.to[0]) / 2 * W, (m.from[1] + m.to[1]) / 2 * H - 6 / ptScale, 8, mcol, bold);
+        if (t) text(t, (m.from[0] + m.to[0]) / 2 * W, (m.from[1] + m.to[1]) / 2 * H - 6 / ptScale, 8, tcol, bold);
       } else if (m.type === "dimension" && m.from && m.to) {
         // a dimension line: perpendicular ticks at both ends, the measured
         // length centered beside it. m.len_ft was snapshotted at annotate
@@ -744,7 +816,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const size = 8;
           const tw = bold.widthOfTextAtSize(winAnsiSafe(t), size);
           const [pmx, pmy] = toPage((fx + dxq) / 2 + dnx * (14 / ptScale), (fy + dyq) / 2 + dny * (14 / ptScale));
-          pg.drawText(winAnsiSafe(t), { x: pmx - tw / 2, y: pmy - size / 2.7, size, font: bold, color: mcol, rotate: chipRot });
+          pg.drawText(winAnsiSafe(t), { x: pmx - tw / 2, y: pmy - size / 2.7, size, font: bold, color: tcol, rotate: chipRot });
         }
       } else if (m.type === "bubble" && m.at) {
         // a circle carrying centered text — detail/section/keynote bubbles and
@@ -758,7 +830,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         if (t) {
           const size = 8;
           const tw = bold.widthOfTextAtSize(winAnsiSafe(t), size);
-          pg.drawText(winAnsiSafe(t), { x: pcx - tw / 2, y: pcy - size / 2.7, size, font: bold, color: mcol, rotate: chipRot });
+          pg.drawText(winAnsiSafe(t), { x: pcx - tw / 2, y: pcy - size / 2.7, size, font: bold, color: tcol, rotate: chipRot });
         }
       } else if (m.type === "callout" && m.at) {
         if (m.target) {
@@ -769,7 +841,12 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const [ptx, pty] = toPage(m.target[0] * W, m.target[1] * H);
           pg.drawSvgPath(arrowheadPath(pax, -pay, ptx, -pty, 5), { x: 0, y: 0, color: mcol, opacity: 0.9 });
         }
-        text(lbl(m.text), m.at[0] * W, m.at[1] * H, 8.5, mcol, bold);
+        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, tcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 1, 1));
+      } else if (m.type === "text" && m.at) {
+        // a plain text note — never burned before this branch existed: a note
+        // written on the canvas simply vanished from the print. Same block as a
+        // callout, on the canvas's cream backing.
+        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, tcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 0.97, 0.93));
       } else if (m.type === "svg" && m.at && Array.isArray(m.vb) && typeof m.path === "string") {
         // a vector symbol — bake local→page px, NEGATING y like every sibling path
         // (drawSvgPath internally applies scale(1,-1), so toPage output must be
@@ -783,10 +860,68 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const fillOn = m.fill && m.fill !== "none";
           if (d) pg.drawSvgPath(d, { x: 0, y: 0, borderColor: mcol, borderWidth: 1.2 * mw, borderOpacity: 0.95, ...(fillOn ? { color: rgb(...hex(dark ? boostForDark(m.fill) : m.fill)), opacity: 0.9 } : {}) });
           const t = lbl(m.text);
-          if (t) text(t, m.at[0] * W - bw / 2, y0 - 6 / ptScale, 8, mcol, bold);
+          if (t) text(t, m.at[0] * W - bw / 2, y0 - 6 / ptScale, 8, tcol, bold);
         }
-      } else if (m.type === "text" && m.at) {
-        text(lbl(m.text), m.at[0] * W, m.at[1] * H, 8.5, mcol, bold);
+      } else if (m.type === "image" && m.at && m.src) {
+        // a raster image markup (an uploaded file, or a marquee screenshot of the
+        // sheet). drawImage takes an anchor + rotation, and imageDrawParams derives
+        // both from toPage — so the image lands correctly on ROTATED source pages
+        // too (and on the dark-raster / stitch paths, where toPage carries no
+        // rotation, it comes out axis-aligned as before). Only PNG/JPEG embed, and
+        // the store only ever mints those (pickEmbedFormat → null is a clean skip).
+        // A corrupt dataURL must not kill the export — the logo precedent, in a try.
+        const fmt = pickEmbedFormat(m.src);
+        if (fmt) {
+          try {
+            const { bw, bh } = imagePlacedBox(m.w, m.aspect, W);
+            if (bw > 0 && bh > 0) {
+              const img = fmt === "jpg" ? await doc.embedJpg(m.src) : await doc.embedPng(m.src);
+              const x0 = m.at[0] * W - bw / 2, y0 = m.at[1] * H - bh / 2;
+              const dp = imageDrawParams(toPage, x0, y0, bw, bh);
+              pg.drawImage(img, { x: dp.x, y: dp.y, width: dp.width, height: dp.height, rotate: degrees(dp.rotateDeg) });
+              // Source caption (captures only) — the ORIGIN sheet NAME, read from the
+              // frozen m.src_label the canvas stamped at capture time, so the PDF text
+              // is the SAME string the canvas shows (no runtime label resolution here,
+              // which markedset can't do anyway). Legacy captures without src_label
+              // fall back to the pure file/page derivation. A stitch origin has no
+              // page number → drop "· p.N". Empty label ⇒ draw nothing.
+              const capLabel = m.src_label != null ? m.src_label : sheetBaseLabelFromKey(m.src_sheet_id);
+              const capPage = typeof m.src_sheet_id === "string" && m.src_sheet_id.startsWith("stitch:") ? 0 : parseSheetKey(m.src_sheet_id).page;
+              const capText = m.source === "capture" && m.source_label && m.src_sheet_id
+                ? sourceCaption(capLabel, capPage)
+                : "";
+              if (capText) {
+                // MIRRORS the rotated chip() path (rotate: chipRot), NOT the
+                // axis-aligned pg.drawText — this IS the rotated-page path
+                // (imageDrawParams derives anchor+rotation from toPage). But
+                // chip()'s own rectangle math sets its anchor via PAGE-POINT
+                // arithmetic on the already-mapped centroid (px - w/2, py -
+                // 5.5) and only THEN rotates the far corners around it — on a
+                // rotated source page that anchor point does not track the
+                // image at all (a pre-existing chip() issue, left alone here;
+                // see the task report). So this box is built the same way the
+                // image itself is: as an IMAGE-PX rectangle passed through
+                // imageDrawParams, which is already proven correct on rotated
+                // pages. Sizes come in as PAGE POINTS and are converted to
+                // image-px via ptScale BEFORE mapping (the same "divide by
+                // ptScale" trick already used for the offsets at :695/:707),
+                // so the gap and box stay an exact point size in the
+                // correctly rotated direction at any page rotation.
+                const textPt = 7.5, capHpt = 12, gapPt = 6;
+                const tw = font.widthOfTextAtSize(winAnsiSafe(capText), textPt) + 8;
+                const capWimg = tw / ptScale, capHimg = capHpt / ptScale, gapImg = gapPt / ptScale;
+                const capX0 = x0 + bw / 2 - capWimg / 2, capY0 = y0 - gapImg - capHimg;
+                const cdp = imageDrawParams(toPage, capX0, capY0, capWimg, capHimg);
+                pg.drawRectangle({
+                  x: cdp.x, y: cdp.y, width: cdp.width, height: cdp.height, rotate: chipRot,
+                  color: dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 1, 1), opacity: 0.85,
+                  borderColor: ink, borderWidth: 0.7,
+                });
+                text(capText, capX0 + 4 / ptScale, capY0 + capHimg - 3 / ptScale, textPt, ink);
+              }
+            }
+          } catch { /* corrupt image data or a bad provenance record — skip this one, never fail the whole marked set */ }
+        }
       }
     }
     // approval seals burn in ABOVE the markups, exactly as the canvas layers
@@ -818,9 +953,9 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     // sheet stamp, top-left in visual space. A stitch page exists in no source
     // planset, so its stamp says so — the composite is disclosed, not passed
     // off as a drawing the architect issued.
-    const stamp = sh.stitch
+    const stamp = (sh.stitch
       ? `${sh.label} · stitched composite (${sh.stitch.members.map((m) => m.label || m.key).join(" + ")}) · marked set`
-      : `${sh.label} · marked set`;
+      : `${sh.label} · marked set`) + sourceStampNote(mode);
     text(stamp, 14, 20, 8, muted);
   }
 
@@ -834,10 +969,39 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     lastPg.drawText(winAnsiSafe(credit), { x: (612 - cw) / 2, y: 22, size: 7, font, color: muted });
   }
 
+  // the OpenTakeoff watermark on every page, cover included, in every branding
+  // mode (lib/pdfWatermark.js) — clear-label names the firm, it never removes this
+  for (const p of allPages) stampWatermark(p, { font, rgb, degrees, dark });
+
+  const pages = doc.getPageCount();
   const bytes = await doc.save();
   const base = (projectName || "").trim();
   const filename = `${base ? base + " - " : ""}marked set${dark ? " (dark)" : ""}.pdf`;
-  return { bytes, filename };
+  return { bytes, filename, pages };
+}
+
+// Closing a PDF out of the plan set keeps its takeoffs (they restore on
+// re-add), so a sheet can carry ink whose PDF bytes are gone. Export the sheets
+// whose PDFs are loaded and name the ones that aren't — one closed PDF must not
+// sink the whole marked set (#462). A stitched surface needs every member file.
+export function splitLoadedSheets(sheets, loadedFiles) {
+  const loaded = new Set(loadedFiles);
+  const kept = [];
+  const missing = new Set();
+  for (const sh of sheets) {
+    const files = sh.stitch ? sh.stitch.members.map((m) => m.file) : [sh.file];
+    const gone = files.filter((f) => !loaded.has(f));
+    if (gone.length) gone.forEach((f) => missing.add(f));
+    else kept.push(sh);
+  }
+  return { kept, missingFiles: [...missing] };
+}
+
+// The status-line clause for splitLoadedSheets' missingFiles ("" when none).
+export function skippedPdfsNote(missingFiles) {
+  if (!missingFiles.length) return "";
+  const n = missingFiles.length;
+  return `skipped takeoffs on ${n} closed PDF${n === 1 ? "" : "s"} (${missingFiles.join(", ")}). Re-open ${n === 1 ? "it" : "them"} to include ${n === 1 ? "it" : "them"}.`;
 }
 
 export function downloadBytes(filename, bytes, type = "application/pdf") {

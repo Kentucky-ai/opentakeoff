@@ -1,5 +1,7 @@
 # Voice dictation — on-device push-to-talk (RFC #59)
 
+> **Gated off by default (2026-09-05).** The Voice button and the Command box are no longer on the toolbar and `M` arms nothing; nobody used them there. Everything below still exists in the code and comes back with `VITE_COMMAND_BOX=1` at build time (`globalThis.__OT_COMMAND_BOX = true` at runtime).
+
 Hold **M** (or the **Voice** toolbar button) and speak a takeoff command—*"carpet
 one, waste seven"*, *"label phase two"*, *"note verify sheet vinyl
 with GC"*, or *"CPT-1, this room"* with the pointer resting on a room.

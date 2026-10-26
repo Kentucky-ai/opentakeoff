@@ -313,3 +313,42 @@ export function ringSelfIntersects(pts) {
 // ── snap-to-vector spatial hash. The op-list walk that feeds it (endpoints +
 // line segments for One-Click Area) lives in lib/oneclick: extractVectorGeometry.
 // `cell` is the caller's tuning (raster px per bucket) — see SNAP_CELL in the canvas.
+
+// Smallest-area rectangle enclosing a point set — the L × W an estimator reads
+// off a footprint (a plain bbox would read a rotated wing as its diagonal
+// envelope). Convex hull (monotone chain) then one candidate rectangle per
+// hull edge (the minimum-area rectangle always has a side collinear with a
+// hull edge). Returns { w, h } in the input's units with w ≥ h, or null when
+// the points can't make a rectangle (fewer than 2 distinct points).
+export function minAreaRect(pts) {
+  const P = (pts || []).filter((p) => Number.isFinite(p?.[0]) && Number.isFinite(p?.[1]));
+  if (P.length < 2) return null;
+  const S = [...P].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [];
+  for (const p of S) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = S.length - 1; i >= 0; i--) { const p = S[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  if (hull.length < 2) return null;
+  let best = null;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    const ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey);
+    if (L < 1e-9) continue;
+    const ux = ex / L, uy = ey / L; // edge direction; normal is (-uy, ux)
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    for (const p of hull) {
+      const u = p[0] * ux + p[1] * uy, v = -p[0] * uy + p[1] * ux;
+      if (u < minU) minU = u; if (u > maxU) maxU = u;
+      if (v < minV) minV = v; if (v > maxV) maxV = v;
+    }
+    const w = maxU - minU, h = maxV - minV;
+    // ties (a right triangle boxes equally on a leg or on its hypotenuse)
+    // go to the orientation nearest the sheet's axes — how a plan reads
+    const tilt = Math.min(Math.abs(ux), Math.abs(uy));
+    if (!best || w * h < best.area - 1e-9 * best.area || (Math.abs(w * h - best.area) <= 1e-9 * best.area && tilt < best.tilt)) best = { w, h, area: w * h, tilt };
+  }
+  if (!best) return null;
+  return best.w >= best.h ? { w: best.w, h: best.h } : { w: best.h, h: best.w };
+}

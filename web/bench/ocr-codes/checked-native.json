@@ -1,0 +1,1370 @@
+{
+  "backend": "ppu Node / onnxruntime-node",
+  "platform": "darwin-arm64",
+  "node": "v24.18.0",
+  "codeCheck": "horizontal-2x-disagreement-v1",
+  "ppu": "6.6.0",
+  "modelRev": "ppocrv5-mobile-en-1+ort-1.26.0-dev.20260416-b7804b056c",
+  "engineOptions": {
+    "detection": {
+      "paddingVertical": 0.4,
+      "paddingHorizontal": 0.6,
+      "maxSideLength": 4096
+    },
+    "recognition": {
+      "maxCropSourceSideLength": 4096,
+      "strategy": "per-box",
+      "recBatchSize": 1
+    },
+    "session": {
+      "logSeverityLevel": 3,
+      "executionProviders": [
+        "cpu"
+      ]
+    }
+  },
+  "provenance": "Invented text and grids generated locally; no plan images, project names, prices or font files. Frozen PNG bytes are the test input; OS fonts are not required to run them.",
+  "summary": {
+    "total": 48,
+    "exact": 38,
+    "unflaggedWrong": 0,
+    "flaggedCorrect": 2,
+    "missing": 0,
+    "thresholds": [
+      {
+        "threshold": 0.8,
+        "correctAtOrAbove": 34,
+        "wrongAtOrAbove": 7
+      },
+      {
+        "threshold": 0.9,
+        "correctAtOrAbove": 25,
+        "wrongAtOrAbove": 5
+      },
+      {
+        "threshold": 0.95,
+        "correctAtOrAbove": 20,
+        "wrongAtOrAbove": 4
+      },
+      {
+        "threshold": 0.99,
+        "correctAtOrAbove": 7,
+        "wrongAtOrAbove": 1
+      }
+    ]
+  },
+  "results": [
+    {
+      "id": "arial-400-216",
+      "sha256": "21abfb66c1f5ae3d29c47ae5b8c3f35f67f7316173760699a3a3a40d4e4bf3e0",
+      "control": true,
+      "ms": 256.43199999999996,
+      "summary": {
+        "total": 12,
+        "exact": 12,
+        "unflaggedWrong": 0,
+        "flaggedCorrect": 0,
+        "missing": 0,
+        "thresholds": [
+          {
+            "threshold": 0.8,
+            "correctAtOrAbove": 10,
+            "wrongAtOrAbove": 0
+          },
+          {
+            "threshold": 0.9,
+            "correctAtOrAbove": 10,
+            "wrongAtOrAbove": 0
+          },
+          {
+            "threshold": 0.95,
+            "correctAtOrAbove": 8,
+            "wrongAtOrAbove": 0
+          },
+          {
+            "threshold": 0.99,
+            "correctAtOrAbove": 2,
+            "wrongAtOrAbove": 0
+          }
+        ]
+      },
+      "rows": [
+        {
+          "expected": "P1",
+          "rect": {
+            "x0": 48,
+            "y0": 144,
+            "x1": 243,
+            "y1": 204
+          },
+          "actual": "P1",
+          "ok": true,
+          "confidence": 0.9734475910663605,
+          "cells": [
+            {
+              "text": "P1",
+              "confidence": 0.9734475910663605,
+              "rect": {
+                "x0": 37,
+                "y0": 153,
+                "x1": 97,
+                "y1": 215
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P2",
+          "rect": {
+            "x0": 48,
+            "y0": 204,
+            "x1": 243,
+            "y1": 264
+          },
+          "actual": "P2",
+          "ok": true,
+          "confidence": 0.9390698373317719,
+          "cells": [
+            {
+              "text": "P2",
+              "confidence": 0.9390698373317719,
+              "rect": {
+                "x0": 37,
+                "y0": 214,
+                "x1": 97,
+                "y1": 273
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-2",
+          "rect": {
+            "x0": 48,
+            "y0": 264,
+            "x1": 243,
+            "y1": 324
+          },
+          "actual": "SS-2",
+          "ok": true,
+          "confidence": 0.9776538163423538,
+          "cells": [
+            {
+              "text": "SS-2",
+              "confidence": 0.9776538163423538,
+              "rect": {
+                "x0": 40,
+                "y0": 277,
+                "x1": 115,
+                "y1": 332
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-3",
+          "rect": {
+            "x0": 48,
+            "y0": 324,
+            "x1": 243,
+            "y1": 384
+          },
+          "actual": "SS-3",
+          "ok": true,
+          "confidence": 0.9729807525873184,
+          "cells": [
+            {
+              "text": "SS-3",
+              "confidence": 0.9729807525873184,
+              "rect": {
+                "x0": 45,
+                "y0": 340,
+                "x1": 111,
+                "y1": 381
+              }
+            }
+          ]
+        },
+        {
+          "expected": "VWC",
+          "rect": {
+            "x0": 48,
+            "y0": 384,
+            "x1": 243,
+            "y1": 444
+          },
+          "actual": "VWC",
+          "ok": true,
+          "confidence": 0.7302504777908325,
+          "cells": [
+            {
+              "text": "VWC",
+              "confidence": 0.7302504777908325,
+              "rect": {
+                "x0": 43,
+                "y0": 398,
+                "x1": 115,
+                "y1": 447
+              }
+            }
+          ]
+        },
+        {
+          "expected": "WVC",
+          "rect": {
+            "x0": 48,
+            "y0": 444,
+            "x1": 243,
+            "y1": 504
+          },
+          "actual": "WVC",
+          "ok": true,
+          "confidence": 0.7893126209576925,
+          "cells": [
+            {
+              "text": "WVC",
+              "confidence": 0.7893126209576925,
+              "rect": {
+                "x0": 39,
+                "y0": 457,
+                "x1": 118,
+                "y1": 512
+              }
+            }
+          ]
+        },
+        {
+          "expected": "ST-1",
+          "rect": {
+            "x0": 48,
+            "y0": 504,
+            "x1": 243,
+            "y1": 564
+          },
+          "actual": "ST-1",
+          "ok": true,
+          "confidence": 0.9982682466506958,
+          "cells": [
+            {
+              "text": "ST-1",
+              "confidence": 0.9982682466506958,
+              "rect": {
+                "x0": 40,
+                "y0": 515,
+                "x1": 112,
+                "y1": 569
+              }
+            }
+          ]
+        },
+        {
+          "expected": "S-1",
+          "rect": {
+            "x0": 48,
+            "y0": 564,
+            "x1": 243,
+            "y1": 624
+          },
+          "actual": "S-1",
+          "ok": true,
+          "confidence": 0.960986336072286,
+          "cells": [
+            {
+              "text": "S-1",
+              "confidence": 0.960986336072286,
+              "rect": {
+                "x0": 37,
+                "y0": 574,
+                "x1": 103,
+                "y1": 633
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P-1",
+          "rect": {
+            "x0": 48,
+            "y0": 624,
+            "x1": 243,
+            "y1": 684
+          },
+          "actual": "P-1",
+          "ok": true,
+          "confidence": 0.993511438369751,
+          "cells": [
+            {
+              "text": "P-1",
+              "confidence": 0.993511438369751,
+              "rect": {
+                "x0": 38,
+                "y0": 635,
+                "x1": 102,
+                "y1": 693
+              }
+            }
+          ]
+        },
+        {
+          "expected": "BK-1",
+          "rect": {
+            "x0": 48,
+            "y0": 684,
+            "x1": 243,
+            "y1": 744
+          },
+          "actual": "BK-1",
+          "ok": true,
+          "confidence": 0.9895909428596497,
+          "cells": [
+            {
+              "text": "BK-1",
+              "confidence": 0.9895909428596497,
+              "rect": {
+                "x0": 40,
+                "y0": 698,
+                "x1": 115,
+                "y1": 752
+              }
+            }
+          ]
+        },
+        {
+          "expected": "G-01(C)",
+          "rect": {
+            "x0": 48,
+            "y0": 744,
+            "x1": 243,
+            "y1": 804
+          },
+          "actual": "G-01(C)",
+          "ok": true,
+          "confidence": 0.930182431425367,
+          "cells": [
+            {
+              "text": "G-01(C)",
+              "confidence": 0.930182431425367,
+              "rect": {
+                "x0": 44,
+                "y0": 760,
+                "x1": 140,
+                "y1": 806
+              }
+            }
+          ]
+        },
+        {
+          "expected": "FT-02(E)",
+          "rect": {
+            "x0": 48,
+            "y0": 804,
+            "x1": 243,
+            "y1": 864
+          },
+          "actual": "FT-02(E)",
+          "ok": true,
+          "confidence": 0.9871903359889984,
+          "cells": [
+            {
+              "text": "FT-02(E)",
+              "confidence": 0.9871903359889984,
+              "rect": {
+                "x0": 45,
+                "y0": 820,
+                "x1": 144,
+                "y1": 861
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "avenir-next-condensed-400-100",
+      "sha256": "e8964308a66a0f30eacc943d2a6a0f170f348ce3e339e32544c83bc91e9a4415",
+      "control": false,
+      "ms": 178.190292,
+      "summary": {
+        "total": 12,
+        "exact": 7,
+        "unflaggedWrong": 0,
+        "flaggedCorrect": 1,
+        "missing": 0,
+        "thresholds": [
+          {
+            "threshold": 0.8,
+            "correctAtOrAbove": 7,
+            "wrongAtOrAbove": 4
+          },
+          {
+            "threshold": 0.9,
+            "correctAtOrAbove": 4,
+            "wrongAtOrAbove": 3
+          },
+          {
+            "threshold": 0.95,
+            "correctAtOrAbove": 4,
+            "wrongAtOrAbove": 2
+          },
+          {
+            "threshold": 0.99,
+            "correctAtOrAbove": 1,
+            "wrongAtOrAbove": 1
+          }
+        ]
+      },
+      "rows": [
+        {
+          "expected": "P1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 66.66666666666666,
+            "x1": 112.5,
+            "y1": 94.44444444444443
+          },
+          "actual": "P1",
+          "ok": true,
+          "confidence": 0.9910213649272919,
+          "cells": [
+            {
+              "text": "P1",
+              "confidence": 0.9910213649272919,
+              "rect": {
+                "x0": 17,
+                "y0": 68,
+                "x1": 44,
+                "y1": 94
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P2",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 94.44444444444444,
+            "x1": 112.5,
+            "y1": 122.22222222222223
+          },
+          "actual": "P2",
+          "ok": true,
+          "confidence": 0.9772934019565582,
+          "cells": [
+            {
+              "text": "P2",
+              "confidence": 0.9772934019565582,
+              "rect": {
+                "x0": 17,
+                "y0": 96,
+                "x1": 44,
+                "y1": 122
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-2",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 122.22222222222223,
+            "x1": 112.5,
+            "y1": 150
+          },
+          "actual": "SS-2",
+          "ok": true,
+          "confidence": 0.825856551527977,
+          "cells": [
+            {
+              "text": "SS-2",
+              "confidence": 0.825856551527977,
+              "codeAlternate": "",
+              "rect": {
+                "x0": 17,
+                "y0": 125,
+                "x1": 51,
+                "y1": 148
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-3",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 150,
+            "x1": 112.5,
+            "y1": 177.77777777777777
+          },
+          "actual": "55.3",
+          "ok": false,
+          "confidence": 0.8534452766180038,
+          "cells": [
+            {
+              "text": "55.3",
+              "confidence": 0.8534452766180038,
+              "codeAlternate": "SS-3",
+              "rect": {
+                "x0": 17,
+                "y0": 152,
+                "x1": 51,
+                "y1": 178
+              }
+            }
+          ]
+        },
+        {
+          "expected": "VWC",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 177.77777777777777,
+            "x1": 112.5,
+            "y1": 205.55555555555554
+          },
+          "actual": "VWC",
+          "ok": true,
+          "confidence": 0.8309429089228312,
+          "cells": [
+            {
+              "text": "vwc",
+              "confidence": 0.8309429089228312,
+              "rect": {
+                "x0": 17,
+                "y0": 180,
+                "x1": 52,
+                "y1": 206
+              }
+            }
+          ]
+        },
+        {
+          "expected": "WVC",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 205.55555555555557,
+            "x1": 112.5,
+            "y1": 233.33333333333334
+          },
+          "actual": "WVC",
+          "ok": true,
+          "confidence": 0.8339038689931234,
+          "cells": [
+            {
+              "text": "wvc",
+              "confidence": 0.8339038689931234,
+              "rect": {
+                "x0": 18,
+                "y0": 208,
+                "x1": 52,
+                "y1": 234
+              }
+            }
+          ]
+        },
+        {
+          "expected": "ST-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 233.33333333333334,
+            "x1": 112.5,
+            "y1": 261.11111111111114
+          },
+          "actual": "ST.1",
+          "ok": false,
+          "confidence": 0.9629868716001511,
+          "cells": [
+            {
+              "text": "ST.1",
+              "confidence": 0.9629868716001511,
+              "codeAlternate": "ST-1",
+              "rect": {
+                "x0": 16,
+                "y0": 235,
+                "x1": 50,
+                "y1": 262
+              }
+            }
+          ]
+        },
+        {
+          "expected": "S-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 261.1111111111111,
+            "x1": 112.5,
+            "y1": 288.88888888888886
+          },
+          "actual": "5.1",
+          "ok": false,
+          "confidence": 0.7881194949150085,
+          "cells": [
+            {
+              "text": "5.1",
+              "confidence": 0.7881194949150085,
+              "codeAlternate": "S-1",
+              "rect": {
+                "x0": 16,
+                "y0": 264,
+                "x1": 46,
+                "y1": 290
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 288.8888888888889,
+            "x1": 112.5,
+            "y1": 316.6666666666667
+          },
+          "actual": "P.1",
+          "ok": false,
+          "confidence": 0.9923811554908752,
+          "cells": [
+            {
+              "text": "P.1",
+              "confidence": 0.9923811554908752,
+              "codeAlternate": "P-1",
+              "rect": {
+                "x0": 15,
+                "y0": 290,
+                "x1": 47,
+                "y1": 317
+              }
+            }
+          ]
+        },
+        {
+          "expected": "BK-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 316.66666666666663,
+            "x1": 112.5,
+            "y1": 344.4444444444444
+          },
+          "actual": "BK.1",
+          "ok": false,
+          "confidence": 0.9176181256771088,
+          "cells": [
+            {
+              "text": "BK.1",
+              "confidence": 0.9176181256771088,
+              "codeAlternate": "BK-1",
+              "rect": {
+                "x0": 17,
+                "y0": 319,
+                "x1": 52,
+                "y1": 345
+              }
+            }
+          ]
+        },
+        {
+          "expected": "G-01(C)",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 344.44444444444446,
+            "x1": 112.5,
+            "y1": 372.22222222222223
+          },
+          "actual": "G-01(C)",
+          "ok": true,
+          "confidence": 0.9504515869276864,
+          "cells": [
+            {
+              "text": "G-01(C)",
+              "confidence": 0.9504515869276864,
+              "rect": {
+                "x0": 18,
+                "y0": 348,
+                "x1": 62,
+                "y1": 371
+              }
+            }
+          ]
+        },
+        {
+          "expected": "FT-02(E)",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 372.2222222222223,
+            "x1": 112.5,
+            "y1": 400.00000000000006
+          },
+          "actual": "FT-02(E)",
+          "ok": true,
+          "confidence": 0.988347977399826,
+          "cells": [
+            {
+              "text": "FT-02(E)",
+              "confidence": 0.988347977399826,
+              "rect": {
+                "x0": 19,
+                "y0": 378,
+                "x1": 62,
+                "y1": 397
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "arial-narrow-400-100",
+      "sha256": "d672ee23e2a3233e5041b4ae08be75204eabb999ff2f5ce3ae5e882b34211ae3",
+      "control": false,
+      "ms": 191.6060839999999,
+      "summary": {
+        "total": 12,
+        "exact": 9,
+        "unflaggedWrong": 0,
+        "flaggedCorrect": 0,
+        "missing": 0,
+        "thresholds": [
+          {
+            "threshold": 0.8,
+            "correctAtOrAbove": 8,
+            "wrongAtOrAbove": 2
+          },
+          {
+            "threshold": 0.9,
+            "correctAtOrAbove": 4,
+            "wrongAtOrAbove": 1
+          },
+          {
+            "threshold": 0.95,
+            "correctAtOrAbove": 3,
+            "wrongAtOrAbove": 1
+          },
+          {
+            "threshold": 0.99,
+            "correctAtOrAbove": 2,
+            "wrongAtOrAbove": 0
+          }
+        ]
+      },
+      "rows": [
+        {
+          "expected": "P1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 66.66666666666666,
+            "x1": 112.5,
+            "y1": 94.44444444444443
+          },
+          "actual": "P1",
+          "ok": true,
+          "confidence": 0.9826472699642181,
+          "cells": [
+            {
+              "text": "P1",
+              "confidence": 0.9826472699642181,
+              "rect": {
+                "x0": 17,
+                "y0": 69,
+                "x1": 43,
+                "y1": 92
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P2",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 94.44444444444444,
+            "x1": 112.5,
+            "y1": 122.22222222222223
+          },
+          "actual": "P2",
+          "ok": true,
+          "confidence": 0.9924370646476746,
+          "cells": [
+            {
+              "text": "P2",
+              "confidence": 0.9924370646476746,
+              "rect": {
+                "x0": 17,
+                "y0": 96,
+                "x1": 44,
+                "y1": 122
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-2",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 122.22222222222223,
+            "x1": 112.5,
+            "y1": 150
+          },
+          "actual": "SS-2",
+          "ok": true,
+          "confidence": 0.8187055587768555,
+          "cells": [
+            {
+              "text": "SS-2",
+              "confidence": 0.8187055587768555,
+              "rect": {
+                "x0": 18,
+                "y0": 125,
+                "x1": 52,
+                "y1": 148
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-3",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 150,
+            "x1": 112.5,
+            "y1": 177.77777777777777
+          },
+          "actual": "S-3",
+          "ok": false,
+          "confidence": 0.969498892625173,
+          "cells": [
+            {
+              "text": "S-3",
+              "confidence": 0.969498892625173,
+              "codeAlternate": "SS-3",
+              "rect": {
+                "x0": 18,
+                "y0": 153,
+                "x1": 52,
+                "y1": 176
+              }
+            }
+          ]
+        },
+        {
+          "expected": "VWC",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 177.77777777777777,
+            "x1": 112.5,
+            "y1": 205.55555555555554
+          },
+          "actual": "WWC",
+          "ok": false,
+          "confidence": 0.7419223586718241,
+          "cells": [
+            {
+              "text": "wwC",
+              "confidence": 0.7419223586718241,
+              "codeAlternate": "WC",
+              "rect": {
+                "x0": 17,
+                "y0": 180,
+                "x1": 52,
+                "y1": 206
+              }
+            }
+          ]
+        },
+        {
+          "expected": "WVC",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 205.55555555555557,
+            "x1": 112.5,
+            "y1": 233.33333333333334
+          },
+          "actual": "WVC",
+          "ok": true,
+          "confidence": 0.7253814737002054,
+          "cells": [
+            {
+              "text": "wvC",
+              "confidence": 0.7253814737002054,
+              "rect": {
+                "x0": 18,
+                "y0": 208,
+                "x1": 52,
+                "y1": 234
+              }
+            }
+          ]
+        },
+        {
+          "expected": "ST-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 233.33333333333334,
+            "x1": 112.5,
+            "y1": 261.11111111111114
+          },
+          "actual": "ST.1",
+          "ok": false,
+          "confidence": 0.8079607337713242,
+          "cells": [
+            {
+              "text": "ST.1",
+              "confidence": 0.8079607337713242,
+              "codeAlternate": "ST-1",
+              "rect": {
+                "x0": 17,
+                "y0": 236,
+                "x1": 51,
+                "y1": 262
+              }
+            }
+          ]
+        },
+        {
+          "expected": "S-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 261.1111111111111,
+            "x1": 112.5,
+            "y1": 288.88888888888886
+          },
+          "actual": "S-1",
+          "ok": true,
+          "confidence": 0.8286545674006144,
+          "cells": [
+            {
+              "text": "S-1",
+              "confidence": 0.8286545674006144,
+              "rect": {
+                "x0": 17,
+                "y0": 264,
+                "x1": 46,
+                "y1": 290
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 288.8888888888889,
+            "x1": 112.5,
+            "y1": 316.6666666666667
+          },
+          "actual": "P-1",
+          "ok": true,
+          "confidence": 0.9197951157887777,
+          "cells": [
+            {
+              "text": "P-1",
+              "confidence": 0.9197951157887777,
+              "rect": {
+                "x0": 17,
+                "y0": 292,
+                "x1": 46,
+                "y1": 315
+              }
+            }
+          ]
+        },
+        {
+          "expected": "BK-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 316.66666666666663,
+            "x1": 112.5,
+            "y1": 344.4444444444444
+          },
+          "actual": "BK-1",
+          "ok": true,
+          "confidence": 0.8875000029802322,
+          "cells": [
+            {
+              "text": "BK-1",
+              "confidence": 0.8875000029802322,
+              "rect": {
+                "x0": 17,
+                "y0": 319,
+                "x1": 51,
+                "y1": 345
+              }
+            }
+          ]
+        },
+        {
+          "expected": "G-01(C)",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 344.44444444444446,
+            "x1": 112.5,
+            "y1": 372.22222222222223
+          },
+          "actual": "G-01(C)",
+          "ok": true,
+          "confidence": 0.8554757237434387,
+          "cells": [
+            {
+              "text": "G-01(C)",
+              "confidence": 0.8554757237434387,
+              "rect": {
+                "x0": 18,
+                "y0": 348,
+                "x1": 61,
+                "y1": 374
+              }
+            }
+          ]
+        },
+        {
+          "expected": "FT-02(E)",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 372.2222222222223,
+            "x1": 112.5,
+            "y1": 400.00000000000006
+          },
+          "actual": "FT-02(E)",
+          "ok": true,
+          "confidence": 0.9976541176438332,
+          "cells": [
+            {
+              "text": "FT-02(E)",
+              "confidence": 0.9976541176438332,
+              "rect": {
+                "x0": 19,
+                "y0": 377,
+                "x1": 62,
+                "y1": 399
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "times-new-roman-400-100",
+      "sha256": "3700080f0b5983148430d47d3fb1c27cac92aad5132bcd3603d24ae99e4a685b",
+      "control": false,
+      "ms": 195.6478340000001,
+      "summary": {
+        "total": 12,
+        "exact": 10,
+        "unflaggedWrong": 0,
+        "flaggedCorrect": 1,
+        "missing": 0,
+        "thresholds": [
+          {
+            "threshold": 0.8,
+            "correctAtOrAbove": 9,
+            "wrongAtOrAbove": 1
+          },
+          {
+            "threshold": 0.9,
+            "correctAtOrAbove": 7,
+            "wrongAtOrAbove": 1
+          },
+          {
+            "threshold": 0.95,
+            "correctAtOrAbove": 5,
+            "wrongAtOrAbove": 1
+          },
+          {
+            "threshold": 0.99,
+            "correctAtOrAbove": 2,
+            "wrongAtOrAbove": 0
+          }
+        ]
+      },
+      "rows": [
+        {
+          "expected": "P1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 66.66666666666666,
+            "x1": 112.5,
+            "y1": 94.44444444444443
+          },
+          "actual": "PL",
+          "ok": false,
+          "confidence": 0.6683677434921265,
+          "cells": [
+            {
+              "text": "Pl",
+              "confidence": 0.6683677434921265,
+              "codeAlternate": "P1",
+              "rect": {
+                "x0": 17,
+                "y0": 69,
+                "x1": 43,
+                "y1": 92
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P2",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 94.44444444444444,
+            "x1": 112.5,
+            "y1": 122.22222222222223
+          },
+          "actual": "P2",
+          "ok": true,
+          "confidence": 0.9026744663715363,
+          "cells": [
+            {
+              "text": "P2",
+              "confidence": 0.9026744663715363,
+              "rect": {
+                "x0": 17,
+                "y0": 96,
+                "x1": 44,
+                "y1": 122
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-2",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 122.22222222222223,
+            "x1": 112.5,
+            "y1": 150
+          },
+          "actual": "S-2",
+          "ok": false,
+          "confidence": 0.973944624265035,
+          "cells": [
+            {
+              "text": "S-2",
+              "confidence": 0.973944624265035,
+              "codeAlternate": "SS-2",
+              "rect": {
+                "x0": 18,
+                "y0": 126,
+                "x1": 52,
+                "y1": 148
+              }
+            }
+          ]
+        },
+        {
+          "expected": "SS-3",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 150,
+            "x1": 112.5,
+            "y1": 177.77777777777777
+          },
+          "actual": "SS-3",
+          "ok": true,
+          "confidence": 0.8906087875366211,
+          "cells": [
+            {
+              "text": "SS-3",
+              "confidence": 0.8906087875366211,
+              "rect": {
+                "x0": 19,
+                "y0": 153,
+                "x1": 51,
+                "y1": 175
+              }
+            }
+          ]
+        },
+        {
+          "expected": "VWC",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 177.77777777777777,
+            "x1": 112.5,
+            "y1": 205.55555555555554
+          },
+          "actual": "VWC",
+          "ok": true,
+          "confidence": 0.9347113370895386,
+          "cells": [
+            {
+              "text": "VWC",
+              "confidence": 0.9347113370895386,
+              "rect": {
+                "x0": 18,
+                "y0": 181,
+                "x1": 55,
+                "y1": 203
+              }
+            }
+          ]
+        },
+        {
+          "expected": "WVC",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 205.55555555555557,
+            "x1": 112.5,
+            "y1": 233.33333333333334
+          },
+          "actual": "WVC",
+          "ok": true,
+          "confidence": 0.9888835748036703,
+          "cells": [
+            {
+              "text": "WVC",
+              "confidence": 0.9888835748036703,
+              "rect": {
+                "x0": 18,
+                "y0": 209,
+                "x1": 56,
+                "y1": 232
+              }
+            }
+          ]
+        },
+        {
+          "expected": "ST-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 233.33333333333334,
+            "x1": 112.5,
+            "y1": 261.11111111111114
+          },
+          "actual": "ST-1",
+          "ok": true,
+          "confidence": 0.9900446832180023,
+          "cells": [
+            {
+              "text": "ST-1",
+              "confidence": 0.9900446832180023,
+              "codeAlternate": "S-1",
+              "rect": {
+                "x0": 17,
+                "y0": 237,
+                "x1": 53,
+                "y1": 260
+              }
+            }
+          ]
+        },
+        {
+          "expected": "S-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 261.1111111111111,
+            "x1": 112.5,
+            "y1": 288.88888888888886
+          },
+          "actual": "S-1",
+          "ok": true,
+          "confidence": 0.8498665889104208,
+          "cells": [
+            {
+              "text": "S-1",
+              "confidence": 0.8498665889104208,
+              "rect": {
+                "x0": 17,
+                "y0": 264,
+                "x1": 47,
+                "y1": 290
+              }
+            }
+          ]
+        },
+        {
+          "expected": "P-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 288.8888888888889,
+            "x1": 112.5,
+            "y1": 316.6666666666667
+          },
+          "actual": "P-1",
+          "ok": true,
+          "confidence": 0.7199637492497762,
+          "cells": [
+            {
+              "text": "P-1",
+              "confidence": 0.7199637492497762,
+              "rect": {
+                "x0": 17,
+                "y0": 291,
+                "x1": 47,
+                "y1": 317
+              }
+            }
+          ]
+        },
+        {
+          "expected": "BK-1",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 316.66666666666663,
+            "x1": 112.5,
+            "y1": 344.4444444444444
+          },
+          "actual": "BK-1",
+          "ok": true,
+          "confidence": 0.974983811378479,
+          "cells": [
+            {
+              "text": "BK-1",
+              "confidence": 0.974983811378479,
+              "rect": {
+                "x0": 17,
+                "y0": 320,
+                "x1": 55,
+                "y1": 343
+              }
+            }
+          ]
+        },
+        {
+          "expected": "G-01(C)",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 344.44444444444446,
+            "x1": 112.5,
+            "y1": 372.22222222222223
+          },
+          "actual": "G-01(C)",
+          "ok": true,
+          "confidence": 0.9691314697265625,
+          "cells": [
+            {
+              "text": "G-01(C)",
+              "confidence": 0.9691314697265625,
+              "rect": {
+                "x0": 19,
+                "y0": 350,
+                "x1": 65,
+                "y1": 369
+              }
+            }
+          ]
+        },
+        {
+          "expected": "FT-02(E)",
+          "rect": {
+            "x0": 22.22222222222222,
+            "y0": 372.2222222222223,
+            "x1": 112.5,
+            "y1": 400.00000000000006
+          },
+          "actual": "FT-02(E)",
+          "ok": true,
+          "confidence": 0.9996223598718643,
+          "cells": [
+            {
+              "text": "FT-02(E)",
+              "confidence": 0.9996223598718643,
+              "rect": {
+                "x0": 21,
+                "y0": 379,
+                "x1": 64,
+                "y1": 396
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+ "frozen_at_utc": "2026-09-11T23:55:32+00:00",
+ "note": "SHA-256 of the frozen inputs. A candidate run is valid only against these bytes; change a reference and its reference_id together.",
+ "sha256": {
+  "demo/sample-finish-plan.pdf": "53aa2a44efc8f9a2e625ed223fcfbf9ee19d15eb8469ba57183874b6a8e2a56f",
+  "demo/sample-plan.pdf": "8bddc98ecd11f4dde7b6e3c606fbc45eda18bb7319b5413a9102b2f984f35c14",
+  "evals/mcp-workflow-bench/plan-set/roseburg/va-roseburg-a03a.pdf": "ff80f35af4702e874d823d5da04f1de141af710559173083b6a9b10e4e73135f",
+  "evals/mcp-workflow-bench/plan-set/porterville/porterville-adu-a1-101.pdf": "4f35c62a9adcf8d2eb42e632a4d1ae9b1d314bb426297e4ac13ae0a32897f6b7",
+  "evals/mcp-workflow-bench/plan-set/stcloud/reference.json": "3af1c9b07e4923922811b2ef82b5ef5740ce39f70e4a72d38e2a44113f4fc992",
+  "evals/mcp-workflow-bench/plan-set/roseburg/reference.json": "0804ed824171eeb4fae999db439f88a931579ba55ba673e1b1826c47d2b88b62",
+  "evals/mcp-workflow-bench/plan-set/porterville/reference.json": "345446f426ef0af2b61ed464232741542d4996317efa7acb17737465d8873bc9",
+  "evals/mcp-workflow-bench/plan-set/TASK.md": "28a3a6ae27e3ac2d692189f8c4d76222a72b909fc50c2bf44a812bfa0a2ee112",
+  "evals/mcp-workflow-bench/reference.json": "a300400b40217072d4809898c463614ebacc63c1518ef197572a24a3ae1a5b98"
+ },
+ "references": {
+  "stcloud": {
+   "reference_id": "stcloud-af101-estimator-trace-v1",
+   "rooms": 6,
+   "source_sha256": "53aa2a44efc8f9a2e625ed223fcfbf9ee19d15eb8469ba57183874b6a8e2a56f"
+  },
+  "roseburg": {
+   "reference_id": "roseburg-a03a-estimator-trace-v1",
+   "rooms": 4,
+   "source_sha256": "ff80f35af4702e874d823d5da04f1de141af710559173083b6a9b10e4e73135f"
+  },
+  "porterville": {
+   "reference_id": "porterville-a1101-estimator-trace-v1",
+   "rooms": 6,
+   "source_sha256": "4f35c62a9adcf8d2eb42e632a4d1ae9b1d314bb426297e4ac13ae0a32897f6b7"
+  }
+ }
+}

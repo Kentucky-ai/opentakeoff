@@ -1,0 +1,6 @@
+{
+  "root": "..",
+  "sets": [
+    { "id": "mep-set", "gc": "(synthetic)", "project": "equipment fixture", "files": ["mep-set.pdf"] }
+  ]
+}

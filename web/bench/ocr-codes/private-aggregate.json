@@ -1,0 +1,24 @@
+{
+  "privateCropCount": 2,
+  "wordCount": 232,
+  "aggregate": [
+    {
+      "primaryWordsUnchanged": true,
+      "beforeRows": 0,
+      "afterRows": 0,
+      "existingIdentitiesUnchanged": true,
+      "scannedRowsRequireReview": null,
+      "emptyIdentities": 0
+    },
+    {
+      "primaryWordsUnchanged": true,
+      "beforeRows": 8,
+      "afterRows": 9,
+      "existingIdentitiesUnchanged": true,
+      "scannedRowsRequireReview": true,
+      "emptyIdentities": 1
+    }
+  ],
+  "browserErrors": [],
+  "offsiteRequests": 0
+}

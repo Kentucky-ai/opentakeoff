@@ -1,0 +1,18 @@
+{
+  "reference_id": "sample-plan-analytic-wall-faces-v1",
+  "source": {
+    "path": "demo/sample-plan.pdf",
+    "sha256": "8bddc98ecd11f4dde7b6e3c606fbc45eda18bb7319b5413a9102b2f984f35c14",
+    "kind": "synthetic analytic construction, not independently human-reviewed real-plan ground truth",
+    "pdf_points": { "width": 1224, "height": 792 },
+    "render_scale": 2
+  },
+  "scale": { "feet_per_image_px": 0.027777777777777776, "description": "1/4 inch = 1 foot; 36 rendered image px per foot" },
+  "rooms": [
+    { "label": "OFFICE 101", "verts_px": [[243,1361],[1217,1361],[1217,787],[243,787]] },
+    { "label": "OFFICE 102", "verts_px": [[1223,1361],[2197,1361],[2197,787],[1223,787]] },
+    { "label": "BREAK 103", "verts_px": [[243,781],[1217,781],[1217,207],[243,207]] },
+    { "label": "CORRIDOR 104", "verts_px": [[1223,781],[2197,781],[2197,207],[1223,207]] }
+  ],
+  "tolerances": { "area_percent": 0.75, "overlap_iou": 0.985, "boundary_max_px": 2.5 }
+}

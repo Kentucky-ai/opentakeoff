@@ -19,6 +19,8 @@ export const icons = {
 
   // ── takeoff canvas set — drafting monoline, vertex-dot motif on measure tools ──
   pan: (s) => <I size={s}><path d="M12 2 V 22 M2 12 H 22" /><path d="M12 2 L 9.6 4.4 M12 2 L 14.4 4.4 M12 22 L 9.6 19.6 M12 22 L 14.4 19.6 M2 12 L 4.4 9.6 M2 12 L 4.4 14.4 M22 12 L 19.6 9.6 M22 12 L 19.6 14.4" /></I>,
+  search: (s) => <I size={s}><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15 15 L21 21" /></I>,
+  focus: (s) => <I size={s}><path d="M9 4 H4 V9 M15 4 H20 V9 M4 15 V20 H9 M20 15 V20 H15" /></I>,
   select: (s) => <I size={s}><path d="M7 3 L 7 17 L 11 13.5 L 13.5 19.2 L 16 18 L 13.5 12.5 L 18.5 12 Z" /></I>,
   calibrate: (s) => <I size={s}><circle cx="12" cy="4.6" r="1.4" /><path d="M11.2 5.9 L 7 19 M12.8 5.9 L 17 19" /><path d="M5.8 17.4 L 8.2 18.4 M18.2 17.4 L 15.8 18.4" /></I>,
   area: (s) => <I size={s}><path d="M12 4 L 20 10 L 17 19 L 7 19 L 4 10 Z" /><circle cx="12" cy="4" r="1.1" fill="currentColor" /><circle cx="20" cy="10" r="1.1" fill="currentColor" /><circle cx="17" cy="19" r="1.1" fill="currentColor" /><circle cx="7" cy="19" r="1.1" fill="currentColor" /><circle cx="4" cy="10" r="1.1" fill="currentColor" /></I>,
@@ -37,6 +39,7 @@ export const icons = {
   textNote: (s) => <I size={s}><path d="M5 5 H 19 M5 5 V 7.5 M19 5 V 7.5 M12 5 V 19 M9.5 19 H 14.5" /></I>,
   highlight: (s) => <I size={s}><rect x="4" y="7" width="16" height="10" /><line x1="7" y1="12" x2="17" y2="12" /></I>,
   dimension: (s) => <I size={s}><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="8" x2="3" y2="16" /><line x1="21" y1="8" x2="21" y2="16" /><path d="M1.8 13.4 L 4.2 10.6 M19.8 13.4 L 22.2 10.6" /></I>,
+  image: (s) => <I size={s}><rect x="3" y="5" width="18" height="14" /><circle cx="8.5" cy="10.5" r="1.7" /><path d="M3 16 L 9 11 L 13 14.5 L 16.5 11.5 L 21 16" /></I>,
   highlighter: (s) => <I size={s}><path d="M5 21 L8.5 17.5 M8.5 17.5 L6.8 14 L14 6.8 L17.2 10 L10 17.2 Z M14 6.8 L15.8 5 L19 8.2 L17.2 10" /></I>,
   copy: (s) => <I size={s}><rect x="8" y="8" width="12" height="12" /><path d="M16 8 V 4 H 4 V 16 H 8" /></I>,
   paste: (s) => <I size={s}><rect x="5" y="5" width="14" height="16" /><rect x="9" y="3" width="6" height="4" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="15" y2="16" /></I>,
@@ -67,10 +70,16 @@ export const icons = {
   // pushpin / thumbtack — the quick-access palette "pin this condition" action.
   // Cap bar at top, tapered body to a collar, needle to the point.
   pin: (s) => <I size={s}><line x1="8" y1="3" x2="16" y2="3" /><path d="M10 3 V 8 L 7 11 H 17 L 14 8 V 3" /><line x1="12" y1="11" x2="12" y2="20" /></I>,
+  // eye / struck eye — show or hide a condition's takeoffs on the canvas (#440)
+  eye: (s) => <I size={s}><path d="M2.5 12 C 5.5 6.8 8.6 5 12 5 C 15.4 5 18.5 6.8 21.5 12 C 18.5 17.2 15.4 19 12 19 C 8.6 19 5.5 17.2 2.5 12 Z" /><circle cx="12" cy="12" r="2.8" /></I>,
+  eyeOff: (s) => <I size={s}><path d="M2.5 12 C 5.5 6.8 8.6 5 12 5 C 15.4 5 18.5 6.8 21.5 12 C 18.5 17.2 15.4 19 12 19 C 8.6 19 5.5 17.2 2.5 12 Z" /><circle cx="12" cy="12" r="2.8" /><line x1="4" y1="20" x2="20" y2="4" /></I>,
   // mixer sliders — the toolbar render/fill settings menu
   sliders: (s) => <I size={s}><path d="M4 7 H 6.8 M11.2 7 H 20" /><path d="M4 17 H 12.8 M17.2 17 H 20" /><circle cx="9" cy="7" r="2.2" /><circle cx="15" cy="17" r="2.2" /></I>,
   // stacked plan sheets in isometric — the PDF layer table (Optional Content Groups)
   layers: (s) => <I size={s}><path d="M12 3 L 21 7.5 L 12 12 L 3 7.5 Z" /><path d="M3 12 L 12 16.5 L 21 12" /><path d="M3 16.5 L 12 21 L 21 16.5" /></I>,
+  // dashed marquee around lines of text — the Copy text tool (#471); the
+  // dashed box is the Symbol tool's marquee motif, the ragged last line reads as prose
+  copyText: (s) => <I size={s}><rect x="3.5" y="4.5" width="17" height="15" strokeDasharray="2.6 2" /><line x1="7" y1="9" x2="17" y2="9" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="7" y1="15" x2="12.5" y2="15" /></I>,
 };
 
 export function Icon({ name, size = 18 }) {

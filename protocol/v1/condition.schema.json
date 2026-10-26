@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/condition.schema.json",
+  "title": "Condition (draft)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "finish_tag": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string"
+    },
+    "fill": {
+      "type": "string"
+    },
+    "hatch": {
+      "type": "string"
+    },
+    "multiplier": {
+      "type": "number"
+    },
+    "waste_pct": {
+      "type": "number"
+    },
+    "height_ft": {
+      "type": "number"
+    },
+    "thickness_in": {
+      "type": "number"
+    },
+    "rise_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Default vertical leg UP, in feet, every linear run of this condition adds to its plan length (LF = plan + rise + drop). A run may override it with its own rise_ft."
+    },
+    "drop_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Default vertical leg DOWN, in feet, every linear run of this condition adds to its plan length. A run may override it with its own drop_ft."
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "per": {
+            "type": "number"
+          },
+          "basis": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "round": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          },
+          "lib_id": {
+            "type": "string"
+          },
+          "origin_id": {
+            "type": "string"
+          },
+          "inherited": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "roll_setup": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "tile_setup": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "updated_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": true,
+  "description": "Existing condition configuration, not a computed report or price. Additional setup, variant, style, and material fields remain opaque and preserved in this draft."
+}

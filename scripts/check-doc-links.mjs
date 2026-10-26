@@ -27,8 +27,18 @@ const files = [
   ...readdirSync(join(root, "docs"))
     .filter((f) => f.endsWith(".md"))
     .map((f) => join("docs", f)),
+  ...readdirSync(join(root, "docs", "wiki"), { withFileTypes: true })
+    .filter((f) => f.isFile() && f.name.endsWith(".md"))
+    .map((f) => join("docs", "wiki", f.name)),
+  "AGENTS.md", "AGENT_BRIEF.md", "CONTRIBUTING.md", ".github/PULL_REQUEST_TEMPLATE.md",
+  "FEATURES.md",
   "mcp/README.md",
   "capture/README.md",
+  // Protocol docs are versioned alongside their schemas, including nested
+  // references to current browser/MCP writers and compatibility tests.
+  ...readdirSync(join(root, "protocol"))
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => join("protocol", f)),
 ].filter((f) => existsSync(join(root, f)));
 
 // GitHub's slug rules: lowercase, drop everything that isn't a letter, number,

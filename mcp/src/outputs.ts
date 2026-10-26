@@ -8,6 +8,7 @@
 // output (summary rows, export payload) use .passthrough() so a field added
 // upstream widens the reply instead of failing validation.
 import { z } from "zod";
+import { REPORT_SCHEMA } from "../../web/src/lib/takeoffConstants.ts";
 
 const point = z.tuple([z.number(), z.number()]);
 
@@ -125,6 +126,7 @@ export const detectRoomsOutput = {
     degenerate: z.number().int().describe("Traced to fewer than 3 vertices"),
     duplicate: z.number().int().describe("Flooded to a region another label already claimed — counted once, never twice"),
     bubble: z.number().int().describe("Labels whose every clean flood was their own label BUBBLE (ring bbox ≈ label bbox — plans box their room numbers). Scale-free, so it guards unscaled previews too"),
+    unowned: z.number().int().describe("Labels whose every clean, non-bubble flood did not SURROUND the label's box — a ladder rung stepped past the wall into a neighbouring space or a door-swing pocket. Withheld rather than committed under the tag (#373); one_click inside the room answers it"),
     implausible: z.number().int().describe("Enclosed, clean, non-bubble, but smaller than min_area_sf — a door swing or wall cavity rather than a room"),
     unresolved: z.number().int().describe("Assign mode: rooms the schedule could not answer for (no row, no FLOOR cell, or a compound cell) — withheld into unresolved[], never committed under a guess. Always present; 0 outside assign mode"),
     min_area_sf: z.number().optional().describe("The plausibility floor applied (scaled mode only)"),
@@ -145,6 +147,7 @@ export const measurePolygonOutput = {
   area_sf: z.number(),
   perimeter_lf: z.number(),
   nverts: z.number().int(),
+  arcs: z.number().int().optional().describe("How many arc_through bows were laid — present only when the trace was bent; the vertices reported are the baked arc, not the three points you gave"),
   shape_id: z.string().optional().describe("Present when condition was passed and the shape committed"),
   warning: z.string().optional().describe("Mixed-scale warning (#153): a scale note disagreeing with the sheet's sits in the measured region — verify before trusting these numbers"),
 };
@@ -156,6 +159,7 @@ export const measureSurfaceOutput = {
   length_lf: z.number().describe("The traced run's open length"),
   area_sf: z.number().describe("length_lf × height_ft — the wall SF committed"),
   npts: z.number().int(),
+  arcs: z.number().int().optional().describe("How many arc_through bows were laid — present only when the trace was bent; the vertices reported are the baked arc, not the three points you gave"),
   shape_id: z.string(),
 };
 
@@ -173,6 +177,7 @@ const sweepPlacement = {
   score: z.number().describe("Length-weighted fraction of the seed's segments matched within tolerance, 0..1"),
   rotation: z.number().describe("Detected rotation in degrees (0 | 90 | 180 | 270)"),
   mirrored: z.boolean(),
+  extra: z.number().optional().describe("Richer-variant disclosure: the fraction of the seed's total length found as UNMATCHED extra linework fully inside this placement's footprint, present when past the 0.30 bar — the classic grille-counted-as-register shape; LOOK at these first. Under variant_guard such placements demote to withheld instead of matching"),
   label: z.string().optional().describe("The drawing's own tag for this placement (#308) — a fixture token written beside it or connected by a drawn leader (e.g. \"P-7\", \"FD1\"). Disclosure, never a recount: a match with NO label in a labeled family was counted on shape alone (look before trusting), and a withheld row carrying the seed's own tag is the drawing vouching for it"),
   label_via: z.enum(["adjacent", "leader"]).optional().describe("How the tag reached this placement: written beside it, or followed along a drawn leader line (leader-following arms only on multi-pen sheets, where the annotation pen separates from the work)"),
 };
@@ -277,7 +282,8 @@ export const symbolSweepOutput = {
   complete: z.boolean().describe("True when every proposed placement was scored (every swept sheet, in set scope) and the count is a total. FALSE MEANS THE COUNT IS A FLOOR — acknowledge it before trusting found (#261)"),
   sheets: z.array(sweepSheetBlock).optional().describe("Set scope only: one entry per swept PLAN-role sheet, load order"),
   skipped: sweepSkipped.optional().describe("Set scope only: every sheet excluded from counting, with role and reason — including the seed's own sheet when it is not a plan"),
-  committed: z.number().int().optional().describe("commit mode: count shapes committed — one per match"),
+  committed: z.number().int().optional().describe("commit mode: count shapes committed — one per match (0 when commit_refused is present)"),
+  commit_refused: z.string().optional().describe("commit mode (#376): present when the seed was too small and too common to commit on shape alone — fewer than 40 segments of seed linework and more than 50 placements cleared the bar. NOTHING was committed; the placements are still listed in matches (or per sheet in sheets[]) so you can look, and the text says what stands the guard down: variant_guard: true, exclude counter-examples, or a seed rect that captures more of the symbol"),
   shape_ids: z.array(z.string()).optional(),
   condition: z.string().optional().describe("commit mode: the finish tag the markers counted under"),
   ea_total: z.number().optional().describe("commit mode: the condition's total EA after this call"),
@@ -286,8 +292,13 @@ export const symbolSweepOutput = {
 };
 
 export const measureLineOutput = {
-  length_lf: z.number(),
+  length_lf: z.number().describe("The run's TOTAL length: plan trace + rise + drop (#441)"),
   npts: z.number().int(),
+  plan_lf: z.number().optional().describe("The flat X–Y trace alone — present only when the run carries a vertical leg"),
+  vertical_lf: z.number().optional().describe("rise_ft + drop_ft — present only when a leg exists"),
+  rise_ft: z.number().optional().describe("The rise this run resolved to (its own, else the condition default) — present with vertical_lf"),
+  drop_ft: z.number().optional().describe("The drop this run resolved to — present with vertical_lf"),
+  arcs: z.number().int().optional().describe("How many arc_through bows were laid — present only when the trace was bent; the vertices reported are the baked arc, not the three points you gave"),
   shape_id: z.string().optional().describe("Present when condition was passed and the shape committed"),
 };
 
@@ -313,6 +324,88 @@ const summaryRow = z.object({
   sy_net: z.number(),
 }).passthrough();
 
+// ── Scope collision (#366) ──────────────────────────────────────────────────
+const scopeSide = z.object({
+  shape_id: z.string(), condition_id: z.string(), condition: z.string(),
+  label: z.string().optional(), area_sf: z.number(),
+  reviewed: z.boolean().describe("true = the estimator affirmed this shape — ink; scope_merge never trims or deletes it"),
+});
+export const scopePairRow = z.object({
+  sheet_id: z.string(), a: scopeSide, b: scopeSide,
+  shared_sf: z.number().describe("Polygon intersection through the sheet's scale, rounded to two decimals"),
+  note: z.string().optional().describe("Explains a positive overlap whose SF rounds to zero"),
+  fraction_of_smaller: z.number().describe("shared ÷ the smaller shape's area (1 = the smaller sits entirely inside the other)"),
+  iou: z.number().describe("Symmetric intersection-over-union — ≥ 0.5 is the room eval's own 'same space claimed twice' bar"),
+  same_condition: z.boolean().describe("true = a double trace on ONE condition (its own list), false = two conditions claiming one floor"),
+  look: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).describe("Image-px region framing both shapes — pass to view_sheet {overlay: true}"),
+});
+export const scopeUnmeasuredRow = z.object({ shape_id: z.string(), sheet_id: z.string(), reason: z.string() });
+export const scopeDuplicatesOutput = {
+  collisions: z.array(scopePairRow).describe("Pairs on DIFFERENT conditions, biggest shared floor first"),
+  duplicates: z.array(scopePairRow).describe("Pairs on the SAME condition — a double trace, a different bug"),
+  shared_floor_sf: z.number().describe("Σ areas − union over the compared floor shapes, counted once per cell"),
+  by_sheet: z.array(z.object({ sheet_id: z.string(), shared_floor_sf: z.number() })),
+  unmeasured: z.array(scopeUnmeasuredRow).describe("Shapes left out of every number, with the reason — never silently counted as zero"),
+  floor_shapes: z.number().int(),
+  min_fraction: z.number(),
+  note: z.string(),
+};
+export const scopeMergeOutput = {
+  action: z.enum(["trimmed", "deleted"]),
+  winner: z.string(), loser: z.string(),
+  shared_sf: z.number(),
+  loser_before_sf: z.number(), loser_after_sf: z.number(),
+  loser_holes: z.number().int().optional().describe("trimmed: holes the remainder carries (a winner inside the loser leaves one)"),
+  shape_count: z.number().int(),
+  note: z.string(),
+};
+
+// ── Proposals (#365) ────────────────────────────────────────────────────────
+const conditionKnobs = z.object({
+  finish_tag: z.string().optional(), waste_pct: z.number().optional(), multiplier: z.number().optional(),
+  height_ft: z.number().optional(), rise_ft: z.number().optional(), drop_ft: z.number().optional(),
+  roll_setup: z.object({}).passthrough().nullable().optional(),
+}).passthrough();
+export const proposalRow = z.object({
+  proposal_id: z.string(), label: z.string(), rationale: z.string(),
+  pending: z.number().int().describe("Shapes attached to the batch and not yet affirmed by a human"),
+  accepted: z.number().int().describe("Shapes from the batch the estimator already accepted — ink, outside every agent verb"),
+  withdrawn: z.literal(true).optional(),
+  current: z.literal(true).optional().describe("New agent commits attach to this batch"),
+});
+export const proposedConditionEditRow = z.object({
+  proposal_id: z.string(), condition: z.string(), condition_id: z.string(),
+  current: conditionKnobs.describe("The condition's knobs as they stand — what every total above is computed from"),
+  proposed: conditionKnobs.describe("Only the fields that would change"),
+  rationale: z.string(), proposed_at: z.string(),
+});
+export const proposeTakeoffOutput = {
+  proposal_id: z.string(), label: z.string(), rationale: z.string(),
+  note: z.string(),
+};
+export const reviseProposalOutput = {
+  proposal_id: z.string(), label: z.string(),
+  replaced: z.number().int().describe("Pending shapes removed from the batch"),
+  committed: z.number().int().describe("Replacement shapes committed, all attached to the same batch"),
+  shape_ids: z.array(z.string()),
+  note: z.string(),
+};
+export const withdrawProposalOutput = {
+  proposal_id: z.string(), label: z.string(),
+  withdrawn: z.number().int().describe("Pending shapes removed"),
+  accepted_kept: z.number().int().describe("Shapes from the batch the estimator had accepted — untouched"),
+  note: z.string(),
+};
+export const proposeConditionEditOutput = {
+  proposal_id: z.string(), condition: z.string(), condition_id: z.string(),
+  current: conditionKnobs, proposed: conditionKnobs, rationale: z.string(),
+  replaced_proposal_id: z.string().optional().describe("Present when this proposal replaced an earlier pending one on the same condition"),
+  note: z.string(),
+};
+export const withdrawConditionEditOutput = {
+  proposal_id: z.string(), condition: z.string(), withdrawn: z.literal(true),
+};
+
 export const takeoffSummaryOutput = {
   conditions: z.array(summaryRow),
   totals: z.object({
@@ -324,7 +417,12 @@ export const takeoffSummaryOutput = {
     sy_net: z.number(),
   }).passthrough(),
   scale_unconfirmed: z.array(z.string()).optional().describe("Sheets whose scale is agent-set and no human has confirmed — these totals stand on an unverified scale; verify against a stated dimension or confirm in the canvas"),
+  shared_floor_sf: z.number().describe("Scope collision (#366): floor claimed by more than one shape across the whole takeoff, counted once per cell (Σ areas − union), in SF through each sheet's scale. Has to read 0 before a total means anything — scope_duplicates names the pairs"),
+  shared_floor_unmeasured: z.array(scopeUnmeasuredRow).optional().describe("Floor shapes the collision check could not measure (unscaled sheet, degenerate ring) — left OUT of shared_floor_sf rather than counted as zero; present only when any"),
+  proposals: z.array(proposalRow).optional().describe("The proposal ledger (#365): per batch, how many shapes are still pending, how many the estimator accepted, whether it was withdrawn, and which batch new commits attach to (current). Present only when a proposal exists"),
+  proposed_condition_edits: z.array(proposedConditionEditRow).optional().describe("Pending condition-edit diffs (#365) beside the current knobs. The rows above are the CURRENT values — nothing changes until the estimator accepts. Present only when any are pending"),
 };
+
 
 /** The app's exact save payload (opentakeoff.takeoff_canvas.v1). */
 export const exportDxfOutput = {
@@ -343,8 +441,15 @@ export const exportDxfOutput = {
 export const exportTakeoffOutput = {
   schema: z.string(),
   project_name: z.string(),
-  units: z.string(),
-  sheets: z.array(z.object({ sheet_id: z.string(), units_per_px: z.number() })),
+  units: z.string().optional().describe("Present only for a metric project; absent means imperial — the app's own diff-only convention"),
+  client_info: z.object({}).passthrough().optional().describe("Who the proposal is for (client_name, client_address, reference) — present once set_estimate_settings or an import set it"),
+  estimate_settings: z.object({}).passthrough().optional().describe("The project's markups (tax_pct, overhead_pct, profit_pct, profit_mode) — present once set"),
+  bid_proposal: z.object({}).passthrough().optional().describe("The project's proposal layout and text — present once set"),
+  sheets: z.array(z.object({
+    sheet_id: z.string(), units_per_px: z.number(),
+    scale_source: z.string().optional().describe("How the exported calibration was established"),
+    scale_confirmed: z.boolean().optional().describe("False for agent-set calibration until a human confirms it"),
+  })),
   conditions: z.array(z.object({
     id: z.string(),
     finish_tag: z.string(),
@@ -367,10 +472,15 @@ export const exportTakeoffOutput = {
   }).passthrough()),
   markups: z.array(z.unknown()),
   approvals: z.array(z.unknown()).optional().describe("Approval-family records (#176) — the estimator's APPROVED seals and the agent's verdict marks {id, actor, ts, sheet_id, at:[nx,ny], shape_id?, text?}. Present only when any exist (the canvas payload's own convention), so a verdict-free export stays byte-identical"),
+  rfis: z.array(z.unknown()).optional().describe("Live RFI records; withdrawn tombstones are omitted"),
   sheet_group: z.array(z.unknown()),
   last_group: z.array(z.unknown()),
   sheet_tabs: z.array(z.unknown()),
-  sheet_levels: z.object({}).passthrough(),
+  sheet_levels: z.object({}).passthrough().optional().describe("Present only when a sheet carries a level label (the app omits it when empty)"),
+  proposals: z.array(z.object({ id: z.string(), label: z.string(), rationale: z.string(), created_at: z.string(), withdrawn_at: z.string().optional() }).passthrough()).optional()
+    .describe("Proposal batches (#365) — present only when any exist. Shapes reference them by origin.proposal_id; the canvas shows one Accept per batch"),
+  condition_edit_proposals: z.array(z.object({ id: z.string(), condition_id: z.string(), proposed: z.object({}).passthrough(), rationale: z.string(), proposed_at: z.string() }).passthrough()).optional()
+    .describe("Pending condition-edit diffs (#365) — present only when any exist. Nothing on the condition changes until the estimator accepts in the canvas"),
 };
 
 /** import_takeoff (#151) — the merge receipt, field-identical to the app's. */
@@ -498,6 +608,7 @@ export const listShapesOutput = {
     reviewed: z.boolean().describe("true = human-affirmed ink, refused by every agent mutation"),
     assignment: z.enum(["schedule", "asserted"]).optional().describe('Where the finish tag came from: "schedule" = resolved from the room\'s own schedule row, "asserted" = the agent chose it. origin.assignment in export_takeoff carries the citation. Absent on human canvas shapes'),
     agent_edits: z.number().int().optional().describe("Present when the agent has revised this shape"),
+    proposal_id: z.string().optional().describe("The propose_takeoff batch this shape was committed under (#365) — present on shapes committed while a proposal was open; an accepted shape keeps it as history"),
   })),
   count: z.number().int(),
 };
@@ -513,11 +624,13 @@ export const deleteShapeOutput = {
  * re-measures (closed area vs open length). */
 export const editShapeOutput = {
   shape_id: z.string(),
-  changed: z.array(z.enum(["verts", "condition", "role", "label"])).describe("Which fields this call actually changed"),
+  changed: z.array(z.enum(["verts", "condition", "role", "label", "rise_ft", "drop_ft"])).describe("Which fields this call actually changed"),
   measure_role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
   nverts: z.number().int(),
   area_sf: z.number().optional().describe("0 for linear shapes; LF × height for surface_area; absent for count"),
-  perimeter_lf: z.number().optional().describe("Length for linear/surface runs, perimeter for closed ones; absent for count"),
+  perimeter_lf: z.number().optional().describe("Length for linear/surface runs (a linear run's TOTAL incl. rise + drop), perimeter for closed ones; absent for count"),
+  plan_lf: z.number().optional().describe("Linear runs with a vertical leg: the flat trace alone (#441)"),
+  vertical_lf: z.number().optional().describe("Linear runs with a vertical leg: rise + drop (#441)"),
   count: z.number().optional().describe("count shapes only — the marker's EA (preserved across the edit)"),
   label: z.string().optional().describe("The shape's room/phase label after this call — absent when it carries none (a cleared label reports as absent, not as an empty string)"),
   agent_edits: z.number().int().describe("How many times the agent has revised this shape — separate from the human-correction tally"),
@@ -529,7 +642,12 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut"]),
+    // EVERY JournalPayload op (session.ts) belongs here — the wire validates
+    // undo_last's reply against this enum, so a journal op missing from it
+    // fails the undo call itself. Add the op here in the same change.
+    op: z.enum(["commit", "scale", "edit", "annotation_text", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete",
+      "proposal_open", "proposal_revise", "proposal_withdraw", "condition_proposal", "condition_proposal_withdraw", "condition_proposal_accept",
+      "pricing", "estimate_settings"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),
@@ -594,37 +712,39 @@ const reportMaterialLine = z.object({
  * is the web export — this mirror pins what a pricing consumer relies on and
  * passes the additive tail through. */
 export const exportReportOutput = {
-  schema: z.literal("opentakeoff.report.v1"),
+  schema: z.literal(REPORT_SCHEMA),
   project_name: z.string().nullable(),
   generated_with: z.string(),
   sheets: z.array(z.object({ sheet_id: z.string(), sheet: z.string(), scale_source: z.string() }).passthrough()).describe("Scale provenance per sheet — how each scale was set"),
   conditions: z.array(summaryRow.extend({ materials: z.array(reportMaterialLine) }).passthrough()).describe("conditionTotals rows: gross + *_net quantities AND the computed materials buy list"),
-  by_sheet: z.array(z.object({ sheet_id: z.string(), sheet: z.string(), rows: z.array(z.record(z.unknown())) }).passthrough()).describe("BASE per-sheet subtotals — multiplier NOT applied, no waste, no materials"),
+  by_sheet: z.array(z.object({ sheet_id: z.string(), sheet: z.string(), rows: z.array(z.record(z.string(), z.unknown())) }).passthrough()).describe("BASE per-sheet subtotals — multiplier NOT applied, no waste, no materials"),
   totals: z.object({
     total_sf: z.number(), total_sf_net: z.number(),
     lf: z.number(), lf_net: z.number(),
     ea: z.number(), sy_net: z.number(),
   }).passthrough(),
   materials: z.array(z.object({ name: z.string(), unit: z.string(), qty: z.number() }).passthrough()).describe("Project-wide buy list — condition rows summed by (name, unit)"),
-  markups: z.array(z.record(z.unknown())),
-  rfis: z.array(z.record(z.unknown())),
-  condition_columns: z.array(z.record(z.unknown())),
+  markups: z.array(z.record(z.string(), z.unknown())),
+  rfis: z.array(z.record(z.string(), z.unknown())),
+  condition_columns: z.array(z.record(z.string(), z.unknown())),
   shape_labels: z.array(z.string()),
-  by_label: z.array(z.record(z.unknown())),
+  by_label: z.array(z.record(z.string(), z.unknown())),
   units: z.string(),
   display_units: z.string(),
-  roll_goods: z.array(z.record(z.unknown())).describe("Roll-goods order rows (#136) — order_lf / rolls / order_qty per roll-goods condition, ×N applied; empty when no condition carries a roll_setup (always the case for a headless session today)"),
+  roll_goods: z.array(z.record(z.string(), z.unknown())).describe("Roll-goods order rows (#136) — order_lf / rolls / order_qty per roll-goods condition, ×N applied; empty when no condition carries a roll_setup (always the case for a headless session today)"),
+  proposed_condition_edits: z.array(proposedConditionEditRow).optional().describe("Pending condition-edit proposals (#365) — the rows above print the CURRENT knobs; each entry here carries the proposed values beside them. Present only when any are pending, so a proposal-free report is byte-identical"),
 };
 
 /** export_marked_pdf — the tool writes the PDF to disk and replies with where
  * and what; the document itself is the deliverable, never inlined. */
 export const exportMarkedPdfOutput = {
   path: z.string().describe("Absolute path of the written marked-set PDF — hand this to the user"),
-  pages: z.number().int().describe("Legend cover + one page per marked sheet"),
+  pages: z.number().int().describe("Legend cover + the RFI schedule page(s) when any RFI is live + one page per marked sheet"),
   sheets_marked: z.number().int().describe("Sheets carrying shapes, annotations, or approval marks — unmarked sheets are omitted"),
   shapes_drawn: z.number().int(),
   annotations_drawn: z.number().int(),
   approvals_drawn: z.number().int().describe("Approval-family glyphs burned in (#176) — estimator APPROVED rings + agent AGENT diamonds; the cover tallies the split when any exist"),
+  rfis_printed: z.number().int().describe("Live RFIs printed on the RFI schedule page (#364) — agent-raised and panel-raised alike; withdrawn ones leave a numbering gap"),
   note: z.string(),
 };
 
@@ -653,6 +773,8 @@ export const editConditionOutput = {
   waste_pct: z.number().describe("The condition's waste % after this write"),
   multiplier: z.number().describe("The condition's quantity multiplier after this write"),
   height_ft: z.number().optional().describe("The condition's wall height after this write — present once set (measure_surface multiplies traced LF by it)"),
+  rise_ft: z.number().optional().describe("The condition's default rise for its linear runs after this write — present once set (#441)"),
+  drop_ft: z.number().optional().describe("The condition's default drop for its linear runs after this write — present once set (#441)"),
   roll_setup: z.object({}).passthrough().optional().describe("The condition's roll-goods setup after this write — present while opted in"),
   roll: z.object({
     condition_id: z.string(), finish_tag: z.string(), material: z.string(),
@@ -727,7 +849,7 @@ export const resolveTagOutput = {
     surface: z.string().describe("The schedule column: FLOOR / BASE / WALL / …"),
     code: z.string(),
     source: wireEvidence,
-    definition: z.object({ cells: z.record(z.string()), source: wireEvidence }).optional()
+    definition: z.object({ cells: z.record(z.string(), z.string()), source: wireEvidence }).optional()
       .describe("The finish/material-schedule row this code chains to, when one exists"),
   })).optional(),
   sources: z.array(wireEvidence).optional().describe("The chain: plan tag → schedule row (the row cites the sheet that CARRIES it — under a continuation that is the CONT'D sheet)"),
@@ -767,7 +889,7 @@ export const sweepScheduleRowOutput = {
     sheet: z.string(),
     table: z.string().describe("The table's title (or kind, when untitled)"),
     key: z.string(),
-    cells: z.record(z.string()).describe("The row's cells, header → text — what the schedule SAYS this mark is"),
+    cells: z.record(z.string(), z.string()).describe("The row's cells, header → text — what the schedule SAYS this mark is"),
     citation: wireEvidence,
   }).describe("The schedule row the sweep was seeded from — the condition's source"),
   anchor: z.object({
@@ -778,8 +900,11 @@ export const sweepScheduleRowOutput = {
     length_px: z.number(),
     corroborated: z.boolean().describe("true = the fingerprint recurred at a second tag occurrence before being trusted; false = the tag is drawn too sparsely to cross-check (see note)"),
     occurrences: z.number().int().describe("Drawn occurrences of the tag across all plan sheets"),
-  }),
-  found: z.number().int().describe("Matches carrying the row's own tag — the honest count, across every plan sheet"),
+  }).nullable().describe("null when the sweep counted BY LABEL: no repeatable marker geometry sits around the drawn tag (the equipment convention — a device drawn to its own size, tagged by a leader), so nothing was fingerprinted"),
+  found: z.number().int().describe("Instances counted across every plan sheet: geometry matches carrying the row's own tag PLUS drawn tags counted by label — see counted_by"),
+  found_by_geometry: z.number().int().describe("…of which marker-fingerprint matches corroborated by the tag"),
+  found_by_label: z.number().int().describe("…of which drawn tags amid linework the fingerprint did not (or could not) reach — an installed instance by the equipment convention, disclosed as label-counted"),
+  counted_by: z.enum(["geometry", "label", "mixed"]).describe("How the count was made — \"label\" means no marker geometry was matched at all; look at each label_only placement before pricing"),
   sheets: z.array(z.object({
     sheet: z.string(),
     found: z.number().int(),
@@ -789,7 +914,9 @@ export const sweepScheduleRowOutput = {
     excluded: z.array(z.object({ at: z.tuple([z.number(), z.number()]), tag: z.string() }))
       .describe("Markers matching the geometry but labeled with a SIBLING row's tag — the bubble shape is shared across marks, so these belong to that row, not this one"),
     text_only: z.array(z.object({ at: z.tuple([z.number(), z.number()]) }))
-      .describe("The tag drawn with NO matching marker geometry nearby — a note reference or a variant marker; a question, never a count"),
+      .describe("The tag drawn with no marker match AND no linework near it — a note mentioning the mark; a question, never a count"),
+    label_only: z.array(z.object({ at: z.tuple([z.number(), z.number()]), tag_at: wireBox }))
+      .describe("Instances counted BY LABEL: the row's tag drawn amid linework that the marker fingerprint did not match (or none was anchored) — the equipment convention; each is counted and each deserves a look"),
     candidates: z.object({ considered: z.number().int(), dropped: z.number().int() }),
     complete: z.boolean().describe("True when every proposed placement on this sheet was scored — false means this sheet's count is a FLOOR, not a total (#261)"),
     elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
@@ -848,6 +975,28 @@ export const sheetContextOutput = {
   hatch: z.object({ families: z.array(hatchFamilyRow), count: z.number().int() }),
 };
 
+// ── the raw vector layer (#367) — what the engine is fed, paged ─────────────
+export const getSheetVectorsOutput = {
+  sheet: z.string(),
+  page: z.number().int(),
+  sheet_px: z.array(z.number()).length(2),
+  region: z.array(z.number()).length(4).describe("The region actually resolved, post-clamp [x0, y0, x1, y1] image px — the same rect sheet_context and view_sheet take, so all three verbs answer in one frame"),
+  points: z.array(z.number()).describe("Flat [x1, y1, x2, y2, …] — four numbers per segment, image px to 0.01, endpoints exactly as extracted (never clipped to the region, never merged); segments arrive in extraction order, the order the engine sees"),
+  meta: z.array(z.number().int()).describe("One byte per segment, aligned with points: low nibble flags — 1 curve chord (bezier tessellation or detected polyline arc), 2 clip-only path (invisible ink), 4 filled-not-stroked, 8 polyline-arc provenance; high nibble (meta >> 4) = device pen width in px"),
+  lum: z.array(z.number().int()).describe("Aligned with points: stroke luminance 0 (black) – 255 (white), Rec. 709 over the stroke colour in force when the path was built. Empty only when the geometry carries no luminance channel"),
+  subpath: z.array(z.number().int()).describe("Aligned with points: ordinal of the drawn FIGURE each segment belongs to (each moveTo starts one, each rectangle is one) — segments sharing a value are one path; −1 = outside every figure"),
+  image_area: z.number().describe("Total placed-image area on the sheet, image px² — a value near the sheet area means a scan or photo underlay sits under whatever linework there is"),
+  layer_ids: z.array(z.string()).describe("The sheet's PDF Optional Content Group ids in first-seen order — the same ids sheet_info.layers reports (with names and roles); [] on an unlayered sheet"),
+  layer_of: z.array(z.number().int()).describe("Aligned with points: index into layer_ids, or −1 for a segment outside every layer. Empty only when the geometry carries no layer channel"),
+  total: z.number().int().describe("Segments on the sheet intersecting the region — the whole set, before paging"),
+  offset: z.number().int().describe("Matching segments BEFORE this page (skipped by cursor)"),
+  returned: z.number().int().describe("Segments in this reply"),
+  dropped: z.number().int().describe("Matching segments AFTER this page that limit cut — exactly what next_cursor recovers. offset + returned + dropped === total on every reply; 0 means this page ends the set"),
+  limit: z.number().int().describe("The page size that applied"),
+  next_cursor: z.number().int().optional().describe("Pass as cursor to fetch the next page; absent when dropped is 0"),
+  note: z.string().optional().describe("Present when the sheet is a scan wrapper — the few segments here are a frame, not the drawing"),
+};
+
 // ── annotations (#114) — notes ABOUT the work, never measurements of it ──────
 const annotationRow = z.object({
   id: z.string(),
@@ -863,7 +1012,11 @@ const annotationRow = z.object({
   to: z.tuple([z.number(), z.number()]).optional().describe("Arrow head / dimension end (image px)"),
   r: z.number().optional().describe("Bubble radius (image px)"),
   length_lf: z.number().optional().describe("Dimension only: the measured length in real feet, snapshotted at annotate time from the sheet scale"),
+  text_resolved: z.string().optional().describe("Only when text carries a {{qty}} field: the note as the sheet shows it, {{qty}} filled with the linked condition's measured quantity (multiplier applied, no waste)"),
+  unresolved_fields: z.array(z.string()).optional().describe("Fields that could not fill (no linked condition, nothing measured yet, or an unknown name) — they stay literal and print in the warning ink; link_annotation fixes the first case"),
 });
+
+export const editAnnotationOutput = { id: z.string(), text: z.string(), note: z.string() };
 
 export const annotateOutput = {
   id: z.string(),
@@ -923,12 +1076,61 @@ export const linkAnnotationOutput = {
   note: z.string(),
 };
 
+// ── RFIs (#364) — raise, list, answer, withdraw a question on the sheet ──────
+/** One RFI as the register reports it: the panel's record with its links
+ * resolved. actor says who asked; pending is the agent-raised-and-not-yet-
+ * accepted state (origin.reviewed false) — the record the estimator has to
+ * accept in the register before it goes anywhere. */
+const rfiRow = z.object({
+  id: z.string().describe('The record id ("rfi-…")'),
+  number: z.string().describe('The register number, "RFI-001" — next in the panel\'s own sequence, never reissued'),
+  subject: z.string(),
+  question: z.string(),
+  status: z.enum(["open", "answered", "closed", "void"]).describe("The panel's lifecycle: open → answered → closed; void = withdrawn"),
+  sheet: z.string().describe("The sheet the question is about"),
+  actor: z.enum(["agent", "estimator"]).describe('Who raised it — "agent" for every RFI minted over MCP, "estimator" for a panel-raised one'),
+  pending: z.boolean().describe("true = agent-raised and not yet accepted by an estimator in the register (origin.reviewed false) — pencil, not sent"),
+  date: z.string().describe("YYYY-MM-DD opened"),
+  response: z.string(),
+  response_date: z.string().describe("YYYY-MM-DD answered, '' while open"),
+  linked_markups: z.array(z.string()).describe("Annotation ids carrying this RFI's number on the sheet (markup.rfi_id) — derived, never stored twice"),
+  conditions: z.array(z.string()).describe("Finish tags the linked markups are attached to — the scopes this question touches"),
+});
+
+export const createRfiOutput = {
+  ...rfiRow.shape,
+  note: z.string(),
+};
+
+export const listRfisOutput = {
+  rfis: z.array(rfiRow).describe("Every live RFI, register order"),
+  count: z.number().int(),
+  open: z.number().int().describe("Still awaiting an answer"),
+  pending: z.number().int().describe("Agent-raised and not yet accepted by an estimator"),
+  withdrawn: z.array(z.string()).describe("Numbers of withdrawn RFIs (delete_rfi tombstones) — the gaps in the sequence, explained"),
+};
+
+export const resolveRfiOutput = {
+  ...rfiRow.shape,
+  resolved_at: z.string().describe("ISO-8601 time of this resolve"),
+  note: z.string(),
+};
+
+export const deleteRfiOutput = {
+  deleted: z.string().describe("The withdrawn record's id"),
+  number: z.string().describe("Its number — stays reserved; the register and the marked set keep the gap"),
+  unlinked_markups: z.number().int().describe("Markups that kept their note and lost the link"),
+  rfis_remaining: z.number().int().describe("Live RFIs after the withdrawal"),
+  note: z.string(),
+};
+
 /** count_marks — the deterministic census: value-annotated mark tags on the
  * plan sheets, counted per schedule mark, residue withheld with reasons. */
 const censusOccurrence = {
   at: z.tuple([z.number(), z.number()]).describe("The tag's center (image px)"),
-  value: z.string().describe("The paired value drawn under the tag (CFM, GPM, a count — the annotation that makes it an instance)"),
+  value: z.string().optional().describe("The paired value drawn under the tag (CFM, GPM, a count — the annotation that makes it an instance); absent when counted by label"),
   sheet: z.string(),
+  by: z.enum(["value", "label"]).describe("\"value\" = tag-over-value (air devices, fixtures); \"label\" = an EQUIPMENT-schedule mark drawn amid linework with no value — the leader-tag convention, counted as one instance and said so"),
 };
 const censusWithheld = {
   at: z.tuple([z.number(), z.number()]).describe("The tag's center (image px) — view_sheet here"),
@@ -938,7 +1140,8 @@ const censusWithheld = {
 export const countMarksOutput = {
   marks: z.array(z.object({
     mark: z.string(),
-    count: z.number().int().describe("Value-paired instances counted on plan-role sheets"),
+    count: z.number().int().describe("Instances counted on plan-role sheets — value-paired tags, plus (for an equipment-schedule mark) tags drawn amid linework, see counted_by_label"),
+    counted_by_label: z.number().int().optional().describe("…of which counted by label (an equipment mark with a leader, no value under it)"),
     row: z.object({ sheet: z.string(), key: z.string(), table: z.string() }).optional()
       .describe("The schedule row that answers for this mark (a compound key answers for each part)"),
     unscheduled: z.boolean().optional().describe("true when the mark was stated by the caller but no schedule row answers for it"),
@@ -949,8 +1152,61 @@ export const countMarksOutput = {
     committed: z.object({ committed: z.number().int(), ea_total: z.number() }).optional(),
   })),
   total: z.number().int().describe("All counted instances across every mark"),
-  per_sheet: z.array(z.object({ sheet: z.string(), counts: z.record(z.number().int()) })),
+  per_sheet: z.array(z.object({ sheet: z.string(), counts: z.record(z.string(), z.number().int()) })),
   excluded_in_tables: z.number().int().optional().describe("Tag occurrences inside a schedule table's own region — row labels, never instances"),
   skipped: z.array(z.object({ sheet: z.string(), role: z.string(), reason: z.string() })),
   complete: z.boolean(),
+};
+
+// ── estimate (lib/estimate.js) ──────────────────────────────────────────────
+const unpricedRow = z.object({
+  id: z.string(), finish_tag: z.string(),
+  status: z.enum(["partial", "unpriced"]),
+  missing: z.array(z.string()).describe('What was never entered: "material", "labor", or "material row: <name>"'),
+}).passthrough();
+const estimateLine = z.object({
+  id: z.string(), finish_tag: z.string(), unit: z.enum(["SF", "SY", "LF", "EA"]),
+  material_qty: z.number().describe("Order quantity in the unit — waste applied (EA never carries waste)"),
+  labor_qty: z.number().describe("Measured quantity in the unit — no waste"),
+  material_rate: z.number().nullable().describe("$ per unit; null = never entered"),
+  labor_rate: z.number().nullable().describe("$ per unit; null = never entered"),
+  material_cost: z.number(), labor_cost: z.number(),
+  materials: z.array(z.object({ name: z.string(), unit: z.string(), qty: z.number(), price: z.number().nullable(), cost: z.number(), priced: z.boolean() }).passthrough()),
+  materials_cost: z.number(), total: z.number(),
+  status: z.enum(["priced", "partial", "unpriced"]),
+  missing: z.array(z.string()),
+}).passthrough();
+const estimateSettings = z.object({ tax_pct: z.number(), overhead_pct: z.number(), profit_pct: z.number(), profit_mode: z.enum(["markup", "margin"]) }).passthrough();
+
+export const setPricingOutput = {
+  condition: z.string(), condition_id: z.string(),
+  pricing: z.object({ unit: z.enum(["SF", "SY", "LF", "EA"]).optional(), material: z.number().optional(), labor: z.number().optional() }).passthrough().describe("The condition's prices after this write; an absent field is not entered"),
+  material_prices: z.array(z.object({ name: z.string(), unit: z.string(), price: z.number().nullable() }).passthrough()),
+  line: estimateLine.nullable().describe("The condition's estimate line after this write; null while it has no committed shapes"),
+  note: z.string().optional(),
+};
+export const setEstimateSettingsOutput = {
+  estimate_settings: estimateSettings.nullable(),
+  bid_proposal: z.object({}).passthrough().nullable(),
+  client_info: z.object({}).passthrough(),
+};
+export const estimateSummaryOutput = {
+  settings: estimateSettings,
+  settings_source: z.string(),
+  lines: z.array(estimateLine),
+  material: z.number().describe("Condition material + supply rows"), labor: z.number(),
+  tax: z.number().describe("Sales tax on material"), cost: z.number().describe("material + labor + tax"),
+  overhead: z.number(), profit: z.number(),
+  total: z.number().describe("The base bid — 'priced so far' while complete is false"),
+  complete: z.boolean(),
+  unpriced: z.array(unpricedRow),
+  warnings: z.array(z.string()),
+  note: z.string(),
+};
+export const exportEstimateOutput = {
+  path: z.string(), tabs: z.array(z.string()), total: z.number(), complete: z.boolean(), unpriced: z.array(unpricedRow),
+};
+export const exportProposalOutput = {
+  path: z.string(), pages: z.number().int(), base_bid: z.number(), itemized: z.boolean(), complete: z.boolean(), unpriced: z.array(unpricedRow),
+  note: z.string().optional(),
 };

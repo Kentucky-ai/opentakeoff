@@ -62,8 +62,8 @@ const keepLoserCarrier = (a, b) => (a && typeof a === "object" && "merge_loser" 
 // local-only additions appended in local order — deterministic on both
 // machines), conflicts lists both-edited uids with the chosen winner, and
 // deleted lists uids removed by the delete quadrant (for the re-import scan).
-function mergeKeyed(baseArr, localArr, remoteArr) {
-  const byId = (arr) => new Map((arr || []).map((r) => [r.id, r]));
+function mergeKeyed(baseArr, localArr, remoteArr, identity = "id") {
+  const byId = (arr) => new Map((arr || []).map((r) => [r[identity], r]));
   const B = byId(baseArr), L = byId(localArr), R = byId(remoteArr);
 
   const out = new Map();
@@ -73,9 +73,9 @@ function mergeKeyed(baseArr, localArr, remoteArr) {
   // Every uid that exists anywhere, remote-then-local order (see spine note).
   const order = [];
   const seen = new Set();
-  for (const r of remoteArr || []) if (!seen.has(r.id)) { seen.add(r.id); order.push(r.id); }
-  for (const r of localArr || []) if (!seen.has(r.id)) { seen.add(r.id); order.push(r.id); }
-  for (const r of baseArr || []) if (!seen.has(r.id)) { seen.add(r.id); order.push(r.id); }
+  for (const r of remoteArr || []) if (!seen.has(r[identity])) { seen.add(r[identity]); order.push(r[identity]); }
+  for (const r of localArr || []) if (!seen.has(r[identity])) { seen.add(r[identity]); order.push(r[identity]); }
+  for (const r of baseArr || []) if (!seen.has(r[identity])) { seen.add(r[identity]); order.push(r[identity]); }
 
   for (const id of order) {
     const b = B.get(id), l = L.get(id), r = R.get(id);
@@ -129,13 +129,13 @@ function mergeValue(b, l, r) {
 // carrying a string id — true for shapes, conditions, markups; false for the
 // positional UI arrays. Judged over all three inputs so a side with an empty
 // array can't demote a keyed set to the scalar rule.
-function isKeyed(...arrays) {
+function isKeyed(identity, ...arrays) {
   let sawAny = false;
   for (const arr of arrays) {
     if (!Array.isArray(arr)) continue;
     for (const el of arr) {
       sawAny = true;
-      if (!el || typeof el !== "object" || typeof el.id !== "string" || !el.id) return false;
+      if (!el || typeof el !== "object" || typeof el[identity] !== "string" || !el[identity]) return false;
     }
   }
   return sawAny;
@@ -188,15 +188,39 @@ export function mergeAnnotations(base, local, remote) {
   const conflicts = [];
   for (const k of keys) {
     const bv = b[k], lv = l[k], rv = r[k];
-    if (isKeyed(bv, lv, rv)) {
-      const m = mergeKeyed(bv || [], lv || [], rv || []);
+    const identity = k === "sheets" ? "sheet_id" : "id";
+    if (isKeyed(identity, bv, lv, rv)) {
+      const m = mergeKeyed(bv || [], lv || [], rv || [], identity);
       for (const c of m.conflicts) conflicts.push({ key: k, ...c });
       merged[k] = m.records;
     } else {
       merged[k] = mergeValue(bv, lv, rv);
     }
   }
-  const review_sheets = reimportSheets(b.shapes, l.shapes, r.shapes);
+  // Calibration and dimensional geometry form one unit. If both sides worked
+  // on the SAME sheet using different scales, record-wise union could attach
+  // old computed quantities to the winning calibration. Fall back to the
+  // remote sheet's complete measurement set; the sync store snapshots local
+  // before adopting any conflicted merge. Other sheets still merge normally.
+  const sheetRows = (doc) => new Map((Array.isArray(doc.sheets) ? doc.sheets : []).filter((s) => typeof s?.sheet_id === "string").map((s) => [s.sheet_id, s]));
+  const B = sheetRows(b), L = sheetRows(l), R = sheetRows(r);
+  const work = (doc, rows, key) => ({ scale: rows.get(key)?.units_per_px,
+    shapes: (doc.shapes || []).filter((s) => s.sheet_id === key && s.measure_role !== "count") });
+  for (const key of new Set([...L.keys(), ...R.keys()])) {
+    if (eq(L.get(key)?.units_per_px, R.get(key)?.units_per_px)) continue;
+    const lw = work(l, L, key), rw = work(r, R, key), bw = work(b, B, key);
+    if (eq(lw, bw) || eq(rw, bw) || (!lw.shapes.length && !rw.shapes.length)) continue;
+    merged.shapes = [
+      ...(merged.shapes || []).filter((s) => s.sheet_id !== key || s.measure_role === "count"),
+      ...rw.shapes,
+    ];
+    merged.sheets = (merged.sheets || []).filter((s) => s.sheet_id !== key);
+    if (R.has(key)) merged.sheets.push({ ...R.get(key), ...(L.has(key) ? { merge_loser: asLoser(L.get(key)) } : {}) });
+    const conflict = conflicts.find((c) => c.key === "sheets" && c.id === key);
+    if (conflict) conflict.winner = "remote";
+    else conflicts.push({ key: "sheets", id: key, winner: "remote" });
+  }
+  const review_sheets = [...new Set([...reimportSheets(b.shapes, l.shapes, r.shapes), ...conflicts.filter((c) => c.key === "sheets").map((c) => c.id)])].sort();
   return { merged, conflicts, review_sheets, clean: conflicts.length === 0 && review_sheets.length === 0 };
 }
 

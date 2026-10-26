@@ -1,0 +1,295 @@
+{
+  "name": "mq-c-above-c1-not-used",
+  "kind": "marquee",
+  "note": "cell-less C above a one-span C-1 NOT USED line, then C-2",
+  "spans": [
+    {
+      "str": "CODE",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "CPT-1",
+      "x": 100,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "BROADLOOM CARPET",
+      "x": 220,
+      "y": 38,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 101",
+      "x": 1000,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "C",
+      "x": 100,
+      "y": 76,
+      "w": 8,
+      "h": 17
+    },
+    {
+      "str": "C-1 NOT USED",
+      "x": 100,
+      "y": 114,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "C-2",
+      "x": 100,
+      "y": 152,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "SEALED CONCRETE",
+      "x": 220,
+      "y": 152,
+      "w": 120,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-D",
+      "x": 520,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CLEAR",
+      "x": 1000,
+      "y": 152,
+      "w": 40,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "BROADLOOM CARPET",
+          "manufacturer": "VENDOR-A",
+          "style": "",
+          "spec_color": "GREY 101",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "C",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "C-2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "SEALED CONCRETE",
+          "manufacturer": "VENDOR-D",
+          "style": "",
+          "spec_color": "CLEAR",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    },
+    "parseSchedule": [
+      {
+        "finish_tag": "CPT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "BROADLOOM CARPET",
+        "manufacturer": "VENDOR-A",
+        "style": "",
+        "spec_color": "GREY 101",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "C",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "C-2",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "SEALED CONCRETE",
+        "manufacturer": "VENDOR-D",
+        "style": "",
+        "spec_color": "CLEAR",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      }
+    ],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1",
+              "bbox": [
+                100,
+                38,
+                140,
+                55
+              ]
+            },
+            "MATERIAL": {
+              "text": "BROADLOOM CARPET",
+              "bbox": [
+                220,
+                38,
+                348,
+                55
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                38,
+                584,
+                55
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 101",
+              "bbox": [
+                1000,
+                38,
+                1064,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "C",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "C C-1 NOT USED",
+              "bbox": [
+                100,
+                76,
+                196,
+                131
+              ]
+            }
+          }
+        },
+        {
+          "key": "C-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "C-2",
+              "bbox": [
+                100,
+                152,
+                124,
+                169
+              ]
+            },
+            "MATERIAL": {
+              "text": "SEALED CONCRETE",
+              "bbox": [
+                220,
+                152,
+                340,
+                169
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-D",
+              "bbox": [
+                520,
+                152,
+                584,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "CLEAR",
+              "bbox": [
+                1000,
+                152,
+                1040,
+                169
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

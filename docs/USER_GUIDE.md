@@ -1,5 +1,19 @@
 # OpenTakeoff — The User Manual
 
+### Annotation toolbar and reviewed Sweep
+
+The top **Annotate** row provides **Arrow**, **Highlighter**, **Callout**, **Cloud + note**, **Sweep**, **Select markups**, and **Favorites**. Arrowheads, both ends, page-point line weights, colors, line styles, and note sizes are editable. Select a markup and drag its handles; a callout's text box moves independently of its target. Highlighter offers Freehand, Straight, and Text modes. Text mode highlights whole native PDF text runs, including rotated runs; scanned text needs a stroke instead. Favorites save named tool styles in this browser.
+
+**Sweep** boxes one native vector symbol or PDF text example and searches that sheet. A confirmation panel lists numbered results with individual checkboxes, synchronized with numbered boxes on the sheet. Exclude any result, clear the selection, or use **Select matches** to restore confident matches. Near matches start unchecked. Nothing is added until **Apply to selected**; choose clouds with an optional shared note or notes with leaders. Cancel leaves the PDF unchanged. One undo removes the applied batch, and redo restores it. This creates editable app markups around PDF content; it does not modify source PDF text or create takeoff quantities. Symbol matching requires vector content; PDF text matching joins adjacent aligned fragments into labels, then compares normalized labels; it does not use OCR or match arbitrary paragraphs. Search limits are disclosed in the confirmation panel.
+
+**Select markups** boxes existing editable annotations for shared style edits. Shift-click adds individual marks. Changes made through this toolbar support undo/redo. Existing geometry, quantity tools, stamps, and the symbol-count workflow remain available. Marked-set exports retain vector arrows, clouds, notes, and translucent highlights.
+
+
+### Pin a reference
+
+Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
+
+
 OpenTakeoff is a takeoff canvas that runs in your browser. Open a plan, set the scale, trace the finishes—or let an AI agent stage the tracing while you keep the accept button—and walk away with a priced-out quantity report, a materials buy list, and a marked set you can send to a GC. Everything happens on your machine: no account, no upload, no install.
 
 This manual takes you from a blank browser tab to a finished, exported takeoff, and covers every shipped feature along the way. Shortcuts appear inline as you meet each tool; the complete table is in [§15](#15-keyboard-reference).
@@ -31,12 +45,12 @@ In a hurry, or already in the app? Press **`?`** (or the **?** button in the top
 
 ## 1. Five minutes to a takeoff
 
-The fastest way to learn the canvas is to run one takeoff end to end on the bundled plan.
+The fastest way to learn the canvas is to run one takeoff end to end on the bundled plan. To be walked through it, click **Guided first takeoff** on the opening screen (or **Help → Guided first takeoff**, or the **⋯** menu in the classic layout): a card over the canvas names each step below, outlines the control it needs, and checks the step off when you've done it. Nothing advances until you do it yourself.
 
 1. **Load the sample.** On the opening screen, click **Load sample plan**—a real medical-center floor finish plan. (Your own plans: drag a PDF anywhere onto the page.)
-2. **Accept the scale.** Open the **Set scale…** chip in the toolbar. The plan's drawn scale note has already been read off the sheet—click **Plan says 1/4″ = 1′-0″ — use it**. A calibrated ruler bar flashes on the sheet for a few seconds so you can eyeball that it's right (a door opening is about 3′).
+2. **Accept the scale.** Open the **Set scale…** chip in the toolbar. The plan's drawn scale note has already been read off the sheet—click **Plan says 1/8″ = 1′-0″ — use it**. A calibrated ruler bar flashes on the sheet for a few seconds so you can eyeball that it's right (a door opening is about 3′).
 3. **Choose a condition.** A fresh workspace ships with a starter set of flooring conditions—CPT-1, LVT-1, CT-1, and friends. Press `1` to arm the first (the number keys answer in list order until you pin your own palette), or open the **☰ Takeoffs** rail button and click one.
-4. **One-Click the rooms.** Press `O`, then click inside a room. The room traces itself, wall to wall, as a dashed proposal. Click the next room, and the next. Press `⏎` to create them all.
+4. **Trace the rooms.** Press `A`, click the room's corners, `⏎` closes it. (One-Click Area — press `O`, click inside a room, it traces itself — is **temporarily gated** while the flood engine is re-validated; [§6](#6-one-click-area) says what that means.)
 5. **Read the report.** Open **Report** for the per-condition breakdown—SF, SY, waste-adjusted order quantities, and the materials buy list. Export **CSV**, **Excel**, or a **Marked set** PDF.
 
 That's the whole loop: open → scale → condition → measure → report. Everything autosaves to your browser as you go—reload the tab and your takeoff is still there.
@@ -51,8 +65,8 @@ number defensible. This is the sequence, with the section that covers each step:
 2. **Scale every sheet you'll measure, and check one dimension on each** (`K`). Ten seconds a
    sheet. A plan set is never one uniform scale, and a wrong scale is every number wrong at once
    ([§3](#3-scale--set-it-first)).
-3. **Build your conditions off the architect's schedule**, not off memory—**Schedule** in the
-   toolbar parses the finish table and you approve what becomes a condition. The product spec
+3. **Build your conditions off the architect's schedule**, not off memory—**⋯ → Import from
+   schedule** reads the finish table and you approve what becomes a condition. The product spec
    rides along as report columns, so the submittal answers itself later
    ([§4](#4-conditions--your-finishes)).
 4. **Set waste and materials before you trace**, not after. Waste is per condition and matched to
@@ -60,8 +74,8 @@ number defensible. This is the sequence, with the section that covers each step:
    ([§4](#4-conditions--your-finishes)).
 5. **Stitch anything split at a match line, and align it, before a single shape lands on it.**
    Once takeoffs live on a stitch it won't re-align ([§2](#2-opening-plans-and-moving-around)).
-6. **Measure the floors first**—`O`, room by room, condition by condition. Floors are the bulk
-   of the number and everything else derives from them ([§6](#6-one-click-area)).
+6. **Measure the floors first**—`A`, room by room, condition by condition. Floors are the bulk
+   of the number and everything else derives from them ([§5](#5-the-measuring-tools)).
 7. **Derive what follows instead of measuring it twice**: base off the rooms you just traced,
    **⟂ Transitions** for the line where two finishes meet—and read what it *reports and never
    counts*, because those are doorway thresholds you still owe
@@ -81,13 +95,25 @@ whether a disputed quantity is a five-minute conversation or a re-takeoff.
 
 ## 2. Opening plans and moving around
 
+Changing sheets releases the previous sheet's background rendering documents and
+embedded fonts. Reopening a sheet loads its rendering resources again; switching
+while a load is pending cannot complete the replacement sheet's load by mistake.
+
+The PDFs in your open tabs stay loaded, plus up to four others you used most
+recently (two on a phone or tablet, or a browser that reports 4 GB of
+memory or less). An older one is set aside and opened again from the stored
+file the next time you view, search or preview it. A tab you just closed
+counts as the most recently used, so it reopens without loading its PDF
+again, unless four other PDFs (two on those devices) are used in between.
+
+
 ### What you can open
 
 Drag onto the canvas (or click the **Open your plans** target on the empty screen):
 
 - **PDF** plan sets—multi-page, multiple files at once.
 - **Images**—scans, screenshots, photos of a sheet. They're wrapped into PDF pages in your browser.
-- **`.zip` plan sets**—the whole download off a bid platform. Unzipped in the browser; every PDF inside opens. (Hostile-archive guards cap entry counts, sizes, and nesting, so a malformed zip fails cleanly instead of ballooning the tab.)
+- **`.zip` plan sets**—the whole download off a bid platform. Unzipped in the browser; every PDF inside opens. An unreadable image is skipped individually, without stopping the remaining plans or valid images. (Hostile-archive guards cap entry counts, sizes, and nesting, so a malformed zip fails cleanly instead of ballooning the tab.)
 
 Nothing uploads anywhere. The file is read locally, rendered locally, and stored locally.
 
@@ -98,7 +124,10 @@ Press `G` (or click **Sheets** in the toolbar) for the visual gallery: one card 
 - **Open one sheet**: point to a card and click **View**.
 - **Open several**: click cards to select them—each gets a numbered badge, and that order is the left-to-right order. Then **Open N as tabs** or **Open N side-by-side** (side-by-side maxes at **4 sheets**; one pan/zoom moves the whole row).
 - **Close a PDF**: point to the file's first card and click **✕**. Takeoffs on its sheets are preserved and restore if you re-add the same file.
-- `Esc` closes the gallery (when a sheet is open behind it).
+- **Find sheets by their text**: type in **Search sheet text…**, at the right of the **Page previews** row above the cards—a finish tag (`CPT-1`), a room or sheet number (`101`, `A101`), or a word. The cards narrow to the sheets whose own text has every term you typed, best match first, and each card shows the text it matched. Very short words (under three letters, and not a code) are ignored when you type others with them, and matches in a sheet's own text come before matches in text read on your device (OCR). A partly typed code still finds something (`CPT` finds `CPT-1`).
+- The first search reads the text of any sheet not read yet; beside the box, the match count shows **Indexing n / N** until it's done. In a cloud project that downloads every PDF you haven't opened, the same as opening them. A sheet that couldn't be read isn't counted as checked: the line beside the box says how many (**N sheets couldn't be read for search**) with **Retry**, and the next search tries them again.
+- Search reads the PDF's own text layer. A scanned sheet has little or no text layer until it's read on your device: once the gallery knows the sheet is a scan (its card has been shown, or a search has read it), the card shows **Read page text** (while on-device reading is available), then the read's progress with **Cancel**, then **Read in n s · OCR**. A read sheet is searchable, and a card that matched on read text carries an **OCR** badge: check the sheet, since the text came from the image. A picture pasted onto a vector sheet (a schedule exported as an image, for example) is the same: its text isn't searchable until it's read, and the card shows **Read picture text** with the caption **text in a picture isn't searchable yet**; the sheet's own text stays searchable throughout, and a hit on that text isn't badged **OCR**. Below the results, a line counts the sheets search can't see into (**N sheets with scans or pictures that haven't been read**). A scan's few lines of stray text (a stamp, a scanner label) are searchable before it's read, and stay searchable after, even where the read missed them; once read, the sheet's hits are badged **OCR**. A sheet read before, in this browser, is searchable again after a reload without a new read; a stamp that read missed is searchable again once the sheet is opened or searched. See [reading a page with no text layer](#reading-a-page-with-no-text-layer).
+- `Esc` clears the search first; otherwise it closes the gallery (when a sheet is open behind it).
 
 ### Tabs, groups, and Regroup
 
@@ -110,13 +139,15 @@ One caveat that side-by-side makes possible: a trace can't span two grouped shee
 
 Large floors often arrive cut across sheets at a **match line**—half the building on each. Side-by-side viewing doesn't help you *measure* across the cut; stitching does.
 
-1. In the gallery, select the split sheets (2–4, left-to-right selection order) and click **Stitch N into one surface**. They butt edge-to-edge—no gap—and open as **one** sheet with its own tab and scale (inherited when the members' scales agree).
+1. Press **G** (or choose **Sheets → Open gallery…**) to open the gallery. Select the split sheets (2–4, left-to-right selection order) and click **Stitch N into one surface** in the gallery footer. They butt edge-to-edge—no gap—and open as **one** sheet with its own tab and scale (inherited when the members' scales agree).
 2. **Join the match line**: click **Align** in the toolbar (it appears while a stitch is open), click a recognizable point near the joint, then click the **same drawn point** on the other sheet. That sheet slides so the two coincide—zoom in first for a tight joint, exactly like calibrating. Where the sheets overlap, each shows its own half up to the seam, so borders near the match line don't cover the plan.
-3. Work it like any sheet. A room that crosses the match line traces as **one shape**—manual tools and **One-Click** both work straight across the seam (the members' linework merges into one snap grid and one flood mask). Quantities, the Report, undo, and revisions treat the stitch as a normal sheet.
+3. Check another recognizable point along the joint and verify the stitched sheet's scale before measuring. **Align** translates a member sheet; it does not rotate or resize it. If the members use different scales or orientations, prepare matching source sheets first. Press **A** for Area and trace across the match line as **one shape**. One-Click is gated in the default build, so seam-crossing examples of it describe an explicitly enabled build.
 
 Notes: align the match line **before** tracing—once takeoffs live on a stitch it won't re-align (their coordinates ride the composite). Deleting a stitch is refused while takeoffs or markups live on it; reopen one anytime from its tab or the gallery's **Stitched surfaces** strip. The Marked Set PDF burns a stitch in as one composite page—members placed at their aligned offsets, each showing its own half up to the seam, shapes drawn once in the frame you measured them in—stamped as a stitched composite so nobody mistakes it for a sheet the architect issued.
 
-Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. If an agent will be doing the takeoff on a split floor, do the stitch and align yourself first, or have the agent measure the member sheets individually.
+Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. MCP cannot create, align, or measure on a stitched surface. The current MCP import/export path omits stitch records, so a browser stitch is not a lossless MCP handoff. Keep the browser's own takeoff export or project archive as the editable master, or have the MCP agent measure the member sheets individually with explicit scope boundaries.
+
+**If a control seems missing:** **Stitch N into one surface** is in the gallery footer and requires 2–4 selected sheets. **Align** appears only while a stitched surface is open. Reopen one from its tab or the gallery's **Stitched surfaces** strip. If Align refuses because takeoffs already exist, create a fresh stitch and align it before tracing. Deleting a stitch also refuses while takeoffs or markups exist.
 
 ### Split screen (reference pane)
 
@@ -172,9 +203,20 @@ scans or flattened plots.
 
 The **☾** button in the zoom cluster inverts the sheet pixels themselves—a true negative print, white linework on black, not a CSS filter—with hatches retuned to stay legible. The setting persists per browser, and exports follow it: a dark canvas produces a dark Marked Set PDF.
 
+A light Marked Set copies each source page as vector, so the linework stays crisp at any zoom. One kind of source can't be copied that way: a PDF the architect **encrypted** (an owner password with no password to open it—the usual "no copying" export). The canvas renders it normally, but its page streams can't be embedded, and a vector copy would print as a blank sheet. Those sheets go into the Marked Set as a rendered image instead, and the sheet stamp says so: *raster copy — the source PDF is encrypted*. Takeoffs, markups, seals and RFI markers draw on top exactly as they do on a vector page.
+
 ---
 
 ## 3. Scale — set it first
+
+Changing a scale recomputes the sheet's measurements, including interior voids. Open the sheet before recalibrating measured work. Confirming an agent-set scale saves the confirmation even if you make no other edit; choosing the already-active scale also confirms it.
+
+When importing a takeoff, new dimensional measurements must use the same calibration as an already-scaled sheet. A conflict message names the sheet and both scales, and nothing is imported. Align the source calibration and re-export before trying again. Counts and already-imported shape IDs do not require matching scales. Agent traces with missing legacy review flags enter the pending review queue.
+
+One-Click preserves retained interior voids as part of the shape through preview, Create, save and export. Their area is subtracted and their boundaries contribute to perimeter. The existing network engine still omits voids below its retention threshold; inspect the preview before accepting.
+
+During sync, calibrations on different sheets merge independently. If concurrent changes combine geometry and differing calibrations on the same sheet, that sheet's remote measurements and calibration stay together. Your local work is preserved in **Merge backup** in Revisions for recovery.
+
 
 Scale is the foundation. Every square foot on your report is pixels × scale², so a wrong scale is every number wrong at once. OpenTakeoff treats scale accordingly: it's **per sheet**, it's verified visually on every acceptance, and nothing prices without it.
 
@@ -222,7 +264,7 @@ A scale that arrives from an agent takeoff (an MCP session's export, imported he
 
 ### Metric
 
-The **`ft` / `m`** toggle beside the Scale chip switches the whole display layer: readouts, shape chips, panels, the Report, CSV, and the Marked Set legend read in m² / m (the SY column retires), and Calibrate takes meters. It's display only—takeoffs are stored unit-agnostically, so flipping it never changes a measurement. Supporting-material coverage rates stay as entered.
+The **`ft` / `m`** toggle beside the Scale chip switches the whole display layer: readouts, shape chips, panels, the Report, CSV, and the Marked Set legend read in m² / m (the SY column retires), footprint dimensions read in metres and volumes in m³, and Calibrate takes meters. It's display only—takeoffs are stored unit-agnostically, so flipping it never changes a measurement. Supporting-material coverage rates stay as entered.
 
 ---
 
@@ -235,12 +277,13 @@ A **condition** is one finish—`LVT-1`, `CPT-2`, `RB-1`—and it's what every m
 **+ condition** (in the Takeoffs panel footer, the top-bar palette band, or the compact strip) prompts for a finish tag and mints the condition with an auto-rotated color and hatch. The active condition's editor appears inline—in the panel's active row and in the top-bar band:
 
 - **Finish tag**—rename in place.
-- **× multiplier**—measure one identical unit, count it N times. Shows as ×N everywhere.
+- **× N units** (the multiplier, right after the tag)—for a repeating layout: measure one identical unit (one apartment, one hotel room) and count it N times instead of tracing it N times. Every quantity on the condition multiplies, the Report and the buy list included; the field lights cobalt while it's above 1 and the row wears a cobalt **×N** chip. Same finish somewhere that shouldn't multiply (the corridor)? Give that area its own condition with **⎘ Duplicate for another area…** and leave it at ×1.
 - **Waste %**—the allowance the Report adds on top of the measured quantity. Per condition, matched to the install: ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone.
-- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
+- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**. In the top-bar band, **Line** and **Fill** are two swatch buttons that each open their own palette (one at a time; Esc or a click outside closes)—the swatch shows the current color, so the band reads at a glance. The docked panel keeps both palettes inline.—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
 - **Line style**—the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
 - **H** (height, ft)—the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at—select a wall to change only that one (§5).
 - **T** (thickness, in)—a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Changing it re-flows existing runs.
+- **↑ Rise** and **↓ Drop** (ft)—the vertical legs every Linear run of this condition adds to its plan length: LF = plan + rise + drop. A conduit condition with an 8′ drop prices every home run to the panel with its 8′ down; the plan only shows the flat path. Changing either re-flows existing runs, except a run you gave its own legs (§5, Linear). Derived base and transitions never take a leg.
 
 **Delete** (the row's ✕) asks first when the condition owns shapes—*"Delete 〈TAG〉 and its N takeoff(s)? This can't be undone."*—and means it: the cascade is deliberately outside the undo stack (§8).
 
@@ -254,7 +297,7 @@ The band under the toolbar is your working set: **pin** a condition there (the p
 
 The **☰ Takeoffs** rail button docks the panel (it starts collapsed; the palette band is the primary surface). Four tabs:
 
-- **Takeoffs**—every condition with live totals for the open sheets (`SF · SF wall · LF · EA`), a shape count, a **⌖** that zooms the canvas to the condition's takeoffs (double-clicking the row does the same), the Supporting Materials button, the pin, and delete. Above the list: a filter box, **A→Z** natural sort and **≡ grp** tag-family grouping (views only—hotkey numbering never changes). **⌘-click / ⇧-click** rows to bulk-select conditions, then set waste or line color on all of them, or bulk-delete.
+- **Takeoffs**—every condition with live totals for the open sheets (`SF · SF wall · LF · EA`), an **eye** that leads the row (click hides or shows that condition's takeoffs on the plan, count marks included; **⌥-click** shows only that one, and again restores the rest—a view only: hidden work still counts in totals, the Report and every export, and a red bar above the list counts what's hidden with **Show all**), a shape count, a **⌖** that zooms the canvas to the condition's takeoffs (double-clicking the row does the same), the Supporting Materials button, the pin, and delete. Above the list: a filter box, **A→Z** natural sort and **≡ grp** tag-family grouping (views only—hotkey numbering never changes). **⌘-click / ⇧-click** rows to bulk-select conditions, then set waste or line color on all of them, or bulk-delete.
 - **Library**—reusable condition templates, shared across every plan in this browser. **+ save 〈tag〉 to the library** snapshots the active condition (appearance, waste, H/T, materials); **Apply** adds it to any project as a fresh condition. A fresh workspace seeds from this library—tune your house conditions once and every new job starts with them.
 - **Materials**—a browser-wide materials library. Attaching a library material to a condition copies its values and keeps a link (⛓); library edits reach linked lines only when you push them, and overridden fields show amber with a per-field ↺ revert.
 - **Columns**—project-wide **custom columns** (for example, *CSI Division*) that classify conditions for report grouping and exports, and the **shape-label vocabulary** (§7).
@@ -364,11 +407,84 @@ Agents get the same thing headlessly—`roll_setup` is a field on the MCP server
 
 ### Import from schedule
 
-<img src="img/verify-import-schedule-dialog.png" alt="The Import from schedule verify dialog — parsed finishes grouped by category, checked for approval" width="640"/>
+<img src="img/verify-import-schedule-dialog.png" alt="The Import from schedule dialog on the sample plan's material schedule, scrolled to its end — Wall Protection and Transition rows flagged from description, Ceiling and Other rows unticked, a code already in use locked, Select all and Deselect all in the footer" width="640"/>
 
-Why type conditions the architect already tabulated? Arm **Schedule** in the toolbar and click two corners around the finish schedule on the sheet. The table parses in the browser, and a verify dialog lists every finish it found—grouped Floor / Base / Wall / Transition / Ceiling / Other, each row with the code (click to fix it), description, and flags (**in use**, **duplicate**, **needs a code**). Ceiling and other rows arrive unchecked; you approve what becomes conditions. Each created condition gets category-appropriate color, hatch, and default waste (floor 5%, base and wall 10%), and the schedule's product data (manufacturer, style, color, size) rides along as read-only spec fields that surface as the Report's *Product spec (imported)* columns.
+Why type conditions the architect already tabulated? Pick **Import from schedule** from the **⋯** menu and click two corners around the finish or material schedule—the whole table, header row included. The table is read in the browser: a row's code comes from its **CODE**, **TAG**, **MARK** or **SYMBOL** column, its description joins the **MATERIAL**, **DESCRIPTION** and **PRODUCT** cells with " — ", and **MANUFACTURER**, **STYLE**, **COLOR**, **SIZE** and **REMARKS** (else **COMMENTS**) ride along. The dialog groups the rows **No section** first, then Floor / Base / Wall / Wall Protection / Transition / Ceiling / Other. The section heading printed above a row decides its group; where there is none (or it's MISC or ACCESSORIES), the row's own item words can name base, a transition or wall protection—that row is flagged **from description**, so check it—and a row nothing names lands under No section. Every row starts ticked except those under a printed CEILINGS or MILLWORK heading, those the schedule marks NOT USED, NOT IN CONTRACT or N.I.C., and every row of a raster schedule, which waits for **Verify scanned code** (below). A group's checkbox shows a dash when some of its rows are ticked and others aren't; clicking it ticks every eligible row in the group, NOT USED rows included but scanned rows still to verify excluded, and clicking a fully ticked group clears it. In a raster group, where each row is ticked on its own, the checkbox shows the rows you ticked, and clicking it clears them. A code that's already a condition is locked (**in use**); a **duplicate** or a row that **needs a code** waits until you click the code and fix it. **Select all** / **Deselect all** leave those rows alone. `Esc` or **Cancel** closes the dialog without creating anything.
 
-On scanned pages there's no text to parse; team builds with the optional AI backend can read the schedule from pixels—the message tells you when that's what's needed.
+**Other header words, a code column printed second, and legends.** When a box reads no rows, Import from schedule looks again with the layout normalized. **MFG** and **MFR** read as **MANUFACTURER**, **SPEC** and **SPECIFICATION** as **PRODUCT** (part of the description), and **NOTES** as **REMARKS**. A table whose **CODE**, **TAG**, **MARK** or **SYMBOL** column isn't the first one (`MATERIAL | CODE | MFG | …`) reads with that column as the code. A legend with no header row, a finish code at the start of each line followed by one run of text (`FL-1  RESILIENT FLOOR`), reads as code and description. When both MARK and CODE are printed, CODE is the code. A section heading alone on its line at the table's left edge (FLOORING, BASE) still heads its rows. A legend line may carry a note after its text; the note reads as remarks. A four- or five-letter code with no number leading the legend (`CONC  SEALED CONCRETE`) is named in the notice on a text-layer read (below), not dropped. The second look never runs on a box that already reads rows, or on one refused as another kind of schedule by its title (DOOR SCHEDULE, EQUIPMENT LEGEND). Its read is used only when it reads a row for every line that shows a code; otherwise the box reads no rows, as before. When one header box names two columns, as on-device reads sometimes return (`MATERIAL CODE`), it is split in two when the cells under it sit inside it in two groups side by side and the code's group holds codes; the second column starts where its group does. It stands down when more than a fifth of the cells under such a box run past its edges (`CODE MFG` over vendors that run into the next column), or when a box with a CODE, TAG, MARK or SYMBOL heading has too few known header words to be a legend. A table whose header the reader can't see, such as one with rotated headers, stays unread: its cells are separate columns, not a legend's one run of text.
+
+**NOT USED rows.** A row the schedule marks NOT USED, NOT IN CONTRACT or N.I.C. reads as its code and starts unticked, with a label beside it showing the words as printed. The marking can follow the code (`CPT-2 NOT USED`, `CPT-2: NOT USED`, `CPT-2, NIC`, `CPT-2 (N.I.C.)`, `CPT-2 - NOT USED`) or fill a whole cell; when it fills the description cell, it shows in the description and in the label. Hold the pointer over the label for its note: "The schedule marks this row not used. Select it to create a condition anyway." (N.I.C. rows say "The schedule marks this row N.I.C. (not in contract)." instead of the first sentence, and the second sentence drops once the row is ticked or locked). Select the row's checkbox to create the condition anyway. Longer wording (`NOT USED IN AREA B`) reads as before. Only the code's own line is checked: "(NOT USED)" printed on a second line under the code isn't recognized. When the PDF stores NOT and USED as separate words in the code cell, the row is still recognized while USED starts inside the code column; when USED starts in the next column, it isn't.
+
+**Duplicates.** When two rows share a code, one keeps it and the other shows **duplicate** until you click its code and rename it (the flag's tooltip says "Click the code to rename it."). A row the schedule marks NOT USED gives way to any other row. A row read by one of the newer rules below (a code line the reader used to skip or fold into the row above, or a four- or five-letter code) gives way to a row read the usual way. On a raster schedule, a row whose code was repaired from a misread (**read as**, below) gives way to a row read the usual way and keeps the code over a row read by a newer rule. Otherwise the first row keeps the code. Renaming follows the same order: if you change a code to match another row's and the row you edited ranks higher, the other row shows **duplicate** instead; change the code back and that row's flag clears.
+
+**Parenthesized codes.** `G-01(C)`, `G-01 ( C )` and `FT-02(E)` keep their suffix and parentheses on text and raster schedules. Spacing around the suffix is normalized: `G-01 ( C )` imports as `G-01(C)`. `G-01(C)` and `G-01(W)` remain different codes. Earlier imports removed parentheses, so if `G-01C` already exists, an incoming `G-01(C)` is held with **check existing G-01C**. Select all and Create leave it alone. Check the existing condition: if it is that finish, rename it to `G-01(C)` before importing again; its measurements stay with that condition. If the two printed codes represent different finishes, add the new condition manually. The app never automatically renames or merges an existing condition. A suffix is one or two letters, or holds a digit (`(C)`, `(2X2)`); a parenthesized word of three or more letters is a word after the code (next paragraph), so `CPT-1 (TYP)` reads as CPT-1, `(TYP) — CARPET TILE`. A code with a parenthesis that has no partner, such as `G-01(C`, imports without it as `G-01C` and shows **read as G-01(C** with "Repaired from G-01(C; check the code against the schedule." Check it before creating it.
+
+**Codes with a word after them.** A code followed by one or two words of letters reads as the code, with the words leading the description: `FTB-01 CUT (C)` reads as FTB-01, `CUT (C) — CERAMIC TILE BASE`, and a lone `P-1 SAT` as P-1, `SAT — PAINT`. The words need three letters or more in all, each word all letters (or letters in parentheses), and none of SEE, NOTE, NOTES, NOT, USED, BY, OWNER, NIC, TBD, ALL, THRU, TO, AND or OR. A row read before this change keeps its glued code when the split would give two rows the same code (`CPT-3 SAT` and `CPT-3 EGG` stay `CPT-3SAT` and `CPT-3EGG`; `P-1 SAT` beside a plain `P-1` stays `P-1SAT`). An alternate word (ALT, OPT, OPTION, ADD, DEDUCT) keeps the row's own code only when the code and word written together are a code the reader read before this change, which happens when the characters after the code's dash plus the word come to four or fewer (`CPT-1 ALT` stays `CPT-1ALT`). Otherwise the row reads as the plain code with the word leading its description: `PT-1 OPTION` reads as PT-1, `OPTION — PAINT`, ticked, and `CPT-10 ALT` as CPT-10. Check rows printed with an alternate or option word. A code line the reader used to skip or fold into the row above (next paragraph) keeps its words glued to the code when another such line has the same code, or a row printed with the plain code is in the box: `FTB-01 CUT (C)`, `FTB-01 CUT (W)` and `FTB-01 COVE (C)` read as `FTB-01CUT(C)`, `FTB-01CUT(W)` and `FTB-01COVE(C)`, and `PT-1 OPTION` beside a plain `PT-1` as `PT-1OPTION`, so each is its own item and none shows **duplicate**. The words may be two words and a closing suffix (`FTB-01 ALT CUT (C)`), the suffix may be glued to the word or spaced inside its parentheses (`CUT(C)`, `COVE (W )`, read as `CUT (C)` and `COVE (W)`), and a word of three or more letters may be glued to the code (`FTB-03ALTCUT (C)`, read as FTB-03 with `ALTCUT (C)`). Shorter tails read as before: `LVT-1 A` as `LVT-1A`, `WC-2 HD` as `WC-2HD`, `SC-1 (C)` as `SC-1(C)`.
+
+**Each code on its own line.** A code line the reader used to fold into the row above, as in a short table (CPT-1, RB-1, EPOX, PT-1, where EPOX's line went into RB-1's description), reads as its own row when it's spaced like a row. A line closer to the line above than 1.6 times the text height, or three-quarters of the table's usual line spacing, is still a wrapped line of the row above, so a code printed that close isn't read.
+
+**Four- and five-letter codes.** A code with no number (`EPOX`, `CONC`, `SEAL`) is read when the header or a read row is above it, it fills two or more other columns, and a row with a numbered code comes after it. Header and section words and common material and sheen words (NOTES, ROOM, PAINT, TILE, SATIN, COVE and the like) are never taken for a code. A code that doesn't qualify is named in a notice above the rows, for example: "1 code wasn't read: EPOX. A four- or five-letter code with no number is read only when the header or a read row is above it, it fills two or more other columns, and a row with a numbered code, like CPT-1, comes after it — if it's a finish, add it as a condition yourself." With more than one, it starts "2 codes weren't read: EPOX, SEAL." and ends "— if they're finishes, add them as conditions yourself."; a code on more than one line shows as `EPOX (2 lines)`, and past eight codes the rest are counted ("…, and 3 more"). Codes of six or more letters aren't read or named. When the only finish lines in the box are codes it didn't read, the dialog opens titled "Import from schedule — no rows read", with the notice and a **Close** button.
+
+**Is the code on the plans?** Each row says whether its code, as you've edited it, is printed anywhere else in the set: **on N sheets** (hover to see which; **(OCR)** marks a sheet where only a read found it, and the schedule's own sheet counts when the code is printed there outside the box you drew), **not found in checked text**, or **N sheets not checked** when some sheets haven't been opened, indexed, or read yet. Opening **Sheets** indexes the rest of the set, and the markers update while the dialog is open. Codes are compared exactly: `CPT-12`, `CPT-1A` or `P1` on a plan is listed in the tooltip as a similar code, not counted as `CPT-1` or `P-1`. "Not found in checked text" isn't "unused": a code drawn as linework or inside an unread picture can't be seen. A one-letter code says **can't check**. The marker is a prompt to check a code against the schedule; it never unticks a row.
+
+**Base from a row's words.** INTEGRAL, SANITARY and FLASH cove base phrases (`INTEGRAL COVE BASE`, `SANITARY BASE`) name nothing, and a floor row that names its base after W/ or WITH (`EPOXY FLOORING W/ 4" COVE BASE`, `SHEET VINYL WITH INTEGRAL COVE BASE`) isn't a base row.
+
+These rules apply to a drawn box (Import from schedule and the in-canvas agent's `read_schedule`). The sheet graph's whole-sheet index (`find_schedule`, `resolve_tag`) reads as before.
+
+Each created condition gets the next color from the palette, in row order, and a category-appropriate hatch and default waste (floor 5%, base and wall 10%), and the product data—manufacturer, style, color, size, description, and **Schedule Remarks**—lands in the condition's editable spec fields and the Report's *Product spec (imported)* columns. A box around a table that is another kind of schedule gets a message saying so and imports nothing. That's a table whose title names another schedule (DOOR SCHEDULE—a title that also says FINISH or MATERIAL is read), a device schedule (GPM, HP, MBH… columns) with no CODE key, printed section heading or FINISH / MATERIAL title, and a table that prints a column only other schedules print (QTY, CFM, MESSAGE…) with no CODE key and no printed section heading. A device schedule elsewhere in the box that doesn't touch the finish table doesn't matter, but one printed close to it can run into the read and add its rows or merge its cells into the finish rows' cells—the dialog shows them, so untick them or redraw the box around the finish schedule alone. A door schedule in the same box is not refused: its rows show in the dialog under **No section** (or, when the door schedule has no title, under the finish table's last printed heading), so untick them or redraw the box. A box with text but no finish table in it (a room finish schedule, say) gets a hint to re-drag.
+
+**Raster schedules.** A schedule that is an image—a scan, or a page exported as a picture—has no text layer to read. When a box's text holds no table and has at most 8 text runs with a letter or digit (none at all, or a few labels such as a stamp typed over the image), Import from schedule reads the box with the on-device text reader ([§12](#on-device-text-recognitionwhat-downloads-and-when)) the way **Read page text** reads a page (and **Read picture text** a picture): in tiles at 216 DPI, then across the seams where tiles meet, so a large schedule is read at full resolution rather than shrunk to fit one image. The words then go to the same finish reader, and the rows open the same dialog. An empty box on a page that does have text is read the same way. The first time, a notice asks before anything downloads; **Cancel** there leaves the box unread. While the reader starts and reads, the footer says so with a **Cancel** button (and, while a page read or a Copy text read goes first, "Waiting for another read…"); `Esc`, switching sheets, or opening the gallery, guide, report or revisions also cancels, and nothing is shown. A box read in several tiles adds how many are done (**Reading the schedule on this device… (3 rasters read)**). One box at a time: a box drawn during a read is told the last one is still being read. A box that would need more than 64 tiles (far larger than any sheet) is refused before anything starts, with no download notice: **That box is too large to read — draw it around the schedule only.** If the site has the reader turned off or not installed, you declined the download, the read fails, or it finds no finish rows, the footer says which; a read the reader never answers says **The on-device reader stopped responding — try again.** When it finds a column of finish codes but no header row it can read, it says so: **Found finish codes in a column but no header row the reader could read. The headers may be rotated (which can't be read yet) or outside the box — box the schedule with a header row that reads left to right.** On these reads only, a blank band between two code groups where the code changes (CPT-3, then a gap, then RB-1) ends the printed section, so a group whose heading the reader missed goes under **No section** instead of under the heading above—check those rows. Two of the newer rules above are off on these reads: a code line the read merged into the row above isn't split out, so in a short table a NOT USED or word-after code line can stay part of the row above (its code not read, its text in that row's description), and four- and five-letter codes aren't read, so the notice about them never appears. The exception is a word-after code line printed as a whole row, with its own cells in two or more other columns on the same line (`FTB-01 CUT (C) | PORCELAIN TILE | VENDOR`): it reads as its own row, as the text-layer read has it. In tests that lay the same tables out with word boxes measured from the on-device reader (shorter text, cells shifted between columns), those two rules added rows and notices that the text-layer read of the same layout doesn't have.
+
+**Misreads the raster read repairs.** The reader often reads a table's ruling beside a word as part of it. A leading `|` and a trailing `_` or `|` are removed from each line it reads, and so are a leading `[` and a trailing `]` that the line has no partner for, and a pair around the whole line that starts with a code (`[P-1 SAT]`) or has a space just inside it (`[ P-1 ]`): printed brackets, such as `[E]`, `[SEE NOTE 3]` or `P-1 [NOTE 2]`, stay. A minus sign, en dash or Unicode hyphen between two letters or digits becomes `-`, so `PT−01` reads as PT-01. Three misreads in a code are repaired: a `$` read for a leading S (`$SM-1` imports as SSM-1, `$SM-1 (C)` as SSM-1C), and an O read for 0 or an I read for 1 after the code's hyphen (`PT-O1` imports as PT-01, `G-O1(C)` as G-01C), when the characters after the hyphen include at least one digit. Each part of a compound code is repaired on its own (`CPT-O1/VIN-1` imports as CPT-01/VIN-1). A repaired row shows **read as PT-O1** beside it, with the code as the reader saw it; hold the pointer over it for "Repaired from PT-O1; check the code against the schedule." Check the code against the sheet. The flag stays while the code is the repaired one, in any case or spacing, and hides once you edit the code to another code. When a repaired row and a row read the usual way share a code, the row read the usual way keeps it. In the MATERIAL, DESCRIPTION and PRODUCT cells, a `/` the reader read as `7` is put back without a flag: a lone `7` with a word on each side becomes `/` when at least one of those words has a letter, neither is a dimension's `X`, and the word before it doesn't introduce a number (NO, #, TYPE, SERIES, CLASS, GRADE, MODEL, PHASE, SECTION or GAUGE) (`BASE 7 4 IN 7 BLACK` reads as `BASE / 4 IN / BLACK`; `4 X 7 IN` stays a size, and `TYPE 7 TILE` stays as printed), and `W7` after a floor word such as FLOORING, EPOXY or CARPET in the same cell becomes `W/`, so `EPOXY FLOORING W7` followed by a cove base names the floor's own base, not a base row. A `7` printed alone between two words in those cells, one of them with a letter, is read as `/` too.
+
+**Verify scanned codes.** Every raster schedule row starts unticked with **Verify scanned code**, even when two readings agree: they can agree on the same wrong identity. Compare each code with the sheet, then click its code to correct it or tick that row individually to accept it. **Select all** and group checkboxes leave unverified scanned rows unchecked. Editing to a different code clears its review flag; changing only case or spacing does not. Short code-shaped text also gets a second, wider reading. Disagreements show **Check code: S-2 / SS-2**, or **second read did not confirm**. A numeric-only misread such as `88-2` can hide a row; when a code-shaped second read locates it inside an already recognized finish table, that row appears as **set code** with its description and both readings. Its checkbox is disabled until you enter a code. The alternate is never selected automatically. This cannot recover missing detections, unreadable headers, or every malformed row. Text-layer imports keep their existing selection behavior; saved page text, Copy text and the agent's text-layer reader are unchanged.
+
+Known limits of the raster read:
+
+- A raster sheet that also carries a full OCR text layer, or a CAD sheet whose schedule text is drawn as lines (SHX) while its title is real text: when the box holds more than 8 text runs with a letter or digit that don't read as a table, it gets the re-drag hint instead of a read.
+- Import from schedule doesn't use the picture rule that offers **Read picture text** ([§12](#reading-a-page-with-no-text-layer)): a box over a picture on a vector sheet is routed by its text runs like any other box, so a box that also takes in more than 8 runs of the sheet's own text gets the re-drag hint. Draw the box around the picture only.
+- The in-canvas agent's `read_schedule` reads the text layer only; it doesn't read a raster schedule.
+- The reader can miss a printed section heading, and the rows under it then come in under **No section**. On the bundled demo's MATERIAL SCHEDULE as a 200 DPI image (one sheet, n=1), the read found all 28 codes, and every row landed in the same group as the text-layer read of the same box (No section 1, Floor 6, Base 3, Wall 7, Wall Protection 3, Transition 2, Ceiling 2, Other 4); before the reader read each word box on its own (#484), it missed the FLOOR, WALL and CEILING headings in the same run and 17 rows came in with no section.
+- A space inside a short box can go missing: on the same read, four size cells lost a space: `2'x2'` (twice), `2"x 2"` and `3"x 6"`. Check sizes against the sheet.
+- A blank row between two code groups inside one printed section (CPT-1 to CPT-4, a blank row, then LVT-1), or a row the reader drops at a group boundary, moves the later rows of that section to **No section**. It errs toward No section, never toward a wrong section.
+- Light or low-contrast text can lose letters; red and magenta text are read by their brightness (#481).
+- **Cancel** can't stop a recognition already running in the background, so a box read right after waits for it.
+- A header row set rotated 90° (column names reading bottom to top) isn't read at all, so the table isn't found; the message above names this case.
+- A revision cloud drawn over the table's text can fuse the words its scallops cross into one run across several columns, so those cells come in wrong or missing. Check clouded rows against the sheet.
+- A dropped or mistaken letter can still import without a flag if both reads agree, or the text is outside the short-code check. Missing words, merged code-and-description lines and rows the table reader does not find are not recovered by this check. Check codes against the sheet even when no warning appears.
+- These codes aren't repaired: letters only after the hyphen (`PT-I`, `P-O`, `T-II`, `B-OO`), two or more letters after the digits (`CPT-1OPT`), and a code with no hyphen (`BO1`).
+- A `7` read for `/` stays when it's the last word in its cell (`BASE 7`, with the next word in the next cell) or is joined to a word (`EARTH7YELLOW`).
+
+Known limits of the newer rules (NOT USED rows, codes with a word after them, each code on its own line, four- and five-letter codes):
+
+- A code whose words the PDF stores separately (`FTB-01`, `CUT`, `(C)`) reads as before: the words after it don't lead the description.
+- Inside the table, a code-column line that starts with something code-like and a word reads as a row: `PT-1 OPTION` (as PT-1), `L1 FLOORING`, `ALT-1 DEDUCT` (as ALT-1), a sheet reference `A-601 FINISH PLAN` (as A-601), or a room line whose room name shares the code cell (`C101 OFFICE`).
+- A cell's wrapped second line that starts with a code (`PT-2 SATIN`) and sits 1.7 to 1.9 times the text height below its row is spaced like a row, so it reads as one.
+- Re-importing a table whose glued codes now split can create a new code beside an existing condition (`P-1` beside `P-1SAT`). The dialog doesn't flag it, because the codes differ.
+- A row struck through on the drawing isn't recognized as not used.
+- `EPOX EPOXY FLOORING`, `EPOX CUT` or `EPOX NOT USED` printed as one run of text, and an `EPOX` line with no other cells, read as before: not read and not named in the notice.
+- A filled four- or five-letter code below the table's last numbered row is named in the notice instead of read.
+- In a table whose rows run to a second line, a four- or five-letter code line set exactly as far below the row above it as the other rows' second lines sit below theirs (to within about a pixel) reads as that row's second line, as before: not read and not named in the notice.
+- In a table where every row runs to a second line that starts with a four- or five-letter word in the code column (`OWNER`, `PRIME`), those lines can read as rows of their own or be named in the notice, and the rows above them lose that line's text.
+- An abbreviation legend directly below the table (`CONC  CONCRETE`, `EPOX  EPOXY`) names each of its four- and five-letter lines in the notice, though they aren't codes. When its lines fill two cells and sit among abbreviations the reader already reads as rows (`CPT`, `RB`), they read as rows.
+- Other four- or five-letter lines that fill two cells between read rows read as rows: a subheading, a room line with unnumbered finishes (`LOBBY | VCT | RB | PT`), or a title-block line (`DATE | 10/01/2026 | AS NOTED`) above a numbered code.
+- A four- or five-letter code beside two code-like cells (`EPOX | … | E-100 | C-12`) reads as a room line: not read and not named.
+- A `CONC  CONCRETE` line printed as one run of text is skipped as a material word, as before.
+- A read row up to about eight row spacings below the table keeps the table going, so a code line beside it with a word after it can read as a row. These rows carry `key_rule: "extended"` for the agent.
+
+Every box is read on your device; the box and its image never leave it.
+
+### Copy text
+
+**Copy text** (on the rail under **READ**; no key) puts words from the sheet on your clipboard—a general note, a schedule block, a title-block line. Click two corners around the text: the lines inside go to the clipboard top to bottom, words left to right, and a TAB between two columns of a table row. A receipt at the bottom right of the canvas (left of the Symbol Sweep panel while one is open) shows the line count, a preview to check against the sheet, and the reader, **Text layer**. Rotated runs (dimension strings, vertical headers) are left out, and the receipt says how many. **Copy page text**, in the receipt and in the tool's prompt, copies the whole sheet the same way.
+
+Arming Copy text drops the selected shape, and the box's corners never snap to the drawing's endpoints: what you box is what's read. `Esc` clears a half-drawn box and the receipt. If the browser refuses the clipboard (an embedded frame, a page not served over HTTPS), the receipt says **Couldn't copy automatically — use Copy below** and stays up with the full text in a box and a **Copy** button; `⌘C` works in the box too. `Esc` on the canvas leaves that receipt up; `Esc` inside its text box closes it, as does **Close**.
+
+On a scanned sheet, Copy text reads with the on-device text reader (OCR) first, even where the box holds some of the scan's stray text (a stamp, a scanner label): it's drawn on the page, so OCR reads it with the rest. Where the reader is turned off or not installed, or finds nothing in the box, Copy text copies that stray text from the text layer instead. If you decline the download, the reader can't be reached, or the box is too large, it copies the stray text too, and the receipt says **Text layer · the scanned image wasn't read**. If you stop the read or it fails, nothing is copied and the status bar says why. For Copy text, a sheet with only a few lines of text counts as scanned only if it may hold an image: a vector cover sheet (a few title lines, no placed image) copies its title from the text layer at once, with no download notice. Over an image placed on a vector sheet (a pasted scanned schedule, for example), a box with no text-layer text goes to OCR. A vector sheet with a text layer and no placed image never does: an empty box there, or one around symbols only, just says there's no text in it. Copy text uses the page's on-device read if it has one: the lines in the box copy at once, labelled **OCR** on the receipt. If the page hasn't been read, the box itself is read on your device (the download notice comes first, the very first time), the status bar says **Waiting for another read…** while another read runs and then that it's reading, and the box's text isn't kept. **Copy page text** on an unread scanned sheet reads the whole page, the same read as **Read page text**, so it's kept. After a read of the box, the browser usually won't let the page write to the clipboard any more (the click was a while ago): the receipt then holds the text with its **Copy** button. `Esc` stops a box read. It doesn't stop **Copy page text**'s read of a whole page: use **Cancel** on the **Read page text** control. The clipboard gets plain text either way; only the receipt says **OCR**.
+
+On a sheet with a picture the text layer can't read (one offered **Read picture text**, [§12](#reading-a-page-with-no-text-layer)), a box over the picture copies two things together: every text-layer line in the box, exactly as the PDF has it (a callout drawn over the picture included), and the picture's own text, read with OCR. The OCR text comes from the sheet's picture read if it has one, else from a read of each part of the box that covers a picture, never of the whole box; a word the read finds where a text-layer word already is (a callout) is left out. The receipt says **Text layer + OCR**. A box that only grazes a picture (less than 11 pt of it across or down) copies from the text layer alone. Where the reader is turned off or not installed, or finds nothing, the text-layer lines copy; an empty box there says **No text layer in that box, and the picture can't be read here:** and why. If you decline the download, the reader can't be reached, or the picture is too large, the text-layer lines copy and the receipt adds **the picture wasn't read**. If you stop the read or it fails, nothing is copied. **Copy page text** on such a sheet adds the picture's text only once the sheet has been read.
+
+Known limits: Copy text works on single sheets; on a stitched surface it asks you to open the sheet on its own. A box across two columns reads row by row, so their lines interleave, with a TAB between the columns of each row; box each column. A superscript or footnote marker lands on its own line. Symbols alone (no letters or digits) aren't text-layer text, so a box around only symbols copies nothing from the text layer.
 
 ---
 
@@ -382,9 +498,9 @@ On the canvas the crosshair **is** the cursor: the OS pointer hides in draw mode
 
 ### Area (`A`)
 
-Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF—select it any time later and the readout gives you both numbers again, so a footprint's LF never needs a second trace with the Linear tool.
+Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF—select it any time later and the readout gives you both numbers again, so a footprint's LF never needs a second trace with the Linear tool. Under those sits the footprint's **L × W**—the smallest rectangle around the ring, read as a drawing dimension (`12′ 6″ × 10′ 0″`, or `3.81 m × 3.05 m` in metric); exact for a rectangular room, the enclosing box for an L-shape. When the condition has an **H**, the line reads **L × W × H** and the `@H` line beneath it carries the vertical SF (perimeter × H) and the **volume** (area × H) in CY, or m³ in metric—so a fill, a slab or an excavation reads as three dimensions and a cube, not just an area.
 
-**Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. You don't leave the tool for them—the readout carries a **╱ Straight / ⌒ Curve** switch, and you flip it *mid measurement*, as often as you like inside one shape.
+**Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. You don't leave the tool for them—the toolbar's **Draft** menu (the style swatch between **45°** and the scale) carries a **╱ Straight / ⌒ Curve** switch, and you flip it *mid measurement*, as often as you like inside one shape.
 
 - **Curve** mode: **an arc is three clicks, and it is a real circle.** The clicks alternate—the first lands anywhere **on the bow**, the second on its **far end**—and together with the vertex you were already on, those three points define exactly one circle. That is the whole difference: a radius wall *is* a circle, so the arc **sits on it** instead of near it. The bow point draws as a round handle, and the arc redraws live as you aim the far end.
 - **`Q`** flips the switch once a trace is going.
@@ -402,7 +518,7 @@ Two clicks: one corner, then the opposite corner. Between them the cursor chip r
 
 ### Linear (`L`)
 
-An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
+An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. **Drop and Rise:** a run's LF is its plan length plus the condition's **↑ Rise** and **↓ Drop** (§4)—the live chip reads the plan length while you trace; the committed readout reads the total with the split beneath it (`42′ plan + ↑ 2′ + ↓ 8′`), as does the Measurements tally. Select a run and the **this run** row under the readout gives it its own rise and drop—a 0 there is a statement ("no drop on this one") that the condition default no longer overrides; ↺ returns the run to the defaults. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
 
 ### Surface Area (`S`)
 
@@ -464,7 +580,7 @@ With the **45°** toggle on (it's on by default), the segment you're drawing loc
 
 ### Snap (beta)
 
-The **Snap** toggle pulls your cursor onto true PDF endpoints—real corners extracted from the drawing's own vectors. When a snap engages, the chip reads `snap`, and an endpoint snap always beats the angle lock: corners win over axes. Off by default; scans have no vector endpoints, so Snap has nothing to grab there.
+The **Snap** toggle pulls your cursor onto true PDF endpoints—real corners extracted from the drawing's own vectors. When a snap engages, the chip reads `snap`, and an endpoint snap always beats the angle lock: corners win over axes. Off by default; scans have no vector endpoints, so Snap has nothing to grab there. **Copy text**, **Import from schedule**, **Image** and **Pin** never snap: the corner you see is the corner you place.
 
 ### The live readout
 
@@ -475,6 +591,8 @@ Under the condition total sits **MEASUREMENTS**—a numbered tally, in draw orde
 ---
 
 ## 6. One-Click Area
+
+> **Temporarily gated.** The flood engine behind One-Click is being re-validated against a wider plan corpus. Until that finishes the tool is off the rail, `O` reports the gate in the message bar instead of arming, the voice trace refuses, and the in-app agent does not see it. Trace rooms with **Area** (`A`) meanwhile — everything downstream (base, transitions, the Report, the marked set) works the same on a hand trace. A build lifts the gate with `VITE_ONE_CLICK=1`; the section below describes the tool as it works then.
 
 <img src="img/one-click-area.gif" alt="One-Click Area tracing patient rooms wall to wall on the sample plan" width="820"/>
 
@@ -539,7 +657,7 @@ Arm **Select** (`V`) and click a shape. Shapes stack by kind—filled Areas at t
 - **Drag the body** to move the whole shape. Moving never re-prices—translation doesn't change area.
 - **`⌫` with nothing else picked** deletes the shape.
 
-Quantities recompute live as you edit. Every completed gesture is one undo step (a drag that ends where it started records nothing), and editing a machine-made shape—One-Click or agent—grades it as *corrected* in its provenance, with the machine's original boundary frozen the first time you touch it. The **Edit** menu in the toolbar carries the same verbs—Copy, Paste, Duplicate, **Flip Horizontal**, **Flip Vertical**, Delete selected, Undo last point, Undo last shape, Redo—with their shortcuts beside them. Flip mirrors the selected shape about its own center (an isometry—SF/LF never change); it has no keyboard shortcut, only the menu.
+Quantities recompute live as you edit. Every completed gesture is one undo step (a drag that ends where it started records nothing), and editing a machine-made shape—One-Click or agent—grades it as *corrected* in its provenance, with the machine's original boundary frozen the first time you touch it. This includes imported agent traces made with manual measurement tools. Correcting a trace does not accept or approve it; review remains a separate action. The **Edit** menu in the toolbar carries the same verbs—Copy, Paste, Duplicate, **Flip Horizontal**, **Flip Vertical**, Delete selected, Undo last point, Undo last shape, Redo—with their shortcuts beside them. Flip mirrors the selected shape about its own center (an isometry—SF/LF never change); it has no keyboard shortcut, only the menu.
 
 ### Copy, paste, duplicate
 
@@ -577,7 +695,7 @@ Labels drive the Report's *Group: Label* mode and its by-label export sections (
 
 - **Deleting a condition.** The confirm says *"This can't be undone"* and means it: the cascade delete of its shapes doesn't record. A condition delete is a decision about the takeoff's structure, not a gesture (Revisions are your parachute—§11).
 - **Rescaling a sheet** and **restoring a revision** both **reset the stack**. Every recorded step froze quantities at the old scale (or the old timeline); undoing across that boundary would resurrect stale numbers, so the boundary clears it. A restore always banks the live takeoff first, so nothing is lost—it isn't on the `⌘Z` stack.
-- **Markups and condition edits.** The undo stack is for measured shapes (and approval seals). Moving a cloud or changing a waste % is a plain edit—change it back by hand.
+- **Markups and condition edits.** Annotation-toolbar edits and reviewed Sweep batches support undo alongside measured shapes and approval seals. Legacy markup-panel edits and condition waste edits remain plain edits.
 
 One more distinction: **Undo last shape** (Edit menu) and `⌫`-with-nothing-in-progress are not `⌘Z`—they *delete the newest shape* on the sheets you're viewing. That delete records normally, so `⌘Z` can bring the shape back.
 
@@ -585,11 +703,11 @@ One more distinction: **Undo last shape** (Edit menu) and `⌫`-with-nothing-in-
 
 ## 9. Markups, stamps, and RFIs
 
-The markup layer is communication, never quantity: clouds, callouts, notes, highlighter ink, and stamps live on a separate layer the totals never count. The left dock (rail buttons on the canvas's right edge) carries three tabs—**Markups**, **Stamps**, **RFIs**.
+The markup layer is communication, never quantity: clouds, callouts, notes, highlighter ink, images, and stamps live on a separate layer the totals never count. The left dock (rail buttons on the canvas's right edge) carries three tabs—**Markups**, **Stamps**, **RFIs**.
 
 ### The markup tools
 
-The **Markup** menu holds six tools:
+The **Markup** menu holds seven tools:
 
 - **Highlighter** (`H`)—freehand marker ink. Press and **drag to paint**, stroke after stroke, no dialog between them. While it's armed, a style popover hangs under the menu: five inks (yellow default), **F / M / B** tip sizes, and a **chisel or round** nib—remembered per browser. Because press-drag paints, press-drag panning is off while the highlighter is armed; pan with `Space`-drag, middle-drag, or right-drag. Strokes stick to their sheet, scale like real ink, and are real objects: with Select, click one (it glows), drag to move it, `⌫` deletes it.
 - **Revision cloud**—two corner clicks; the cloud lands immediately, then an optional note editor opens (`Esc` keeps the cloud, skips the note). Clouds can carry a **Rev △** revision number from the panel.
@@ -597,8 +715,15 @@ The **Markup** menu holds six tools:
 - **Text note**—one click, type in place. Empty text doesn't commit.
 - **Highlight box**—two corners, done.
 - **Dimension line** (`N`)—a standalone dimension string for the width or height the plan never printed: click one end, a live length chip follows the cursor, click the other end. It lands as a line with end ticks labeled with the measured length at the sheet's scale (`12'-6"`), tied to nothing—no condition, no quantity, only the sheet's scale. It needs that scale set (the first click refuses otherwise, same as the measure tools) and won't span sheets. Double-click it to add a note after the length; it prints on the Marked Set like any markup.
+- **Image**—a picture on the sheet, two ways. Arm the tool and **marquee a region** of the plan (two corner clicks) to capture it as a floating screenshot; or click **Upload image…** in the Markups panel to place a **PNG or JPEG** from your machine (a spec-sheet clip, a site photo). Either way it lands centered, and with Select you **drag to move it** and **drag the bottom-right handle to resize** (the proportions stay locked). Images downscale to a sensible size on the way in, so a huge file won't bloat your project; an SVG isn't accepted (only pixels). Images burn into the Marked Set PDF like any markup, rotated sheets included.
 
-Every markup is editable after the fact: with Select, click to select it, drag to move it, **double-click to edit its text in place**. The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps—the `⌘Z` stack is for measured shapes.)
+Every markup is editable after the fact: with Select, click to select it, drag to move it, **double-click to edit its text in place** (an image carries no text—it's select-only). The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps—the `⌘Z` stack is for measured shapes.) A large image sits over what it covers—much like a highlight box—so if you can't click a shape beneath one, move the image aside. Images travel **with** the takeoff: they save to your browser, ride the JSON export/import, and sync to your team folder along with the rest of the annotations.
+
+### Live quantities in a note: `{{qty}}`
+
+Type `{{qty}}` anywhere in a note, callout, cloud label or highlight label and it shows the **linked condition's measured quantity**: "Provide and install x{{qty}} emergency light fixtures" reads *x5 EA* on the sheet, and *x6 EA* the moment you count a sixth. The number is the one the condition chip shows (multiplier applied, no waste) in your display units, with every unit the condition carries, e.g. *1,200 SF · 84.25 LF*. The note itself keeps `{{qty}}`, so editing it shows the field, never a frozen number.
+
+A note links to whatever condition is active when you draw it; change it in the Markups panel with **Attach to condition…** or **Detach**. A field that can't fill (an unlinked note, or a condition with nothing measured yet) stays as the literal `{{qty}}` and turns **red**, on the canvas, in the Markups list (hover for the reason), and on the Marked Set. It never prints blank or 0. The report's annotation table shows the filled text, and the JSON export adds `text_resolved` beside `text` on any note that carries a field.
 
 ### Stamps
 
@@ -637,6 +762,41 @@ RFIs export as **RFI CSV** and **RFI JSON** from the Report, and they ride the M
 
 Open **Report** for the whole takeoff on one page: a per-condition table, the supporting-materials buy list, per-sheet base quantities, and your markups noted—with a project-name field and a print masthead up top (client, reference, date, prepared-by, and an optional trade-name identity so the output brands as your company).
 
+### Company setup
+
+**File → Company setup…** (also in **Find an action**, and from **Report → Project info**) holds who you are and how you price, once per device:
+
+- **Company**—trade name, address, phone, email, license number and logo, for your proposals. You can keep several trade names; **Project info** picks which one brands a project.
+- **Estimating defaults**—overhead %, profit % (a markup on cost, or a margin of the price: a 25% margin is cost × 1.333), sales tax % on material, and how many days a proposal stays valid.
+- **Proposal text**—your inclusions, exclusions and terms, in your own words.
+
+Nothing is pre-filled. Every field saves as you type, stays in this browser, and travels in **Export profile**. Importing a profile made before company setup existed leaves yours alone; **Reset profile to defaults** keeps it too.
+
+### Estimate
+
+**Estimate** (in the toolbar, in **Find an action**, and in the Report header) prices what you measured. Each condition that has takeoffs gets a row:
+
+- **Unit**—SF, SY, LF or EA. It starts as what you measured (area, then length, then count).
+- **Material $/unit** prices the **order quantity**, with the condition's waste. **Labor $/unit** prices the **measured quantity**, without waste. EA never carries waste.
+- **▸ materials** opens the condition's supporting materials (adhesive, grout and so on) to price per package. Quantities are already rounded up to whole packages.
+- Across the top: **Overhead**, **Profit** (markup or margin) and **Sales tax** on material for this project. The first time a project's estimate opens they're copied from **Company setup**. After that they belong to the project: changing your defaults never re-prices a bid you already worked up. **Company defaults** copies them again when you ask.
+
+An empty box means *not entered*, never $0. Type 0 for scope you aren't charging for. Until every line is priced, a banner names what's missing, the row says **PARTLY PRICED** or **UNPRICED**, and the total reads **Base bid — priced so far**.
+
+**Excel** downloads `<project> - estimate.xlsx`: **Estimate** (every line, then material, labor, tax, overhead, profit and the base bid), **Materials** (each supply's packages, price and cost) and, when anything is missing, **Unpriced**. Rates you didn't enter stay empty cells. Every tab ends with *Prepared with OpenTakeoff*.
+
+Prices are saved with the project. Condition templates never carry them, so every new job starts unpriced.
+
+### Proposal
+
+**Estimate → Proposal PDF…** builds the bid proposal you send: your letterhead from **Company setup** (name, logo, address, phone, email, license), **Prepared for** (client, address and reference, saved with the project), the scope (each condition, its spec description and measured quantity), the **base bid**, then inclusions, exclusions, terms and a signature block for both sides.
+
+- **Lump sum** prints one base bid. **Itemized** prints a price on each line: the base bid spread over the lines in proportion to their cost, to the cent, so the lines add up to the base bid exactly.
+- The first time you open it, the inclusions, exclusions, terms and validity are copied from Company setup. Edits here change **this job only**. **Reset text to Company setup** copies them again.
+- If the estimate isn't fully priced, the dialog says which lines and still lets you download.
+
+Every page of the proposal, the marked set and the printed report carries **Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com**. The proposal and the marked set also carry a light diagonal *OpenTakeoff* watermark. Branding as your trade name puts your company on the document; it doesn't remove these.
+
 ### The numbers, honestly
 
 - **Measured versus w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
@@ -647,7 +807,7 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 
 ### Columns, grouping, templates, theme
 
-- **Columns**—choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only—includes openings, never totaled). Roll-goods conditions add **Roll Order LF**, **Rolls**, and **Seam LF** ([§4](#4-conditions--your-finishes)). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description—from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor—attach your own rates externally.
+- **Columns**—choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only—includes openings, never totaled). Roll-goods conditions add **Roll Order LF**, **Rolls**, and **Seam LF** ([§4](#4-conditions--your-finishes)). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description, and **Schedule Remarks**—the schedule row's REMARKS cell—from a schedule import; each is editable in the condition's Spec fields), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor—attach your own rates externally.
 - **Group**—break the table into sections with subtotals: by **Sheet**, by **Label** (once shapes carry labels), or by any custom column. Grouping by a column always carries that column into the CSV.
 - **Templates**—save a column-plus-grouping layout by name and recall it on this device. Signed in on a team build, **Push to Drive / Load from Drive** carries templates across your own devices—Load only adds what this device doesn't have; it never overwrites a same-name template.
 - **Theme**—import a design-token file (a `tokens.json`) to reskin the report's palette and fonts for output. **Reset** returns the house style.
@@ -657,9 +817,9 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 | Export | What you get |
 |---|---|
 | **CSV** | The condition table, exactly the columns you're showing. |
-| **Excel** | A real workbook—**Summary**, **By sheet**, **Materials**, **Shapes** (the audit trail; deducts carry their sign), and **By floor × room**—the cross-section the others each flatten one axis out of: what goes down in *that room on that floor*, ordered quantities per cell, with a floor's unlabeled work rolled up so its rooms still add to the floor. Full-precision cells; formula-shaped names stay inert text. |
+| **Excel** | A real workbook—**Summary**, **By sheet**, **Materials**, **Shapes** (the audit trail; standalone deducts carry negative area, reconciled cutouts remain with zero additive area), and **By floor × room**—the cross-section the others each flatten one axis out of: what goes down in *that room on that floor*, ordered quantities per cell, with a floor's unlabeled work rolled up so its rooms still add to the floor. Full-precision cells; formula-shaped names stay inert text. |
 | **JSON** | The full structured report—works markups-only and RFI-only too. |
-| **Shapes CSV / JSON** | Per-shape measured quantities—no multiplier, no waste; the audit layer. |
+| **Shapes CSV / JSON** | Per-shape measured quantities—no multiplier, no waste; the audit layer. Standalone deducts carry negative area; reconciled cutouts remain as rows with zero additive area because the parent already includes the cut. |
 | **Print** | The report through your browser's print dialog. |
 | **Marked set** | A distribution-ready PDF built in your browser: every sheet that carries takeoffs or markups, the work burned in as drawn—condition colors, hatches, quantity chips, count markers, markups (toggleable)—behind a legend cover with net totals, w/Waste quantities, and a by-sheet breakdown. Exports in your current view: dark canvas → dark PDF. Send it to a GC who will never install anything. |
 | **RFI CSV / JSON** | The RFI register (appears once RFIs exist). |
@@ -690,7 +850,70 @@ Everything—drawings, scales, conditions, markups, RFIs, levels, tabs—autosav
 
 So take the takeoff out of the browser: **Sheet → Export takeoff…** writes `〈project〉.takeoff.json`—the exact document autosave writes, every shape, condition, scale, markup, RFI and seal—to a normal file you can back up, archive for years, carry to another machine, or hand to another estimator. **Sheet → Import takeoff…** reads it back as an editable takeoff, not a report. The plan PDF is not inside it: open the same PDF first, then import.
 
+**Sheet → Export project archive…** writes a `.otk` containing the current takeoff and current plan PDFs. It preserves stitched surfaces too. Saved revision snapshots and earlier versions of those PDFs are separate browser records and are not included. Opening the archive in a fresh workspace brings over the current work; it does not restore the revision history.
+
 If a saved project fails to load, autosave **pauses itself** and a banner says so—a load failure never overwrites your saved work with an empty canvas. And if OpenTakeoff updates in another tab, the stale tab asks for a reload instead of writing over the newer one.
+
+### On-device text recognition—what downloads, and when
+
+OpenTakeoff carries an on-device text reader (PaddleOCR) for scanned and raster pages, which have pixels but no text layer. It reads a whole page (**Read page text**, on the canvas or a gallery card), the pictures on a vector sheet (**Read picture text**), or a box (Copy text), so search and Copy text work on scans, and **Import from schedule** uses it to read a raster schedule ([§4](#import-from-schedule)). This is what it costs and what it promises.
+
+**Nothing downloads until you start a read.** Opening the app, opening a plan, or opening a scanned sheet downloads none of it. The first time you start a read in a browser, a notice says how much will download and waits for you to click **Download**; **Cancel** leaves everything as it was. After that, the files are kept in your browser and the reader starts without asking. If the browser clears its storage, the notice returns. Where the browser offers no Cache Storage (some private windows, for example), the files aren't kept, and the notice appears again each time the app is opened or reloaded.
+
+| File | Size |
+|---|---|
+| Runtime (ONNX Runtime WebAssembly) | 23.57 MB |
+| Text detection model (PP-OCRv5 mobile) | 4.83 MB |
+| Text recognition model (PP-OCRv5 mobile, English) | 7.85 MB |
+| Character list | 1.4 KB |
+| **Total** | **36.24 MB** |
+
+These are the raw sizes; the notice rounds up and says "up to", because a site that compresses its files sends fewer bytes. Voice dictation uses the same runtime, but the reader keeps its own copy with its models, so a browser that has used both stores the runtime twice.
+
+Every file comes from the site you're using—never a model host—and is checked against a fingerprint when it downloads, before it's kept. A later start reads the kept copy and checks only its size. The read runs on your device, in the background, so the canvas stays responsive; the page image isn't sent anywhere. A deployment can turn the reader off ([`DEPLOYMENT.md`](DEPLOYMENT.md#on-device-ocr-models)), and then nothing is downloaded or offered.
+
+#### Reading a page with no text layer
+
+A sheet counts as a scan when its text layer has at most 8 lines of text: none at all, or a little stray text such as a scanner label, a stamp or a typed title-block field. A line is counted the way Copy text joins words into lines, so a stamp drawn one letter at a time is still one line; text turned more than a few degrees off horizontal counts a line per run. A vector sheet carries dozens to hundreds of lines. Blank and punctuation-only runs don't count. The 8 was chosen for Import from schedule's box, where it counts text runs, and adopted for sheets and for pictures; it has not been measured on whole sheets or pictures.
+
+A picture on a vector sheet (#489)—a schedule or table pasted in as an image—has no text layer either, though the sheet around it does. A sheet that isn't a scan is offered a read of its pictures when it holds a picture of at least 15 sq in (its bounding box; image placements that touch or overlap, within 2 pt, count as one picture) with at most 8 lines of the sheet's text over it. On the PDFs in this repository, the largest logo or seal is 11.2 sq in, and the one table pasted as a picture on a vector sheet (Porterville A1-101) is 18.8 sq in. Such a sheet shows **Read picture text** where a scan shows **Read page text**, and the read covers only its pictures, one after another, never the whole sheet. The sheet's own text stays in search from its text layer.
+
+When a sheet on the canvas is a scan, a **Read page text** control appears at the bottom left of the canvas (in a group, one row per such sheet); a sheet with a picture to read shows **Read picture text** there. In the gallery, the same sheet's card shows the same button once the gallery knows what the sheet is: its card has been shown, or a search has read it (see [the sheet gallery](#the-sheet-gallery-g)). A card whose thumbnail was saved by an earlier version of the app is checked only once its PDF is open or searched; opening the gallery doesn't load a PDF for it. Either starts the same read; the first one in a browser shows the download notice above everything, the gallery included, and nothing is read until you click **Download**.
+
+- **When the reader can't be reached.** If the check for the on-device reader fails (offline, say), the control, the card and the line under the search results say **The on-device text reader (OCR) couldn't be reached**, with **Retry**.
+- **Progress and Cancel.** The read goes tile by tile (**Reading tiles n/N**), then joins lines cut at the tile edges (**Joining seams n/M**). **Cancel** stops it; it shows **Stopping…** until the tile already in the reader finishes. One page is read at a time; another read waits its turn.
+- **Kept in this browser.** A finished read is kept with the PDF's fingerprint, so after a reload the sheet searches and copies without reading again. Removing the PDF from a local project removes its reads (add it again and it's read again). In a cloud project the gallery doesn't download a PDF just to check for a saved read, so a card may show **Read page text** (or **Read picture text** on a sheet with a picture) for a sheet read in an earlier session until that sheet is opened or searched; pressing it then uses the saved read instead of reading again. In a cloud project, pressing **Read page text** or **Read picture text** on a sheet that isn't open downloads that PDF before the download notice appears: its page size has to be checked first. A read by an older version of the reader is still used, and **Read again** is offered while the reader is available (not offline). The same goes for reads saved before the reader began reading each word box on its own (#484): they stay searchable and copyable, and **Read again** reads the page with the current reader. Reading again is never automatic. A picture read is kept the same way, and only as that sheet's picture read: a whole-page read saved for the sheet isn't taken for one. If a later version changes the picture rule, the picture read is still used and **Read again** is offered.
+- **Too large, or failed.** A picture past the size limit says **This picture is too large for the on-device text reader (OCR).**; a picture read that fails says **Couldn't read this picture:** and why.
+- **Labelled OCR in the app.** The control says **Read in n s · OCR**, search hits on read text carry **OCR**, and the Copy text receipt names **OCR** as the reader; the clipboard gets plain text, with no label. OCR text can be wrong: check it against the sheet.
+- **Table rules removed.** A table's ruling the reader takes for a character at the start or end of a line (a leading `|`, a trailing `_` or `|`, a leading `[` or trailing `]` with no partner in the line, and a pair around the whole line that starts with a code or has a space just inside it) is removed from search and Copy text, and a line that was only ruling is dropped. A minus sign, en dash or Unicode hyphen between two letters or digits becomes `-`. Reads kept from before this change are cleaned the same way when they're used, without reading again.
+
+Measured time and memory (Apple M4, 16 GB, macOS 26.2, headless Chrome for Testing 151; three runs, each in a fresh browser profile; median and range; after the #484 engine change). The input was the demo plan's two 42 × 30 in sheets saved as a 200 DPI image-only PDF, read at the reader's 216 DPI in 6 tiles plus the seam reads they need (8 rasters per sheet in the app's own runs):
+
+| Step | Time | Memory the read adds | Tab memory at peak |
+|---|---|---|---|
+| Download the reader's files and start it (served from a local server, so no network time) | 0.80 s (0.80–0.84) | — | — |
+| Floor plan sheet, first read | 42.2 s (41.8–47.4) | 0.95 GB (0.89–2.3) | 2.9–4.9 GB |
+| Finish schedule sheet, reader already running | 47.2 s (43.7–49.0) | 2.2 GB (1.1–2.8) | 3.6–4.5 GB |
+
+Memory is the browser tab's process (renderer RSS, which includes the reader's worker), sampled every 250 ms; "adds" is the peak during the read minus the same process just before it. It varies a lot from run to run (the tab's memory before a read differed by over 2 GB between runs), so read it as a range, not a figure. Other processes were busy during parts of runs 1 and 2 (run 1's floor plan read, 47.4 s, is the slow end of its range), so expect slower reads on a loaded machine. One raster is read at a time.
+
+Known limits:
+
+- A mixed sheet (a full-page raster drawing with a vector title block over it) whose text layer has more than 8 lines isn't a scan, so it isn't offered a page read, and its picture isn't offered a picture read either: the title block's lines lie over the picture. Copy text still reads a box over its raster part. A picture beside the title block, with at most 8 lines over it, is offered **Read picture text**.
+- A picture smaller than 15 sq in (a small pasted table) isn't offered a read; Copy text treats it as any other image on a vector sheet ([Copy text](#copy-text)). A picture of 15 sq in or more with little text over it (a rendering, a photo) is offered one, and the read may find little.
+- A picture clipped to part of its area counts at its full size, and a picture on a PDF layer that is hidden by default counts as if shown.
+- After a picture read, a search for the start of a code ("CPT") that matches a code read from the picture is badged **OCR**, even when another code it matches is in the sheet's own text.
+- A scan carrying a full text layer of its own (a scanner's built-in OCR) has more than 8 lines, so it isn't offered a page read either: search and Copy text use that embedded text.
+- A vector sheet with 8 or fewer lines of text (a cover sheet, a drawing with almost no labels) counts as a scan for search and is offered **Read page text**. Copy text treats it as a scan only if it holds a placed image.
+- A line longer than about 19 in on the sheet can't be read whole at once, and stays split where two tiles meet. Copy text counts such pieces on its receipt (**n split at a seam**).
+- A seam that falls in the gap between two words gives two lines rather than one.
+- Kept reads have no size limit and nothing ages them out: the app clears them only when the PDF is removed from a local project. In a cloud project they stay after the file is closed, and after you sign out: they're kept in this browser by the PDF's content hash.
+- Removing many read files from a local project at once is slow: each removed file that has kept reads checks every stored PDF for the same content.
+- A page needing more than 64 tiles at the reading resolution (far larger than any plan sheet: a 42 × 30 in sheet takes 6) isn't read; the control says it's too large, and no download is asked for.
+- The first search in a cloud project downloads every PDF not opened yet, to read its text.
+- **A reader that stops responding.** A read the reader never answers fails after a generous deadline (at least 2 minutes, longer for a large tile or a slow device) with **The on-device reader stopped responding.** The reader then restarts from the files already in this browser, never downloading, and the reads waiting behind it go on. If a second read in a row stops responding, or the restart fails, the waiting reads fail too and the next read starts the reader afresh. Only time the tab is visible counts against the deadline, so a hang in a background tab is caught only once the tab is visible again.
+- Red and magenta text are read by their brightness, like gray text (#481). Light or low-contrast text can still lose letters, blue or green text is read with less contrast than black, and black text on the same line as colored text can read slightly differently than it did before.
+- Page reads saved by an earlier version of the reader (before #481) are ignored. This is not the **Read again** case above: the old read isn't used at all (it stays in browser storage until the page is read again). The sheet shows **Read page text** again, and until you press it its text is out of search and a Copy text box is read on-device. Nothing is read again until you ask.
 
 ### Optional: projects on Drive
 
@@ -718,27 +941,51 @@ What is **never** sent—this list is normative, enforced by a whitelist in the 
 
 One linkage is deliberate and disclosed: shapes carry **opaque, locally-minted IDs**, so re-contributing after an addendum supersedes rather than duplicates. The IDs contain nothing and reverse to nothing.
 
-The modal asks for an optional credit line and an attestation that you have the right to share the data. To bank takeoffs into **your own** corpus instead, run the bundled capture server (`python3 capture/capture_server.py`) and point the app at it (`localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"`)—see [`capture/README.md`](../capture/README.md).
+The modal asks for an optional credit line and an attestation that you have the right to share the data. To bank takeoffs into **your own** corpus instead, run the bundled capture server (`python3 capture/capture_server.py`) and point the app at it (`localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"`). The public app and local development origins are allowed by default. For a self-hosted build, start the server with `--allow-origin https://takeoff.example.com` using your build’s exact origin—see [`capture/README.md`](../capture/README.md).
 
 ---
 
 ## 13. The Agent panel
 
+**Workspace layout.** Premium workspace is the default for browsers without a saved layout choice. From Classic, choose **⋯ → Premium layout — compact controls** for compact drawing controls. **Classic layout** returns immediately. Measuring tools keep their sidebar order and shortcuts; **All controls** reveals the existing toolbar for advanced settings. **Properties** opens the active condition editor. **Sheets** opens your plan set as a tree: each multi-page PDF is a folder of its pages and each one-page PDF a row. A row shows the sheet number printed in the title block's sheet-number box once that page's text has been read — when you open it, when the gallery draws its thumbnail, or when plan search reads it — and the label its tab shows until then. Numbers are saved with a local project, so it reopens with them; a Drive project reads them again each session. Search matches numbers, labels and file names. In the tree, arrow keys move, Right and Left open and close folders, and Enter opens a sheet. The sheet tabs and visual gallery remain available. **Find an action** (Cmd/Ctrl+K outside text fields) searches tools, sheets, scale choices and file actions; use arrows and Enter, or click a result.
+
+**Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
+
+**Premium plans.** **Premium plans** in the top toolbar, the plan gallery or the Classic **⋯** menu opens the pricing section of [kentucky-ai.com](https://kentucky-ai.com/#pricing) in a new tab, so your takeoff stays open. Current plans, prices and the 7-day free trial are listed there. Premium is a separate hosted workspace; nothing from this app is sent, and your local projects stay in your browser.
+
+**One place for panel tools.** Quantities, Work, Markup list, Stamps, RFI register and Revisions live in the top toolbar. In Focus mode, the panel controls move to the right edge. **Create annotation** in the drawing toolbar creates clouds, callouts, text and highlights; **Markup list** opens existing annotations. Supporting materials remain under **Quantities → Materials** or a condition’s **Materials** button.
+
+**Inspect sheets before opening.** The visual gallery offers medium or large cards and a separate **Preview** action with **Actual pixels**. Previewing does not change the selected sheets. Escape closes the detailed preview first; the next Escape clears a typed sheet search if there is one, then returns from the gallery.
+
+**Make it yours.** Open **Layout**, uncheck **Lock panel positions and sizes**, then drag the grip on Sheets, Work, Takeoffs or the measuring rail to either highlighted edge. Release in the middle to cancel. The same dialog has left/right selectors, and a focused grip accepts Left/Right arrow keys. Adjust Work/Sheets width in the dialog; Takeoffs retains its edge resize handle while unlocked. Lock again when comfortable. Lock protects panel positions and sizes, not measurements.
+
+Name and save an arrangement to restore its positions, widths, lock state and optional condition palette/quantity counter. Saving the same name replaces it; up to eight arrangements are retained. Panel open/closed state is not part of a saved arrangement. **Reset arrangement** restores the default without deleting named arrangements. Preferences belong to this browser and do not travel in project files or change another collaborator's layout. If browser storage is unavailable, Layout says the preference lasts only for this session.
+
+Choose **Work** in the toolbar to open **Work and review**. **Measurements** lists stored work across the project, including imported agent takeoffs and measurements made on the canvas. Search by condition, sheet, label, or author; use **Needs review** or **Agent** to narrow the list.
+
+The scale control stays beside Work and Report. On narrow windows, these controls wrap below the scrolling tool strip.
+
+Select a measurement to open its sheet and center its boundary. Its **Measurement receipt** shows the stored quantity, source, method, review state, scale state, vertices, and holes. **Mark reviewed** records your review for that measurement; undo restores its previous state. **Reviewed** describes the stored review decision, not a guarantee of accuracy. Missing attribution and quantities remain explicit.
+
+On smaller screens the panel opens as a drawer; on phones it fills the work area. Selecting a measurement returns you to the plan. **Open report →** opens the existing report. Floating totals clear both views. The condition’s **properties** disclosure above the drawing hides or shows its appearance controls.
+
+Select the **Agent** tab inside **Work** to run the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. Closing the panel preserves its search and in-session task draft; page reload still discards uncommitted browser-agent proposals and the run log.
+
 The Agent panel is the newest way to run the engine: describe a takeoff in a sentence, and an AI model—**yours**, on your key, from your browser—works the sheet with the app's own tools and stages **dashed proposals you accept or reject**. It is a proposer, never a committer.
 
 ### What it is, structurally
 
-Open it from the rail (the target icon: *Agent — describe a takeoff; it stages dashed proposals you accept or reject*). Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
+Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
 
 - **`list_sheets`**—what's open, with sizes and scale status;
 - **`read_sheet_text`**—the sheet's positioned text layer;
-- **`read_schedule`**—the same finish-schedule parser you use from the toolbar;
-- **`view_region`**—a rendered crop, for scans or ambiguity;
+- **`read_schedule`**—the same finish-schedule reader as **Import from schedule**, on the text layer only (it doesn't read a raster schedule); a row the schedule marks not used carries `unticked_reason` and `not_used_text`, a row read by one of the newer rules ([§4](#import-from-schedule)) carries `key_rule: "extended"` (the agent is told to check it with `view_region` first), and four- and five-letter codes it didn't read come back as `skipped`;
+- **`view_region`**—a rendered crop, for raster sheets or ambiguity;
 - **`one_click`**—the flood engine, probe-only: it returns the traced ring, it commits nothing;
 - **`get_conditions` / `create_condition`**—your condition list (creation dedupes against existing tags);
 - **`propose_shapes`**—stage proposals for your review.
 
-**The model never invents geometry.** It can only propose rings the engine traced or coordinates grounded in what it read, and `propose_shapes` rejects anything uncited: *every proposal must cite evidence*. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that halts it instantly.
+Proposals include evidence fields. Inspect the boundary and its claimed evidence before accepting it; those fields do not independently verify the geometry. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that stops the run.
 
 ### The scale gate holds
 
@@ -753,6 +1000,50 @@ Proposals land on the canvas as **dashed pencil outlines** with a seed star, and
 - **Reject**: the row's ✕, or **Reject all**. Rejection is **local only**—dismissed geometry is discarded and never rides the contribution wire.
 
 A proposal whose sheet you've since closed (or unscaled) is skipped at accept with a message telling you to open the sheet; nothing commits blind.
+
+### Proposals from an MCP agent — one decision per batch
+
+Work that arrives from an MCP session (**Import takeoff…**, or a synced workspace) lands as dashed pencil too, and an agent can group it: `propose_takeoff` names a batch and every shape it commits afterwards belongs to it. On the canvas that batch is **one pill** — *Accept "Level 1 offices per finish schedule" · 3* — with a ✕ to reject it. Accept inks the whole batch in one step (one `⌘Z`); Reject removes its pending shapes (`⌘Z` restores them). Shapes you already accepted are never part of a batch again, so an agent that revises or withdraws its proposal cannot touch your ink. Anything un-batched keeps the plain **Accept N proposed shapes** pill.
+
+### Reviewing an agent's takeoff, start to finish
+
+The whole loop on a real sheet, with the screens you will see. The takeoff below was drawn by an MCP agent on the bundled sample plan and handed over as its JSON export; nothing in it is approved until you act.
+
+1. **Open the plan, then set its scale.** Open the same PDF the agent worked on and adopt the plan's own note (**Set scale… → Plan says**). Import refuses a takeoff whose calibration differs from the sheet's, so the agent's scale and yours must agree; here both are 1/8" = 1'-0".
+
+   ![The plan open with its scale adopted](img/agent-review/03-scale-adopted.jpg)
+
+2. **Sheet → Import takeoff…** The agent's rings land as dashed pencil, one **Accept** pill for the whole batch, and the status bar tells you how many shapes are pending and which finish tags matched yours. Every shape is `origin: agent`, unreviewed.
+
+   ![Six pending rings and one Accept pill](img/agent-review/04-imported-pending.jpg)
+
+3. **Inspect and correct.** Arm **Select** (`V`) and click a ring: its corner handles appear and the readout shows its SF. Drag a corner, insert a vertex on an edge, or delete one (§7). Correcting a pending shape grades it as *corrected* in provenance and freezes the agent's original ring beside your fix; it does not accept it.
+
+   ![A pending ring selected with its handles](img/agent-review/05-shape-selected.jpg)
+
+   ![After nudging one corner the shape re-prices live](img/agent-review/06-vertex-corrected.jpg)
+
+4. **Accept.** Click the pill (or `⏎` with nothing mid-draw): the batch inks in one step and one `⌘Z` undoes it. Reject with the pill's ✕, or select one shape and press `⌫`. This click is the human decision the agent could not make; no export, verdict or schema check substitutes for it.
+
+   ![The batch accepted: pencil is now ink](img/agent-review/07-batch-accepted.jpg)
+
+5. **Save it two ways.** **Sheet → Export takeoff…** writes the editable JSON with your review state and corrections; **Sheet → Export project archive…** writes the `.otk` that carries the plan PDF with it.
+
+6. **Check the deliverables.** **Report** shows per-finish SF from the accepted rings; **Print → Download marked set** burns them into the sheet.
+
+   ![The report after acceptance](img/agent-review/10-report.jpg)
+
+7. **Reopen on a clean machine.** Drop the `.otk` on an empty OpenTakeoff: the plan, its scale, your conditions and every accepted shape come back as ink, corrections and frozen originals included. The sheet gallery opens first because the archive holds two sheets; close it to work.
+
+   ![The archive reopened in a fresh browser profile](img/agent-review/12-archive-reopened.jpg)
+
+The screens above were captured in a throwaway browser driven by a script against the real app, so they prove the controls and the persistence, not a person's approval; a takeoff is approved when an estimator clicks Accept in their own browser.
+
+### Shared floor — when two conditions claim the same room
+
+Two conditions can claim the same floor and nothing used to say so: a room detected under `CPT-1`, then traced again under `LVT-2` on another day, and every total downstream counts that floor twice. Now a condition row that shares floor with another wears a **⚠ N** badge (the number of pairs). Activate the row and the pairs list under it — the other condition, the shared square feet, how much of the smaller shape that is, and whether both were already accepted — each with a **Look** that frames the pair on the plan. Deciding which one wins is yours: delete one, or fix the ring. A room traced twice under the *same* condition shows as a **double trace** in the same list. The same measurement (an exact polygon intersection, not a guess) is what an MCP agent reads with `scope_duplicates`, and `takeoff_summary` carries the whole takeoff's shared floor as one number that has to read zero.
+
+An agent can also **propose a change to a condition** instead of making it — a new tag, a waste %, a multiplier, a height, a roll-goods setup. The proposal sits under the condition's row in the Takeoffs panel as *current → proposed* with the agent's reason and **Accept** / **Reject**. Until you accept, nothing changes: every total and the Report use the current values, and the Report shows the proposed ones beside them (`proposed: waste 0% → 10%`). Accept applies exactly the edit typing those values would; Reject drops it.
 
 ### Setup — bring your own key
 
@@ -781,24 +1072,25 @@ Point AI settings at it—endpoint `http://localhost:8787`, API style **Anthropi
 - **Model**—a vision-capable model id.
 - **API key**—optional; local runtimes generally need none. Stored **in this browser's localStorage only**—anyone with access to this browser profile can read it, so use a key you can revoke. The endpoint must allow browser requests (CORS); local runtimes generally allow localhost.
 
-What's sent, and only when you run an AI feature: the sheet region in question and the question—to *your* endpoint. Never the whole plan file, file names, project names, or your takeoff. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
+What's sent, and only while an agent run you started is going: your goal, the prompts, and what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
 
 ### MCP — for agent users
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
-`npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
-MCP client gets **<!--tool-count-->42<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
+`npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). **Help → Connect your AI** in the app (also on the opening screen and in the **⋯** menu) has the setup for Claude Desktop, Claude Code, Codex and Cursor with copy buttons, and a first question to ask about the sample plan; [CONNECT.md](CONNECT.md) is the same walk-through. An
+MCP client gets **<!--tool-count-->58<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
 |---|---|
-| Open and orient | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
+| Open and orient | `load_plan` · `sheet_info` · `sheet_context` · `get_sheet_vectors` · `read_sheet_text` · `find_text` · `view_sheet` |
 | Scale | `set_scale` |
 | Measure | `one_click` · `detect_rooms` · `measure_polygon` · `cut_out` · `measure_line` · `measure_surface` · `place_count` |
 | Repeat and derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` · `apply_rules` |
 | Read the drawing set | `sheet_graph` · `resolve_tag` · `find_schedule` |
 | Edit and audit | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
 | Mark and sign | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
+| Ask | `create_rfi` · `list_rfis` · `resolve_rfi` · `delete_rfi` |
 | Hand off | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
 
 If you're the one wiring an agent up rather than the one reading its output, the operating manual
@@ -818,7 +1110,11 @@ A few worth knowing about from the canvas side, because they're the same feature
   included unless you untick it.
 - `symbol_sweep` finds every instance of a repeated symbol from one marqueed example, and
   `sweep_schedule_row` mints a condition from a schedule row and counts its drawn markers across
-  the plan sheets. Where drafting reuses one generic shape for different devices, `exclude` takes
+  the plan sheets — from a room-finish, material, or equipment schedule, so a fan, a heater, or a
+  light fixture counts the same way a floor code does. A device drawn to its own size and tagged
+  by a leader has no shape to fingerprint, so each drawn tag counts as one instance *by label*,
+  and the result says which instances were counted that way; a bare mention in a note is never
+  a count. Where drafting reuses one generic shape for different devices, `exclude` takes
   counter-example rects around instances you do *not* mean — count the triangles, not the keynote
   ones — and every rejection comes back disclosed and reinstatable, never silently dropped. On a
   flattened export where layers and pen weights are gone but stroke color survives, a stated
@@ -863,7 +1159,6 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 | Key | Tool |
 |---|---|
-| `O` | One-Click Area |
 | `A` | Area |
 | `R` | Rectangle |
 | `L` | Linear |
@@ -876,8 +1171,9 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `K` | Check a dimension |
 | `V` | Select |
 | `G` | Sheet gallery |
-| Hold `M` | Push-to-talk dictation—release runs the command, `Esc` discards (see [§17](#17-voice-and-the-command-box)) |
 | `?` | The in-app quick reference—the five-minute path and every shortcut (`Esc` closes) |
+
+`O` (One-Click Area) is temporarily gated ([§6](#6-one-click-area)): the key reports the gate in the message bar and arms nothing until a build lifts it. Hold-`M` dictation is gated off with the Command box ([§17](#17-voice-and-the-command-box)) and arms nothing.
 
 ### Conditions
 
@@ -909,6 +1205,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⌘C` | Copy the shape |
 | `⌘V` | Paste under the cursor—lands on the sheet the pointer is over |
 | `⌘D` | Duplicate |
+| `T` | Trace another one like it—arms the shape's condition (the selected shape keeps its own quantities), sets the ╱ Straight / ⌒ Curve switch to match, and arms the tool that drew it: a four-corner axis-aligned ring re-arms Rectangle (or Deduct rectangle), anything else its own Area, Cut Out, Linear, Surface Area or Count. The selection drops. With nothing selected, or a markup selected, the message bar says so and nothing arms |
 | `⌫` | Delete (a picked vertex first, else the shape or markup) |
 | Double-click a markup | Edit its text in place |
 
@@ -923,8 +1220,9 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | Hold `Space` + drag | Pan (any tool) |
 | Middle-drag / right-drag | Pan (any tool) |
 | `F` | Focus mode—collapse the chrome, trade it for canvas height |
-| `Esc` (gallery open) | Close the gallery; in Browse Drive, back to the plan set |
+| `Esc` (gallery open) | Clear the sheet search if one is typed; otherwise close the gallery; in Browse Drive, back to the plan set |
 | `Esc` (menu open) | Close the menu |
+| `Esc` (Import from schedule dialog open) | Close the dialog; while you're fixing a code, it only cancels that edit |
 
 ### In panels and fields
 
@@ -961,6 +1259,8 @@ the engine reads as a wall, at every notch. Trace it with Area (`A`), or on a CA
 ---
 
 ## 17. Voice and the Command box
+
+> **Gated off by default.** The Command box and the Voice button no longer sit on the toolbar, and holding `M` arms nothing — nobody was using them there. The grammar and the on-device recognizer stay in the code; a build brings both back with `VITE_COMMAND_BOX=1`. The section below describes them as they work then.
 
 Your hands are busy—one on the mouse tracing, one on the tool keys.
 The Command box and push-to-talk dictation set takeoff metadata without
@@ -1035,4 +1335,32 @@ those are the ones worth pinning down before you rely on a number.
 
 ---
 
-*OpenTakeoff is Apache-2.0 and the codebase is deliberately readable—when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*
+*OpenTakeoff is AGPL-3.0 and the codebase is deliberately readable—when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*
+
+### Marked-set quantity units
+
+The marked-set cover shows linear allowances in LF (or m in metric), alongside area allowances in SF (or m²). Measured quantities stay unchanged; waste applies to the allowance column. Supporting-material coverage comes from Report material rows and does not require another floor polygon.
+
+### Annotation cleanup and small overlap warnings
+
+An agent can shorten or clear annotation text with `edit_annotation`, then undo
+that text edit. This leaves positions, dimension lengths, quantities, links and
+review records unchanged. An RFI-linked note requires review in the browser RFI
+register. Human approval remains a separate action.
+
+The scope collision list ignores machine-precision residue along shared edges.
+Real positive overlaps that round to zero display **<0.01 SF shared**, so a small
+warning does not appear to claim exactly zero area. Review the marked boundary
+before changing either trace.
+
+### Shared knowledge wiki
+
+The [wiki](wiki/README.md) gives people and agents the same starting points for
+current support, architecture, saved records, workflows and quantity meanings.
+An MCP agent reads the packaged pages at `takeoff://wiki`; a person follows the
+same pages here. The [stitching workflow](wiki/workflows.md#human-open-stitch-and-measure)
+explains the browser controls and the current MCP transport limit explicitly.
+
+## Privacy and terms
+
+Open the guide (`?`) for links to the [Privacy Policy](https://opentakeoff.kentucky-ai.com/privacy/) and [Terms of Service](https://opentakeoff.kentucky-ai.com/terms/). These explain local storage, optional cloud and AI connections, contributions, and responsibility for reviewed estimates.

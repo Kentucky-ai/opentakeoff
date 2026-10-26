@@ -1,0 +1,120 @@
+{
+  "base": "http://localhost:5191/",
+  "passed": 16,
+  "total": 16,
+  "checks": [
+    {
+      "name": "two rooms traced on the scaled sample (CPT-1, LVT-1)",
+      "ok": true,
+      "detail": [
+        [
+          "CPT-1",
+          983.17
+        ],
+        [
+          "LVT-1",
+          686.36
+        ]
+      ]
+    },
+    {
+      "name": "toolbar Estimate opens the panel",
+      "ok": true
+    },
+    {
+      "name": "markups seeded from Company setup (10 / 20 / 6)",
+      "ok": true
+    },
+    {
+      "name": "both traced conditions listed, both unpriced",
+      "ok": true
+    },
+    {
+      "name": "prices saved on the conditions",
+      "ok": true,
+      "detail": {
+        "cpt": {
+          "unit": "SY",
+          "material": 20,
+          "labor": 5
+        },
+        "lvt": {
+          "material": 3.5,
+          "labor": 2
+        }
+      }
+    },
+    {
+      "name": "supply price saved on the CPT-1 adhesive row only",
+      "ok": true
+    },
+    {
+      "name": "project markups saved with the project",
+      "ok": true,
+      "detail": {
+        "tax_pct": 6,
+        "overhead_pct": 10,
+        "profit_pct": 20,
+        "profit_mode": "markup"
+      }
+    },
+    {
+      "name": "panel base bid equals the engine on the saved project",
+      "ok": true,
+      "detail": {
+        "engine": 9596.76
+      }
+    },
+    {
+      "name": "LVT-1 flagged: only its adhesive is missing",
+      "ok": true,
+      "detail": [
+        {
+          "id": "cnd-c5d427a3-24f1-4155-bf6f-03fcf950ac75",
+          "finish_tag": "LVT-1",
+          "status": "partial",
+          "missing": [
+            "material row: Adhesive"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "total labelled \"priced so far\" while a line is incomplete",
+      "ok": true
+    },
+    {
+      "name": "Excel has Estimate, Materials and Unpriced tabs",
+      "ok": true,
+      "detail": [
+        "Estimate",
+        "Materials",
+        "Unpriced"
+      ]
+    },
+    {
+      "name": "Excel base bid and watermark",
+      "ok": true
+    },
+    {
+      "name": "a later Company setup change does not re-price the project",
+      "ok": true
+    },
+    {
+      "name": "Company defaults applies the new 15% on request",
+      "ok": true
+    },
+    {
+      "name": "after a reload the estimate shows the same base bid",
+      "ok": true,
+      "detail": {
+        "before": 10032.97
+      }
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

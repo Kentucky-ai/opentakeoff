@@ -4,10 +4,18 @@ The counterpart to the [user manual](USER_GUIDE.md). That one is written for the
 the canvas; this one is written for the agent driving the same engine over
 [MCP](https://modelcontextprotocol.io), and for the person wiring one up.
 
-Everything an estimator does with a mouse, an agent does with a tool call, against identical
-geometry: the server imports `web/src/lib/{oneclick,sheets,geometry,totals}` directly, so a room
-you flood over stdio measures the same square footage as the same click on the canvas. There is
-no second implementation to drift.
+Agents work directly through tools, with geometry and quantities in the same document format
+as the canvas. The server and browser share geometry, calibration and quantity modules.
+Their current room-detection paths differ; audit the returned boundary on each surface
+rather than assuming the same seed always produces the same room.
+
+> **One-Click is temporarily gated.** On a default build `one_click` and `detect_rooms` do not
+> exist — they are not registered, `tools/list` never names them, and calling them is an
+> unknown-tool error. The initialize instructions say so and name the move: a room's polygon is
+> its wall faces, so read them with `get_sheet_vectors`, confirm on `view_sheet`, and commit with
+> `measure_polygon` under the finish tag its schedule row states (`resolve_tag`). Everything
+> else in this manual is unchanged. `OPENTAKEOFF_ONE_CLICK=1` lifts the gate; the passages that
+> use the two verbs describe that build. See [`design/ONE_CLICK_GATE.md`](design/ONE_CLICK_GATE.md).
 
 **Contents**
 
@@ -94,7 +102,7 @@ numbers report.**
    `load_plan { merge: true }` to add the schedule sheet and the addenda—a bid set is plans
    *plus* schedule *plus* addenda, and merging leaves existing scales, conditions, and shapes
    alone.
-2. **Commit shapes under finish-tag conditions.** `one_click` / `detect_rooms` /
+2. **Commit shapes under finish-tag conditions.** (`measure_polygon` on the wall faces while One-Click is gated.) `one_click` / `detect_rooms` /
    `measure_polygon` / `measure_line` with `condition`. When the set carries a room-finish
    schedule, prefer `detect_rooms { assign_from_schedule: true }` so each room commits under its
    *own* row instead of one tag you picked for all of them.
@@ -105,7 +113,7 @@ numbers report.**
 4. **Look at what landed.** `view_sheet { overlay: true }` and fix misses with `edit_shape` before
    trusting a total. Crop the work region tight—a full-sheet render downsamples too far to
    audit a ring. Solid outlines are human-affirmed, dashed are unreviewed.
-5. **Write the planset.** `export_marked_pdf`, and give the user the file path. (`export_dxf` when the takeoff is going back into CAD — one sheet per drawing.) `export_report`
+5. **Write the planset.** `export_marked_pdf`, and give the user the file path. (It refuses an encrypted source PDF, naming the sheet: the app exports that one as a disclosed raster; over MCP there is no canvas, so tell the user which sheet and why.) (`export_dxf` when the takeoff is going back into CAD — one sheet per drawing.) `export_report`
    alongside it for the numbers. Never end a takeoff with numbers alone: a takeoff nobody can
    check is not a takeoff.
 
@@ -126,7 +134,7 @@ asked.
 | `symbol_sweep` | placements your own counter-example rejected, in `rejected[]` — which negative, its mode (shape / crossing), and the fraction of its evidence found | the geometry accepted it and your exclusion refused it: an exclusion is a judgement, and judgements get revised | look at each; `place_count` at its `at` reinstates one you disagree with, no re-run |
 | `symbol_sweep` | placements your stated `luminance_tolerance` pulled under the commit bar, in `lum_gate.at` — with the tolerance and the seed's own luminance band | the geometry would have committed it and the pen refused it: a symbol redrawn in a different pen fails the gate honestly | look at each; `place_count` reinstates, or widen the stated tolerance |
 | `symbol_sweep` | the drawing's own tag on every row (`label`/`label_via`, #308) — and the note's three flags: a match with NO label in a labeled family, a withheld row carrying the seed's own tag, a row named a different tag | shape says "looks like one"; the label says what the drafter called it — identity in both directions | trust tag-confirmed rows more; LOOK at unlabeled matches first (measured case: two 0.97 "drains" that were valve internals); `place_count` a withheld row the drawing vouches for |
-| `sweep_schedule_row` | `excluded` (labeled with a sibling key), `withheld` (unlabeled), `text_only` (a tag with no marker) | drafting reuses one bubble shape across many marks, so geometry alone would over-count | look at each; the exclusions are usually right and the unlabeled ones are usually yours |
+| `sweep_schedule_row` | `excluded` (labeled with a sibling key), `withheld` (unlabeled), `text_only` (a bare mention in a note, no linework near it), `label_only` (a drawn tag the fingerprint did not reach — COUNTED, by label, and disclosed as such in `found_by_label` / `counted_by`) | drafting reuses one bubble shape across many marks, so geometry alone would over-count — and a device drawn to its own size (a heater bar, a fan, a fixture) has no reusable shape at all, so its leader tag is the count | look at each; the exclusions are usually right and the unlabeled ones are usually yours |
 | `derive_transitions` | wall-separated runs, in `withheld` with a length, a gap in inches, and an `at` point | the two rooms are adjacent across a partition, so the real transition is a threshold in a doorway that nothing in the trace record locates | measure the threshold at the door with `measure_line`, or hand the run to the estimator |
 
 `withheld_lf` is never folded into `total_lf`. A withheld item you ignore is a hole in the bid;
@@ -154,6 +162,10 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
   seam-crossing room needs their stitch in the app. Never approximate one by combining sheets
   yourself. (A stitched takeoff round-tripped through `import_takeoff` → `export_takeoff` comes
   back without its stitches; when a stitch is in play, the app's own save is the one to keep.)
+- **Revision history.** MCP takeoff export is a current document, not the browser's snapshot
+  store or PDF revision history. A browser `.otk` archive carries current takeoff/plan data,
+  but also omits those histories. Never claim an archive or current takeoff reconstructs past
+  revisions; see the [tested transport boundaries](../protocol/COMPATIBILITY.md#executable-transport-matrix).
 - **The estimator's `APPROVED` seal.** `mark_verdict` takes no actor argument, so there is no
   input to misuse; `delete_verdict` refuses a human seal outright.
 - **Confirming a scale.** Only a human act in the canvas clears `confirmed: false`.
@@ -162,22 +174,28 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
   one stays behind the canvas's human Preview→Apply gate.
 - **Touching human-affirmed work.** `edit_shape` refuses a shape carrying
   `origin.reviewed === true`.
+- **A price.** `set_pricing` and `set_estimate_settings` write the prices and markups you are
+  given, by the estimator or a document they handed you, and nothing else. There is no verb
+  that proposes, looks up or defaults one, and you must not invent a "typical" rate. An unentered
+  price stays unentered: `estimate_summary` and both exports carry `complete: false` and an
+  `unpriced` list, the total is *priced so far*, and the user hears what is missing before a
+  proposal goes out.
 
 ## 6. Staged tool exposure
 
-By default every client gets all 40 tool schemas on `tools/list`—the flat contract every
+By default every client gets all <!--tool-count-->58<!--/tool-count--> tool schemas on `tools/list`—the flat contract every
 published client already expects.
 
-Forty descriptions is real token weight for a session that may never touch half of them, so the
+Fifty-two descriptions is real token weight for a session that may never touch half of them, so the
 server can stage the surface along the workflow it already teaches:
 
 ```bash
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage starts enabled—10 tools that orient you: `load_plan`,
+Staged, only the **setup** stage starts enabled—<!--tool-count-setup-->11<!--/tool-count-setup--> tools that orient you: `load_plan`,
 `sheet_info`, `set_scale`, `sheet_graph`, `resolve_tag`, `find_schedule`, `read_sheet_text`,
-`find_text`, `sheet_context`, `view_sheet`—plus one opener, `open_tool_stage`. Call it with
+`find_text`, `sheet_context`, `get_sheet_vectors`, `view_sheet`—plus one opener, `open_tool_stage`. Call it with
 `"measure"`, `"revise"`, or `"handoff"` and that group's tools enable and fire
 `tools/list_changed`. Opening is instant, idempotent, and never closes anything: the surface only
 grows, and the reply names exactly which tools just appeared.
@@ -187,14 +205,14 @@ The stages are the same phase structure the instructions already describe in pro
 | Stage | Tools | Opened when |
 |---|---|---|
 | `setup` (always on) | load, scale, read the set, look at it | — |
-| `measure` | `one_click`, `detect_rooms`, `measure_*`, `cut_out`, `place_count`, the sweeps, the derives | you're about to commit a shape |
-| `revise` | `list_shapes`, `edit_*`, `duplicate_condition`, `split_condition`, `delete_shape`, `undo_last`, the annotation and verdict family | you're auditing or correcting |
+| `measure` | `propose_takeoff`, `one_click`, `detect_rooms`, `measure_*`, `cut_out`, `place_count`, the sweeps, the derives | you're about to commit a shape |
+| `revise` | `list_shapes`, `edit_*`, `revise_proposal`, `withdraw_proposal`, `propose_condition_edit`, `withdraw_condition_edit`, `scope_duplicates`, `scope_merge`, `duplicate_condition`, `split_condition`, `delete_shape`, `undo_last`, the annotation and verdict family | you're auditing or correcting |
 | `handoff` | `takeoff_summary`, `export_*`, `import_takeoff`, `apply_rules` | you're finishing |
 
 **When to turn it on:** your client honors `tools/list_changed` (Claude Code, Claude Desktop,
 anything built against the current spec) *and* you care about the context cost of the tool list.
 **When to leave it off:** a client that reads the tool list once at startup—there, a staged
-server looks like a server with 11 tools that refuses everything else.
+server exposes only the setup tools and `open_tool_stage` until its tool list is refreshed.
 
 Staging is context economy, not a permission boundary. Nothing is safer when a stage is closed;
 the safety lives in the refusals, the scale gate, and the pencil-vs-ink split, all of which hold
@@ -259,7 +277,7 @@ next."*
 | a ring not fully inside the parent (`cut_out`) | an edge-crossing cut is a boundary correction, not a hole | fix the parent with `edit_shape` instead |
 | `measure_surface` refuses with no height | wall SF = traced LF × the condition's height | `edit_condition { height_ft }`, then retrace |
 | an export refuses a path | OpenTakeoff didn't write that file, and overwriting it would destroy someone's work | pass `overwrite: true`, or pick another path |
-| a `sweep_schedule_row` key that won't anchor | a fingerprint is never guessed from text alone | anchor it yourself: `find_text` the tag, `view_sheet` the marker, count by hand |
+| a `sweep_schedule_row` key that won't anchor | a fingerprint is never guessed from text alone; a device drawn to its own size and tagged by a leader is counted BY LABEL instead (`anchor: null`, `counted_by: "label"`), and a key that appears only in notes refuses with that reason | read `label_only` and `view_sheet` each placement before pricing it; for a refused key, `find_text` the tag, `view_sheet` the marker, count by hand |
 
 ## 9. Where to look next
 
@@ -271,6 +289,46 @@ next."*
   to: proposals, the Accept pill, and how an estimator confirms your scale.
 - [`docs/SHEET-GRAPH-EVAL.md`](SHEET-GRAPH-EVAL.md)—what the plan-set reader scores on real
   bid sets, and what it still cannot read.
-- [**OpenTakeoff Academy**](https://aec.kentucky-ai.com)—an open benchmark for agents that do
-  takeoff. Bring any model and your own harness; you're scored on operating a real tool against
+- [**OpenTakeoff Academy at Commonwealth Agent Union**](https://union.kentucky-ai.com)—the
+  union’s evaluation and certification arm for agents that do takeoff. Bring any model and your own harness; you're scored on operating a real tool against
   geometry you don't control.
+
+## Calibration and review correctness (0.9.72)
+
+`set_scale` recomputes existing dimensional quantities from geometry, including holes and cutout restore snapshots. Changing an existing calibration records one `undo_last` step that restores the scale, its confirmation/source, and the prior quantities together. Initial calibration of an unmeasured sheet adds no undo step. Counts retain their stored values. A sheet containing human-reviewed dimensional measurements refuses recalibration over MCP, consistent with the existing reviewed-shape edit rules; recalibrate it in the canvas and import the updated takeoff into a fresh session.
+
+`import_takeoff` refuses new dimensional shapes when their source calibration differs from the session's calibration, or is missing while the session has one. The error names the sheet and scales; no session state changes. Align calibrations and re-export, or load a fresh session to adopt the export's calibration. Counts and duplicate IDs are exempt. An existing calibration is preserved even in an untraced session.
+
+New agent measurements, including `measure_polygon` and `measure_line`, explicitly carry `origin.reviewed: false`. Legacy agent records without the flag are normalized on import and browser reload. Explicit prior human approval is preserved. No new review gate is introduced.
+
+On the browser agent surface, `one_click` returns retained interior voids as `verts_norm_holes`. Pass those rings unchanged alongside `verts_norm` to `propose_shapes`; preview and acceptance use the full geometry for area and perimeter.
+
+## Geometry accuracy in practice
+
+Follow [Geometry from source to review](GEOMETRY_WORKFLOW.md) when tracing a real plan. It explains which geometry to commit, how to verify the overlay, and how to make deductions visible to the estimator. The ring is what fails, not the total: put every vertex on the innermost wall-face stroke from `get_sheet_vectors`, cross doors on the wall centerline, wrap columns and stubs, never follow hatch or a door leaf, and look at a tight `view_sheet` overlay crop of each ring before the next one. The rule set is packaged at `takeoff://wiki/workflows`.
+
+## Geometry review cleanup
+
+Use the [generated tool index](MCP_TOOL_INDEX.md) for the
+<!--tool-count-->58<!--/tool-count--> default tools, their stages and required arguments.
+The [geometry workflow](GEOMETRY_WORKFLOW.md) is the source-to-handoff route.
+
+- Shorten a note with `list_annotations` then `edit_annotation`; empty text clears
+  it and `undo_last` restores it. An RFI-linked note requires review in the browser
+  register. Text edits never create approval or change measured geometry.
+- A positive overlap below 0.01 SF remains flagged with a note; machine-precision
+  residue alone does not request a geometry correction. Inspect meaningful
+  overlaps, and use material coverage rows for supporting materials.
+- Locate base and wall openings with explicit runs and `cut_out`. Numeric
+  `derive_base` allowances have no opening locations; clipping such a derived
+  perimeter refuses. Trace the installed runs with `measure_line` instead.
+
+## Packaged knowledge
+
+Start with `takeoff://wiki` when you need orientation, then read only the page
+for the current task. The [same index](wiki/README.md) is readable on GitHub.
+`takeoff://wiki/mcp` routes tool selection and coordinates;
+`takeoff://wiki/workflows` covers measurement and human stitching;
+`takeoff://wiki/protocol` states record and authority boundaries.
+Resources remain available before loading a plan and while tool stages are
+closed. They do not measure, change state or create approval.

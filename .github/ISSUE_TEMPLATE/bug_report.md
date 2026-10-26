@@ -24,3 +24,8 @@ Measured value vs. expected value, the sheet's scale, and whether waste/multipli
 
 **Screenshots**
 A screenshot of the canvas (and the Report, for quantity bugs) helps a lot. Your plans never leave your machine — crop anything sensitive.
+
+**Planning to work on this issue?**
+Before starting or requesting assignment, read [CLA.md](https://github.com/Kentucky-ai/opentakeoff/blob/main/CLA.md)
+and post its agreement text yourself, or link your earlier agreement comment.
+Reporting or discussing this issue does not require signing.

@@ -130,3 +130,24 @@ test("export_dxf refusals: no plan, no scale, ambiguous sheet, unknown sheet, a 
   await callOk(client, "export_dxf", { path: out, overwrite: true });
   await assertWritable(out, "dxf");   // now recognized as ours: no throw
 });
+
+test("recalibrated void geometry agrees with report and DXF, and scale undo validates on the wire", async () => {
+  const session = new Session();
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  const server = buildServer(session); await server.connect(st);
+  const client = new Client({ name: "phase1-dxf", version: "0" }); await client.connect(ct);
+  try {
+    await callOk(client, "load_plan", { path: PLAN });
+    await callOk(client, "set_scale", { sheet: KEY, upp: 1 / 36 });
+    const poly = await callOk(client, "measure_polygon", { sheet: KEY, verts: [[0,0],[720,0],[720,720],[0,720]], condition: "TILE-1" });
+    await callOk(client, "cut_out", { parent_shape_id: poly.shape_id, verts: [[180,180],[540,180],[540,540],[180,540]] });
+    await callOk(client, "set_scale", { sheet: KEY, upp: 1 / 18 });
+    const cad = entities(session.exportDxf(KEY).build.dxf).filter((e) => e.type === "LWPOLYLINE");
+    const area = cad.reduce((n, e) => n + (e.layer.endsWith("-HOLE") ? -1 : 1) * shoelace(e.pts), 0);
+    assert.equal(area, 1200);
+    assert.equal((session.exportReport() as any).totals.total_sf, area);
+    const undo = await callOk(client, "undo_last", {});
+    assert.equal(undo.steps[0].op, "scale");
+    assert.equal(session.summary().totals.total_sf, 300);
+  } finally { await client.close(); await server.close(); }
+});

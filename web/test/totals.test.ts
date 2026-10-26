@@ -245,6 +245,17 @@ test("reportJson: no custom columns → condition_columns: [] and row columns: [
   assert.deepEqual(j.conditions[0].columns, []);
 });
 
+test("reportJson: an imported spec (incl. spec.remarks) never reaches the v1 JSON", () => {
+  // spec is report/CSV/XLSX column metadata only (ctx.specByCond) — the
+  // conditionTotals rows the JSON spreads never carry it
+  const plain = [{ id: "a", finish_tag: "A" }];
+  const specd = [{ id: "a", finish_tag: "A", spec: { manufacturer: "Vendor A", remarks: "SEE NOTE 4" } }];
+  const shapes = [area("a", 10)];
+  const j = reportJson({ rows: conditionTotals(specd, shapes) });
+  assert.deepEqual(j, reportJson({ rows: conditionTotals(plain, shapes) }));
+  assert.ok(!JSON.stringify(j).includes("SEE NOTE 4"));
+});
+
 test("reportJson: explicit null / corrupted non-array/non-Map inputs must not throw the export", () => {
   // destructuring defaults don't apply to null, and both values can trace
   // back to a corrupted payload — the export coerces instead of crashing

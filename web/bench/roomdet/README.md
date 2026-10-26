@@ -1,7 +1,6 @@
 # Room-detection harnesses
 
-Scoring and PROOF-image tools for the room-detection program. See
-`docs/ROOM-DETECTION-HANDOFF.md` for what this is and the acceptance bar.
+Scoring and PROOF-image tools for the room-detection program.
 
 They read the owner's hand takeoffs from `~/Desktop/OT-Corpus/all-goldens.json`
 and the plan PDFs from the same folder. **Those files are real client plans and

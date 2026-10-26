@@ -1,0 +1,57 @@
+.workspace-panel { width: calc(var(--props-w) + var(--sp-8) * 3); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; color: var(--ink); background: var(--paper-bright); border-left: var(--rule-soft); font-size: var(--fs-m); }
+.workspace-panel[hidden] { display: none; }
+.workspace-panel button, .workspace-panel input { font: inherit; color: inherit; }
+.workspace-panel button { cursor: pointer; border: var(--rule-soft); background: transparent; min-height: var(--ctl-m); padding: var(--sp-1) var(--sp-2); }
+.workspace-panel button:focus-visible, .workspace-panel input:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.workspace-panel button:hover { background: var(--tint-08); }
+.workspace-heading { display: flex; justify-content: space-between; align-items: center; padding: var(--sp-4); border-bottom: var(--rule-soft); }
+.workspace-heading h2 { margin: var(--sp-1) 0 0; font: 600 var(--fs-xl) var(--f-display); }
+.workspace-eyebrow { font: var(--fs-xs) var(--f-mono); color: var(--ink-secondary); }
+.workspace-summary { display: flex; gap: var(--sp-4); padding: var(--sp-4); background: var(--tint-08); }
+.workspace-summary > div { flex: 1; }
+.workspace-summary strong { display: block; font: 600 var(--fs-2xl) var(--f-mono); }
+.workspace-summary span { display: block; margin-top: var(--sp-1); font-size: var(--fs-xs); color: var(--ink-secondary); }
+.workspace-tabs { display: flex; padding: 0 var(--sp-4); border-bottom: var(--rule-soft); }
+.workspace-tabs button { flex: 1; border: 0; border-bottom: 2px solid transparent; min-height: var(--ctl-l); }
+.workspace-tabs button[aria-selected=true] { border-bottom-color: var(--cobalt); color: var(--cobalt); font-weight: 600; }
+.workspace-work-view, .workspace-agent-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.workspace-panel [hidden] { display: none; }
+.workspace-filters { padding: var(--sp-3) var(--sp-4); border-bottom: var(--rule-soft); }
+.workspace-search span { display: block; font-size: var(--fs-s); margin-bottom: var(--sp-1); }
+.workspace-search input { box-sizing: border-box; width: 100%; min-height: var(--ctl-l); padding: var(--sp-2); background: var(--surface-pop); border: var(--rule-soft); font-size: var(--fs-s); }
+.workspace-filter-buttons { display: flex; gap: var(--sp-1); margin-top: var(--sp-2); }
+.workspace-filter-buttons button { font-size: var(--fs-xs); }
+.workspace-filter-buttons button[aria-pressed=true] { color: var(--cobalt); border-color: var(--cobalt); background: var(--tint-08); }
+.workspace-list { flex: 1; min-height: var(--ctl-l); overflow-y: auto; overscroll-behavior: contain; }
+.workspace-panel .workspace-row { display: block; width: 100%; text-align: left; padding: var(--sp-3) var(--sp-4); border: 0; border-bottom: var(--rule-soft); }
+.workspace-row[aria-pressed=true] { background: var(--tint-select); box-shadow: inset 3px 0 var(--cobalt); }
+.workspace-row-top, .workspace-row-bottom, .workspace-inspector-title, .workspace-footer { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-2); }
+.workspace-row-top strong, .workspace-sheet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-quantity { font: 500 var(--fs-s) var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.workspace-sheet { display: block; color: var(--ink-secondary); font-size: var(--fs-xs); margin: var(--sp-1) 0 var(--sp-2); }
+.workspace-row-bottom { font-size: var(--fs-xs); color: var(--ink-secondary); }
+.workspace-pending { color: var(--cobalt); }
+.workspace-empty { padding: var(--sp-6) var(--sp-4); line-height: 1.6; color: var(--ink-secondary); }
+.workspace-empty h3 { margin: 0; font-size: var(--fs-l); color: var(--ink); }
+.workspace-inspector { border-top: var(--rule); padding: var(--sp-3) var(--sp-4); max-height: 45%; overflow: auto; }
+.workspace-inspector h3 { font-size: var(--fs-m); margin: 0; }
+.workspace-inspector dl { margin: var(--sp-3) 0; font-size: var(--fs-s); }
+.workspace-inspector dl > div { display: grid; grid-template-columns: 1fr 2fr; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.workspace-inspector dt { color: var(--ink-secondary); }
+.workspace-inspector dd { margin: 0; overflow-wrap: anywhere; }
+.workspace-receipt-note { font-size: var(--fs-xs); color: var(--ink-secondary); line-height: 1.5; }
+.workspace-inspector-actions { display: flex; gap: var(--sp-2); }
+.workspace-panel .workspace-primary { background: var(--cobalt); color: var(--accent-contrast); border-color: var(--cobalt); }
+.workspace-footer { border-top: var(--rule-soft); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-xs); }
+.workspace-footer span { color: var(--ink-secondary); }
+.workspace-panel .workspace-more { width: 100%; }
+@media (max-width: 1100px) { .workspace-panel { position: absolute; inset: 0 0 0 auto; width: min(100%, calc(var(--props-w) + var(--sp-8) * 3)); box-shadow: var(--shadow-2); } }
+@media (max-width: 640px) { .workspace-panel { position: fixed; inset: 0 0 var(--status-h); width: auto; border-left: 0; } }
+
+/* Scale shares the pinned controls so the scrolling tool strip cannot clip it.
+   On narrow windows those controls get their own wrapping row. */
+@media (max-width: 800px) {
+  [data-topbar] { flex-wrap: wrap; }
+  [data-topbar] [data-topbar-scroll] { flex-basis: 100% !important; }
+  [data-topbar-pinned] { flex-wrap: wrap; width: 100%; row-gap: var(--sp-4) !important; }
+}

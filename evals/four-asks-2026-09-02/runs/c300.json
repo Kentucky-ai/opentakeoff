@@ -1,0 +1,246 @@
+[
+ {
+  "tool": "load_plan",
+  "args": {
+   "path": "sheets/va-shreveport-fisher-house-site-utility-C300.pdf"
+  }
+ },
+ {
+  "tool": "sheet_info",
+  "args": {
+   "sheet": "C-300"
+  }
+ },
+ {
+  "tool": "set_scale",
+  "args": {
+   "sheet": "C-300",
+   "use_detected": true
+  },
+  "note": "ask 2"
+ },
+ {
+  "tool": "count_marks",
+  "args": {},
+  "note": "ask 4: schedule-driven census (expect refusal, no schedule)"
+ },
+ {
+  "tool": "symbol_sweep",
+  "args": {
+   "sheet": "C-300",
+   "seed_rect": [
+    [
+     1030,
+     1970
+    ],
+    [
+     1090,
+     2022
+    ]
+   ],
+   "condition": "FH",
+   "commit": true,
+   "commit_seed": true,
+   "variant_guard": true
+  },
+  "note": "ask 4: fire hydrant assembly"
+ },
+ {
+  "tool": "symbol_sweep",
+  "args": {
+   "sheet": "C-300",
+   "seed_rect": [
+    [
+     1089,
+     1946
+    ],
+    [
+     1103,
+     1961
+    ]
+   ],
+   "condition": "VALVE",
+   "commit": true,
+   "commit_seed": true
+  },
+  "note": "ask 4: valve (bowtie) seeded from the 2in water valve"
+ },
+ {
+  "tool": "symbol_sweep",
+  "args": {
+   "sheet": "C-300",
+   "seed_rect": [
+    [
+     2104,
+     3175
+    ],
+    [
+     2122,
+     3192
+    ]
+   ],
+   "condition": "SSMH",
+   "commit": true,
+   "commit_seed": true,
+   "variant_guard": true
+  },
+  "note": "ask 4: sewer manhole"
+ },
+ {
+  "tool": "symbol_sweep",
+  "args": {
+   "sheet": "C-300",
+   "seed_rect": [
+    [
+     1459,
+     3012
+    ],
+    [
+     1471,
+     3024
+    ]
+   ],
+   "condition": "CO",
+   "commit": true,
+   "commit_seed": true,
+   "variant_guard": true,
+   "rotations": false,
+   "mirror": false,
+   "tolerance_px": 1
+  },
+  "note": "ask 4: sewer cleanout (pass 2: variant_guard, orientation pinned, tol 1 \u2014 pass 1 swept 104 false matches)"
+ },
+ {
+  "tool": "symbol_sweep",
+  "args": {
+   "sheet": "C-300",
+   "seed_rect": [
+    [
+     2599,
+     3275
+    ],
+    [
+     2639,
+     3308
+    ]
+   ],
+   "condition": "CB",
+   "commit": true,
+   "commit_seed": true,
+   "variant_guard": true
+  },
+  "note": "ask 4: catch basin"
+ },
+ {
+  "tool": "measure_line",
+  "args": {
+   "sheet": "C-300",
+   "pts": [
+    [
+     2113,
+     3183
+    ],
+    [
+     4993,
+     3183
+    ]
+   ],
+   "condition": "SS-8IN"
+  },
+  "note": "ask 4 linear: 8in sewer, printed 400 ft"
+ },
+ {
+  "tool": "measure_line",
+  "args": {
+   "sheet": "C-300",
+   "pts": [
+    [
+     1465,
+     3018
+    ],
+    [
+     1667,
+     3184
+    ],
+    [
+     2113,
+     3183
+    ]
+   ],
+   "condition": "SS-6IN-SERV"
+  },
+  "note": "ask 4 linear: 6in service, printed 100 ft"
+ },
+ {
+  "tool": "view_sheet",
+  "args": {
+   "sheet": "C-300",
+   "region": {
+    "x0": 800,
+    "y0": 1550,
+    "x1": 1800,
+    "y1": 2350
+   },
+   "px": 2000,
+   "overlay": true
+  },
+  "save": "hydrant-overlay"
+ },
+ {
+  "tool": "view_sheet",
+  "args": {
+   "sheet": "C-300",
+   "region": {
+    "x0": 900,
+    "y0": 2700,
+    "x1": 3300,
+    "y1": 3650
+   },
+   "px": 2000,
+   "overlay": true
+  },
+  "save": "south-overlay"
+ },
+ {
+  "tool": "view_sheet",
+  "args": {
+   "sheet": "C-300",
+   "region": {
+    "x0": 1800,
+    "y0": 200,
+    "x1": 3000,
+    "y1": 1000
+   },
+   "px": 2000,
+   "overlay": true
+  },
+  "save": "north-overlay"
+ },
+ {
+  "tool": "view_sheet",
+  "args": {
+   "sheet": "C-300",
+   "px": 2000,
+   "overlay": true
+  },
+  "save": "full-overlay"
+ },
+ {
+  "tool": "takeoff_summary",
+  "args": {}
+ },
+ {
+  "tool": "export_report",
+  "args": {
+   "path": "out/c300-report.json",
+   "project_name": "VA Shreveport Fisher House C-300 benchmark"
+  }
+ },
+ {
+  "tool": "export_marked_pdf",
+  "args": {
+   "path": "out/c300-marked-set.pdf",
+   "project_name": "VA Shreveport Fisher House C-300 benchmark"
+  }
+ }
+]

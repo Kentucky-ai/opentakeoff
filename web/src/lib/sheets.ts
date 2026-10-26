@@ -1,11 +1,30 @@
 // Shared sheet/plan-text helpers for the Takeoff Canvas and the Sheet Gallery:
 // sheet-key codec, standard scales, title-block sheet numbers, drawn-scale notes.
 import * as pdfjsLib from "pdfjs-dist";
-import type { Token } from "./scheduleParse";
+import type { Token } from "./scheduleRows";
+import { parseSheetKey } from "./sheetKey";
+import { isStitchKey } from "./stitches";
 export { parseSheetKey, compareSheetKeys } from "./sheetKey"; // moved to a pdfjs-free module; re-exported for existing importers
 export type { ParsedSheetKey } from "./sheetKey";
 
-export const RENDER_SCALE = 2.0;
+import { RENDER_SCALE } from "./takeoffConstants.ts";
+export { RENDER_SCALE }; // owned by takeoffConstants; re-exported for existing importers
+
+// Pure fallback branch of the canvas `sheetBaseLabel` closure (TakeoffCanvas.jsx
+// `sheetBaseLabel`, ~:1001) — just the file/page math, none of the runtime-state
+// overrides (`galleryLabels`, `pageLabels`) that closure also honors.
+// The source caption's PRIMARY label is now the frozen `src_label` stamped on each
+// capture at creation time (screen and PDF read that same stored string). This
+// helper is the DEFENSIVE fallback markedset uses only for a legacy capture that
+// predates `src_label`. It returns "" for a stitch key (whose real name lives in
+// canvas-only `stitchById` state); `sourceCaption("", …)` then renders nothing, so
+// a legacy stitch source degrades to no caption rather than to garbage.
+export function sheetBaseLabelFromKey(key: string): string {
+  if (typeof key !== "string" || !key || isStitchKey(key)) return "";
+  const t = parseSheetKey(key);
+  const base = t.file.replace(/\.pdf$/i, "");
+  return t.page > 1 ? `${base}-${t.page}` : base;
+}
 
 /** Side-by-side panel cap — shared by the canvas group logic and the gallery's
  * open-side-by-side gate so the two can never disagree. Hi-res sheets render at
@@ -184,18 +203,27 @@ function _findScales(canon: string): ScaleWithKeys[] {
 // → {upp, label, multi} or null. Title-block region is authoritative; a single
 // page-wide note is accepted; several distinct scales with no title-block note
 // is ambiguous (details are often drawn larger) → suggest nothing.
+// Two reads of the same items (#375): per-item canon joined with "|" first, so a
+// neighbouring run that ends in a digit (a schedule cell "PT-1" before the note)
+// can never fuse into "11/8\"" and trip the boundary guard; then the old
+// whitespace-stripped concatenation as the fallback, which is what still catches a
+// note the exporter split across runs ("1/8\"" then "= 1'-0\"").
+function _scaleHits(parts: string[]): ScaleWithKeys[] {
+  const joined = _findScales(parts.map(_canonScaleText).filter(Boolean).join("|"));
+  return joined.length ? joined : _findScales(_canonScaleText(parts.join(" ")));
+}
 export function detectScale(textContent: TextContentLike, viewport: Viewport): DetectedScale | null {
   const W = viewport.width, H = viewport.height;
-  let all = "", tb = "";
+  const all: string[] = [], tb: string[] = [];
   for (const it of textContent.items || []) {
     const str = it.str || "";
     if (!str.trim()) continue;
-    all += str + " ";
+    all.push(str);
     const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
-    if (t[4] > W * 0.55 && t[5] > H * 0.5) tb += str + " ";
+    if (t[4] > W * 0.55 && t[5] > H * 0.5) tb.push(str);
   }
-  const tbHits = _findScales(_canonScaleText(tb));
-  const allHits = _findScales(_canonScaleText(all));
+  const tbHits = _scaleHits(tb);
+  const allHits = _scaleHits(all);
   if (tbHits.length) return { upp: tbHits[0].upp, label: tbHits[0].label, multi: allHits.length > 1 };
   if (allHits.length === 1) return { upp: allHits[0].upp, label: allHits[0].label, multi: false };
   return null;
@@ -239,27 +267,48 @@ export function extractDimTexts(textContent: TextContentLike, viewport: Viewport
   return out;
 }
 
-// ── marquee → tokens: the text-layer half of "Import from schedule" ──────────
+// ── marquee → tokens: a text-layer region as positioned tokens ───────────────
 // Turn the page text layer into positioned tokens inside a viewport-px rect (the
 // box the estimator dragged around the schedule). x is the glyph's left edge, y
-// grows downward, h is the cap height — exactly what parseSchedule() clusters on.
+// grows downward, h is the cap height (parseSchedule's legacy token entry reads these).
 // A vector plan needs no OCR: this IS the extraction. Returns [] for a raster
 // page (no text items in the box) so the caller can fall back to the OCR path.
+// ang: the baseline direction in degrees [0,360), clockwise on screen (0
+// reads left→right); w: the run's length in px along it. opts.boxIntersects
+// (Copy text) keeps a run whose glyph box meets the rect, not only one whose
+// baseline start is inside (the schedule contract), so a line whose baseline
+// sits a hair below the box still copies.
 export function extractRegionText(
   textContent: TextContentLike,
   viewport: Viewport,
   rect: { x0: number; y0: number; x1: number; y1: number },
+  opts?: { boxIntersects?: boolean },
 ): Token[] {
   const x0 = Math.min(rect.x0, rect.x1), x1 = Math.max(rect.x0, rect.x1);
   const y0 = Math.min(rect.y0, rect.y1), y1 = Math.max(rect.y0, rect.y1);
+  const vs = Math.hypot(viewport.transform[0], viewport.transform[1]) || 1;
   const out: Token[] = [];
   for (const it of textContent.items || []) {
     const str = it.str || "";
     if (!str.trim()) continue;
     const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
-    const x = t[4], y = t[5], h = Math.hypot(t[2], t[3]) || it.height || 0;
-    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-    out.push({ str, x, y, h });
+    // h and w in px: extractTextMarks' conversion
+    const x = t[4], y = t[5], h = Math.hypot(t[2], t[3]) || (it.height || 0) * vs;
+    // a run with no reported width gets no w, so readers fall back to an
+    // estimate rather than trusting a zero
+    const w = it.width && it.width > 0 ? it.width * vs : undefined;
+    const rad = Math.atan2(t[1], t[0]);
+    const ang = ((rad * 180 / Math.PI % 360) + 360) % 360;
+    if (opts?.boxIntersects) {
+      // corners: baseline start, + w along the run, + h toward the glyph tops
+      // (the run's direction turned 90° counter-clockwise on screen)
+      const dx = Math.cos(rad), dy = Math.sin(rad), ux = dy * h, uy = -dx * h;
+      const len = w ?? str.length * 0.6 * h;   // no reported width: textlines' 0.6·h a character
+      const xs = [x, x + dx * len, x + ux, x + dx * len + ux];
+      const ys = [y, y + dy * len, y + uy, y + dy * len + uy];
+      if (Math.max(...xs) < x0 || Math.min(...xs) > x1 || Math.max(...ys) < y0 || Math.min(...ys) > y1) continue;
+    } else if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+    out.push(w === undefined ? { str, x, y, h, ang } : { str, x, y, h, w, ang });
   }
   return out;
 }

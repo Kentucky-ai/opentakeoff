@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Use GitHub's **[private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)**—Security tab → Report a vulnerability. It is enabled on this repo, it keeps the report private until there's a fix, and it gets a real answer. Don't open a public issue for something you believe is exploitable.
+Use GitHub's **[private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)**—Security tab → Report a vulnerability. It is enabled on this repo, it keeps the report private until there's a fix, and it gets a real answer. Don't open a public issue for something you believe is exploitable. If you can't use the GitHub form, email [research@kentucky-ai.com](mailto:research@kentucky-ai.com) with the same detail.
 
 Expect a first response within about a week. If a report is valid we'll agree on a disclosure date with you and credit you in the advisory unless you'd rather not be named.
 
@@ -18,7 +18,7 @@ Most of the reports this project receives are about caller-supplied file paths. 
 
 ## In scope
 
-- Anything crossing a real boundary: the Netlify functions in `web/netlify/functions/`, token or audience validation, secrets reachable from a build or a published artifact.
+- Anything crossing a real boundary: token or audience validation, secrets reachable from a build or a published artifact.
 - Remote input controlling local execution—a crafted PDF or takeoff file that achieves code execution, prototype pollution, or XSS in the browser app.
 - Path handling where the path comes from **file content or a remote response** rather than from the caller. A sheet name or schedule cell that reaches a filesystem sink is a real finding; a `path` argument is not.
 - Dependency vulnerabilities **with a reachable path through this code.** Say which of our call sites reaches it. We patch unreachable ones as hygiene, but the reachability argument is what makes it a report rather than a Dependabot alert we already have.

@@ -5,7 +5,7 @@
 //   - stampEdit: pure (never mutates its input); every shape gets updated_at;
 //     a machine-origin shape gets origin.edited + a per-kind origin.edits
 //     bump, and the FIRST edit freezes origin.proposed_verts_norm from the
-//     PRE-edit verts_norm as a deep copy; manual/no-origin shapes get
+//     PRE-edit verts_norm as a deep copy; human manual/no-origin shapes get
 //     updated_at and nothing else.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -130,4 +130,31 @@ test("stampEdit: no declared author ⇒ no updated_by — payloads byte-identica
   setAuthorName("");
   const out = stampEdit(machineShape(), "vertex");
   assert.equal("updated_by" in out, false);
+});
+
+for (const method of ["manual", undefined]) {
+  test(`stampEdit: explicit agent actor preserves its original even with method ${method}`, () => {
+    const s = { ...machineShape(), origin: {
+      ...(method ? { method } : {}), actor: "agent", reviewed: false,
+      agent_edits: 2, proposal_id: "proposal-1", evidence: { matched_text: "101" },
+    } };
+    const before = structuredClone(s);
+    const first = stampEdit(s, "vertex");
+    assert.deepEqual(first.origin.proposed_verts_norm, before.verts_norm);
+    assert.notEqual(first.origin.proposed_verts_norm, s.verts_norm);
+    assert.notEqual(first.origin.proposed_verts_norm[0], s.verts_norm[0]);
+    assert.deepEqual(s, before);
+    const second = stampEdit({ ...first, verts_norm: [[0.2, 0.2], [0.6, 0.2], [0.6, 0.5]] }, "move");
+    assert.deepEqual(second.origin, { ...before.origin, edited: true,
+      edits: { vertex: 1, move: 1 }, proposed_verts_norm: before.verts_norm });
+    assert.deepEqual(second.computed, before.computed);
+  });
+}
+
+test("stampEdit: human manual actor and unclassified missing method remain timestamp-only", () => {
+  for (const origin of [{ method: "manual", actor: "human" }, { actor: "unknown" }]) {
+    const out = stampEdit({ ...machineShape(), origin }, "vertex");
+    assert.deepEqual(out.origin, origin);
+    assert.match(out.updated_at, ISO);
+  }
 });

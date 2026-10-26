@@ -12,11 +12,13 @@
 //     now would cancel the trace's pending save via the autosave effect's clearTimeout)
 //   - dragging: a shape/vertex/markup move OR a One-Click proposal-edit drag is live
 //   - editing: the inline on-canvas text editor is open (unsaved keystrokes)
-//   - scanning: a paid OCR read is in flight
 //   - agentRunning: the agent tool-use loop is mid-run (a re-hydrate would wipe
 //     conditions it minted and orphan the proposals it's still staging)
 //   - agentProposals: dashed agent proposals await accept/reject — the agent's
 //     analog of One-Click's `proposal` review gate, deferred for the same reason
+//   - importReading: Import from schedule is reading a box on-device (its status
+//     line or the download notice is up). A hydrate that re-renders the sheet
+//     would cancel the read; an untouched notice defers sync like `proposal`
 export interface CanvasBusyState {
   poly?: unknown[];
   calib?: unknown[];
@@ -27,9 +29,9 @@ export interface CanvasBusyState {
   saveState?: string;
   dragging?: boolean;
   editing?: boolean;
-  scanning?: boolean;
   agentRunning?: boolean;
   agentProposals?: unknown[];
+  importReading?: boolean;
 }
 
 export function isCanvasBusy(s: CanvasBusyState): boolean {
@@ -43,8 +45,8 @@ export function isCanvasBusy(s: CanvasBusyState): boolean {
     s.saveState === "saving" ||
     !!s.dragging ||
     !!s.editing ||
-    !!s.scanning ||
     !!s.agentRunning ||
-    (s.agentProposals?.length ?? 0) > 0
+    (s.agentProposals?.length ?? 0) > 0 ||
+    !!s.importReading
   );
 }

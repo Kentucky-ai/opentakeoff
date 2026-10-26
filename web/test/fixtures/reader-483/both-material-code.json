@@ -1,0 +1,162 @@
+{
+  "name": "both-material-code",
+  "kind": "both",
+  "note": "MATERIAL | CODE | MANUFACTURER | COLOR with BRICK, CORK, SLATE",
+  "spans": [
+    {
+      "str": "MATERIAL",
+      "x": 100,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CODE",
+      "x": 300,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "BRICK",
+      "x": 100,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "BR-1",
+      "x": 300,
+      "y": 38,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-M",
+      "x": 520,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "RED 801",
+      "x": 1000,
+      "y": 38,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "CORK",
+      "x": 100,
+      "y": 76,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "CK-1",
+      "x": 300,
+      "y": 76,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-N",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "NATURAL 802",
+      "x": 1000,
+      "y": 76,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "SLATE",
+      "x": 100,
+      "y": 114,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "SL-1",
+      "x": 300,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-O",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 803",
+      "x": 1000,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CARPET",
+      "x": 100,
+      "y": 152,
+      "w": 48,
+      "h": 17
+    },
+    {
+      "str": "CPT-1",
+      "x": 300,
+      "y": 152,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 101",
+      "x": 1000,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    }
+  ],
+  "whole": {
+    "extractTable": null,
+    "finishRows": null,
+    "graphTables": [],
+    "graphNotes": [],
+    "resolve": {}
+  },
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [],
+      "refused": "no-table"
+    },
+    "parseSchedule": [],
+    "finishRows": null
+  }
+}

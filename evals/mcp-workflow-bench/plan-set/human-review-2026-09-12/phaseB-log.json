@@ -1,0 +1,25 @@
+[
+  {
+    "shot": "01-fresh-workspace.png",
+    "note": "A fresh browser profile: nothing in it yet.",
+    "status": ""
+  },
+  {
+    "shot": "02-archive-opened-gallery.png",
+    "note": "Opening the .otk on a clean machine: the plan, its scale and all six accepted shapes are back; the set's sheet gallery opens on top because the archive holds two sheets.",
+    "status": "Opened project.otk — 1 PDF, 6 takeoffs. Your previous takeoff was snapshotted — Revisions restores it."
+  },
+  {
+    "shot": "03-archive-reopened.png",
+    "note": "The .otk opened on a clean machine: plan, scale, conditions and every accepted shape restored, ink not pencil.",
+    "status": "Opened project.otk — 1 PDF, 6 takeoffs. Your previous takeoff was snapshotted — Revisions restores it."
+  },
+  {
+    "export_after_reopen": "takeoff.takeoff.json"
+  },
+  {
+    "shot": "04-reopened-export.png",
+    "note": "Takeoff JSON exported again from the reopened archive for a byte-level comparison.",
+    "status": "Exported takeoff.takeoff.json — 6 takeoffs, 10 conditions. The plan PDF isn't in it: to restore, open the same PDF, then Import takeoff."
+  }
+]

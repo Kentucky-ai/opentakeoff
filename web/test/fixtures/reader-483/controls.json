@@ -1,0 +1,393 @@
+{
+  "reads": {
+    "cell": {
+      "rows": [
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "BROADLOOM CARPET",
+          "manufacturer": "VENDOR-A",
+          "style": "LOOP 20",
+          "spec_color": "GREY 101",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "CPT-2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "MODULAR CARPET TILE",
+          "manufacturer": "VENDOR-A",
+          "style": "GRID 24",
+          "spec_color": "BLUE 202",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "LVT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "LUXURY VINYL TILE",
+          "manufacturer": "VENDOR-B",
+          "style": "PLANK 6",
+          "spec_color": "OAK 303",
+          "size": "6\" x 36\"",
+          "remarks": "ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "VCT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "VINYL COMPOSITION TILE",
+          "manufacturer": "VENDOR-C",
+          "style": "STANDARD",
+          "spec_color": "WHITE 404",
+          "size": "12\" x 12\"",
+          "remarks": "ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "SC-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "SEALED CONCRETE",
+          "manufacturer": "VENDOR-D",
+          "style": "CLEAR COAT",
+          "spec_color": "CLEAR",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-1",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RUBBER WALL BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "COVE",
+          "spec_color": "BLACK 505",
+          "size": "4\"",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-2",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RESILIENT BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "STRAIGHT",
+          "spec_color": "GREY 506",
+          "size": "6\"",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    },
+    "legacy": {
+      "rows": [
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "BROADLOOM CARPET",
+          "manufacturer": "VENDOR-A",
+          "style": "LOOP 20",
+          "spec_color": "GREY 101",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "CPT-2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "MODULAR CARPET TILE",
+          "manufacturer": "VENDOR-A",
+          "style": "GRID 24",
+          "spec_color": "BLUE 202",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "LVT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "LUXURY VINYL TILE",
+          "manufacturer": "VENDOR-B",
+          "style": "PLANK 6",
+          "spec_color": "OAK 303",
+          "size": "6\" x 36\"",
+          "remarks": "ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "VCT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "VINYL COMPOSITION TILE",
+          "manufacturer": "VENDOR-C",
+          "style": "STANDARD",
+          "spec_color": "WHITE 404",
+          "size": "12\" x 12\"",
+          "remarks": "ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "SC-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "SEALED CONCRETE",
+          "manufacturer": "VENDOR-D",
+          "style": "CLEAR COAT",
+          "spec_color": "CLEAR",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-1",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RUBBER WALL BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "COVE",
+          "spec_color": "BLACK 505",
+          "size": "4\"",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-2",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RESILIENT BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "STRAIGHT",
+          "spec_color": "GREY 506",
+          "size": "6\"",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    },
+    "words": {
+      "rows": [
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "BROADLOOM",
+          "manufacturer": "CARPET VENDOR-A",
+          "style": "LOOP",
+          "spec_color": "20 GREY",
+          "size": "101",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "CPT-2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "MODULAR",
+          "manufacturer": "CARPET TILE VENDOR-A",
+          "style": "GRID",
+          "spec_color": "24 BLUE",
+          "size": "202",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "LVT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "LUXURY",
+          "manufacturer": "VINYL TILE VENDOR-B",
+          "style": "PLANK",
+          "spec_color": "6 OAK",
+          "size": "303 6\"",
+          "remarks": "x 36\" ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "VCT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "VINYL",
+          "manufacturer": "COMPOSITION TILE VENDOR-C",
+          "style": "STANDARD",
+          "spec_color": "WHITE",
+          "size": "404 12\"",
+          "remarks": "x 12\" ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "SC-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "SEALED",
+          "manufacturer": "CONCRETE VENDOR-D",
+          "style": "CLEAR",
+          "spec_color": "COAT CLEAR",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "RUBBER",
+          "manufacturer": "WALL BASE VENDOR-B",
+          "style": "COVE",
+          "spec_color": "BLACK",
+          "size": "505 4\"",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "RESILIENT",
+          "manufacturer": "BASE VENDOR-B",
+          "style": "STRAIGHT",
+          "spec_color": "GREY",
+          "size": "506 6\"",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    },
+    "words-legacy": {
+      "rows": [
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "BROADLOOM CARPET",
+          "manufacturer": "VENDOR-A",
+          "style": "LOOP 20",
+          "spec_color": "GREY 101",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "CPT-2",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "MODULAR CARPET TILE",
+          "manufacturer": "VENDOR-A",
+          "style": "GRID 24",
+          "spec_color": "BLUE 202",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "LVT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "LUXURY VINYL TILE",
+          "manufacturer": "VENDOR-B",
+          "style": "PLANK 6",
+          "spec_color": "OAK 303",
+          "size": "6\" x 36\"",
+          "remarks": "ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "VCT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "VINYL COMPOSITION TILE",
+          "manufacturer": "VENDOR-C",
+          "style": "STANDARD",
+          "spec_color": "WHITE 404",
+          "size": "12\" x 12\"",
+          "remarks": "ADHESIVE: VENDOR-K",
+          "suggested": true
+        },
+        {
+          "finish_tag": "SC-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "SEALED CONCRETE",
+          "manufacturer": "VENDOR-D",
+          "style": "CLEAR COAT",
+          "spec_color": "CLEAR",
+          "size": "",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-1",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RUBBER WALL BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "COVE",
+          "spec_color": "BLACK 505",
+          "size": "4\"",
+          "remarks": "",
+          "suggested": true
+        },
+        {
+          "finish_tag": "RB-2",
+          "section": "",
+          "category": "base",
+          "category_source": "text",
+          "description": "RESILIENT BASE",
+          "manufacturer": "VENDOR-B",
+          "style": "STRAIGHT",
+          "spec_color": "GREY 506",
+          "size": "6\"",
+          "remarks": "",
+          "suggested": true
+        }
+      ]
+    }
+  },
+  "legacyKeys": [
+    "CPT-1",
+    "CPT-2",
+    "LVT-1",
+    "VCT-1",
+    "SC-1",
+    "RB-1",
+    "RB-2"
+  ]
+}

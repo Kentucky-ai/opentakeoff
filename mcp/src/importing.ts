@@ -12,7 +12,9 @@ import {
   mergeTakeoffImport as mergeJs,
 } from "../../web/src/lib/importTakeoff.js";
 import { UserError } from "./format.ts";
-import { sanitizeApprovals, type Session, type Shape, type Condition, type Markup } from "./session.ts";
+import { sanitizePricing, sanitizeEstimateSettings, priceValue } from "../../web/src/lib/estimate.js";
+import { sanitizeBidProposal } from "../../web/src/lib/bidProposal.js";
+import { sanitizeApprovals, type Session, type Shape, type Condition, type Markup, type Rfi, type TakeoffProposal, type ConditionEditProposal } from "./session.ts";
 import type { Rule } from "../../web/src/lib/rules.ts";
 
 // untyped canvas JS — typed facades state the contract at the boundary
@@ -42,7 +44,10 @@ export async function importTakeoff(session: Session, filePath: string) {
   }
 
   const prevShapeIds = new Set(session.shapes.map((s) => s.id));
-  const { payload, note } = mergeTakeoffImport(session.exportPayload(), imported, session.files);
+  const { payload, note } = (() => {
+    try { return mergeTakeoffImport(session.exportPayload(), imported, session.files); }
+    catch (e) { throw new UserError(e instanceof Error ? e.message : String(e)); }
+  })();
 
   session.conditions = (payload.conditions as Condition[]) ?? [];
   session.shapes = (payload.shapes as Shape[]) ?? [];
@@ -53,6 +58,21 @@ export async function importTakeoff(session: Session, filePath: string) {
   // hydrate runs (sanitizeApprovals) applies before anything lands, so one
   // corrupt record in a hand-edited file can't wedge the session.
   session.approvals = sanitizeApprovals(payload.approvals);
+  // RFIs (#364): transport, not minting — a panel-raised RFI arriving by file
+  // stays the estimator's (no origin), an agent-raised one stays pending
+  // (origin.reviewed false). The merge appended new ids and skipped known
+  // ones; this session's tombstones (never in the export) survive alongside,
+  // so a withdrawn number stays reserved across an import.
+  const tombstones = session.rfis.filter((r) => r.deleted === true);
+  const arrived = (Array.isArray(payload.rfis) ? payload.rfis as Rfi[] : []).filter((r) => r && typeof r === "object" && typeof r.id === "string");
+  session.rfis = [...tombstones, ...arrived];
+  // proposals (#365): transport, not minting — the merge appended the file's
+  // batches and pending condition diffs (ids re-pointed through the same
+  // tag-identity rule the conditions took); a proposal that arrives is
+  // history the estimator can still act on, never a new open batch here
+  // (the session's current proposal is untouched by an import).
+  session.proposals = (Array.isArray(payload.proposals) ? payload.proposals as TakeoffProposal[] : []).filter((p) => p && typeof p === "object" && typeof p.id === "string");
+  session.conditionEditProposals = (Array.isArray(payload.condition_edit_proposals) ? payload.condition_edit_proposals as ConditionEditProposal[] : []).filter((p) => p && typeof p === "object" && typeof p.id === "string");
   // scales: mergeTakeoffImport already applied "the session's calibration wins
   // per sheet" — adopt the merged rows onto sheets this document actually has
   for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: boolean }[]) ?? []) {
@@ -88,6 +108,30 @@ export async function importTakeoff(session: Session, filePath: string) {
     session.rules.push({ ...raw, applied_to: [...(raw.applied_to ?? [])], seed_condition_id: mapped ?? raw.seed_condition_id });
     knownRuleIds.add(raw.id);
     rulesImported++;
+  }
+
+  // estimate (lib/estimate.js): transport. A condition the merge joined onto
+  // this session's own keeps the session's knobs — but a session condition
+  // with no prices takes the file's, row prices by material name, so a priced
+  // canvas takeoff never loses its prices on the way in. The project records
+  // (markups, proposal text, client) arrive when the session has none.
+  for (const c of session.conditions) {
+    const src = importedConds.find((x) => tagKey(x.finish_tag) === tagKey(c.finish_tag));
+    if (!src || src === c) continue;
+    const priced = sanitizePricing(src.pricing);
+    if (!c.pricing && priced) c.pricing = priced as Condition["pricing"];
+    const srcPrices = new Map((Array.isArray(src.materials) ? src.materials : []).filter((m) => m && m.name && priceValue(m.price) !== null).map((m) => [String(m.name).trim().toLowerCase(), priceValue(m.price) as number]));
+    for (const m of c.materials ?? []) {
+      const v = m && m.name ? srcPrices.get(m.name.trim().toLowerCase()) : undefined;
+      if (m && m.price === undefined && v !== undefined) m.price = v;
+    }
+  }
+  const objOf = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null);
+  if (!session.estimateSettings && objOf(imported.estimate_settings)) session.estimateSettings = sanitizeEstimateSettings(imported.estimate_settings) as Record<string, unknown>;
+  if (!session.bidProposal && objOf(imported.bid_proposal)) session.bidProposal = sanitizeBidProposal(imported.bid_proposal) as Record<string, unknown>;
+  const client = objOf(imported.client_info);
+  if (!Object.keys(session.clientInfo).length && client) {
+    session.clientInfo = Object.fromEntries(Object.entries(client).filter(([, v]) => typeof v === "string" && v.trim())) as Record<string, string>;
   }
 
   // the imported SHAPES journal as one reversible gesture; adopted conditions,

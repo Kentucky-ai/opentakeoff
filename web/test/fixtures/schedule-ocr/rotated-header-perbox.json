@@ -1,0 +1,610 @@
+{
+ "about": [
+  "What the on-device reader returned for a synthetic finish schedule whose header row is rotated 90 degrees (#484): 10 rows, 8 columns, drawn at 200 DPI as an image-only 17 x 11 in page. Synthetic text, with the vendor names the generator used replaced (below).",
+  "Read at 216 DPI (rs 2) with ppu-paddle-ocr per-box recognition at batch 1 (the shipped engine), by the #484 diagnosis harness in headless Chromium. The rotated header row gave no detections at all.",
+  "Vendor names replaced (CONTRIBUTING.md: no brand names in sample data): every word with a letter or digit whose box centre is right of x = 864 (the ruling between the DESCRIPTION and MANUFACTURER cells), i.e. MANUFACTURER and every column right of it, reads \"REDACTED\"; boxes are unchanged. 43 words redacted; 0 word box(es) straddle x = 864.",
+  "Words are OcrWords in image px at rs (x left, y baseline). Read by test/scheduleRoute.test.ts and test/scheduleOcrRead.test.ts (the no-header-row hint)."
+ ],
+ "engine": "ppocrv5-mobile-en-1, recognition { strategy: per-box, recBatchSize: 1 }",
+ "rs": 2,
+ "rect": {
+  "x0": 124,
+  "y0": 111.2,
+  "x1": 2144,
+  "y1": 820
+ },
+ "words": [
+  {
+   "str": "FINISH SCHEDULE",
+   "x": 152.6,
+   "y": 157.2,
+   "w": 242.6,
+   "h": 13.4,
+   "confidence": 1
+  },
+  {
+   "str": "CPT-1",
+   "x": 156.8,
+   "y": 395.2,
+   "w": 40.2,
+   "h": 18.2,
+   "confidence": 0.953
+  },
+  {
+   "str": "CARPET TILE",
+   "x": 278.2,
+   "y": 393,
+   "w": 104.8,
+   "h": 13.8,
+   "confidence": 1
+  },
+  {
+   "str": "PROVIDE ATTIC STOCK",
+   "x": 578.4,
+   "y": 392,
+   "w": 188.4,
+   "h": 13,
+   "confidence": 0.992
+  },
+  {
+   "str": "REDACTED",
+   "x": 877.6,
+   "y": 393.2,
+   "w": 114.8,
+   "h": 14.8,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1157.8,
+   "y": 393.8,
+   "w": 107.2,
+   "h": 15.2,
+   "confidence": 0.965
+  },
+  {
+   "str": "REDACTED",
+   "x": 1397.8,
+   "y": 391.4,
+   "w": 229.8,
+   "h": 13,
+   "confidence": 0.965
+  },
+  {
+   "str": "REDACTED",
+   "x": 1697.2,
+   "y": 393.4,
+   "w": 61.2,
+   "h": 16.2,
+   "confidence": 0.977
+  },
+  {
+   "str": "LVT-1",
+   "x": 156.4,
+   "y": 439.4,
+   "w": 37.2,
+   "h": 19.6,
+   "confidence": 1
+  },
+  {
+   "str": "LUXURY VINYL TILE",
+   "x": 278.2,
+   "y": 436.4,
+   "w": 158.8,
+   "h": 13.8,
+   "confidence": 0.999
+  },
+  {
+   "str": "MONOLITHIC INSTALL",
+   "x": 577.6,
+   "y": 436.4,
+   "w": 177.6,
+   "h": 13.8,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 876.8,
+   "y": 436.4,
+   "w": 106.2,
+   "h": 13.8,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1157.6,
+   "y": 436.4,
+   "w": 108.8,
+   "h": 13.8,
+   "confidence": 0.972
+  },
+  {
+   "str": "REDACTED",
+   "x": 1397.6,
+   "y": 436.4,
+   "w": 110.2,
+   "h": 13.8,
+   "confidence": 0.998
+  },
+  {
+   "str": "REDACTED",
+   "x": 1695.2,
+   "y": 437.4,
+   "w": 53.2,
+   "h": 16.2,
+   "confidence": 0.952
+  },
+  {
+   "str": "REDACTED",
+   "x": 1838.4,
+   "y": 434.4,
+   "w": 204.4,
+   "h": 11.8,
+   "confidence": 0.98
+  },
+  {
+   "str": "RB-1",
+   "x": 155.4,
+   "y": 483.8,
+   "w": 33.4,
+   "h": 20,
+   "confidence": 0.945
+  },
+  {
+   "str": "RESILIENT BASE",
+   "x": 278.4,
+   "y": 479.4,
+   "w": 133.2,
+   "h": 13,
+   "confidence": 1
+  },
+  {
+   "str": "SEE PLANS",
+   "x": 578.4,
+   "y": 479.4,
+   "w": 88.4,
+   "h": 13,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 878,
+   "y": 479.2,
+   "w": 104,
+   "h": 13.4,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1158.2,
+   "y": 479,
+   "w": 177.6,
+   "h": 13.8,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1398.6,
+   "y": 479.2,
+   "w": 154.6,
+   "h": 13.4,
+   "confidence": 0.979
+  },
+  {
+   "str": "REDACTED",
+   "x": 1692.4,
+   "y": 484.4,
+   "w": 15.2,
+   "h": 21.8,
+   "confidence": 0.748
+  },
+  {
+   "str": "P-1",
+   "x": 155.2,
+   "y": 530,
+   "w": 21.2,
+   "h": 23,
+   "confidence": 0.982
+  },
+  {
+   "str": "PAINT",
+   "x": 276,
+   "y": 525.2,
+   "w": 43.4,
+   "h": 16.6,
+   "confidence": 1
+  },
+  {
+   "str": "INSTALL ASHLAR",
+   "x": 577.6,
+   "y": 523.8,
+   "w": 136.8,
+   "h": 13.8,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 878.2,
+   "y": 524.6,
+   "w": 162.8,
+   "h": 14.8,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1158.4,
+   "y": 524.4,
+   "w": 106.4,
+   "h": 15.2,
+   "confidence": 0.987
+  },
+  {
+   "str": "REDACTED",
+   "x": 1398.4,
+   "y": 522.6,
+   "w": 144.4,
+   "h": 13,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1837.6,
+   "y": 522,
+   "w": 210.8,
+   "h": 11.4,
+   "confidence": 1
+  },
+  {
+   "str": "ACT-1",
+   "x": 155.4,
+   "y": 572.6,
+   "w": 42.6,
+   "h": 20,
+   "confidence": 1
+  },
+  {
+   "str": "ACOUSTICAL CEILING TILE",
+   "x": 277.8,
+   "y": 566.4,
+   "w": 222.4,
+   "h": 11.8,
+   "confidence": 1
+  },
+  {
+   "str": "HEAT WELD SEAMS",
+   "x": 577.6,
+   "y": 565.2,
+   "w": 160.2,
+   "h": 11.4,
+   "confidence": 0.986
+  },
+  {
+   "str": "REDACTED",
+   "x": 878.4,
+   "y": 567.4,
+   "w": 113.2,
+   "h": 13,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1158.8,
+   "y": 568,
+   "w": 106.2,
+   "h": 14.8,
+   "confidence": 0.977
+  },
+  {
+   "str": "REDACTED",
+   "x": 1398.4,
+   "y": 570,
+   "w": 79.2,
+   "h": 16.2,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1693.6,
+   "y": 569.8,
+   "w": 41.6,
+   "h": 17,
+   "confidence": 0.834
+  },
+  {
+   "str": "CT-1",
+   "x": 156,
+   "y": 615.2,
+   "w": 31.4,
+   "h": 20,
+   "confidence": 1
+  },
+  {
+   "str": "CERAMIC WALL TILE",
+   "x": 278.4,
+   "y": 612.4,
+   "w": 166.4,
+   "h": 15.2,
+   "confidence": 0.981
+  },
+  {
+   "str": "MONOLITHIC INSTALL",
+   "x": 577.2,
+   "y": 609.8,
+   "w": 177.8,
+   "h": 11.8,
+   "confidence": 0.999
+  },
+  {
+   "str": "REDACTED",
+   "x": 878.4,
+   "y": 610.6,
+   "w": 149.2,
+   "h": 13,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1159.6,
+   "y": 612.6,
+   "w": 136.8,
+   "h": 14.8,
+   "confidence": 0.997
+  },
+  {
+   "str": "REDACTED",
+   "x": 1399.2,
+   "y": 610.6,
+   "w": 202.4,
+   "h": 13,
+   "confidence": 0.998
+  },
+  {
+   "str": "REDACTED",
+   "x": 1695.6,
+   "y": 614,
+   "w": 52.8,
+   "h": 18.2,
+   "confidence": 0.974
+  },
+  {
+   "str": "REDACTED",
+   "x": 1836.8,
+   "y": 609,
+   "w": 223.6,
+   "h": 10.4,
+   "confidence": 0.999
+  },
+  {
+   "str": "SV-1",
+   "x": 155.4,
+   "y": 663.2,
+   "w": 32,
+   "h": 23.4,
+   "confidence": 0.866
+  },
+  {
+   "str": "SHEET VINYL",
+   "x": 278.4,
+   "y": 658,
+   "w": 104.4,
+   "h": 16.2,
+   "confidence": 1
+  },
+  {
+   "str": "PROVIDE ATTIC STOCK",
+   "x": 578,
+   "y": 654.6,
+   "w": 190,
+   "h": 13.4,
+   "confidence": 0.999
+  },
+  {
+   "str": "REDACTED",
+   "x": 875.6,
+   "y": 657.8,
+   "w": 57.6,
+   "h": 17,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1157.8,
+   "y": 656.4,
+   "w": 111.2,
+   "h": 15.2,
+   "confidence": 0.996
+  },
+  {
+   "str": "REDACTED",
+   "x": 1398.4,
+   "y": 654,
+   "w": 203.2,
+   "h": 13,
+   "confidence": 0.985
+  },
+  {
+   "str": "REDACTED",
+   "x": 1695.6,
+   "y": 657.8,
+   "w": 57.6,
+   "h": 17,
+   "confidence": 0.984
+  },
+  {
+   "str": "TS-1",
+   "x": 155.2,
+   "y": 705.8,
+   "w": 31.8,
+   "h": 21.8,
+   "confidence": 0.881
+  },
+  {
+   "str": "TRANSITION STRIP",
+   "x": 279.4,
+   "y": 703.2,
+   "w": 153.4,
+   "h": 16.6,
+   "confidence": 1
+  },
+  {
+   "str": "OFFICES AND CONFERENCE",
+   "x": 579.4,
+   "y": 699.8,
+   "w": 238,
+   "h": 13.4,
+   "confidence": 0.998
+  },
+  {
+   "str": "REDACTED",
+   "x": 876.2,
+   "y": 703,
+   "w": 88.8,
+   "h": 17,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1157.8,
+   "y": 701.2,
+   "w": 109.8,
+   "h": 15.2,
+   "confidence": 0.994
+  },
+  {
+   "str": "REDACTED",
+   "x": 1398,
+   "y": 699.8,
+   "w": 204,
+   "h": 13.4,
+   "confidence": 0.991
+  },
+  {
+   "str": "REDACTED",
+   "x": 1695.8,
+   "y": 703.2,
+   "w": 49.2,
+   "h": 18.6,
+   "confidence": 0.997
+  },
+  {
+   "str": "REDACTED",
+   "x": 1836.8,
+   "y": 697.8,
+   "w": 212.2,
+   "h": 10.4,
+   "confidence": 0.997
+  },
+  {
+   "str": "CPT-2",
+   "x": 156.6,
+   "y": 749.8,
+   "w": 42,
+   "h": 20,
+   "confidence": 1
+  },
+  {
+   "str": "CARPET TILE",
+   "x": 278.6,
+   "y": 747.2,
+   "w": 103.4,
+   "h": 16.6,
+   "confidence": 1
+  },
+  {
+   "str": "EGGSHELL FINISH",
+   "x": 578.8,
+   "y": 746,
+   "w": 148.8,
+   "h": 14.8,
+   "confidence": 0.999
+  },
+  {
+   "str": "REDACTED",
+   "x": 877.2,
+   "y": 745.8,
+   "w": 115.8,
+   "h": 15.2,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1157.8,
+   "y": 745.8,
+   "w": 107.2,
+   "h": 15.2,
+   "confidence": 0.966
+  },
+  {
+   "str": "REDACTED",
+   "x": 1397.6,
+   "y": 745,
+   "w": 179.6,
+   "h": 13.8,
+   "confidence": 0.993
+  },
+  {
+   "str": "REDACTED",
+   "x": 1696.4,
+   "y": 748.4,
+   "w": 61.8,
+   "h": 18.6,
+   "confidence": 0.891
+  },
+  {
+   "str": "LVT-2",
+   "x": 155.2,
+   "y": 796.6,
+   "w": 39.8,
+   "h": 23,
+   "confidence": 0.999
+  },
+  {
+   "str": "LUXURY VINYL TILE",
+   "x": 279.2,
+   "y": 791.4,
+   "w": 158.4,
+   "h": 16.2,
+   "confidence": 0.995
+  },
+  {
+   "str": "TYP. ALL CORRIDORS",
+   "x": 578.6,
+   "y": 791.2,
+   "w": 174,
+   "h": 16.6,
+   "confidence": 0.991
+  },
+  {
+   "str": "REDACTED",
+   "x": 877.4,
+   "y": 793.8,
+   "w": 80.6,
+   "h": 20,
+   "confidence": 0.997
+  },
+  {
+   "str": "REDACTED",
+   "x": 1158,
+   "y": 791.2,
+   "w": 114,
+   "h": 16.6,
+   "confidence": 1
+  },
+  {
+   "str": "REDACTED",
+   "x": 1397.4,
+   "y": 791.2,
+   "w": 110,
+   "h": 16.6,
+   "confidence": 0.995
+  },
+  {
+   "str": "REDACTED",
+   "x": 1693.6,
+   "y": 793.8,
+   "w": 55.6,
+   "h": 20.4,
+   "confidence": 0.86
+  }
+ ]
+}

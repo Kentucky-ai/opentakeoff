@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // rfi.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
-import { nextRfiNumber, rfisToCsv, rfisToJson, linkedMarkups, rfiStatus, RFI_STATUSES } from "../src/lib/rfi.js";
+import { nextRfiNumber, rfisToCsv, rfisToJson, linkedMarkups, rfiStatus, RFI_STATUSES, liveRfis, rfiPending } from "../src/lib/rfi.js";
 
 test("nextRfiNumber: empty list starts at RFI-001", () => {
   assert.equal(nextRfiNumber([]), "RFI-001");
@@ -88,4 +88,32 @@ test("rfisToJson: schema envelope wraps the records", () => {
   assert.equal(j.generated_with, "OpenTakeoff");
   assert.deepEqual(j.rfis, rfis);
   assert.equal(rfisToJson(rfis, "").project_name, null);
+});
+
+// ── tombstones + agent provenance (RFIs over MCP) ────────────────────────────
+
+test("liveRfis: a withdrawn RFI is a tombstone — hidden everywhere, number still reserved", () => {
+  const rfis = [{ id: "a", number: "RFI-001" }, { id: "b", number: "RFI-002", deleted: true }, { id: "c", number: "RFI-003" }];
+  assert.deepEqual(liveRfis(rfis).map((r) => r.number), ["RFI-001", "RFI-003"]);
+  assert.deepEqual(liveRfis(), []);
+  assert.deepEqual(liveRfis([null, undefined]), []);
+  // the gap is permanent: the next number reads past the tombstone
+  assert.equal(nextRfiNumber(rfis), "RFI-004");
+  assert.equal(nextRfiNumber([{ number: "RFI-001" }, { number: "RFI-002", deleted: true }]), "RFI-003", "deleting the newest never reissues its number");
+});
+
+test("rfisToCsv / rfisToJson: tombstones never print", () => {
+  const rfis = [{ id: "a", number: "RFI-001", subject: "live" }, { id: "b", number: "RFI-002", subject: "gone", deleted: true }];
+  const csv = rfisToCsv(rfis, []);
+  assert.match(csv, /RFI-001/);
+  assert.doesNotMatch(csv, /RFI-002/);
+  assert.deepEqual(rfisToJson(rfis).rfis.map((r) => r.number), ["RFI-001"]);
+});
+
+test("rfiPending: agent-raised and unreviewed is pending; accepted or panel-raised is not", () => {
+  assert.equal(rfiPending({ origin: { actor: "agent", reviewed: false } }), true);
+  assert.equal(rfiPending({ origin: { actor: "agent" } }), true);
+  assert.equal(rfiPending({ origin: { actor: "agent", reviewed: true } }), false);
+  assert.equal(rfiPending({ id: "panel-raised" }), false);
+  assert.equal(rfiPending(null), false);
 });

@@ -48,14 +48,17 @@ export function saveCompany(c) {
 // key so loadCompany() and every masthead/marked-set consumer keep working
 // unchanged (they always render the active trade name).
 //
-//   state = { profiles: [{ id, name, address, logo }], activeId }
+//   state = { profiles: [{ id, name, address, logo, phone, email, license }], activeId }
+// phone / email / license (contractor license number) print on the bid proposal
+// letterhead; the legacy mirror below still carries only name, address and logo.
 const PKEY = "opentakeoff_company_profiles";
 
-// keep only the four known string fields (drops empties, non-strings, and any
+// keep only the known string fields (drops empties, non-strings, and any
 // injected keys) — the same gate loadCompany applies, plus a required id
+export const PROFILE_FIELDS = ["id", "name", "address", "logo", "phone", "email", "license"];
 function cleanProfile(p) {
   const out = {};
-  for (const k of ["id", "name", "address", "logo"]) {
+  for (const k of PROFILE_FIELDS) {
     // trim + drop empty-after-trim, so the profile can't hold a blank-looking
     // value that saveCompany() would drop from the mirrored legacy company
     const v = typeof p?.[k] === "string" ? p[k].trim() : "";

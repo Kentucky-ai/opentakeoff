@@ -1,9 +1,13 @@
+import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE } from "./gate.js";
+import { refusalWhy } from "./scheduleRoute.ts";
+import { skippedNote } from "./scheduleEdit.ts";
 // In-canvas takeoff agent — the TOOL REGISTRY. Pure-ish and Node-testable:
 // every tool is a name + JSON schema + an execute(ctx, args) that closes over
 // canvas-provided CAPABILITIES (the `ctx` contract below), so the registry
 // itself never touches React, the DOM, or pdf.js. The model never invents
 // geometry — it aims these tools, and the app's own deterministic engines
-// (text layer, scheduleParse, the one-click flood fill) compute everything.
+// (text layer, the sheet graph's finish reader, the one-click flood fill)
+// compute everything.
 //
 // Hard rules enforced HERE, not left to the model:
 //   - scale gate: a tool that needs real-world units refuses on an uncalibrated
@@ -24,7 +28,8 @@
 //   sheetDims(sheet): { w, h } | null   // null = sheet not open on the canvas
 //   detectedLabel(sheet): string | ""   // drawn-scale note read off the page, if any
 //   readSheetText(sheet, region|null): Promise<[{ text, x, y }]>  (normalized coords)
-//   readSchedule(sheet, region): Promise<ScheduleRow[]>
+//   readSchedule(sheet, region): Promise<{ rows: ScheduleRow[], skipped? } | { rows: [], refused, title? }>
+//                                       // scheduleRead.ts ScheduleRead
 //   viewRegion(sheet, region): Promise<{ image_data_url, width, height }>
 //   oneClick(sheet, x, y): Promise<{ verts_norm, area_sf, perimeter_lf, ... } | { error }>
 //   getConditions(): [{ id, finish_tag, ... }]
@@ -126,7 +131,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "read_schedule",
-    description: "Parse a finish/material schedule table inside a region of a sheet into structured rows (code, description, manufacturer, style, color, size). Draw the region around the table including its CODE / MATERIAL / ... header.",
+    description: "Read a finish/material schedule table inside a region of a sheet into structured rows — Import from schedule's reader, on the sheet's text layer only: Import from schedule also reads a raster box on the device, this tool doesn't, so a raster schedule (no text layer) returns no rows — use view_region to look at it. The key column can be CODE, TAG, MARK or SYMBOL; the other columns read are MATERIAL / DESCRIPTION / PRODUCT (joined into description), MANUFACTURER, STYLE, COLOR, SIZE and REMARKS (else COMMENTS). A region that reads no rows is read once more with MFG / MFR as MANUFACTURER, SPEC / SPECIFICATION as PRODUCT and NOTES as REMARKS, a key column printed after another column moved first (CODE over MARK when both are there), and a legend of code lines with text beside them and no header row read as code and description; that read is used only if it reads every code line. Each row: {finish_tag, section, category, category_source, description, manufacturer, style, spec_color, size, remarks, suggested}, plus unticked_reason, not_used_text and key_rule when set. suggested: false rows are ones the estimator would normally leave out; unticked_reason: \"not-used\" with not_used_text means the schedule marks the row not used or not in contract (the text as printed). key_rule: \"extended\" marks a row read by a newer, less-tested rule (a code with a word after it, a line split from the row above, or a four- or five-letter code) — check it with view_region before creating it. skipped (present only when there are some) lists four- or five-letter codes with no number (EPOX) that weren't read, one entry per line. A drawn region reads more forms than the sheet graph's whole-sheet index. category_source says where the category came from: \"heading\" (a printed section heading such as FLOORING), \"text\" (the row's own item words, e.g. RUBBER WALL BASE) or \"none\" (category \"unassigned\"). Draw the region around the whole table including its header row. A table that is another schedule family (door, equipment, signage …) returns no rows and a note saying why — but an untitled one that prints finish-like columns (MATERIAL, MANUFACTURER, COLOR) can still be read as a finish table; check the rows.",
     input_schema: {
       type: "object",
       properties: { sheet: { type: "string" }, region: REGION_SCHEMA },
@@ -135,7 +140,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "view_region",
-    description: "Render a region of the sheet as an image and look at it. Use this for scanned sheets, hatched/ambiguous areas, or to visually confirm what a room contains before proposing.",
+    description: "Render a region of the sheet as an image and look at it. Use this for raster sheets, hatched/ambiguous areas, or to visually confirm what a room contains before proposing.",
     input_schema: {
       type: "object",
       properties: { sheet: { type: "string" }, region: REGION_SCHEMA },
@@ -144,7 +149,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "one_click",
-    description: "Run the deterministic flood-fill takeoff engine at a seed point inside a room (normalized coordinates). Returns the traced boundary ring (verts_norm), area_sf, perimeter_lf, and trace flags WITHOUT committing anything. This is how you measure a room — never invent geometry yourself.",
+    description: "Run the deterministic flood-fill takeoff engine at a seed point inside a room (normalized coordinates). Returns the traced boundary ring (verts_norm), retained interior void rings (verts_norm_holes, when present), area_sf, perimeter_lf, and trace flags WITHOUT committing anything. This is how you measure a room — never invent geometry yourself.",
     input_schema: {
       type: "object",
       properties: {
@@ -171,7 +176,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "propose_shapes",
-    description: "Stage takeoff proposals for human review. Each shape needs the sheet, the boundary ring from one_click (verts_norm), a condition_id, a measure_role (floor_area or deduct), and EVIDENCE: the schedule row tag and/or the matched room/finish text token and/or the one_click seed. Proposals render as dashed pencil outlines the estimator accepts or rejects — nothing you stage is committed.",
+    description: "Stage takeoff proposals for human review. Each shape needs the sheet, the boundary and any interior voids from one_click (verts_norm and verts_norm_holes), a condition_id, a measure_role (floor_area or deduct), and EVIDENCE: the schedule row tag and/or the matched room/finish text token and/or the one_click seed. Proposals render as dashed pencil outlines the estimator accepts or rejects — nothing you stage is committed.",
     input_schema: {
       type: "object",
       properties: {
@@ -181,6 +186,7 @@ export const AGENT_TOOL_DEFS = [
             type: "object",
             properties: {
               sheet: { type: "string" },
+              verts_norm_holes: { type: "array", description: "Interior void rings normalized 0..1. Carry every hole returned by one_click unchanged." },
               verts_norm: { type: "array", description: "Boundary ring [[x,y],...] normalized 0..1 — use the ring one_click returned." },
               condition_id: { type: "string" },
               measure_role: { type: "string", description: "floor_area or deduct" },
@@ -205,6 +211,19 @@ export const AGENT_TOOL_DEFS = [
 
 const DEFS_BY_NAME = Object.fromEntries(AGENT_TOOL_DEFS.map((d) => [d.name, d]));
 
+// The tool list the MODEL is handed. While the One-Click gate is up
+// (lib/gate.js) one_click is not in it — an agent must never be told about a
+// verb it cannot call — and propose_shapes stops describing its rings as
+// one_click output. AGENT_TOOL_DEFS above stays the full registry (the tests
+// and the mock server read it); this is the surface.
+export function agentToolDefs() {
+  if (oneClickEnabled()) return AGENT_TOOL_DEFS;
+  return AGENT_TOOL_DEFS.filter((d) => d.name !== "one_click").map((d) => d.name !== "propose_shapes" ? d : {
+    ...d,
+    description: "Stage takeoff proposals for human review. Each shape needs the sheet, a boundary ring you read off the sheet's wall faces (verts_norm, normalized 0..1) and any interior voids (verts_norm_holes), a condition_id, a measure_role (floor_area or deduct), and EVIDENCE: the schedule row tag and/or the matched room/finish text token and/or the seed point you measured from. One-Click is temporarily gated, so there is no engine ring to forward — trace the wall faces you can see in view_region and cite them. Proposals render as dashed pencil outlines the estimator accepts or rejects — nothing you stage is committed.",
+  });
+}
+
 const clampRegion = (r) => ({
   x0: Math.max(0, Math.min(1, Math.min(r.x0, r.x1))),
   y0: Math.max(0, Math.min(1, Math.min(r.y0, r.y1))),
@@ -222,7 +241,8 @@ const MEASURE_ROLES = new Set(["floor_area", "deduct"]);
  */
 export async function executeAgentTool(ctx, name, args) {
   const def = DEFS_BY_NAME[name];
-  if (!def) return { error: `Unknown tool: ${name}. Available: ${AGENT_TOOL_DEFS.map((d) => d.name).join(", ")}.` };
+  if (!def) return { error: `Unknown tool: ${name}. Available: ${agentToolDefs().map((d) => d.name).join(", ")}.` };
+  if (name === "one_click" && !oneClickEnabled()) return { error: ONE_CLICK_GATE_MESSAGE };   // the TEMPORARY gate (lib/gate.js)
   const bad = validateToolArgs(def.input_schema, args);
   if (bad) return { error: `Invalid arguments for ${name}: ${bad}.` };
   try {
@@ -236,9 +256,19 @@ export async function executeAgentTool(ctx, name, args) {
       }
       case "read_schedule": {
         if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
-        const rows = await ctx.readSchedule(args.sheet, clampRegion(args.region));
-        if (!rows.length) return { rows: [], note: "No schedule table found in that region — draw the region around the table including its CODE / MATERIAL / ... header, or use view_region to look at the area." };
-        return { rows };
+        const read = await ctx.readSchedule(args.sheet, clampRegion(args.region));
+        // skipped codes first: a box whose only codes were skipped has no rows
+        // but isn't "no table" — name the codes and how to take them by hand
+        if (read.skipped?.length) {
+          return read.rows.length ? { rows: read.rows, skipped: read.skipped } : { rows: [], skipped: read.skipped, note: skippedNote(read.skipped) };
+        }
+        if (read.rows.length) return { rows: read.rows };
+        // a table that IS there but is another schedule family: say which, so
+        // the model looks elsewhere instead of re-drawing the same box
+        if (read.refused && read.refused !== "no-table") {
+          return { rows: [], note: `${refusalWhy(read.refused, read.title)} — look for the finish/material schedule elsewhere on the sheets (its CODE / TAG / MARK / SYMBOL column and MATERIAL / MANUFACTURER / COLOR headers).` };
+        }
+        return { rows: [], note: "No schedule table found in that region — draw the region around the whole table including its header row (a CODE / TAG / MARK / SYMBOL key column and MATERIAL / MANUFACTURER / COLOR …), or use view_region to look at the area." };
       }
       case "view_region": {
         if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
@@ -276,11 +306,16 @@ export async function executeAgentTool(ctx, name, args) {
             ? s.verts_norm.filter((v) => Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]))
             : [];
           if (verts.length < 3 || verts.length !== s.verts_norm.length) { rejected.push("verts_norm must be a ring of at least 3 [x,y] points — use the ring one_click returned"); continue; }
+          const holes = s.verts_norm_holes ?? [];
+          if (!Array.isArray(holes) || holes.some((h) => !Array.isArray(h) || h.length < 3 || h.some((v) => !Array.isArray(v) || v.length !== 2 || v.some((n) => !Number.isFinite(n) || n < 0 || n > 1)))) {
+            rejected.push("verts_norm_holes must contain rings of at least 3 finite [x,y] points normalized 0..1"); continue;
+          }
           const evidence = pickAgentEvidence(s.evidence);
           if (!evidence) { rejected.push("every proposal must cite evidence: schedule_row_tag and/or matched_text and/or seed_norm"); continue; }
           clean.push({
             sheet: s.sheet,
             verts_norm: verts.map(([x, y]) => [Math.max(0, Math.min(1, x)), Math.max(0, Math.min(1, y))]),
+            ...(holes.length ? { verts_norm_holes: holes.map((h) => h.map((v) => [...v])) } : {}),
             condition_id: s.condition_id,
             measure_role: s.measure_role,
             evidence,

@@ -1,0 +1,761 @@
+{
+  "name": "ws-key-lvt1-a",
+  "kind": "whole",
+  "note": "key cell LVT-1 A",
+  "spans": [
+    {
+      "str": "CODE",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "CPT-1",
+      "x": 100,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "BROADLOOM CARPET",
+      "x": 220,
+      "y": 38,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 101",
+      "x": 1000,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "LVT-1 A",
+      "x": 100,
+      "y": 76,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "PORCELAIN TILE",
+      "x": 220,
+      "y": 76,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-F",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "WHITE 603",
+      "x": 1000,
+      "y": 76,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "RB-2",
+      "x": 100,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "RESILIENT BASE",
+      "x": 220,
+      "y": 114,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-B",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 506",
+      "x": 1000,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "PT-1",
+      "x": 100,
+      "y": 152,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "PORCELAIN TILE",
+      "x": 220,
+      "y": 152,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-F",
+      "x": 520,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "SAND 604",
+      "x": 1000,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    }
+  ],
+  "whole": {
+    "extractTable": {
+      "kind": "finish",
+      "sheet": "fx",
+      "title": null,
+      "headers": [
+        "CODE",
+        "MATERIAL",
+        "MANUFACTURER",
+        "COLOR"
+      ],
+      "rows": [
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1",
+              "bbox": [
+                100,
+                38,
+                140,
+                55
+              ]
+            },
+            "MATERIAL": {
+              "text": "BROADLOOM CARPET",
+              "bbox": [
+                220,
+                38,
+                348,
+                55
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                38,
+                584,
+                55
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 101",
+              "bbox": [
+                1000,
+                38,
+                1064,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "LVT-1A",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "LVT-1 A",
+              "bbox": [
+                100,
+                76,
+                156,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "PORCELAIN TILE",
+              "bbox": [
+                220,
+                76,
+                332,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-F",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            },
+            "COLOR": {
+              "text": "WHITE 603",
+              "bbox": [
+                1000,
+                76,
+                1072,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-2",
+              "bbox": [
+                100,
+                114,
+                132,
+                131
+              ]
+            },
+            "MATERIAL": {
+              "text": "RESILIENT BASE",
+              "bbox": [
+                220,
+                114,
+                332,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 506",
+              "bbox": [
+                1000,
+                114,
+                1064,
+                131
+              ]
+            }
+          }
+        },
+        {
+          "key": "PT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "PT-1",
+              "bbox": [
+                100,
+                152,
+                132,
+                169
+              ]
+            },
+            "MATERIAL": {
+              "text": "PORCELAIN TILE",
+              "bbox": [
+                220,
+                152,
+                332,
+                169
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-F",
+              "bbox": [
+                520,
+                152,
+                584,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "SAND 604",
+              "bbox": [
+                1000,
+                152,
+                1064,
+                169
+              ]
+            }
+          }
+        }
+      ],
+      "region": [
+        100,
+        0,
+        1072,
+        169
+      ],
+      "anchors": [
+        {
+          "label": "CODE",
+          "x": 116
+        },
+        {
+          "label": "MATERIAL",
+          "x": 252
+        },
+        {
+          "label": "MANUFACTURER",
+          "x": 568
+        },
+        {
+          "label": "COLOR",
+          "x": 1020
+        }
+      ]
+    },
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1",
+              "bbox": [
+                100,
+                38,
+                140,
+                55
+              ]
+            },
+            "MATERIAL": {
+              "text": "BROADLOOM CARPET",
+              "bbox": [
+                220,
+                38,
+                348,
+                55
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                38,
+                584,
+                55
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 101",
+              "bbox": [
+                1000,
+                38,
+                1064,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "LVT-1A",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "LVT-1 A",
+              "bbox": [
+                100,
+                76,
+                156,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "PORCELAIN TILE",
+              "bbox": [
+                220,
+                76,
+                332,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-F",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            },
+            "COLOR": {
+              "text": "WHITE 603",
+              "bbox": [
+                1000,
+                76,
+                1072,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-2",
+              "bbox": [
+                100,
+                114,
+                132,
+                131
+              ]
+            },
+            "MATERIAL": {
+              "text": "RESILIENT BASE",
+              "bbox": [
+                220,
+                114,
+                332,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 506",
+              "bbox": [
+                1000,
+                114,
+                1064,
+                131
+              ]
+            }
+          }
+        },
+        {
+          "key": "PT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "PT-1",
+              "bbox": [
+                100,
+                152,
+                132,
+                169
+              ]
+            },
+            "MATERIAL": {
+              "text": "PORCELAIN TILE",
+              "bbox": [
+                220,
+                152,
+                332,
+                169
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-F",
+              "bbox": [
+                520,
+                152,
+                584,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "SAND 604",
+              "bbox": [
+                1000,
+                152,
+                1064,
+                169
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "graphTables": [
+      {
+        "kind": "finish",
+        "sheet": "fx",
+        "title": null,
+        "headers": [
+          "CODE",
+          "MATERIAL",
+          "MANUFACTURER",
+          "COLOR"
+        ],
+        "rows": [
+          {
+            "key": "CPT-1",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "CPT-1",
+                "bbox": [
+                  100,
+                  38,
+                  140,
+                  55
+                ]
+              },
+              "MATERIAL": {
+                "text": "BROADLOOM CARPET",
+                "bbox": [
+                  220,
+                  38,
+                  348,
+                  55
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-A",
+                "bbox": [
+                  520,
+                  38,
+                  584,
+                  55
+                ]
+              },
+              "COLOR": {
+                "text": "GREY 101",
+                "bbox": [
+                  1000,
+                  38,
+                  1064,
+                  55
+                ]
+              }
+            }
+          },
+          {
+            "key": "LVT-1A",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "LVT-1 A",
+                "bbox": [
+                  100,
+                  76,
+                  156,
+                  93
+                ]
+              },
+              "MATERIAL": {
+                "text": "PORCELAIN TILE",
+                "bbox": [
+                  220,
+                  76,
+                  332,
+                  93
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-F",
+                "bbox": [
+                  520,
+                  76,
+                  584,
+                  93
+                ]
+              },
+              "COLOR": {
+                "text": "WHITE 603",
+                "bbox": [
+                  1000,
+                  76,
+                  1072,
+                  93
+                ]
+              }
+            }
+          },
+          {
+            "key": "RB-2",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "RB-2",
+                "bbox": [
+                  100,
+                  114,
+                  132,
+                  131
+                ]
+              },
+              "MATERIAL": {
+                "text": "RESILIENT BASE",
+                "bbox": [
+                  220,
+                  114,
+                  332,
+                  131
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-B",
+                "bbox": [
+                  520,
+                  114,
+                  584,
+                  131
+                ]
+              },
+              "COLOR": {
+                "text": "GREY 506",
+                "bbox": [
+                  1000,
+                  114,
+                  1064,
+                  131
+                ]
+              }
+            }
+          },
+          {
+            "key": "PT-1",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "PT-1",
+                "bbox": [
+                  100,
+                  152,
+                  132,
+                  169
+                ]
+              },
+              "MATERIAL": {
+                "text": "PORCELAIN TILE",
+                "bbox": [
+                  220,
+                  152,
+                  332,
+                  169
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-F",
+                "bbox": [
+                  520,
+                  152,
+                  584,
+                  169
+                ]
+              },
+              "COLOR": {
+                "text": "SAND 604",
+                "bbox": [
+                  1000,
+                  152,
+                  1064,
+                  169
+                ]
+              }
+            }
+          }
+        ],
+        "region": [
+          100,
+          0,
+          1072,
+          169
+        ],
+        "anchors": [
+          {
+            "label": "CODE",
+            "x": 116
+          },
+          {
+            "label": "MATERIAL",
+            "x": 252
+          },
+          {
+            "label": "MANUFACTURER",
+            "x": 568
+          },
+          {
+            "label": "COLOR",
+            "x": 1020
+          }
+        ]
+      }
+    ],
+    "graphNotes": [],
+    "resolve": {
+      "CPT-1": {
+        "status": "unresolved",
+        "tag": "CPT-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "LVT-1A": {
+        "status": "unresolved",
+        "tag": "LVT-1A",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "RB-2": {
+        "status": "unresolved",
+        "tag": "RB-2",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "PT-1": {
+        "status": "unresolved",
+        "tag": "PT-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      }
+    }
+  }
+}

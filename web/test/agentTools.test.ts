@@ -7,6 +7,10 @@
 //   - the scale gate refuses real-world-unit work on an uncalibrated sheet.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+// The One-Click gate (lib/gate.js) is UP by default; these probe tests exercise
+// the engine, so lift it at runtime. gate.test.ts pins the gated surface.
+(globalThis as any).__OT_ONE_CLICK = true;
 import {
   AGENT_TOOL_DEFS, executeAgentTool, validateToolArgs, pickAgentEvidence,
   agentScaleGate, EVIDENCE_MAX_CHARS,
@@ -22,7 +26,7 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
     uppFor: (k: string) => (k === "plan.pdf" ? 0.02 : null),
     detectedLabel: () => "",
     readSheetText: async () => [{ text: "RM 204", x: 0.4, y: 0.5 }],
-    readSchedule: async () => [{ finish_tag: "CPT-1", section: "FLOORING", category: "floor", description: "CARPET", manufacturer: "", style: "", spec_color: "", size: "", suggested: true }],
+    readSchedule: async () => ({ rows: [{ finish_tag: "CPT-1", section: "FLOORING", category: "floor", category_source: "heading", description: "CARPET", manufacturer: "", style: "", spec_color: "", size: "", remarks: "", suggested: true }] }),
     viewRegion: async () => ({ image_data_url: "data:image/png;base64,AAAA", width: 100, height: 80 }),
     oneClick: async (sheet: string, x: number, y: number) => {
       calls.oneClick.push([sheet, x, y]);
@@ -154,4 +158,95 @@ test("pickAgentEvidence: null-safe, array-safe, whitelist-only", () => {
   assert.equal(pickAgentEvidence([1, 2]), null);
   assert.equal(pickAgentEvidence({ junk: 1 }), null);
   assert.deepEqual(pickAgentEvidence({ matched_text: "RM 204", junk: 1 }), { matched_text: "RM 204" });
+});
+
+test("proposals transport interior voids and refuse malformed hole rings", async () => {
+  const { ctx, calls } = makeCtx();
+  const hole = [[0.15,0.15],[0.2,0.15],[0.2,0.2],[0.15,0.2]];
+  const shape = { sheet: "plan.pdf", condition_id: "cnd-1", measure_role: "floor_area", verts_norm: [[0.1,0.1],[0.3,0.1],[0.3,0.3],[0.1,0.3]], verts_norm_holes: [hole], evidence: { seed_norm: [0.25,0.25] } };
+  assert.equal((await executeAgentTool(ctx, "propose_shapes", { shapes: [shape] })).staged, 1);
+  assert.deepEqual((calls.proposeShapes[0] as any[])[0].verts_norm_holes, [hole]);
+  for (const holes of [[[[NaN,0],[0,0],[1,1]]], [[[0,0],[1,1]]], "invalid"]) {
+    assert.equal((await executeAgentTool(ctx, "propose_shapes", { shapes: [{ ...shape, verts_norm_holes: holes }] })).staged, 0);
+  }
+});
+
+test("read_schedule: rows pass through with category_source and remarks", async () => {
+  const row = { finish_tag: "RB-1", section: "", category: "base", category_source: "text", description: "RUBBER WALL BASE",
+    manufacturer: "VENDOR-A", style: "", spec_color: "", size: "", remarks: "SCRIBE AT CASEWORK", suggested: true };
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [row] }) });
+  const out = await executeAgentTool(ctx, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.deepEqual(out, { rows: [row] });
+});
+
+test("read_schedule: a refused table says why, naming the title when that is the reason", async () => {
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [], refused: "title", title: "DOOR SCHEDULE" }) });
+  const out = await executeAgentTool(ctx, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.deepEqual(out.rows, []);
+  assert.match(out.note, /^That's the "DOOR SCHEDULE", not a finish\/material schedule — /);
+  assert.equal(Object.keys(out).sort().join(), "note,rows");
+
+  const { ctx: ctx2 } = makeCtx({ readSchedule: async () => ({ rows: [], refused: "foreign-header" }) });
+  const out2 = await executeAgentTool(ctx2, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.match(out2.note, /^That table doesn't look like a finish\/material schedule — /);
+});
+
+test("read_schedule: no table → the re-draw note names every key column", async () => {
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [], refused: "no-table" }) });
+  const out = await executeAgentTool(ctx, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.deepEqual(out.rows, []);
+  assert.match(out.note, /^No schedule table found in that region/);
+  for (const k of ["CODE", "TAG", "MARK", "SYMBOL"]) assert.match(out.note, new RegExp(`\\b${k}\\b`));
+});
+
+test("read_schedule: the description names the key columns and the row fields", () => {
+  const d = AGENT_TOOL_DEFS.find((x) => x.name === "read_schedule")!.description;
+  for (const w of ["CODE", "TAG", "MARK", "SYMBOL", "category_source", "remarks"]) assert.ok(d.includes(w), `${w} missing from: ${d}`);
+});
+
+// ── #483: skipped codes and key_rule in read_schedule ───────────────────────
+const R = { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } };
+const srow = (finish_tag: string, extra: Record<string, unknown> = {}) => ({ finish_tag, section: "", category: "floor", category_source: "heading",
+  description: "X", manufacturer: "", style: "", spec_color: "", size: "", remarks: "", suggested: true, ...extra });
+
+test("read_schedule: rows plus skipped codes → both, no note", async () => {
+  const rows = [srow("CPT-1")];
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows, skipped: ["EPOX"] }) });
+  assert.deepEqual(await executeAgentTool(ctx, "read_schedule", R), { rows, skipped: ["EPOX"] });
+  // an empty skipped list adds no key
+  const { ctx: ctx2 } = makeCtx({ readSchedule: async () => ({ rows, skipped: [] }) });
+  assert.deepEqual(await executeAgentTool(ctx2, "read_schedule", R), { rows });
+});
+
+test("read_schedule: { rows: [], skipped } → skipped and the exact note", async () => {
+  const run = async (skipped: string[]) => {
+    const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [], skipped }) });
+    return executeAgentTool(ctx, "read_schedule", R);
+  };
+  assert.deepEqual(await run(["EPOX"]), { rows: [], skipped: ["EPOX"],
+    note: "No rows read. A four- or five-letter code with no number wasn't read: EPOX. Find its line with read_sheet_text, check it with view_region, then create it with create_condition if it's a finish." });
+  assert.deepEqual(await run(["EPOX", "SEAL"]), { rows: [], skipped: ["EPOX", "SEAL"],
+    note: "No rows read. Four- or five-letter codes with no number weren't read: EPOX, SEAL. Find their lines with read_sheet_text, check them with view_region, then create them with create_condition if they're finishes." });
+  assert.deepEqual(await run(["EPOX", "EPOX"]), { rows: [], skipped: ["EPOX", "EPOX"],
+    note: "No rows read. A four- or five-letter code with no number wasn't read: EPOX (2 lines). Find its lines with read_sheet_text, check it with view_region, then create it with create_condition if it's a finish." });
+});
+
+test("read_schedule: rows keep key_rule where the reader set it; other rows have no key_rule key", async () => {
+  const rows = [srow("CPT-1"), srow("FTB-01", { key_rule: "extended", description: "CUT (C) — TILE BASE" }),
+    srow("CPT-2", { suggested: false, unticked_reason: "not-used", not_used_text: "NOT USED" })];
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows }) });
+  const out = await executeAgentTool(ctx, "read_schedule", R);
+  assert.equal(out.rows[1].key_rule, "extended");
+  assert.ok(!("key_rule" in out.rows[0]));
+  assert.ok(!("key_rule" in out.rows[2]));
+  assert.equal(out.rows[2].unticked_reason, "not-used");
+  assert.equal(out.rows[2].not_used_text, "NOT USED");
+});
+
+test("read_schedule: the description explains suggested, NOT USED, skipped, the drawn box and key_rule", () => {
+  const d = AGENT_TOOL_DEFS.find((x) => x.name === "read_schedule")!.description;
+  for (const w of ["suggested: false", "unticked_reason", "not_used_text", "skipped", "four- or five-letter", "whole-sheet index",
+    "key_rule: \"extended\"", "view_region before creating it"]) assert.ok(d.includes(w), `${w} missing from: ${d}`);
+  // #487's text stays
+  assert.ok(d.includes("on the sheet's text layer only"));
 });

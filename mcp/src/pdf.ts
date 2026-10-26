@@ -7,6 +7,7 @@ import path from "node:path";
 import * as pdfjs from "pdfjs-dist";
 import type { OpList, OpsTable } from "../../web/src/lib/oneclick.ts";
 import { RENDER_SCALE } from "../../web/src/lib/sheets.ts";
+import { joinAbuttingSpans } from "../../web/src/lib/textjoin.ts";
 
 const requireHere = createRequire(import.meta.url);
 const PDFJS_ROOT = path.dirname(requireHere.resolve("pdfjs-dist/package.json"));
@@ -187,16 +188,11 @@ export async function openPdf(filePath: string): Promise<DocHandle> {
 }
 
 /** Positioned page text in image px — the same viewport-transform math
- * detectScale uses (web/src/lib/sheets.ts). */
+ * detectScale uses (web/src/lib/sheets.ts). Runs pdf.js split mid-string
+ * ("WB" + "-" + "01") come back joined, anchored at the first run's origin —
+ * see web/src/lib/textjoin.ts. */
 export function positionedText(ph: PageHandle): { str: string; x: number; y: number }[] {
-  const out: { str: string; x: number; y: number }[] = [];
-  for (const it of ph.textContent.items || []) {
-    const str = it.str || "";
-    if (!str.trim()) continue;
-    const t = pdfjs.Util.transform(ph.viewport.transform, it.transform);
-    out.push({ str, x: +t[4].toFixed(1), y: +t[5].toFixed(1) });
-  }
-  return out;
+  return joinAbuttingSpans(rawSpans(ph)).map((s) => ({ str: s.str, x: s.ox, y: s.oy }));
 }
 
 /** The page's text items FILTERED to an image-px rect (#153) — a TextContentLike
@@ -232,8 +228,10 @@ export interface TextSpan { str: string; x0: number; y0: number; x1: number; y1:
  * unrotated sets stay byte-identical on the wire. For unrotated text this
  * reduces exactly to the old math: glyphs rise from the baseline, y is down,
  * so the box spans [y − h, y]. */
-export function textSpans(ph: PageHandle): TextSpan[] {
-  const out: TextSpan[] = [];
+type RawSpan = TextSpan & { ox: number; oy: number };
+/** One span per pdf.js text item, unjoined, carrying the item's baseline origin. */
+function rawSpans(ph: PageHandle): RawSpan[] {
+  const out: RawSpan[] = [];
   for (const it of ph.textContent.items || []) {
     const str = it.str || "";
     if (!str.trim()) continue;
@@ -251,11 +249,16 @@ export function textSpans(ph: PageHandle): TextSpan[] {
     const ys = [y, y + w * dy, y + h * uy, y + w * dy + h * uy];
     const rot = ((Math.round((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360;
     out.push({
-      str,
+      str, ox: +x.toFixed(1), oy: +y.toFixed(1),
       x0: +Math.min(...xs).toFixed(1), y0: +Math.min(...ys).toFixed(1),
       x1: +Math.max(...xs).toFixed(1), y1: +Math.max(...ys).toFixed(1),
       ...(rot ? { rot } : {}),
     });
   }
   return out;
+}
+
+export function textSpans(ph: PageHandle): TextSpan[] {
+  // abutting runs joined (textjoin.ts); the origin fields stay internal
+  return joinAbuttingSpans(rawSpans(ph)).map(({ ox: _ox, oy: _oy, ...span }) => span);
 }

@@ -1,0 +1,39 @@
+.annotation-workbench{flex:none;border-bottom:1px solid var(--ink-faint);background:var(--paper-bright);color:var(--ink);font-family:var(--f-body);position:relative}
+.annotation-tool-row,.annotation-properties,.annotation-favorites,.annotation-review-actions,.annotation-note-editor{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);flex-wrap:wrap}
+.annotation-workbench button{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:32px;padding:5px 10px;border:1px solid transparent;border-radius:var(--r-1);background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer;transition:background .12s,border-color .12s}
+.annotation-workbench button:hover{background:var(--surface-pop);border-color:var(--ink-faint)}
+.annotation-workbench button:focus-visible,.annotation-workbench input:focus-visible,.annotation-workbench select:focus-visible,.annotation-workbench textarea:focus-visible{outline:2px solid var(--cobalt);outline-offset:2px}
+.annotation-workbench button[aria-pressed=true],.annotation-workbench .annotation-primary{background:var(--cobalt);border-color:var(--cobalt);color:var(--accent-contrast);box-shadow:var(--glow)}
+.annotation-workbench button:disabled{opacity:.4;cursor:default}
+.annotation-caption{font-family:var(--f-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-muted);margin-right:var(--sp-2)}
+.annotation-divider{height:21px;border-left:1px solid var(--ink-faint);margin:0 var(--sp-1)}
+.annotation-properties,.annotation-favorites,.annotation-note-editor,.annotation-review{border-top:1px solid var(--ink-faint);background:var(--surface-pop)}
+.annotation-workbench label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-muted);white-space:nowrap}
+.annotation-workbench input:not([type=checkbox]):not([type=range]),.annotation-workbench textarea,.annotation-workbench select{border:1px solid var(--ink-faint);background:var(--paper-bright);color:var(--ink);border-radius:var(--r-1);padding:6px 8px;font:inherit;font-size:12px}
+.annotation-workbench select{text-transform:capitalize}
+.annotation-workbench input[type=range]{width:80px;accent-color:var(--cobalt)}
+.annotation-swatches,.annotation-segments{display:flex;align-items:center;gap:3px}
+.annotation-swatches button{padding:0;width:23px;min-height:23px;border:3px solid var(--paper-bright);box-shadow:0 0 0 1px var(--ink-faint);background:var(--swatch)}
+.annotation-swatches button[aria-pressed=true]{background:var(--swatch);box-shadow:0 0 0 2px var(--cobalt);border-color:var(--paper-bright)}
+.annotation-segments{padding:2px;border:1px solid var(--ink-faint);border-radius:var(--r-1)}
+.annotation-segments button{font-size:11px;min-height:26px;padding:3px 8px;text-transform:capitalize}
+.annotation-hint{font-size:11px;color:var(--ink-muted);margin-left:auto}
+.annotation-count{font:11px var(--f-mono);color:var(--cobalt)}
+.annotation-favorites i{width:10px;height:10px;display:inline-block}
+.annotation-favorites button{border-color:var(--ink-faint);background:var(--paper-bright)}
+.annotation-note-editor label{flex:1;min-width:260px;align-items:flex-start;flex-direction:column}
+.annotation-note-editor textarea{box-sizing:border-box;width:100%;resize:vertical;line-height:1.5}
+.annotation-review-heading{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3) 0;flex-wrap:wrap;font-size:12px}
+.annotation-review-heading span{color:var(--ink-muted);font-size:11px}
+.annotation-review-actions input{flex:1;min-width:200px}
+@media(max-width:900px){.annotation-caption,.annotation-hint{display:none}.annotation-tool-row{gap:2px}.annotation-tool-row button{padding:5px 7px}.annotation-properties{gap:8px}}
+
+.annotation-match-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--sp-1);max-height:144px;overflow:auto;padding:var(--sp-2) var(--sp-3)}
+.annotation-match-list label{padding:var(--sp-2);border:1px solid var(--ink-faint);background:var(--paper-bright);cursor:pointer;white-space:normal}
+.annotation-match-list label.is-selected{border-color:var(--cobalt);color:var(--ink)}
+.annotation-match-list input{accent-color:var(--cobalt)}
+.annotation-match-number{font-family:var(--f-mono);color:var(--cobalt);min-width:1.5em}
+.annotation-match-list small{color:var(--ink-muted);margin-left:auto}
+.annotation-split{display:inline-flex;align-items:center;gap:0}
+.annotation-split>button{border-top-right-radius:0;border-bottom-right-radius:0}
+.annotation-split>button svg{flex:none}

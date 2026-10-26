@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildMask, floodRegion, traceRegion } from "../src/lib/oneclick.ts";
-import { seedLadderPx, isLabelBubblePx, BUBBLE_RATIO, type LabelBBox } from "../src/lib/detectRooms.ts";
+import { seedLadderPx, isLabelBubblePx, BUBBLE_RATIO, BUBBLE_WIDE_RATIO, type LabelBBox } from "../src/lib/detectRooms.ts";
 
 function squareSegs(x0: number, y0: number, x1: number, y1: number): number[] {
   return [x0, y0, x1, y0, x1, y0, x1, y1, x1, y1, x0, y1, x0, y1, x0, y0];
@@ -52,4 +52,17 @@ test("isLabelBubblePx boundary: the ratio is the contract", () => {
   const ringAt = (s: number): [number, number][] => [[0, 0], [s, 0], [s, s], [0, s]];
   assert.ok(isLabelBubblePx(ringAt(10 * BUBBLE_RATIO), b), "at the ratio: still the label's furniture");
   assert.ok(!isLabelBubblePx(ringAt(10 * BUBBLE_RATIO + 1), b), "past it: a real (small) space");
+});
+
+// #373 — the wide tag box. Measured on the Dublin A-601 finish plan: the drawn
+// number box is 108×36 px around 42×25 px of digits (width ratio 2.58, past
+// the square guard by a hair), and the room-finish schedule's cells are
+// 174×34 px around the same digits. Both flooded clean and committed as rooms.
+test("isLabelBubblePx: a wide, text-height tag box is the label's furniture (#373)", () => {
+  const b: LabelBBox = { x0: 2138.6, y0: 1929, x1: 2180.4, y1: 1954.1 };   // "110" on A-601
+  const rect = (x0: number, y0: number, w: number, h: number): [number, number][] => [[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]];
+  assert.ok(isLabelBubblePx(rect(2106, 1927.7, 108, 36), b), "the Revit number box");
+  assert.ok(isLabelBubblePx(rect(299, 824.2, 174, 34.5), b), "a schedule cell");
+  assert.ok(!isLabelBubblePx(rect(2106, 1927.7, 108, 90), b), "as tall as 3.6 text heights: a real small space");
+  assert.ok(!isLabelBubblePx(rect(1900, 1927.7, 42 * BUBBLE_WIDE_RATIO + 1, 36), b), "a corridor a label sits in runs past the width cap");
 });

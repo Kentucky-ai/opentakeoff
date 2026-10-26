@@ -52,7 +52,7 @@ test("merge: same finish tag joins the operator's condition — no duplicate, sh
   const current = {
     conditions: [{ id: "mine", finish_tag: " cpt-1 " }],   // tag match is case/space-insensitive
     shapes: [{ id: "s0", sheet_id: "va.pdf", condition_id: "mine" }],
-    markups: [], sheets: [{ sheet_id: "va.pdf", units_per_px: 0.07 }],
+    markups: [], sheets: [{ sheet_id: "va.pdf", units_per_px: 0.05 }],
   };
   const { payload, note } = mergeTakeoffImport(current, doc());
   assert.equal(note.replaced, false);
@@ -88,11 +88,11 @@ test("re-import is idempotent: same-id shapes are skipped, not duplicated", () =
 test("scales: the operator's calibration wins per sheet; missing sheets adopt the import's", () => {
   const current = {
     shapes: [{ id: "s0", sheet_id: "va.pdf", condition_id: "x" }], markups: [], conditions: [],
-    sheets: [{ sheet_id: "va.pdf", units_per_px: 0.07 }],
+    sheets: [{ sheet_id: "va.pdf", units_per_px: 0.05 }],
   };
   const imported = doc({ sheets: [{ sheet_id: "va.pdf", units_per_px: 0.05 }, { sheet_id: "va.pdf#2", units_per_px: 0.05 }] });
   const { payload, note } = mergeTakeoffImport(current, imported);
-  assert.equal(payload.sheets.find((s: { sheet_id: string }) => s.sheet_id === "va.pdf").units_per_px, 0.07);
+  assert.equal(payload.sheets.find((s: { sheet_id: string }) => s.sheet_id === "va.pdf").units_per_px, 0.05);
   assert.equal(payload.sheets.find((s: { sheet_id: string }) => s.sheet_id === "va.pdf#2").units_per_px, 0.05);
   assert.equal(note.scales_adopted, 1);
 });
@@ -207,4 +207,54 @@ test("a twin whose parent merged into the operator's own condition keeps its mat
   assert.equal(twin.materials[0].per, 185, "it keeps the numbers the file carried");
   assert.equal(twin.materials[0].origin_id, undefined);
   assert.equal(twin.materials[0].inherited, undefined);
+});
+
+test("conflicting scale refuses imports atomically, including into an untraced project", () => {
+  for (const shapes of [[], [{ id: "existing", sheet_id: "va.pdf" }]]) {
+    const current = doc({ shapes, sheets: [{ sheet_id: "va.pdf", units_per_px: 0.025 }] });
+    const before = structuredClone(current);
+    assert.throws(() => mergeTakeoffImport(current, doc()), /scale conflict on va.pdf/);
+    assert.deepEqual(current, before);
+    assert.throws(() => mergeTakeoffImport(current, doc({ sheets: [] })), /imported missing/);
+  }
+});
+
+test("counts and duplicate IDs do not cause scale conflicts", () => {
+  const current = doc({ sheets: [{ sheet_id: "va.pdf", units_per_px: 0.025, scale_confirmed: true }] });
+  assert.equal(mergeTakeoffImport(current, doc()).note.shapes_added, 0);
+  const incoming = doc({ shapes: [{ ...doc().shapes[0], id: "count-1", measure_role: "count", computed: { count: 1 } }] });
+  const result = mergeTakeoffImport(current, incoming);
+  assert.equal(result.note.shapes_added, 1);
+  assert.equal(result.payload.sheets[0].units_per_px, 0.025);
+});
+
+test("legacy agent traces are pending on replace and merge; explicit approval survives", () => {
+  const legacy = { ...doc().shapes[0], origin: { actor: "agent", method: "manual" } };
+  const approved = { ...legacy, id: "approved", origin: { ...legacy.origin, reviewed: true } };
+  for (const current of [{}, { shapes: [{ id: "existing", sheet_id: "va.pdf" }] }]) {
+    const result = mergeTakeoffImport(current, doc({ shapes: [legacy, approved] }));
+    assert.equal(result.note.shapes_pending, 1);
+    assert.equal(result.payload.shapes.find((s: any) => s.id === legacy.id).origin.reviewed, false);
+    assert.equal(result.payload.shapes.find((s: any) => s.id === approved.id).origin.reviewed, true);
+    assert.equal((legacy.origin as any).reviewed, undefined);
+  }
+});
+
+test("multiplier (#455): 0 / negative / non-numeric is refused on both paths — nothing lands", () => {
+  const bad = (m: unknown) => doc({ conditions: [{ id: "c1", finish_tag: "CPT-1", multiplier: m, materials: [] }] });
+  const empty = { conditions: [], shapes: [], markups: [], sheets: [] };
+  const working = { conditions: [{ id: "mine", finish_tag: "LVT-1" }], shapes: [{ id: "s0", sheet_id: "va.pdf", condition_id: "mine" }], markups: [], sheets: [{ sheet_id: "va.pdf", units_per_px: 0.05 }] };
+  for (const m of [0, -2, "abc", "3", Number.NaN, Number.POSITIVE_INFINITY, true, {}]) {
+    for (const current of [empty, working]) {   // clean-replace path and merge path
+      assert.throws(() => mergeTakeoffImport(current, bad(m)), /Couldn't import takeoff: condition multiplier must be a positive number — CPT-1 .*Nothing was imported/, `multiplier ${String(m)}`);
+    }
+  }
+});
+
+test("multiplier (#455): positive, fractional, and absent multipliers still import", () => {
+  for (const m of [1, 4, 0.5, undefined, null]) {
+    const { payload } = mergeTakeoffImport({ conditions: [], shapes: [], markups: [], sheets: [] },
+      doc({ conditions: [{ id: "c1", finish_tag: "CPT-1", multiplier: m, materials: [] }] }));
+    assert.equal(payload.conditions[0].multiplier, m);
+  }
 });

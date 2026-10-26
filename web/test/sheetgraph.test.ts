@@ -9,7 +9,7 @@
 //   - schedule sheets never mint phantom room tags.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, extractTable, roomTags, detailCallouts, revisionOf, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, extractTable, extractTables, roomTags, detailCallouts, revisionOf, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
 
 // span builder: 8pt-tall text, width ~5px/char — the shape the MCP server serves
 const sp = (str: string, x: number, y: number): GraphSpan => ({ str, x, y, w: str.length * 5, h: 8 });
@@ -1101,4 +1101,252 @@ test("a header cell naming two vocabulary words gives up the second: ROOM # | RO
   }
   assert.equal(tab.rows.find((r) => r.key === "100")!.cells.FLOOR.text, "SC-1");
   assert.equal(tab.rows.find((r) => r.key === "102")!.cells.BASE.text, "HTB-1");
+});
+
+test("#355: ROOM NO. | ROOM NAME self-cannibalizing the distinct-hit count no longer starves a real schedule below minHits", () => {
+  // Only 4 header cells — ROOM NO., ROOM NAME, FLOOR, BASE. Under first-
+  // match-per-cell, ROOM NO. and ROOM NAME both contribute only "ROOM" to
+  // the distinct-hit set: {ROOM, FLOOR, BASE} = 3, one short of minHits=4,
+  // so the header row never qualifies and the whole table goes invisible —
+  // even though every one of these four columns is real vocabulary and the
+  // room-name anchor already resolves correctly once a header IS found (see
+  // the ROOM # | ROOM NAME test above). This is the minimal repro: no FLOOR
+  // WALL/CEILING/REMARKS padding to carry the count past the gate.
+  const sched: SheetSpans = {
+    key: "min.pdf#1", sheet_number: "A-611",
+    spans: [
+      sp("ROOM FINISH SCHEDULE", 100, 20),
+      sp("ROOM NO.", 100, 60), sp("ROOM NAME", 220, 60), sp("FLOOR", 400, 60), sp("BASE", 520, 60),
+      sp("201", 100, 85), sp("LOBBY", 220, 85), sp("CT-1", 400, 85), sp("RB-2", 520, 85),
+      sp("202", 100, 105), sp("OFFICE", 220, 105), sp("CT-1", 400, 105), sp("RB-2", 520, 105),
+      sp("203", 100, 125), sp("BREAK RM", 220, 125), sp("SC-2", 400, 125), sp("RB-2", 520, 125),
+    ],
+  };
+  const tab = extractTable(sched, "room-finish");
+  assert.ok(tab, "a real 4-column room-finish schedule must be detected, not starved below minHits");
+  assert.equal(tab!.rows.length, 3);
+  assert.ok(tab!.headers.includes("NAME"), `NAME keeps its own anchor: ${tab!.headers.join(" | ")}`);
+  assert.equal(tab!.rows.find((r) => r.key === "201")!.cells.FLOOR.text, "CT-1");
+  assert.equal(tab!.rows.find((r) => r.key === "203")!.cells.BASE.text, "RB-2");
+  // and the existing fixtures still find exactly what they found before —
+  // this fix must not change extraction on any table that already qualified
+  const rf = extractTable(schedSheet, "room-finish")!;
+  assert.equal(rf.rows.length, 3);
+  assert.equal(rf.title?.text, "ROOM FINISH SCHEDULE");
+  const fin = extractTable(schedSheet, "finish")!;
+  assert.equal(fin.rows.length, 3);
+});
+
+// #356: a materials schedule keyed TAG | MANUFACTURER | STYLE | COLOR (the common convention
+// when a set carries no room-finish schedule at all) scored six clean header hits and was
+// still refused, because TAG was in neither FINISH_HEADERS nor the finish required set.
+test("#356: TAG-keyed materials schedule extracts as kind finish; keynote lists still refuse", () => {
+  const tagSheet: SheetSpans = {
+    key: "set.pdf#9",
+    sheet_number: "A-602",
+    spans: [
+      sp("MATERIAL SCHEDULE", 100, 40),
+      sp("TAG", 100, 60), sp("MANUFACTURER", 200, 60), sp("STYLE", 360, 60),
+      sp("COLOR", 480, 60), sp("SIZE", 600, 60), sp("REMARKS", 700, 60),
+      sp("T-01A", 100, 80), sp("VENDOR-D", 200, 80), sp("QUARRY", 360, 80), sp("ASH", 480, 80), sp("12X24", 600, 80),
+      sp("C-01", 100, 100), sp("VENDOR-E", 200, 100), sp("LOOP", 360, 100), sp("STORM", 480, 100), sp("24X24", 600, 100),
+    ],
+  };
+  const fin = extractTable(tagSheet, "finish")!;
+  assert.ok(fin, "TAG-keyed six-hit materials schedule must extract");
+  assert.equal(fin.rows.length, 2);
+  assert.equal(fin.rows[0].cells.TAG?.text, "T-01A");
+  assert.equal(fin.rows[1].cells.MANUFACTURER?.text, "VENDOR-E");
+
+  // structurally-too-small keynote legend (MARK | DESCRIPTION, two columns) still refuses —
+  // minHits is a deliberate guard, not a bug (per the issue's own adjacent finding)
+  const keynoteSheet: SheetSpans = {
+    key: "set.pdf#10",
+    sheet_number: "A-000",
+    spans: [
+      sp("KEYNOTES", 100, 40),
+      sp("MARK", 100, 60), sp("DESCRIPTION", 200, 60),
+      sp("1", 100, 80), sp("EXISTING FLOORING TO REMAIN", 200, 80),
+    ],
+  };
+  assert.equal(extractTable(keynoteSheet, "finish"), null);
+});
+
+// ── two-tier Revit header (#374) ────────────────────────────────────────────
+// The Dublin A-601 finish plan carries its schedule on the plan sheet with the
+// surfaces on a PARENT tier and the defining columns on the tier below:
+//   CEILING | FLOOR  |    BASE    |  WAINSCOT  |      WALL FINISH
+//   ROOM # | ROOM NAME | FINISH | FINISH | MAT | HT | MAT | HT | EAST NORTH SOUTH | WEST
+// The defining tier carries no FLOOR/BASE word of its own, so the descent
+// refused it, the key column never anchored, and the walker read the sheet's
+// grid bubbles far below as rows: 21 rows read as 2, and resolve_tag answered
+// "no schedule row" for rooms that had one.
+const dublinTiers: SheetSpans = {
+  key: "dublin.pdf#1",
+  sheet_number: "A-601",
+  spans: [
+    sp("PHASE I - ROOM FINISH SCHEDULE", 300, 30),
+    sp("CEILING", 300, 60), sp("FLOOR", 400, 60), sp("BASE", 520, 60), sp("WAINSCOT", 680, 60), sp("WALL FINISH", 860, 60),
+    sp("ROOM #", 100, 72), sp("ROOM NAME", 160, 72), sp("FINISH", 300, 72), sp("FINISH", 400, 72), sp("MAT", 500, 72), sp("HT", 560, 72), sp("MAT", 660, 72), sp("HT", 720, 72), sp("EAST NORTH SOUTH", 800, 72), sp("WEST", 940, 72),
+    sp("103", 100, 90), sp("IV TESTING", 160, 90), sp("ACT-1", 300, 90), sp("CPT-1", 400, 90), sp("RB-1", 500, 90), sp("4\"", 560, 90), sp("--", 660, 90), sp("--", 720, 90), sp("PT-2", 800, 90), sp("PT-2", 940, 90),
+    sp("103A", 100, 106), sp("STG", 160, 106),
+    sp("110", 100, 122), sp("RESTROOM", 160, 122), sp("ACT-1", 300, 122), sp("CFT-1", 400, 122), sp("CTB-1", 500, 122), sp("4\"", 560, 122), sp("CWT-1", 660, 122), sp("4' - 0\"", 720, 122), sp("WC-1", 800, 122), sp("WC-1", 940, 122),
+    sp("111", 100, 138), sp("RESTROOM", 160, 138), sp("ACT-1", 300, 138), sp("CFT-1", 400, 138), sp("CTB-1", 500, 138), sp("4\"", 560, 138), sp("CWT-1", 660, 138), sp("4' - 0\"", 720, 138), sp("WC-1", 800, 138), sp("WC-1", 940, 138),
+    sp("CR11-9", 100, 154), sp("CORRIDOR", 160, 154), sp("ACT-1", 300, 154), sp("LVT-1 / LVT-2", 400, 154), sp("PRB-1", 500, 154), sp("4\"", 560, 154), sp("--", 660, 154), sp("--", 720, 154), sp("PT-1", 800, 154), sp("PT-1", 940, 154),
+    // the plan below the schedule: grid bubbles and a room tag, keyed-looking, far down
+    sp("18", 300, 700), sp("19", 400, 700), sp("RESTROOM", 900, 800), sp("110", 904, 812),
+    sp("FLOOR PLAN - PHASE I - FINISH PLAN", 300, 900), sp("1/8\" = 1'-0\"", 300, 912),
+  ],
+};
+
+test("#374: a two-tier header anchors the key column from the lower tier; surfaces keep their names", () => {
+  const rf = extractTable(dublinTiers, "room-finish")!;
+  assert.ok(rf, "the table is found");
+  assert.deepEqual(rf.rows.map((r) => r.key), ["103", "103A", "110", "111", "CR11-9"], "every schedule row, and NOT the plan's grid bubbles below it");
+  assert.equal(rf.title?.text, "PHASE I - ROOM FINISH SCHEDULE");
+  const r110 = rf.rows.find((r) => r.key === "110")!;
+  assert.equal(r110.cells["FLOOR FINISH"].text, "CFT-1", "FINISH under FLOOR takes its parent's name");
+  assert.equal(r110.cells["CEILING FINISH"].text, "ACT-1");
+  assert.equal(r110.cells["BASE MAT"].text, "CTB-1", "MAT under BASE takes its parent's name");
+  assert.equal(r110.cells["BASE HT"].text, "4\"", "BASE over HT keeps both halves");
+  assert.equal(r110.cells["WAINSCOT MAT"].text, "CWT-1");
+  assert.equal(r110.cells["WAINSCOT HT"].text, "4' - 0\"");
+  assert.equal(r110.cells.NAME.text, "RESTROOM");
+  assert.ok(["EAST", "NORTH", "SOUTH", "WEST"].every((w) => rf.headers.includes(w)), `one run "EAST NORTH SOUTH" is three columns: ${rf.headers.join(" | ")}`);
+  const r103a = rf.rows.find((r) => r.key === "103A")!;
+  assert.equal(r103a.cells.NAME.text, "STG");
+  assert.equal(r103a.cells["FLOOR FINISH"], undefined, "a row with no floor cell says so by absence, never a neighbour's value");
+});
+
+test("#374: resolve_tag answers FLOOR / BASE / WAINSCOT for a room on a two-tier schedule", () => {
+  const g = buildSheetGraph([dublinTiers]);
+  const r = resolveTag(g, "110");
+  assert.equal(r.status, "resolved");
+  const by = Object.fromEntries((r as any).finishes.map((f: any) => [f.surface, f.code]));
+  assert.equal(by["FLOOR FINISH"], "CFT-1");
+  assert.equal(by["BASE MAT"], "CTB-1");
+  assert.equal(by["BASE HT"], "4\"");
+  assert.equal(by["WAINSCOT MAT"], "CWT-1");
+  assert.equal(by["CEILING FINISH"], "ACT-1");
+  assert.equal((r as any).finishes[0].surface, "FLOOR FINISH", "FLOOR still leads the answer");
+  const u = resolveTag(g, "103A");
+  assert.equal(u.status, "unresolved");
+  assert.match((u as any).reason, /no finish cells/, "103A has a row but no finishes — the reason says so, not 'no row'");
+});
+
+// ── equipment schedules (the MEP family) ─────────────────────────────────────
+// A mechanical schedule sheet stacks several ID-keyed device schedules; none
+// of them says CODE / MARK / SYMBOL / TAG the way a finish table does, and a
+// material schedule that DOES say MARK and MANUFACTURER must never read as
+// equipment. The proof of an equipment table is a powered or air-device
+// column — CFM, WATTS, VOLTS, HP, NECK, THROW — no finish schedule carries.
+const mechSheet: SheetSpans = {
+  key: "mech.pdf#2",
+  sheet_number: "M-601",
+  spans: [
+    sp("ELECTRIC BASEBOARD HEATER SCHEDULE", 60, 40),
+    sp("ID", 60, 60), sp("MANUFACTURER", 120, 60), sp("MODEL", 230, 60), sp("WATTS", 300, 60), sp("VOLTS", 360, 60), sp("LENGTH", 420, 60), sp("REMARKS", 480, 60),
+    sp("EBB-1", 60, 80), sp("EXAMPLECO", 120, 80), sp("BB-750", 230, 80), sp("750", 300, 80), sp("120", 360, 80), sp("3'-0\"", 420, 80),
+    sp("EBB-2", 60, 100), sp("EXAMPLECO", 120, 100), sp("BB-1000", 230, 100), sp("1000", 300, 100), sp("240", 360, 100), sp("4'-0\"", 420, 100),
+    sp("FAN SCHEDULE", 60, 160),
+    sp("MARK", 60, 180), sp("DESCRIPTION", 120, 180), sp("CFM", 260, 180), sp("ESP", 320, 180), sp("HP", 380, 180), sp("VOLTS", 440, 180),
+    sp("EF-1", 60, 200), sp("BATHROOM EXHAUST FAN", 120, 200), sp("80", 260, 200), sp("0.25", 320, 200), sp("1/20", 380, 200), sp("120", 440, 200),
+    sp("DIFFUSER, GRILLE, REGISTER SCHEDULE", 60, 260),
+    sp("ID", 60, 280), sp("DESCRIPTION", 120, 280), sp("MANUFACTURER", 260, 280), sp("NECK SIZE", 360, 280), sp("THROW", 440, 280), sp("MOUNTING", 500, 280),
+    sp("SR-1", 60, 300), sp("SUPPLY REGISTER", 120, 300), sp("EXAMPLECO", 260, 300), sp("10 x 6", 360, 300), sp("3-WAY", 440, 300), sp("SURFACE", 500, 300),
+    sp("MATERIAL SCHEDULE", 60, 360),
+    sp("MARK", 60, 380), sp("MATERIAL", 120, 380), sp("MANUFACTURER", 260, 380), sp("DESCRIPTION", 400, 380),
+    sp("CPT-1", 60, 400), sp("CARPET TILE", 120, 400), sp("EXAMPLECO", 260, 400), sp("24 x 24 MODULAR", 400, 400),
+    sp("M-601", 480, 700),   // the title block's own sheet number, inside every band
+  ],
+};
+
+test("equipment: every stacked schedule on the sheet extracts, in order, keyed by ID or MARK", () => {
+  const tables = extractTables(mechSheet, "equipment", { sheetNumbers: new Set(["M601"]) });
+  assert.deepEqual(tables.map((t) => `${t.title?.text}:${t.rows.map((r) => r.key).join(",")}`), [
+    "ELECTRIC BASEBOARD HEATER SCHEDULE:EBB-1,EBB-2",
+    "FAN SCHEDULE:EF-1",
+    "DIFFUSER, GRILLE, REGISTER SCHEDULE:SR-1",
+  ]);
+  assert.deepEqual(tables[0].headers, ["ID", "MANUFACTURER", "MODEL", "WATTS", "VOLTS", "LENGTH", "REMARKS"]);
+  assert.equal(tables[0].rows[1].cells.WATTS.text, "1000");
+  assert.equal(tables[0].kind, "equipment");
+  // the single-table reader still returns only the first
+  assert.equal(extractTable(mechSheet, "equipment")?.title?.text, "ELECTRIC BASEBOARD HEATER SCHEDULE");
+});
+
+test("equipment: a material schedule that says MARK and MANUFACTURER is refused by the gate — no powered column", () => {
+  const onlyMaterial: SheetSpans = { key: "m", spans: mechSheet.spans.filter((t) => t.y >= 360) };
+  assert.equal(extractTable(onlyMaterial, "equipment"), null);
+  assert.equal(extractTable(onlyMaterial, "finish")?.rows[0].key, "CPT-1");
+});
+
+test("equipment: the whole graph indexes each schedule once — the fan schedule never doubles as a finish table", () => {
+  const g = buildSheetGraph([mechSheet]);
+  const kinds = g.tables.map((t) => `${t.kind}:${t.title?.text}`).sort();
+  assert.deepEqual(kinds, [
+    "equipment:DIFFUSER, GRILLE, REGISTER SCHEDULE",
+    "equipment:ELECTRIC BASEBOARD HEATER SCHEDULE",
+    "equipment:FAN SCHEDULE",
+    "finish:MATERIAL SCHEDULE",
+  ]);
+  // the sheet number keyed nothing anywhere
+  assert.ok(!g.tables.some((t) => t.rows.some((r) => /^M-?601$/.test(r.key))));
+  // the row's cells cite the sheet
+  const fan = g.tables.find((t) => t.kind === "equipment" && /FAN/.test(t.title?.text || ""))!;
+  assert.equal(fan.rows[0].cells.CFM.text, "80");
+  assert.equal(fan.rows[0].sheet, "mech.pdf#2");
+});
+
+test("equipment: row keys are marks — EBB-1, EF1, AHU-2A, VAV-12 — and a bare sheet number is not one", () => {
+  const one = (key: string) => extractTable({ key: "k", spans: [
+    sp("PUMP SCHEDULE", 60, 40),
+    sp("MARK", 60, 60), sp("GPM", 120, 60), sp("HP", 180, 60), sp("VOLTS", 240, 60),
+    sp(key, 60, 80), sp("50", 120, 80), sp("1", 180, 80), sp("208", 240, 80),
+  ] }, "equipment")?.rows[0]?.key ?? null;
+  assert.equal(one("P-1"), "P-1");
+  assert.equal(one("EF1"), "EF1");
+  assert.equal(one("AHU-2A"), "AHU-2A");
+  assert.equal(one("VAV-12"), "VAV-12");
+  assert.equal(one("M601"), null, "letter + three digits with no dash is a sheet number");
+  assert.equal(one("134"), null, "a bare room number is not a mark");
+});
+
+test("equipment: a LIGHT FIXTURE SCHEDULE keyed by letter TYPE reads — any trade, not one module", () => {
+  const t = extractTable({ key: "e", spans: [
+    sp("LIGHT FIXTURE SCHEDULE", 60, 40),
+    sp("TYPE", 60, 60), sp("DESCRIPTION", 120, 60), sp("LAMPS", 300, 60), sp("VOLTS", 360, 60), sp("MOUNTING", 420, 60),
+    sp("A", 60, 80), sp("2X4 LED TROFFER", 120, 80), sp("LED 40W", 300, 80), sp("277", 360, 80), sp("RECESSED", 420, 80),
+    sp("B2", 60, 100), sp("DOWNLIGHT", 120, 100), sp("LED 12W", 300, 100), sp("277", 360, 100), sp("RECESSED", 420, 100),
+  ] }, "equipment");
+  assert.deepEqual(t?.rows.map((r) => r.key), ["A", "B2"]);
+  assert.equal(t?.rows[0].cells.LAMPS.text, "LED 40W");
+  // the same letter rows under an ID header are NOT accepted — letters alone key nothing there
+  const idKeyed = extractTable({ key: "e2", spans: [
+    sp("PUMP SCHEDULE", 60, 40),
+    sp("ID", 60, 60), sp("GPM", 120, 60), sp("HP", 180, 60),
+    sp("A", 60, 80), sp("50", 120, 80), sp("1", 180, 80),
+  ] }, "equipment");
+  assert.equal(idKeyed, null);
+});
+
+// #409: a material table and a drawn label are distinct evidence. Finding
+// one must not supply a missing or ambiguous room-to-finish assignment.
+test("finish discovery cannot turn a missing or ambiguous room row into an assignment", () => {
+  const materialOnly: SheetSpans = { ...schedSheet, spans: schedSheet.spans.filter(s => s.y >= 300) };
+  const sources = [structuredClone(planSheet), materialOnly];
+  const before = structuredClone(sources);
+  const graph = buildSheetGraph(sources);
+  assert.ok(graph.tables.some(t => t.kind === "finish" && t.rows.some(r => r.key === "CPT-1")));
+  const missing = resolveTag(graph, "101");
+  assert.equal(missing.status, "unresolved");
+  if (missing.status === "unresolved") assert.match(missing.reason, /no room-finish schedule/);
+  assert.deepEqual(sources, before);
+  const conflict: SheetSpans = { ...schedSheet, key: "conflicting-schedule.pdf", spans: schedSheet.spans.map(s => ({ ...s, str: s.str === "CPT-1" ? "TILE-9" : s.str })) };
+  const ambiguous = resolveTag(buildSheetGraph([planSheet, schedSheet, conflict]), "101");
+  assert.equal(ambiguous.status, "unresolved");
+  if (ambiguous.status === "unresolved") {
+    assert.match(ambiguous.reason, /ambiguous: 2 schedule rows/);
+    assert.equal(ambiguous.candidates?.length, 2);
+  }
 });

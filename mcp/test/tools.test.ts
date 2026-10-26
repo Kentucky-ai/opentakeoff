@@ -11,20 +11,22 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../server.ts";
 import { Session, sanitizeApprovals } from "../src/session.ts";
-import { openPdf, positionedText } from "../src/pdf.ts";
+import { openPdf, positionedText, OPS } from "../src/pdf.ts";
 // the canvas's own tally — the same function the marked-set cover prints from
 import { approvalTally } from "../../web/src/lib/approvals.js";
 // the rules engine's own mask builder — the #207 test plants a synthetic
 // linework mask in the session cache so candidate production is deterministic
 // (the demo plan's rooms are clean rectangles with no islands to find)
-import { buildMask } from "../../web/src/lib/oneclick.ts";
+import { buildMask, extractVectorGeometry } from "../../web/src/lib/oneclick.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
 
-async function pair() {
+// oneClick: true — these tests exercise the flood verbs; the default (gated)
+// surface is pinned by the tools/list test below and by gate.test.ts.
+async function pair(opts: { oneClick?: boolean } = { oneClick: true }) {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  const server = buildServer(new Session());
+  const server = buildServer(new Session(), opts);
   await server.connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
@@ -66,10 +68,17 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // derive_base takes shape ids and lineal feet — same reasoning.
 // import_takeoff takes a file path — same reasoning.
 // delete_verdict takes a record id — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules"]);
+// the RFI verbs (#364) take a title, a question, a sheet name, and record ids —
+// no geometry crosses them — same reasoning.
+// the proposal verbs (#365) other than revise_proposal take a label, a
+// rationale, a condition diff, or a record id — no geometry crosses them.
+const NO_COORDS = new Set(["undo_last", "set_pricing", "set_estimate_settings", "estimate_summary", "export_estimate", "export_proposal", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "edit_annotation", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
+  "propose_takeoff", "withdraw_proposal", "propose_condition_edit", "withdraw_condition_edit",
+  // scope_merge (#366) takes two shape ids and a winner — no geometry crosses it
+  "scope_merge"]);
 
 test("tools/list: exactly TOOL_NAMES, each described with the coordinate contract", async () => {
-  const client = await pair();
+  const client = await pair({});   // a DEFAULT build: the gate is up, TOOL_NAMES is what ships
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [...TOOL_NAMES]);
   for (const t of tools) {
@@ -459,7 +468,7 @@ test("import_takeoff: empty session adopts wholesale; worked session merges by t
 test("apply_rules: refuses without rules, re-runs an imported rule as one batch, idempotent, one undo step", async () => {
   const session = new Session();
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(session).connect(st);
+  await buildServer(session, { oneClick: true }).connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
 
@@ -558,7 +567,7 @@ test("apply_rules: refuses without rules, re-runs an imported rule as one batch,
 test("cut_out: real holes compose on the parent, refusals hold, delete reverts, parent delete orphans", async () => {
   const session = new Session();
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(session).connect(st);
+  await buildServer(session, { oneClick: true }).connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
 
@@ -674,7 +683,7 @@ test("cut_out: real holes compose on the parent, refusals hold, delete reverts, 
 test("cut_out on an open run: clips the stretch, splits at a middle cut, refuses the misses — one undo step", async () => {
   const session = new Session();
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(session).connect(st);
+  await buildServer(session, { oneClick: true }).connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
   await call(client, "load_plan", { path: PLAN });
@@ -886,29 +895,38 @@ test("detect_rooms assign_from_schedule: each room commits under its own row; un
   assert.equal(r.isError, false);
   // pinned from the first observed run — deterministic flood + fixture; re-pinned
   // for the RFC #60 engine (sealed ladder + lattice classifier shift which label
-  // seeds flood clean: 7/19 -> 6/17, same contract, better boundaries), and
-  // AGAIN for the sealed-engine session wiring (floodAtSeed on scale-pinned
-  // masks — the canvas's own feet-true arguments — replacing the raw
-  // floodRegion): 6 -> 5. The dropped room is 133, and the drop is the sealed
-  // engine being HONEST: the raw flood only reached 133's floor by LEAKING
-  // through its drawn tag box's pinhole (46.74 SF); sealing closes the box, the
-  // snapped 4.62 SF box ring is no room, and the 5 SF plausibility floor
-  // withholds it (withheld.implausible) instead of committing a tag box as a
-  // room. 142 also corrects 285.96 -> 161.00 SF — the min-passage rule severs
-  // a hairline conjunction the raw flood measured as one space — and 134A
-  // gains its annexed door swing (78.93 -> 90.13 SF). Canvas parity is proven
-  // against the bench corpus goldens in parity.test.ts.
-  assert.equal(r.data.detected, 5);
+  // seeds flood clean: 7/19 -> 6/17, same contract, better boundaries), AGAIN
+  // for the sealed-engine session wiring (floodAtSeed on scale-pinned masks:
+  // 6 -> 5), and AGAIN for #373 (5 -> 4). The #373 re-pin is the wide-box
+  // bubble rule plus the ownership gate being HONEST about what the old 5 were:
+  // the tag boxes on this sheet are wider than 2.5 text widths, so the center
+  // rung's box flood cleared the bubble guard, stopped the ladder, and was
+  // withheld under the 5 SF floor — 25 real rooms never got their second rung.
+  // Now the box is a bubble, the ladder reaches the room, and the sweep hands
+  // over 21 more rooms (unresolved against the schedule, below). Of the old 5
+  // commits, NONE was the room its row named: 170, 150 and 167 were pockets
+  // under the tag (8.44 / 5.61 / 7.14 SF), 142's 161 SF was the space south of
+  // its door (142's own floor is tile-hatched and never floods), and 134A's
+  // 93.07 SF was room 136. The ownership gate now withholds all five as
+  // unowned, while 136 commits under ITS row at the same 93.07 SF. Fewer
+  // commits, every one of them the room its row names.
+  assert.equal(r.data.detected, 4);
   assert.ok(r.data.rooms.every((x: any) => typeof x.shape_id === "string" && typeof x.condition === "string"),
     "every reported room committed, each carrying the tag it committed under");
   const tags = new Set(r.data.rooms.map((x: any) => x.condition));
-  assert.equal(tags.size, 5, `distinct finishes from distinct rows — the whole point (5 rooms, 5 rows after the sealed-wiring re-pin). Got: ${[...tags].join(",")}`);
+  assert.equal(tags.size, 3, `distinct finishes from distinct rows — the whole point (4 rooms over 3 rows' finishes after the #373 re-pin: two share CPT-1). Got: ${[...tags].join(",")}`);
+  assert.deepEqual(
+    r.data.rooms.map((x: any) => [x.label, x.condition]).sort(),
+    [["133", "EXIST"], ["136", "CPT-1"], ["149", "CPT-1"], ["153", "WSF-1"]],
+    "each committed room carries its OWN row's floor finish",
+  );
+  assert.equal(r.data.withheld.unowned, 12, "wrong-space floods are withheld as unowned, never committed under a tag (#373)");
   assert.ok([...tags].every((t: any) => !/[/,]/.test(t)), "no minted tag is a compound literal");
 
   // the never-guesses contract: withheld rooms are reported with their real
   // geometry and a reason, never committed and never dropped
-  assert.equal(r.data.withheld.unresolved, 17);
-  assert.equal(r.data.unresolved.length, 17);
+  assert.equal(r.data.withheld.unresolved, 31);
+  assert.equal(r.data.unresolved.length, 31);
   for (const u of r.data.unresolved) {
     assert.ok(u.reason.length > 0, "every withheld room says why");
     assert.ok(u.area_sf > 0 && u.perimeter_lf > 0, "withheld from committing, not from reporting");
@@ -920,7 +938,7 @@ test("detect_rooms assign_from_schedule: each room commits under its own row; un
   // and the sealed engine's account (confidence + factors) stamps centrally
   // in commit(), so every flood-committed shape ships scored
   const payload = await call(client, "export_takeoff", {});
-  assert.equal(payload.data.shapes.length, 5);
+  assert.equal(payload.data.shapes.length, 4);
   for (const shp of payload.data.shapes) {
     assert.equal(shp.origin.assignment.source, "schedule");
     assert.ok(shp.origin.assignment.room_tag, "the room tag that resolved");
@@ -932,15 +950,15 @@ test("detect_rooms assign_from_schedule: each room commits under its own row; un
   const inv = await call(client, "list_shapes", {});
   assert.ok(inv.data.shapes.every((x: any) => x.assignment === "schedule"), "list_shapes carries the flat verdict");
   const summary = await call(client, "takeoff_summary");
-  assert.equal(summary.data.conditions.length, 5);
-  assert.equal(summary.data.conditions.reduce((n: number, c: any) => n + c.shape_count, 0), 5);
+  assert.equal(summary.data.conditions.length, 3);
+  assert.equal(summary.data.conditions.reduce((n: number, c: any) => n + c.shape_count, 0), 4);
 
   // mutual exclusion: both finish-tag sources at once is a contradiction,
   // refused before any flooding — nothing minted, nothing committed
   const both = await call(client, "detect_rooms", { sheet: FKEY, condition: "CPT-1", assign_from_schedule: true });
   assert.equal(both.isError, true);
   assert.match(both.data.error, /at most one of/);
-  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 5, "the refusal changed nothing");
+  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 3, "the refusal changed nothing");
 
   // a reassign onto a different tag is the agent choosing the finish — the
   // schedule verdict (and its citation) must not survive that edit; undo
@@ -2225,7 +2243,10 @@ test("sweep_schedule_row: row citation, corroborated anchor, text-corroborated c
   assert.equal(r.data.anchor.sheet, "symbol-set.pdf");
   assert.equal(r.data.anchor.corroborated, true);
   assert.equal(r.data.anchor.segments, 4, "the marker bubble's linework, not the text");
-  assert.equal(r.data.anchor.occurrences, 6, "drawn occurrences across plan sheets only — the detail sheet's does not count");
+  // 5, not 6: the bare "T1" text (no linework near it) is a mention, not a
+  // drawn occurrence — it can neither anchor nor corroborate, and it surfaces
+  // below as text_only. The detail sheet's marker does not count either.
+  assert.equal(r.data.anchor.occurrences, 5, "DRAWN occurrences across plan sheets only — the bare text and the detail sheet's do not count");
 
   // the honest count: geometry AND tag agree
   assert.equal(r.data.found, 5);
@@ -2368,4 +2389,547 @@ test("count_marks: tags drawn ON their marker with no value are sweep_schedule_r
   assert.equal(t1.count, 0, "bubble tags carry no paired value — nothing counts");
   assert.ok(t1.withheld.length >= 3, "every plan-sheet T1 occurrence is disclosed as a question");
   assert.ok(t1.withheld.every((w: any) => /amid linework|bare tag/.test(w.reason)));
+});
+
+test("symbol_sweep variant_guard: whole-symbol mode demotes the richer drains a contained seed would count", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+  // same fixture as #259: a bare-square seed matches every drain by default
+  // (contained-seed contract, `extra` disclosed on those rows) — under
+  // variant_guard those supersets are questions, not counts
+  const dflt = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT });
+  assert.equal(dflt.data.found, 7, "default: the #259 contract holds");
+  assert.ok(dflt.data.matches.some((m: any) => typeof m.extra === "number" && m.extra > 0.3),
+    "and the richer placements carry their extra disclosure");
+  const guarded = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, variant_guard: true });
+  assert.equal(guarded.isError, false);
+  assert.ok(guarded.data.found < 7, "under the guard the supersets no longer count");
+  const demoted = guarded.data.withheld.filter((w: any) => /extra linework the seed lacks/.test(w.reason));
+  assert.ok(demoted.length >= 6, `the drains come back as disclosed questions (got ${demoted.length})`);
+  // manual mode still wins: guard + counter-example behaves like #259
+  const both = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, variant_guard: true, exclude: [SEED_RECT] });
+  assert.equal(both.data.found, 1, "negatives take over — identical to the #259 sweep");
+});
+
+// ── get_sheet_vectors (#367) — the strokes the engine floods against, over the wire ──
+// The finish line in the issue: on the bundled sample plan the verb returns the
+// same segment count and the same meta bytes the canvas engine reports for the
+// sheet. The engine's number here is extractVectorGeometry run directly on the
+// page's operator list — the identical call session.ensureGeometry makes — so
+// the comparison is against the array the engine is fed, not a re-derivation.
+const FINISH_PLAN = fileURLToPath(new URL("../../web/public/demo/sample-finish-plan.pdf", import.meta.url));
+const FINISH_KEY = "sample-finish-plan.pdf";
+
+async function engineGeometry(planPath: string, pageNum = 1) {
+  const doc = await openPdf(planPath);
+  const ph = await doc.page(pageNum);
+  const geo = extractVectorGeometry(await ph.operatorList(), ph.viewport.transform, OPS);
+  await doc.destroy();
+  return geo;
+}
+
+test("get_sheet_vectors: bundled sample plan — segment count and meta bytes equal the engine's, paged to the end", async (t) => {
+  const client = await pair();
+  await call(client, "load_plan", { path: FINISH_PLAN });
+  const engine = await engineGeometry(FINISH_PLAN);
+  const engineCount = engine.segs.length >> 2;
+  assert.ok(engineCount > 20000, `the sample plan is dense enough to page (${engineCount} segments)`);
+
+  // walk the cursor at the default page size; every page's ledger reconciles
+  const meta: number[] = [], lum: number[] = [], subpath: number[] = [], layerOf: number[] = [], points: number[] = [];
+  let cursor: number | undefined, pages = 0, first: any;
+  do {
+    const r = await call(client, "get_sheet_vectors", cursor === undefined ? { sheet: FINISH_KEY } : { sheet: FINISH_KEY, cursor });
+    assert.equal(r.isError, false, r.data.error);
+    const d = r.data;
+    if (!first) first = d;
+    assert.equal(d.total, engineCount, "total is the engine's segment count on every page");
+    assert.equal(d.offset + d.returned + d.dropped, d.total, "offset + returned + dropped === total");
+    assert.equal(d.offset, meta.length, "offset is exactly what earlier pages carried");
+    assert.equal(d.limit, 20000);
+    assert.ok(d.returned <= 20000 && d.returned > 0);
+    assert.equal(d.points.length, d.returned * 4, "four numbers per segment");
+    for (const arr of [d.meta, d.lum, d.subpath, d.layer_of]) assert.equal(arr.length, d.returned, "aligned channels never drift");
+    assert.equal(d.next_cursor !== undefined, d.dropped > 0, "next_cursor iff something was dropped");
+    meta.push(...d.meta); lum.push(...d.lum); subpath.push(...d.subpath); layerOf.push(...d.layer_of); points.push(...d.points);
+    cursor = d.next_cursor;
+    pages++;
+  } while (cursor !== undefined);
+
+  assert.equal(meta.length, engineCount, "walking the cursor to the end yields every segment exactly once");
+  assert.deepEqual(meta, Array.from(engine.meta), "meta bytes are the engine's, byte for byte, in extraction order");
+  assert.deepEqual(lum, Array.from(engine.lum!), "luminance channel is the engine's");
+  assert.deepEqual(layerOf, Array.from(engine.layerOf!), "layer index channel is the engine's");
+  assert.deepEqual(first.layer_ids, engine.layerIds, "layer id table is the engine's");
+  assert.equal(first.image_area, Math.round(engine.imageArea));
+  assert.equal(first.page, 1);
+  // endpoints to 0.01 px — the engine's doubles, stated to the hundredth
+  for (let i = 0; i < engineCount * 4; i++) assert.ok(Math.abs(points[i] - engine.segs[i]) <= 0.005 + 1e-9, `point ${i} within 0.01 px of the engine`);
+  // the subpath ordinal inverts the engine's contiguous ranges exactly
+  const want = new Int32Array(engineCount).fill(-1);
+  engine.subpaths!.forEach((sp, k) => { for (let i = sp.i0; i < sp.i1; i++) want[i] = k; });
+  assert.deepEqual(subpath, Array.from(want), "subpath ordinal per segment matches the engine's ranges");
+  // pen width rides the high nibble, and the plan actually uses more than one pen
+  assert.ok(new Set(meta.map((m) => m >> 4)).size > 1, "meta carries pen widths");
+
+  t.diagnostic(`get_sheet_vectors parity: engine ${engineCount} segments / ${engine.meta.length} meta bytes; verb total=${first.total}, ${pages} pages at limit 20000, ${meta.length} meta bytes equal`);
+});
+
+test("get_sheet_vectors: region keeps intersecting segments only, agrees with sheet_context's count, pages with exact dropped", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: FINISH_PLAN });
+  const region = { x0: 300, y0: 300, x1: 1300, y1: 1300 };
+
+  // one call at the ceiling: the whole region set, echoed post-clamp
+  const whole = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, region, limit: 100000 });
+  assert.equal(whole.isError, false, whole.data.error);
+  const w = whole.data;
+  assert.deepEqual(w.region, [300, 300, 1300, 1300]);
+  assert.ok(w.total > 500 && w.total < 20000, `a 1000 px window on the sample plan holds a few hundred segments (${w.total})`);
+  assert.equal(w.returned, w.total);
+  assert.equal(w.dropped, 0);
+  assert.equal(w.next_cursor, undefined);
+  // every returned segment's bbox touches the rect (necessary for intersection)
+  for (let k = 0; k < w.returned; k++) {
+    const x1 = w.points[k * 4], y1 = w.points[k * 4 + 1], x2 = w.points[k * 4 + 2], y2 = w.points[k * 4 + 3];
+    assert.ok(Math.max(x1, x2) >= 300 - 0.01 && Math.min(x1, x2) <= 1300 + 0.01 && Math.max(y1, y2) >= 300 - 0.01 && Math.min(y1, y2) <= 1300 + 0.01, `segment ${k} touches the region`);
+  }
+  // the same keep test as sheet_context: its pre-decimation count is this total
+  const ctx = await call(client, "sheet_context", { sheet: FINISH_KEY, region });
+  assert.equal(ctx.isError, false);
+  assert.equal(w.total, ctx.data.vectors.total_in_region, "region total equals sheet_context.total_in_region for the same rect");
+
+  // page the same region at 100: the ledger is exact on every page, and the
+  // pages concatenate to the single-call set in the same order
+  const meta: number[] = [], points: number[] = [];
+  let cursor: number | undefined, pages = 0;
+  do {
+    const r = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, region, limit: 100, ...(cursor === undefined ? {} : { cursor }) });
+    assert.equal(r.isError, false, r.data.error);
+    const d = r.data;
+    assert.equal(d.total, w.total);
+    assert.equal(d.offset, meta.length);
+    assert.equal(d.returned, Math.min(100, w.total - meta.length));
+    assert.equal(d.dropped, w.total - meta.length - d.returned, "dropped is exactly the remainder after this page");
+    assert.equal(d.next_cursor !== undefined, d.dropped > 0);
+    meta.push(...d.meta); points.push(...d.points);
+    cursor = d.next_cursor;
+    pages++;
+  } while (cursor !== undefined);
+  assert.equal(pages, Math.ceil(w.total / 100));
+  assert.deepEqual(meta, w.meta, "pages concatenate to the single-call meta");
+  assert.deepEqual(points, w.points, "pages concatenate to the single-call points");
+
+  // an empty window is empty, honestly: zero total, no cursor. The window is
+  // FOUND, not guessed — the first 50 px cell no segment bbox touches.
+  const engine = await engineGeometry(FINISH_PLAN);
+  const CELL = 50, cols = Math.ceil(w.sheet_px[0] / CELL), rows = Math.ceil(w.sheet_px[1] / CELL);
+  const busy = new Uint8Array(cols * rows);
+  for (let i = 0; i < engine.segs.length; i += 4) {
+    const cx0 = Math.floor(Math.min(engine.segs[i], engine.segs[i + 2]) / CELL), cx1 = Math.floor(Math.max(engine.segs[i], engine.segs[i + 2]) / CELL);
+    const cy0 = Math.floor(Math.min(engine.segs[i + 1], engine.segs[i + 3]) / CELL), cy1 = Math.floor(Math.max(engine.segs[i + 1], engine.segs[i + 3]) / CELL);
+    for (let cy = Math.max(0, cy0); cy <= Math.min(rows - 1, cy1); cy++) for (let cx = Math.max(0, cx0); cx <= Math.min(cols - 1, cx1); cx++) busy[cy * cols + cx] = 1;
+  }
+  const free = busy.indexOf(0);
+  assert.ok(free >= 0, "the sample plan has at least one empty 50 px cell");
+  const fx = (free % cols) * CELL, fy = Math.floor(free / cols) * CELL;
+  const blank = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, region: { x0: fx + 1, y0: fy + 1, x1: fx + CELL - 1, y1: fy + CELL - 1 } });
+  assert.equal(blank.isError, false);
+  assert.deepEqual({ total: blank.data.total, returned: blank.data.returned, dropped: blank.data.dropped, next: blank.data.next_cursor }, { total: 0, returned: 0, dropped: 0, next: undefined });
+
+  // a cursor past the end is refused, not silently empty
+  const past = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, cursor: 10_000_000 });
+  assert.equal(past.isError, true);
+  assert.match(past.data.error, /past the end/);
+});
+
+test("get_sheet_vectors: a scan has no strokes — refused, and view_sheet is named as the path", async () => {
+  const SCAN = fileURLToPath(new URL("./fixtures/scanned-plan.pdf", import.meta.url));
+  const client = await pair();
+  await call(client, "load_plan", { path: SCAN });
+  const info = await call(client, "sheet_info", { sheet: "scanned-plan.pdf" });
+  assert.equal(info.data.has_vector_linework, false, "the fixture is a scan");
+  const r = await call(client, "get_sheet_vectors", { sheet: "scanned-plan.pdf" });
+  assert.equal(r.isError, true, "no vector layer → refusal");
+  assert.match(r.data.error, /no vector linework/);
+  assert.match(r.data.error, /view_sheet/);
+  assert.match(r.data.error, /raster fallback/);
+  // a read-only verb: the refusal left nothing behind
+  const shapes = await call(client, "list_shapes", {});
+  assert.equal(shapes.data.shapes.length, 0);
+});
+
+// ── RFIs over MCP (#364) ─────────────────────────────────────────────────────
+// Four verbs over the canvas's own register: same record, same numbering, same
+// link rule. Everything below runs through the SDK on the wire, because the
+// undo_last output enum is validated THERE — a journal op the enum doesn't
+// name fails the undo call itself, and no unit test sees it.
+
+test("RFIs: create → list → resolve → delete round-trip on the wire, and undo_last ×3 takes each back exactly", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  const cloud = await call(client, "annotate", { sheet: KEY, type: "cloud", text: "schedule says CPT-1, plan tags VCT-1", rect: [[400, 900], [800, 1200]], condition: "CPT-1" });
+  const note = await call(client, "annotate", { sheet: KEY, type: "text", text: "unrelated", at: [100, 100] });
+
+  // create: next number in the panel's sequence, open, agent-raised and pending
+  const made = await call(client, "create_rfi", {
+    title: "Room 102 finish conflict", question: "Finish schedule row 102 reads CPT-1; the plan tags the room VCT-1. Which governs?",
+    sheet: "A-101", markup_ids: [cloud.data.id],
+  });
+  assert.equal(made.isError, false, made.data.error);
+  assert.equal(made.data.number, "RFI-001");
+  assert.equal(made.data.status, "open");
+  assert.equal(made.data.actor, "agent");
+  assert.equal(made.data.pending, true, "agent-raised is pencil until the estimator accepts it in the register");
+  assert.equal(made.data.sheet, KEY, "title-block addressing resolved to the sheet key");
+  assert.deepEqual(made.data.linked_markups, [cloud.data.id]);
+  assert.deepEqual(made.data.conditions, ["CPT-1"], "the scope the question touches, through the linked markup");
+
+  // the link is the canvas rule — markup.rfi_id — and the payload the app loads carries both halves
+  const payload1 = await call(client, "export_takeoff", {});
+  assert.equal(payload1.data.markups.find((m: any) => m.id === cloud.data.id).rfi_id, made.data.id);
+  assert.equal(payload1.data.markups.find((m: any) => m.id === note.data.id).rfi_id, "", "an unlinked markup stays unlinked");
+  assert.equal(payload1.data.rfis.length, 1);
+  assert.deepEqual(payload1.data.rfis[0].origin, { actor: "agent", reviewed: false }, "the stored record says who asked and that no human has accepted it");
+  assert.equal(payload1.data.rfis[0].subject, "Room 102 finish conflict");
+
+  // list: every RFI with status, sheet, links, and the conditions the links touch
+  const listed = await call(client, "list_rfis", {});
+  assert.equal(listed.isError, false);
+  assert.equal(listed.data.count, 1);
+  assert.equal(listed.data.open, 1);
+  assert.equal(listed.data.pending, 1);
+  assert.deepEqual(listed.data.withdrawn, []);
+  assert.deepEqual(listed.data.rfis[0].linked_markups, [cloud.data.id]);
+  assert.deepEqual(listed.data.rfis[0].conditions, ["CPT-1"]);
+
+  // resolve: answered + response + dates; a second resolve is refused in so many words
+  const done = await call(client, "resolve_rfi", { rfi_id: made.data.id, answer: "Architect: VCT-1 governs; schedule row 102 revised in ASI-02." });
+  assert.equal(done.isError, false, done.data.error);
+  assert.equal(done.data.status, "answered");
+  assert.match(done.data.response, /VCT-1 governs/);
+  assert.match(done.data.response_date, /^\d{4}-\d{2}-\d{2}$/, "the panel's date-only auto-stamp");
+  assert.match(done.data.resolved_at, /^\d{4}-\d{2}-\d{2}T/, "plus the resolve's own ISO timestamp");
+  const again = await call(client, "resolve_rfi", { rfi_id: made.data.id, answer: "second answer" });
+  assert.equal(again.isError, true);
+  assert.match(again.data.error, /RFI-001 is answered, not open/);
+  assert.match(again.data.error, /open/i);
+  assert.equal((await call(client, "list_rfis", {})).data.rfis[0].response, "Architect: VCT-1 governs; schedule row 102 revised in ASI-02.", "the refusal changed nothing");
+
+  // delete: tombstone — gone from the list, number reserved, the markup keeps its note and loses the link
+  const gone = await call(client, "delete_rfi", { rfi_id: made.data.id });
+  assert.equal(gone.isError, false, gone.data.error);
+  assert.deepEqual({ deleted: gone.data.deleted, number: gone.data.number, unlinked_markups: gone.data.unlinked_markups, rfis_remaining: gone.data.rfis_remaining },
+    { deleted: made.data.id, number: "RFI-001", unlinked_markups: 1, rfis_remaining: 0 });
+  const afterDel = await call(client, "list_rfis", {});
+  assert.equal(afterDel.data.count, 0);
+  assert.deepEqual(afterDel.data.withdrawn, ["RFI-001"], "the gap is explained, not silent");
+  const payload2 = await call(client, "export_takeoff", {});
+  assert.deepEqual(payload2.data.rfis, [], "a tombstone never reaches the app — its register has no such notion; the app always writes the (empty) list");
+  assert.equal(payload2.data.markups.find((m: any) => m.id === cloud.data.id).rfi_id, "", "link cleared, note kept");
+  assert.equal(payload2.data.markups.length, 2);
+  // a withdrawn id is refused by name, and so is a made-up one
+  const dead = await call(client, "resolve_rfi", { rfi_id: made.data.id, answer: "x" });
+  assert.equal(dead.isError, true);
+  assert.match(dead.data.error, /RFI-001 was withdrawn/);
+  const nope = await call(client, "delete_rfi", { rfi_id: "rfi-nope" });
+  assert.equal(nope.isError, true);
+  assert.match(nope.data.error, /list_rfis/);
+
+  // ── undo ×3, newest first: delete → resolve → create. Each op name crosses
+  // the wire through undoLastOutput's enum — the assertion that catches a
+  // journal op the enum forgot.
+  const u1 = await call(client, "undo_last", { n: 1 });
+  assert.equal(u1.isError, false, `undo of delete_rfi failed on the wire: ${u1.data.error}`);
+  assert.deepEqual(u1.data.steps.map((x: any) => [x.op, x.tool, x.shapes]), [["rfi_delete", "delete_rfi", 0]]);
+  const back1 = await call(client, "list_rfis", {});
+  assert.equal(back1.data.count, 1);
+  assert.deepEqual(back1.data.withdrawn, []);
+  assert.equal(back1.data.rfis[0].status, "answered", "the record came back as it was before the delete — answered");
+  assert.deepEqual(back1.data.rfis[0].linked_markups, [cloud.data.id], "and the delete's unlink was reversed");
+
+  const u2 = await call(client, "undo_last", { n: 1 });
+  assert.equal(u2.isError, false, `undo of resolve_rfi failed on the wire: ${u2.data.error}`);
+  assert.deepEqual(u2.data.steps.map((x: any) => [x.op, x.tool]), [["rfi_resolve", "resolve_rfi"]]);
+  const back2 = await call(client, "list_rfis", {});
+  assert.equal(back2.data.rfis[0].status, "open");
+  assert.equal(back2.data.rfis[0].response, "");
+  assert.equal(back2.data.rfis[0].response_date, "");
+
+  const u3 = await call(client, "undo_last", { n: 1 });
+  assert.equal(u3.isError, false, `undo of create_rfi failed on the wire: ${u3.data.error}`);
+  assert.deepEqual(u3.data.steps.map((x: any) => [x.op, x.tool]), [["rfi_create", "create_rfi"]]);
+  const back3 = await call(client, "list_rfis", {});
+  assert.equal(back3.data.count, 0);
+  assert.deepEqual(back3.data.withdrawn, [], "an undone create leaves no tombstone — it never existed");
+  const payload3 = await call(client, "export_takeoff", {});
+  assert.equal(payload3.data.markups.find((m: any) => m.id === cloud.data.id).rfi_id, "", "the markup's previous link (none) is back");
+  assert.equal(payload3.data.markups.length, 2, "annotations are never RFI cargo — both notes survive every step");
+  assert.equal(u3.data.remaining, 0, "annotate is not journaled; the three RFI verbs were the whole history");
+
+  // and forward again: after a full unwind the register starts at RFI-001 (no tombstone was left)
+  const fresh = await call(client, "create_rfi", { title: "again", question: "q", sheet: KEY });
+  assert.equal(fresh.data.number, "RFI-001");
+});
+
+test("RFIs: delete is a tombstone — the number is never reissued and the marked set keeps the gap", async () => {
+  const client = await pair();
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-rfi-gap-"));
+  const tmpPlan = path.join(dir, "sample-plan.pdf");
+  await copyFile(PLAN, tmpPlan);
+  await call(client, "load_plan", { path: tmpPlan });
+
+  const a = await call(client, "create_rfi", { title: "first", question: "q1", sheet: KEY });
+  const b = await call(client, "create_rfi", { title: "second", question: "q2", sheet: KEY });
+  const c = await call(client, "create_rfi", { title: "third", question: "q3", sheet: KEY });
+  assert.deepEqual([a.data.number, b.data.number, c.data.number], ["RFI-001", "RFI-002", "RFI-003"]);
+
+  // withdraw the NEWEST — the case a hard delete would silently renumber (max+1 would hand out RFI-003 again)
+  const gone = await call(client, "delete_rfi", { rfi_id: c.data.id });
+  assert.equal(gone.isError, false);
+  assert.match(gone.data.note, /next RFI takes RFI-004/);
+  const d = await call(client, "create_rfi", { title: "fourth", question: "q4", sheet: KEY });
+  assert.equal(d.data.number, "RFI-004", "the withdrawn number stays reserved");
+  const listed = await call(client, "list_rfis", {});
+  assert.deepEqual(listed.data.rfis.map((r: any) => r.number), ["RFI-001", "RFI-002", "RFI-004"]);
+  assert.deepEqual(listed.data.withdrawn, ["RFI-003"]);
+
+  // the deliverable keeps the gap: an RFI-only session still exports (cover +
+  // schedule), and the schedule prints 001, 002, 004 — never 003
+  const pdf = await call(client, "export_marked_pdf", {});
+  assert.equal(pdf.isError, false, pdf.data.error);
+  assert.equal(pdf.data.rfis_printed, 3);
+  assert.equal(pdf.data.sheets_marked, 0);
+  assert.equal(pdf.data.pages, 2, "cover + the RFI schedule page — no sheet carries work");
+  const doc = await openPdf(pdf.data.path);
+  const schedule = positionedText(await doc.page(2)).map((t) => t.str).join(" ");
+  await doc.destroy();
+  assert.match(schedule, /RFI SCHEDULE/);
+  assert.match(schedule, /3 RFIs/);
+  for (const n of ["RFI-001", "RFI-002", "RFI-004"]) assert.match(schedule, new RegExp(n));
+  assert.doesNotMatch(schedule, /RFI-003/);
+
+  // the tombstone survives an import (the export never carries it, the session does)
+  const out = path.join(dir, "takeoff.json");
+  await call(client, "export_takeoff", { path: out });
+  const imp = await call(client, "import_takeoff", { path: out });
+  assert.equal(imp.isError, false, imp.data.error);
+  const after = await call(client, "list_rfis", {});
+  assert.deepEqual(after.data.rfis.map((r: any) => r.number), ["RFI-001", "RFI-002", "RFI-004"], "re-import is idempotent for RFIs too");
+  assert.deepEqual(after.data.withdrawn, ["RFI-003"]);
+  assert.equal((await call(client, "create_rfi", { title: "fifth", question: "q5", sheet: KEY })).data.number, "RFI-005");
+});
+
+test("RFIs in the marked set: an agent-raised RFI prints exactly like a panel-raised one; only the record and the credit line say who asked", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-rfi-parity-"));
+  const tmpPlan = path.join(dir, "sample-plan.pdf");
+  await copyFile(PLAN, tmpPlan);
+  const today = new Date().toISOString().slice(0, 10);
+  const subject = "Room 102 finish conflict";
+  const question = "Finish schedule row 102 reads CPT-1; the plan tags the room VCT-1. Which governs?";
+  const rect: [[number, number], [number, number]] = [[400, 900], [800, 1200]];
+
+  // AGENT: annotate + create_rfi over the wire
+  const agent = await pair();
+  await call(agent, "load_plan", { path: tmpPlan });
+  const cloud = await call(agent, "annotate", { sheet: KEY, type: "cloud", text: "finish conflict", rect });
+  const made = await call(agent, "create_rfi", { title: subject, question, sheet: KEY, markup_ids: [cloud.data.id] });
+  assert.equal(made.isError, false, made.data.error);
+  const agentPdf = await call(agent, "export_marked_pdf", { path: path.join(dir, "agent.pdf") });
+  assert.equal(agentPdf.isError, false, agentPdf.data.error);
+  assert.equal(agentPdf.data.rfis_printed, 1);
+  assert.equal(agentPdf.data.pages, 3, "cover + RFI schedule + the one marked sheet");
+
+  // PANEL: the record the canvas's Raise RFI mints (TakeoffCanvas raiseRfi —
+  // no origin, the estimator's own) and its linked cloud, arriving by file
+  // through import_takeoff, exactly as an app save would
+  const agentCloud = (await call(agent, "export_takeoff", {})).data.markups[0];
+  const panelFile = path.join(dir, "panel.json");
+  await writeFile(panelFile, JSON.stringify({
+    schema: "opentakeoff.takeoff_canvas.v1", project_name: "", units: "imperial", sheets: [], conditions: [], shapes: [],
+    markups: [{ ...agentCloud, id: "mk-panel-1", rfi_id: "rfi-panel-1" }],
+    rfis: [{
+      id: "rfi-panel-1", number: "RFI-001", created_at: new Date().toISOString(), subject, question, status: "open",
+      to: "", priority: "normal", cost_impact: false, schedule_impact: false, date: today, response: "", response_date: "", sheet_id: KEY,
+    }],
+    sheet_group: [], last_group: [], sheet_tabs: [], sheet_levels: {},
+  }));
+  const panel = await pair();
+  await call(panel, "load_plan", { path: tmpPlan });
+  const imp = await call(panel, "import_takeoff", { path: panelFile });
+  assert.equal(imp.isError, false, imp.data.error);
+  const panelList = await call(panel, "list_rfis", {});
+  assert.deepEqual({ actor: panelList.data.rfis[0].actor, pending: panelList.data.rfis[0].pending, linked: panelList.data.rfis[0].linked_markups },
+    { actor: "estimator", pending: false, linked: ["mk-panel-1"] }, "a panel-raised RFI is the estimator's own and never pending");
+  const panelPdf = await call(panel, "export_marked_pdf", { path: path.join(dir, "panel.pdf") });
+  assert.equal(panelPdf.isError, false, panelPdf.data.error);
+  assert.equal(panelPdf.data.rfis_printed, 1);
+  assert.equal(panelPdf.data.pages, 3);
+
+  // the RFI schedule page — every row, meta, Q line — byte-for-byte the same text
+  const pageText = async (file: string, n: number) => {
+    const doc = await openPdf(file);
+    const text = positionedText(await doc.page(n)).map((t) => t.str);
+    await doc.destroy();
+    return text;
+  };
+  const agentRows = await pageText(agentPdf.data.path, 2);
+  const panelRows = await pageText(panelPdf.data.path, 2);
+  assert.ok(agentRows.some((t) => /RFI SCHEDULE/.test(t)), "page 2 is the schedule");
+  assert.ok(agentRows.some((t) => t === "RFI-001"), "the number prints as its own run");
+  assert.ok(agentRows.some((t) => t.includes(subject)));
+  assert.ok(agentRows.some((t) => t.includes("1 linked markup")), "the link count derives from markup.rfi_id, both ways");
+  assert.deepEqual(agentRows, panelRows, "an agent-raised RFI's schedule rows are identical to a panel-raised one's");
+
+  // who asked lives on the record and on the credit line (the builder prints
+  // it on the LAST page), never on the row
+  const agentLast = (await pageText(agentPdf.data.path, 3)).join(" ");
+  const panelLast = (await pageText(panelPdf.data.path, 3)).join(" ");
+  assert.match(agentLast, /Agent-raised via OpenTakeoff MCP — 1 agent-raised RFI pending acceptance/);
+  assert.doesNotMatch(panelLast, /pending acceptance/);
+  const agentRec = (await call(agent, "export_takeoff", {})).data.rfis[0];
+  const panelRec = (await call(panel, "export_takeoff", {})).data.rfis[0];
+  assert.deepEqual(agentRec.origin, { actor: "agent", reviewed: false });
+  assert.equal(panelRec.origin, undefined);
+  // and, origin aside, the two records are the same shape — the panel loads either
+  const strip = (r: any) => { const { id, created_at, origin, ...rest } = r; return rest; };
+  assert.deepEqual(strip(agentRec), strip(panelRec));
+});
+
+test("export_takeoff after tools/list preserves calibration and RFIs under client output validation", async () => {
+  const client = await pair({});
+  try {
+    // Discovery primes the SDK's JSON Schema output validator. Calling tools
+    // without tools/list can miss fields forbidden by their advertised schema.
+    await client.listTools();
+    await client.callTool({ name: "load_plan", arguments: { path: PLAN } });
+    await client.callTool({ name: "set_scale", arguments: { sheet: KEY, use_detected: true } });
+    await client.callTool({ name: "create_rfi", arguments: {
+      sheet: KEY, title: "Synthetic scope question", question: "Confirm the finish at the indicated location.",
+    } });
+    const result = await client.callTool({ name: "export_takeoff", arguments: {} });
+    assert.equal(result.isError, undefined);
+    const data: any = result.structuredContent;
+    assert.equal(data.sheets[0].scale_source, "detected");
+    assert.equal(data.sheets[0].scale_confirmed, false);
+    assert.equal(data.rfis.length, 1);
+    assert.equal(data.rfis[0].subject, "Synthetic scope question");
+    assert.deepEqual(JSON.parse((result.content as any[])[0].text), data);
+  } finally { await client.close(); }
+});
+
+// #409: shorten a note through the discovered wire surface; geometry,
+// quantities, links, human verdicts and extension fields must remain exact.
+test("edit_annotation changes only text, round-trips and undoes; no approval or RFI backdoor", async () => {
+  const session = new Session();
+  const server = buildServer(session);
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await server.connect(st);
+  const client = new Client({ name: "annotation-edit", version: "1" });
+  await client.connect(ct);
+  try {
+    await client.listTools();
+    await call(client, "load_plan", { path: PLAN });
+    assert.equal((await call(client, "set_scale", { sheet: KEY, upp: 1 / 36 })).isError, false);
+    assert.equal((await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [460, 100], [460, 460]], condition: "FT-1" })).isError, false);
+    const created = await call(client, "annotate", { sheet: KEY, type: "dimension", from: [100, 100], to: [460, 100], text: "A note too long for this drawing", condition: "FT-1" });
+    assert.equal(created.isError, false);
+    const id = created.data.id;
+    Object.assign(session.markups[0], { extension: { keep: [1, 2] } });
+    const before = structuredClone(session.exportPayload());
+    const edited = await call(client, "edit_annotation", { annotation_id: id, text: "Verify in field" });
+    assert.equal(edited.isError, false);
+    assert.equal(edited.data.text, "Verify in field");
+    const after = session.exportPayload();
+    assert.deepEqual(after, { ...before, markups: before.markups.map(m => ({ ...m, text: "Verify in field" })) });
+    const listed = await call(client, "list_annotations");
+    assert.equal(listed.data.annotations[0].text, "Verify in field");
+    assert.equal(listed.data.annotations[0].length_lf ?? session.markups[0].len_ft, 10);
+    const undone = await call(client, "undo_last", { n: 1 });
+    assert.equal(undone.isError, false);
+    assert.equal(undone.data.steps[0].op, "annotation_text");
+    assert.deepEqual(session.exportPayload(), before);
+    assert.equal((await call(client, "edit_annotation", { annotation_id: id, text: "" })).isError, false, "empty text clears the note; dimension length remains");
+    assert.equal(session.markups[0].len_ft, 10);
+    await call(client, "undo_last", { n: 1 });
+    assert.equal((await call(client, "edit_annotation", { annotation_id: "missing", text: "x" })).isError, true);
+    assert.equal((await call(client, "edit_annotation", { annotation_id: id, text: session.markups[0].text })).isError, true, "a no-op must not consume an undo step");
+    session.markups[0].rfi_id = "rfi-existing";
+    const linked = structuredClone(session.exportPayload());
+    const refused = await call(client, "edit_annotation", { annotation_id: id, text: "Architect approved" });
+    assert.equal(refused.isError, true);
+    assert.match(refused.data.error, /RFI/);
+    assert.deepEqual(session.exportPayload(), linked);
+    assert.equal(session.approvals.length, 0);
+  } finally { await client.close(); await server.close(); }
+});
+
+// #441 — Drop and Rise: a linear run's LF is its plan trace plus its vertical legs.
+test("measure_line rise/drop: condition defaults, per-run override, edit_shape clear, edit_condition re-flow, undo", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  // 300 px at 1/4" = 1'-0" (36 px/ft at render scale 2) = 8.33 LF plan
+  const flat = await call(client, "measure_line", { sheet: KEY, pts: [[600, 400], [900, 400]], condition: "EC-1" });
+  assert.equal(flat.isError, false);
+  assert.equal(flat.data.length_lf, 8.33);
+  assert.equal(flat.data.plan_lf, undefined, "a flat run carries no split");
+
+  // the condition's defaults re-flow the existing run and seed the next
+  const knob = await call(client, "edit_condition", { condition: "EC-1", rise_ft: 2, drop_ft: 8 });
+  assert.equal(knob.isError, false);
+  assert.equal(knob.data.rise_ft, 2);
+  assert.equal(knob.data.drop_ft, 8);
+  let sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions[0].lf, 18.33, "edit_condition re-flowed the committed run");
+
+  const dflt = await call(client, "measure_line", { sheet: KEY, pts: [[600, 500], [900, 500]], condition: "EC-1" });
+  assert.equal(dflt.data.length_lf, 18.33);
+  assert.equal(dflt.data.plan_lf, 8.33);
+  assert.equal(dflt.data.vertical_lf, 10);
+  assert.equal(dflt.data.rise_ft, 2);
+  assert.equal(dflt.data.drop_ft, 8);
+
+  // a run's own drop (0 here) beats the condition's 8; rise still defaults to 2
+  const own = await call(client, "measure_line", { sheet: KEY, pts: [[600, 600], [900, 600]], condition: "EC-1", drop_ft: 0 });
+  assert.equal(own.data.length_lf, 10.33);
+  assert.equal(own.data.vertical_lf, 2);
+  sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions[0].lf, 46.99, "18.33 + 18.33 + 10.33 → the report sums totals");
+
+  // edit_shape: set a leg, then clear it (null) so the default applies again
+  const set = await call(client, "edit_shape", { shape_id: own.data.shape_id, drop_ft: 4 });
+  assert.equal(set.isError, false);
+  assert.deepEqual(set.data.changed, ["drop_ft"]);
+  assert.equal(set.data.perimeter_lf, 14.33);
+  assert.equal(set.data.vertical_lf, 6);
+  const clr = await call(client, "edit_shape", { shape_id: own.data.shape_id, drop_ft: null });
+  assert.equal(clr.data.perimeter_lf, 18.33, "cleared → the condition's 8 ft drop applies");
+
+  // legs belong to linear runs only
+  const wall = await call(client, "measure_surface", { sheet: KEY, pts: [[100, 100], [400, 100]], condition: "CT-W9", height_ft: 9 });
+  const bad = await call(client, "edit_shape", { shape_id: wall.data.shape_id, rise_ft: 3 });
+  assert.equal(bad.isError, true);
+  assert.match(bad.data.error, /linear run's vertical legs/);
+
+  // the export carries the split on the shape record, and the condition its defaults
+  const exp = await call(client, "export_takeoff");
+  const conds = exp.data.conditions as any[];
+  const ec = conds.find((c) => c.finish_tag === "EC-1");
+  assert.equal(ec.rise_ft, 2);
+  assert.equal(ec.drop_ft, 8);
+  const shp = (exp.data.shapes as any[]).find((x) => x.id === dflt.data.shape_id);
+  assert.equal(shp.computed.perimeter_lf, 18.33);
+  assert.equal(shp.computed.plan_lf, 8.33);
+  assert.equal(shp.computed.vertical_lf, 10);
+
+  // undo the knob write: the defaults go, and every run without its own leg re-flows flat
+  const zero = await call(client, "edit_condition", { condition: "EC-1", rise_ft: 0, drop_ft: 0 });
+  assert.equal(zero.isError, false);
+  sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions.find((c: any) => c.finish_tag === "EC-1").lf, 24.99, "3 flat runs × 8.33");
+  await call(client, "undo_last");
+  sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions.find((c: any) => c.finish_tag === "EC-1").lf, 54.99, "undo restored the legs and re-flowed all three runs (the cleared override now takes the default too)");
 });

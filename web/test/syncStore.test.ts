@@ -688,3 +688,25 @@ test("#313 bookkeeping: seed and every confirmed push stamp synced_base at the n
   assert.equal(afterPush.rev, 5);
   assert.deepEqual(afterPush.data.conditions, [{ id: "next" }]); // the pushed payload is the new ancestor
 });
+
+test("scale/geometry conflict snapshots local before adopting a consistent remote sheet", async () => {
+  const s0 = mkShape("s1", { measure_role: "floor_area", computed: { area_sf: 100 } });
+  const basePayload = { conditions: [{ id: "c1" }], shapes: [s0], sheets: [{ sheet_id: s0.sheet_id, units_per_px: 1 }] };
+  await metaPut("sync:A:synced_rev", 3);
+  await metaPut("sync:A:synced_base", { rev: 3, data: basePayload });
+  await metaPut("sync:A:touched", true);
+  const base = createLocalStore("A");
+  const remote = { ...basePayload, shapes: [s0, mkShape("new", { measure_role: "floor_area", computed: { area_sf: 50 } })] };
+  const provider = fakeProvider({ data: { ...remote, rev: 7 }, rev: 7 });
+  const { snaps, saveSnapshot } = recorder();
+  const sync = createSyncStore({ base, provider, folderId: "A", saveSnapshot }) as any;
+  await sync.whenSynced();
+  const local = { ...basePayload, shapes: [{ ...s0, computed: { area_sf: 400 } }], sheets: [{ sheet_id: s0.sheet_id, units_per_px: 2 }] };
+  await sync.saveAnnotations(local); await sync.whenPushed();
+  const saved = await base.loadAnnotations();
+  assert.deepEqual(saved.shapes, remote.shapes);
+  assert.equal(saved.sheets[0].units_per_px, 1);
+  assert.equal(snaps.length, 1); assert.equal(snaps[0].label, "Merge backup");
+  assert.equal(snaps[0].payload.sheets[0].units_per_px, 2);
+  assert.equal(snaps[0].payload.shapes[0].computed.area_sf, 400);
+});

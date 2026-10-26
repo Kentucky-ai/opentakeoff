@@ -1,0 +1,272 @@
+{
+  "name": "mq-sg633-c-comment",
+  "kind": "marquee",
+  "note": "sheetgraphFinish.test.ts:633 — C with only a comment above C-1",
+  "spans": [
+    {
+      "str": "CODE",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "COMMENTS",
+      "x": 760,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "C",
+      "x": 100,
+      "y": 38,
+      "w": 8,
+      "h": 17
+    },
+    {
+      "str": "SEALED CONCRETE FLOOR",
+      "x": 760,
+      "y": 38,
+      "w": 168,
+      "h": 17
+    },
+    {
+      "str": "C-1",
+      "x": 100,
+      "y": 76,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "BROWN",
+      "x": 760,
+      "y": 76,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "CONCRETE STAIN",
+      "x": 220,
+      "y": 76,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "CPT-1",
+      "x": 100,
+      "y": 114,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "GREY",
+      "x": 760,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "CARPET",
+      "x": 220,
+      "y": 114,
+      "w": 48,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [
+        {
+          "finish_tag": "C",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "SEALED CONCRETE FLOOR",
+          "suggested": true
+        },
+        {
+          "finish_tag": "C-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "CONCRETE STAIN",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "BROWN",
+          "suggested": true
+        },
+        {
+          "finish_tag": "CPT-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "CARPET",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "GREY",
+          "suggested": true
+        }
+      ]
+    },
+    "parseSchedule": [
+      {
+        "finish_tag": "C",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "SEALED CONCRETE FLOOR",
+        "suggested": true
+      },
+      {
+        "finish_tag": "C-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "CONCRETE STAIN",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "BROWN",
+        "suggested": true
+      },
+      {
+        "finish_tag": "CPT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "CARPET",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "GREY",
+        "suggested": true
+      }
+    ],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "C",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "C",
+              "bbox": [
+                100,
+                38,
+                108,
+                55
+              ]
+            },
+            "COMMENTS": {
+              "text": "SEALED CONCRETE FLOOR",
+              "bbox": [
+                760,
+                38,
+                928,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "C-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "C-1",
+              "bbox": [
+                100,
+                76,
+                124,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "CONCRETE STAIN",
+              "bbox": [
+                220,
+                76,
+                332,
+                93
+              ]
+            },
+            "COMMENTS": {
+              "text": "BROWN",
+              "bbox": [
+                760,
+                76,
+                800,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1",
+              "bbox": [
+                100,
+                114,
+                140,
+                131
+              ]
+            },
+            "MATERIAL": {
+              "text": "CARPET",
+              "bbox": [
+                220,
+                114,
+                268,
+                131
+              ]
+            },
+            "COMMENTS": {
+              "text": "GREY",
+              "bbox": [
+                760,
+                114,
+                792,
+                131
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
