@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/img/brand/scan-star-banner.svg" alt="" width="100%">
+
 # OpenTakeoff
 
 > 本译文的部分功能说明可能落后于英文版。请查看[英文 README](README.md)和[共用 Wiki](docs/wiki/README.md)了解当前可用状态。

@@ -10,6 +10,7 @@
 //             sheetLabel={tabLabel} onClose />
 import React, { useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
+import { ScanStar } from "../brand/marks.jsx";
 import { RFI_STATUSES, rfiStatus, linkedMarkups, liveRfis, rfiPending } from "../lib/rfi.js";
 
 const PRIORITIES = ["low", "normal", "high"];
@@ -80,8 +81,8 @@ export default function RfiPanel({ docked = false, rfis: rfisIn = [], markups = 
               <span style={{ padding: "1px 7px", background: st.color, color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{st.label}</span>
               {agent && (
                 <span title={pending ? "Raised by an agent over MCP — pending until you accept it" : "Raised by an agent over MCP — accepted"}
-                  style={{ padding: "1px 6px", border: "1px dashed var(--ink-muted)", color: "var(--ink-muted)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                  agent{pending ? " · pending" : ""}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 6px", border: "1px dashed var(--ink-muted)", color: "var(--ink-muted)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                  <ScanStar size={10} style={{ color: "var(--cobalt)" }} />agent{pending ? " · pending" : ""}
                 </span>
               )}
               {pending && (

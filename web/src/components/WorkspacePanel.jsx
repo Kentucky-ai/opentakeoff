@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { filterWork, workActor, workMethod, workQuantity, workReviewState } from "../lib/workReview.js";
 import { Z } from "../lib/ui.js";
+import { ScanStar } from "../brand/marks.jsx";
 import "./workspacePanel.css";
 
 export default function WorkspacePanel({ open, shapes, conditions, selectedId, sheetLabel, fmtArea, fmtLength,
@@ -40,7 +41,7 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
         setTab(next); document.getElementById(`workspace-${next}-tab`)?.focus();
       }}>
         <button type="button" role="tab" tabIndex={tab === "work" ? 0 : -1} id="workspace-work-tab" aria-controls="workspace-work-view" aria-selected={tab === "work"} onClick={() => setTab("work")}>Measurements</button>
-        <button type="button" role="tab" tabIndex={tab === "agent" ? 0 : -1} id="workspace-agent-tab" aria-controls="workspace-agent-view" aria-selected={tab === "agent"} onClick={() => setTab("agent")}>Agent {running ? "· Working" : proposalCount ? `· ${proposalCount} proposals` : ""}</button>
+        <button type="button" role="tab" tabIndex={tab === "agent" ? 0 : -1} id="workspace-agent-tab" aria-controls="workspace-agent-view" aria-selected={tab === "agent"} onClick={() => setTab("agent")}><ScanStar size={12} working={!!running} style={{ marginRight: 6 }} />Agent {running ? "· Working" : proposalCount ? `· ${proposalCount} proposals` : ""}</button>
       </div>
       <div id="workspace-agent-view" role="tabpanel" aria-labelledby="workspace-agent-tab" hidden={tab !== "agent"} className="workspace-agent-view">{children}</div>
       <div id="workspace-work-view" role="tabpanel" aria-labelledby="workspace-work-tab" hidden={tab !== "work"} className="workspace-work-view">
@@ -56,7 +57,7 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
           {rows.slice(0, limit).map((shape) => <button type="button" className="workspace-row" key={shape.id} aria-pressed={selectedId === shape.id} onClick={() => onLocate(shape)}>
             <span className="workspace-row-top"><strong>{conditions[shape.condition_id]?.finish_tag || "Unassigned"}{shape.label ? ` · ${shape.label}` : ""}</strong><span className="workspace-quantity">{quantity(shape)}</span></span>
             <span className="workspace-sheet">{sheetLabel(shape.sheet_id)}</span>
-            <span className="workspace-row-bottom"><span>{shape.author || workActor(shape)}</span><span className={workReviewState(shape) === "Needs review" ? "workspace-pending" : ""}>{workReviewState(shape)}</span></span>
+            <span className="workspace-row-bottom"><span>{workActor(shape) === "Agent" && <ScanStar size={10} style={{ marginRight: 5, color: "var(--cobalt)" }} />}{shape.author || workActor(shape)}</span><span className={workReviewState(shape) === "Needs review" ? "workspace-pending" : ""}>{workReviewState(shape)}</span></span>
           </button>)}
           {rows.length > limit && <button type="button" className="workspace-more" onClick={() => setLimit((n) => n + 50)}>Show more · {rows.length - limit} remaining</button>}
         </div>

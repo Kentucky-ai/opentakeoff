@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 280" width="1280" height="280" role="img" aria-label="OpenTakeoff scan star">
+  <rect width="1280" height="280" fill="#0e1a2e"/>
+  <rect x="0" y="138.9" width="1280" height="2.2" fill="#62d4dc" opacity=".35"/>
+  <g fill="#62d4dc">
+    <rect x="636.9" y="29.8" width="6.2" height="6.2"/>
+    <rect x="636.8" y="39.5" width="6.4" height="6.2"/>
+    <rect x="631.3" y="49.2" width="17.4" height="6.2"/>
+    <rect x="623.0" y="59.0" width="34.0" height="6.2"/>
+    <rect x="611.6" y="68.7" width="56.7" height="6.2"/>
+    <rect x="596.9" y="78.4" width="86.2" height="6.2"/>
+    <rect x="578.3" y="88.2" width="123.4" height="6.2"/>
+    <rect x="555.2" y="97.9" width="169.7" height="6.2"/>
+    <rect x="526.3" y="107.7" width="227.4" height="6.2"/>
+    <rect x="489.7" y="117.4" width="300.6" height="6.2"/>
+    <rect x="440.7" y="127.1" width="398.6" height="6.2"/>
+    <rect x="348.8" y="136.9" width="582.4" height="6.2"/>
+    <rect x="440.7" y="146.6" width="398.6" height="6.2"/>
+    <rect x="489.7" y="156.4" width="300.6" height="6.2"/>
+    <rect x="526.3" y="166.1" width="227.4" height="6.2"/>
+    <rect x="555.2" y="175.8" width="169.7" height="6.2"/>
+    <rect x="578.3" y="185.6" width="123.4" height="6.2"/>
+    <rect x="596.9" y="195.3" width="86.2" height="6.2"/>
+    <rect x="611.6" y="205.1" width="56.7" height="6.2"/>
+    <rect x="623.0" y="214.8" width="34.0" height="6.2"/>
+    <rect x="631.3" y="224.5" width="17.4" height="6.2"/>
+    <rect x="636.8" y="234.3" width="6.4" height="6.2"/>
+    <rect x="636.9" y="244.0" width="6.2" height="6.2"/>
+  </g>
+</svg>

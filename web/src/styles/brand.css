@@ -1,0 +1,5 @@
+/* OT-only brand styles — kept out of app.css like print.css. The scan star (brand/marks.jsx): working = rows ripple out from the centre line. */
+.ot-scan-star rect { transform-box: fill-box; transform-origin: center; }
+.ot-scan-star.is-working rect { animation: ot-scan-ripple 1.3s var(--ease, ease-in-out) infinite; animation-delay: calc(var(--ring) * 70ms); }
+@keyframes ot-scan-ripple { 0%, 100% { transform: scaleX(1); opacity: 1; } 45% { transform: scaleX(.3); opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .ot-scan-star.is-working rect { animation: none; opacity: .8; } }

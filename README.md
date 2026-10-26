@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/img/brand/scan-star-banner.svg" alt="" width="100%">
+
 # OpenTakeoff
 
 **The measurement engine for building plans—built so an AI agent can drive it, and so an estimator wants to.**
