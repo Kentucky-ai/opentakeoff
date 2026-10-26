@@ -1,5 +1,6 @@
 // OpenTakeoff brand marks. Neutral, paper/ink/cobalt — the same token palette as
 // the rest of the app. (No relation to any private branding.)
+import { scanStarRows } from "../lib/scanStar.js";
 
 export function Wordmark({ size = 96, color = "var(--ink)", weight = 800, letterSpacing = "-0.03em" }) {
   return (
@@ -41,20 +42,7 @@ export function Mark({ size = 100, ink = "var(--ink)", paper = "var(--paper-crea
   );
 }
 
-// The scan star — the agent's mark. A four-point star cut into horizontal scan rows. Row
-// half-widths follow a pinched astroid, w = reach·(1 − |y|^p)^q, so the points draw out thin;
-// the centre row runs tip to tip. Few rows (icon sizes) get a softer pinch and fatter bars so the
-// star still reads at 12px. Drawn in its own space: y in −1..1, x in −reach..reach. `rows` odd.
-export function scanStarRows(rows = 23, reach = 2.4) {
-  const [p, q, fill] = rows <= 7 ? [0.9, 1.5, 0.7] : rows <= 11 ? [0.8, 1.7, 0.64] : [0.7, 1.9, 0.64];
-  const pitch = 2 / rows, h = pitch * fill, mid = (rows - 1) / 2;
-  return Array.from({ length: rows }, (_, i) => {
-    const y = -1 + pitch * (i + 0.5);
-    const w = i === mid ? reach : Math.max(h / 2, reach * Math.max(0, 1 - Math.abs(y) ** p) ** q);
-    return { x: -w, y: y - h / 2, w: 2 * w, h, ring: Math.abs(i - mid) };
-  });
-}
-
+// The scan star — the agent's mark (geometry in lib/scanStar.js, shared with the PDF watermark).
 // `size` is the star's height; it is `reach` times as wide. `working` ripples the rows out from
 // the centre line (the agent is running).
 export function ScanStar({ size = 24, rows, reach = 1, working = false, color = "currentColor", title, style }) {
