@@ -36,9 +36,13 @@ test("additive keys ride only when non-empty; palette drops ids that no longer r
     conditions, palette: ["c1"], client_info: { client: "ACME" }, estimate_settings: { overhead_pct: 10 }, bid_proposal: { itemized: true }, sheet_levels: { "a.pdf": "L1" }, layer_overrides: { "a.pdf": { x: "exclude" } },
     provenance_counters: { shapes_deleted: { s1: 1 } }, approvals: [{ id: "a" }], rules: [{ id: "r" }], stitches: [{ id: "st" }],
     condition_columns: [{ id: "k" }], shape_labels: [{ id: "l" }], proposals: [{ id: "p" }], condition_edit_proposals: [{ id: "e" }],
+    split_view: { orientation: "v", ratio: 0.5, refKey: "a.pdf", refSet: ["a.pdf"] },
   });
   assert.ok(inOrder(Object.keys(full)));
   assert.equal(Object.keys(full).length, TAKEOFF_DOCUMENT_KEYS.length - 1, "everything but units");
+  // split_view is additive too: absent on a project that never split (the
+  // reference-pane feature must not touch a non-split project's bytes).
+  assert.equal("split_view" in buildTakeoffDocument({}), false);
 });
 
 test("sheetEntry: scale_source only when known, scale_confirmed only when false", () => {

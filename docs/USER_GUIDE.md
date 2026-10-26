@@ -149,6 +149,19 @@ Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over M
 
 **If a control seems missing:** **Stitch N into one surface** is in the gallery footer and requires 2–4 selected sheets. **Align** appears only while a stitched surface is open. Reopen one from its tab or the gallery's **Stitched surfaces** strip. If Align refuses because takeoffs already exist, create a fresh stitch and align it before tracing. Deleting a stitch also refuses while takeoffs or markups exist.
 
+### Split screen (reference pane)
+
+Side-by-side groups and stitches share one canvas; **split screen** gives the sheet you are measuring a companion pane. **Drag a sheet tab** toward a screen edge—left, right, top, or bottom—and drop it: the canvas splits in two and the dragged sheet opens in the new pane. Dropping on the center zone adds the tab to a side-by-side group instead, as before.
+
+The two panes are not equals, on purpose:
+
+- **The primary pane measures.** Every tool, snap grid, and keyboard shortcut stays where it was; the split changes nothing about how you take off.
+- **The reference pane looks.** It frames one open sheet at its own pan and zoom—crisp detail tiles included—and mirrors the primary sheet's committed shapes and markups read-only, so a door schedule or an adjacent room can sit beside the room you trace, revision clouds and notes included. Mirrored ink is ink, not a control: click it and the pane pans, exactly as if the markup were printed on the sheet; select a cloud in the primary and the mirror shows the cloud, never the selection. Notes size themselves to the pane's own zoom, so they stay legible at any zoom on that side. Hiding the markup layer (the canvas's **Hide layer** control) hides it in both panes. A pane cannot frame a stitch yet: give it a single sheet.
+
+The divider between the panes drags to resize; **⟳** flips the split between side-by-side and stacked; **✕** closes the reference pane and the primary folds back to full width. The layout saves with the project and reopens with it.
+
+Limits: the panes together keep at most **6 sheets** live, and split screen turns itself off on a narrow window or a low-memory device rather than thrash the tile pool.
+
 ### Levels (multi-floor sets)
 
 In the gallery, select sheets and click **Assign level…** (`"L1"`, `"Level 2"`, `"Garage"`—empty clears). The gallery groups by level with unassigned sheets last, cards wear their level chip, and tabs plus the page picker carry the label. Levels save with the project.

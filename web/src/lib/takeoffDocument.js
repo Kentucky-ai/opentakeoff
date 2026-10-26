@@ -25,7 +25,7 @@ const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 export const TAKEOFF_DOCUMENT_KEYS = Object.freeze([
   "schema", "project_name", "units", "client_info", "estimate_settings", "bid_proposal", "sheets", "conditions", "condition_columns",
   "shape_labels", "palette", "shapes", "markups", "rfis", "approvals", "proposals",
-  "condition_edit_proposals", "rules", "sheet_group", "last_group", "sheet_tabs", "stitches",
+  "condition_edit_proposals", "rules", "sheet_group", "last_group", "sheet_tabs", "split_view", "stitches",
   "sheet_levels", "layer_overrides", "provenance_counters",
 ]);
 
@@ -75,6 +75,10 @@ export function buildTakeoffDocument(f = {}) {
     sheet_group: arr(f.sheet_group),
     last_group: arr(f.last_group),
     sheet_tabs: arr(f.sheet_tabs),
+    // additive `split_view` (read-only reference pane): omit-when-absent like
+    // every other additive key, so a project that never split persists a
+    // document byte-identical to one written before the feature existed.
+    ...(f.split_view ? { split_view: f.split_view } : {}),
     ...(arr(f.stitches).length ? { stitches: f.stitches } : {}),
     ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}),
     ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}),
