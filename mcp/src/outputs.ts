@@ -1237,3 +1237,44 @@ export const assistantListenOutput = {
 export const assistantSayOutput = {
   delivered_to: z.number().int().describe("Open windows that received the reply (0 = the person closed the window; it shows when they reopen)"),
 };
+
+export const stitchSheetsOutput = {
+  stitch_id: z.string().describe("The created composite surface key (starts with stitch:)"),
+  name: z.string().describe("Name of the stitched surface"),
+  extent: z.object({
+    width_px: z.number(),
+    height_px: z.number(),
+  }).describe("Composite surface dimensions in image px at render scale 2.0"),
+  members: z.array(z.object({
+    key: z.string(),
+    dx: z.number(),
+    dy: z.number(),
+  })).describe("Member sheet placements within the composite surface"),
+  scale: z.object({
+    upp: z.number().nullable().optional(),
+    scale_confirmed: z.boolean().optional(),
+  }).describe("Scale status inherited from member sheets, if all member scales agree"),
+  note: z.string(),
+};
+
+export const listStitchesOutput = {
+  stitches: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    extent: z.object({
+      width_px: z.number(),
+      height_px: z.number(),
+    }),
+    members: z.array(z.object({
+      key: z.string(),
+      dx: z.number(),
+      dy: z.number(),
+    })),
+    scale: z.object({
+      upp: z.number().nullable().optional(),
+      scale_confirmed: z.boolean().optional(),
+    }),
+    shape_count: z.number().int(),
+    created_at: z.string().optional(),
+  })),
+};

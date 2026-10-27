@@ -258,3 +258,25 @@ test("multiplier (#455): positive, fractional, and absent multipliers still impo
     assert.equal(payload.conditions[0].multiplier, m);
   }
 });
+
+test("stitches (#161): import merges new stitches and skips known stitch ids", () => {
+  const current = {
+    conditions: [{ id: "mine", finish_tag: "CPT-1" }],
+    shapes: [{ id: "s0", sheet_id: "va.pdf", condition_id: "mine" }],
+    markups: [],
+    sheets: [{ sheet_id: "va.pdf", units_per_px: 0.05 }],
+    stitches: [{ id: "stitch:existing", name: "Existing", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 100, dy: 0 }] }],
+  };
+  const importedStitch = { id: "stitch:new", name: "New Stitch", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 200, dy: 0 }] };
+  const duplicateStitch = { id: "stitch:existing", name: "Existing Dupe", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 999, dy: 0 }] };
+
+  const { payload } = mergeTakeoffImport(current, doc({
+    stitches: [importedStitch, duplicateStitch],
+  }));
+
+  assert.equal(payload.stitches.length, 2);
+  assert.equal(payload.stitches[0].id, "stitch:existing");
+  assert.equal(payload.stitches[0].name, "Existing"); // operator state wins
+  assert.equal(payload.stitches[1].id, "stitch:new");
+  assert.equal(payload.stitches[1].name, "New Stitch");
+});

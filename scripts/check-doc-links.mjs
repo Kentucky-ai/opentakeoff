@@ -18,9 +18,6 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// fileURLToPath, not URL.pathname: on Windows the pathname is "/D:/repo/…",
-// which resolve() turns into D:\D:\repo, and a checkout path with a space
-// arrives percent-encoded.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const checkIssues = process.argv.includes("--issues");
 
@@ -43,7 +40,7 @@ const files = [
   ...readdirSync(join(root, "protocol"))
     .filter((f) => f.endsWith(".md"))
     .map((f) => join("protocol", f)),
-].filter((f) => existsSync(join(root, f)));
+].map((f) => f.replace(/\\/g, "/")).filter((f) => existsSync(join(root, f)));
 
 // GitHub's slug rules: lowercase, drop everything that isn't a letter, number,
 // space, hyphen, or underscore (so `.` `&` and the em-dash vanish — which is
@@ -69,7 +66,7 @@ function scan(relPath) {
   const counts = new Map();
   let fenced = false;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i].replace(/\r$/, "");
     if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; continue; }
     if (fenced) continue;
     const h = line.match(/^#{1,6}\s+(.*)$/);
@@ -107,7 +104,7 @@ for (const [file, { anchors, links }] of scanned) {
     let targetFile = file;
     if (path) {
       const abs = resolve(join(root, dirname(file)), path);
-      targetFile = relative(root, abs);
+      targetFile = relative(root, abs).replace(/\\/g, "/");
       if (!existsSync(abs)) {
         failures.push(`${file}:${line}: broken path "${target}" — ${targetFile} does not exist`);
         continue;

@@ -22,6 +22,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
     // trade suites (suites.ts): the opener is always on; the trade tools it
     // enables are NOT in this table — they are hidden until a suite opens
     "open_suite",
+    "stitch_sheets", "list_stitches",
   ],
   measure: [
     "propose_takeoff",
