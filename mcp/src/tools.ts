@@ -25,6 +25,7 @@ import {
   proposeConditionEditOutput, withdrawConditionEditOutput,
   scopeDuplicatesOutput, scopeMergeOutput,
   setPricingOutput, setEstimateSettingsOutput, estimateSummaryOutput, exportEstimateOutput, exportProposalOutput,
+  stitchSheetsOutput, listStitchesOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
@@ -726,6 +727,30 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     traceToolCall("view_sheet", a, startedAt, reply);
     return reply;
   });
+
+  server.registerTool("stitch_sheets", {
+    description: `Stitch 2–4 plan sheets together into a composite working surface across match-lines (#161) — the browser canvas's Stitched Sheets feature. Shapes traced on the returned stitch reference bind to the composite key ("stitch:<uid>") and measure continuously across seam boundaries. By default sheets auto-butt left-to-right. Pass align { anchor, moving } (matching points in image px on two sheets) to align sheets across their match line, or pass explicit members with dx/dy offsets. ${COORDS}`,
+    inputSchema: {
+      sheets: z.array(z.string()).min(2).max(4).describe("2–4 sheet keys or sheet numbers to stitch together"),
+      name: z.string().optional().describe('Optional human-readable label for the composite sheet (defaults to "Stitched sheets")'),
+      align: z.object({
+        anchor: pointSchema.describe("First alignment point in image px"),
+        moving: pointSchema.describe("Second alignment point in image px — sheet under moving translates to anchor"),
+      }).optional().describe("Two-point match line alignment"),
+      members: z.array(z.object({
+        key: z.string(),
+        dx: z.number(),
+        dy: z.number(),
+      })).optional().describe("Explicit member sheet placements in image px (alternative to auto-butt or align)"),
+    },
+    outputSchema: stitchSheetsOutput,
+  }, run("stitch_sheets", (a) => session.stitchSheets(a)));
+
+  server.registerTool("list_stitches", {
+    description: "List all existing composite stitched sheet surfaces in the current session, including dimensions, member sheet placements, inherited scale, and shape counts.",
+    inputSchema: {},
+    outputSchema: listStitchesOutput,
+  }, run("list_stitches", () => session.listStitches()));
 
   // ── annotations (#114) — the agent half of markup.condition_id (#112) ──────
   // A human could attach a note to a scope; an agent could not even SEE one

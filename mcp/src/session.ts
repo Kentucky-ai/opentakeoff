@@ -71,6 +71,10 @@ import { priceEstimate, sanitizePricing, sanitizeEstimateSettings, priceValue } 
 import { sanitizeBidProposal } from "../../web/src/lib/bidProposal.js";
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLfByShape } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
+import {
+  isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent,
+  alignMembers, seamClips, mergeSegs, normalizeMembers, type Stitch, type StitchMember, type Dim,
+} from "../../web/src/lib/stitches.ts";
 
 // Conditions and snap behavior minted here are identical to the browser's
 // because both read the same module: web/src/lib/takeoffConstants.ts (the
@@ -109,6 +113,7 @@ export interface TakeoffDocument extends Record<string, unknown> {
   last_group: unknown[];
   sheet_tabs: unknown[];
   sheet_levels?: Record<string, string>;
+  stitches?: Stitch[];
 }
 
 export type MeasureRole = "floor_area" | "deduct" | "linear" | "surface_area" | "count";
@@ -539,7 +544,7 @@ interface SheetState {
    * own canvas act, or a payload that predates the flag. */
   scaleConfirmed?: boolean;
   text: { str: string; x: number; y: number }[];
-  page: PageHandle;
+  page?: PageHandle;
   // lazy per-sheet caches (built once, reused by identity)
   geo?: VectorGeometry;
   snap?: ReturnType<typeof buildSnapGrid>;
@@ -714,6 +719,7 @@ export class Session {
   private docs = new Map<string, { doc: DocHandle; path: string }>();
   private nextOrd = 1;
   private sheets = new Map<string, SheetState>();
+  private stitches = new Map<string, Stitch>();
   conditions: Condition[] = [];
   markups: Markup[] = [];
   shapes: Shape[] = [];
@@ -787,6 +793,7 @@ export class Session {
       for (const d of this.docs.values()) await d.doc.destroy().catch(() => {});
       this.docs.clear();
       this.sheets.clear();
+      this.stitches.clear();
       this.conditions = [];
       this.shapes = [];
       this.markups = [];
@@ -923,6 +930,7 @@ export class Session {
    * canvas-native RENDER_SCALE), cached per sheet until the next load_plan. */
   async renderSheetPng(ord: number): Promise<Uint8Array> {
     const s = this.sheetForPage(ord);
+    if (!s.page) throw new UserError(`Sheet "${s.key}" is a stitched composite and does not support page rendering. View member sheets instead.`);
     if (!s.png) {
       const scale = Math.min(RENDER_SCALE, IMAGE_MAX_EDGE / Math.max(s.widthPt, s.heightPt));
       s.png = await s.page.renderPng(scale);
@@ -947,6 +955,7 @@ export class Session {
     const ppf = gridPxPerFoot(opts.grid, s.upp);
     const sheetShapes = this.shapes.filter((x) => x.sheet_id === s.key);
     let marksDrawn = 0;
+    if (!s.page) throw new UserError(`Sheet "${s.key}" is a stitched composite and does not support view_sheet. View member sheets instead.`);
     const { png, width, height, zoom } = await s.page.renderRegionPng(r, px, (ctx, toCanvas) => {
       if (ppf) drawGrid(ctx as Ctx2D, toCanvas as ToCanvas, r, ppf);
       if (opts.overlay) drawShapes(ctx as Ctx2D, toCanvas as ToCanvas, sheetShapes, s.widthPx, s.heightPx, px);
@@ -1000,7 +1009,7 @@ export class Session {
     const geo = await this.ensureGeometry(s);
     const hasVectors = geo.segs.length > 0;
     if (!s.hatch) s.hatch = hasVectors ? hatchFamilies(geo.segs, geo.meta) : [];
-    if (!s.spans) s.spans = textSpans(s.page);
+    if (!s.spans) s.spans = s.page ? textSpans(s.page) : [];
 
     // family membership index → id, for the per-segment annotation
     const famBySeg = new Map<number, string>();
@@ -1146,6 +1155,44 @@ export class Session {
   }
 
   private async ensureGeometry(s: SheetState): Promise<VectorGeometry> {
+    if (s.geo) return s.geo;
+    if (this.stitches.has(s.key)) {
+      const st = this.stitches.get(s.key)!;
+      const dims: Record<string, { w: number; h: number }> = {};
+      for (const m of st.members) {
+        const ms = this.sheets.get(m.key);
+        if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
+      }
+      const actualClips = seamClips(st.members, dims);
+      const perMember = [];
+      for (let i = 0; i < st.members.length; i++) {
+        const m = st.members[i];
+        const ms = this.sheets.get(m.key);
+        if (ms) {
+          const mgeo = await this.ensureGeometry(ms);
+          perMember.push({
+            segs: mgeo.segs,
+            meta: mgeo.meta,
+            imageArea: mgeo.imageArea,
+            dx: m.dx,
+            dy: m.dy,
+            clip: actualClips[i],
+          });
+        }
+      }
+      const merged = mergeSegs(perMember);
+      s.geo = {
+        segs: merged.segs,
+        meta: merged.meta,
+        points: [],
+        imageArea: merged.imageArea,
+      };
+      return s.geo;
+    }
+    if (!s.page) {
+      s.geo = { segs: [], meta: new Uint8Array(0), points: [], imageArea: 0 };
+      return s.geo;
+    }
     if (!s.geo) {
       const opList = await s.page.operatorList();
       s.geo = extractVectorGeometry(opList, s.page.viewport.transform, OPS);
@@ -1256,6 +1303,7 @@ export class Session {
    * tool reply carries it — a stated inability, never a guessed polygon. */
   private async ensureRasterMask(s: SheetState): Promise<MaskObj> {
     if (!s.rmask) {
+      if (!s.page) throw new UserError(`Sheet "${s.key}" is a stitched composite and does not support raster fallback.`);
       const ws = Math.min(1, MASK_MAX_DIM / Math.max(s.widthPx, s.heightPx, 1));
       const mw = Math.max(2, Math.ceil(s.widthPx * ws));
       const mh = Math.max(2, Math.ceil(s.heightPx * ws));
@@ -1403,6 +1451,7 @@ export class Session {
     // quantity is noise. It surfaces where the numbers cross a boundary:
     // set_scale's confirmed:false, takeoff_summary's scale_unconfirmed, the
     // export/report scale_confirmed, and the canvas's confirm affordance.)
+    if (!s.page) return undefined;
     return mixedScaleWarning(textItemsInRegion(s.page, region), s.page.viewport, s.upp, adoptedLabel);
   }
 
@@ -1678,7 +1727,7 @@ export class Session {
       raster = true;
     }
     const minAreaSf = opts.minAreaSf ?? 5;
-    if (!s.spans) s.spans = textSpans(s.page);
+    if (!s.spans) s.spans = s.page ? textSpans(s.page) : [];
     // labels with BBOXES: same tokenization as roomLabelSeeds, but the ladder
     // and the bubble test need the label's box, not just its anchor
     const labels: { str: string; bbox: LabelBBox }[] = [];
@@ -2834,7 +2883,7 @@ export class Session {
     const perSheetRows: { sheet: string; counts: Record<string, number> }[] = [];
 
     for (const sh of planSheets) {
-      if (!sh.spans) sh.spans = textSpans(sh.page);
+      if (!sh.spans) sh.spans = sh.page ? textSpans(sh.page) : [];
       const regions = tableRegions.get(sh.key) ?? [];
       const values = sh.spans.filter((sp) => VAL_RE.test(sp.str.trim()));
       const counts: Record<string, number> = {};
@@ -3162,7 +3211,7 @@ export class Session {
       // #308 — the drawing's own names. For a labeled family the sheet says
       // what each placement IS (a tag written beside it, or connected by a
       // leader); resolved as disclosure on every row, never a recount.
-      if (!s.spans) s.spans = textSpans(s.page);
+      if (!s.spans) s.spans = s.page ? textSpans(s.page) : [];
       const lbl = this.sweepLabels(s.spans, geo, fp.center, res.matches, res.withheld);
       let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
       // #376 — a small seed that clears a crowd of placements does not commit
@@ -3278,7 +3327,7 @@ export class Session {
       }
       const elapsed_ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e4) / 100;
       // #308 — each target sheet's own text names its own placements
-      if (!sh.spans) sh.spans = textSpans(sh.page);
+      if (!sh.spans) sh.spans = sh.page ? textSpans(sh.page) : [];
       const labels = this.sweepLabels(sh.spans, g2, null, res.matches, res.withheld);
       perSheet.push({ state: sh, ...res, elapsed_ms, scale: ratio, labels });
     }
@@ -3339,7 +3388,7 @@ export class Session {
       notes.push(`${lumRejectedTotal} placement(s) the geometry would have committed were pulled under the bar by your stated luminance tolerance — each is named per sheet in lum_gate.at. Look before trusting the gate: a symbol somebody redrew in a different pen fails it honestly.`);
     }
     // #308 — the seed's tag from its own sheet, and one aggregate label note
-    if (!s.spans) s.spans = textSpans(s.page);
+    if (!s.spans) s.spans = s.page ? textSpans(s.page) : [];
     const seedLbl = this.sweepLabels(s.spans, geo, fp.center, [], []).seed;
     const labelNote = Session.sweepLabelNote({
       seed: seedLbl,
@@ -3455,7 +3504,7 @@ export class Session {
     }
     type Occ = { cx: number; cy: number; h: number; bbox: [number, number, number, number] };
     const occOf = (sh: SheetState, key: string): Occ[] => {
-      if (!sh.spans) sh.spans = textSpans(sh.page);
+      if (!sh.spans) sh.spans = sh.page ? textSpans(sh.page) : [];
       return sh.spans
         .filter((sp) => sp.str.trim().toUpperCase() === key)
         .map((sp) => ({ cx: (sp.x0 + sp.x1) / 2, cy: (sp.y0 + sp.y1) / 2, h: Math.max(sp.y1 - sp.y0, 6), bbox: [sp.x0, sp.y0, sp.x1, sp.y1] as [number, number, number, number] }))
@@ -5019,7 +5068,203 @@ export class Session {
       approvals: this.approvals,
       proposals: this.proposals,
       condition_edit_proposals: this.conditionEditProposals,
+      stitches: this.stitchList(),
     }) as TakeoffDocument;
+  }
+
+  stitchList(): Stitch[] {
+    return [...this.stitches.values()];
+  }
+
+  stitch(id: string): Stitch {
+    const s = this.stitches.get(id);
+    if (!s) throw new UserError(`Stitch "${id}" not found.`);
+    return s;
+  }
+
+  stitchSheets(opts: {
+    sheets: string[];
+    name?: string;
+    align?: { anchor: [number, number]; moving: [number, number] };
+    members?: StitchMember[];
+  }) {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    if (!Array.isArray(opts.sheets) || opts.sheets.length < 2 || opts.sheets.length > 4) {
+      throw new UserError("stitch_sheets requires 2 to 4 sheet keys.");
+    }
+    const resolvedSheets = opts.sheets.map((k) => this.sheet(k));
+    const sheetKeys = resolvedSheets.map((s) => s.key);
+    for (const k of sheetKeys) {
+      if (isStitchKey(k)) throw new UserError(`Cannot stitch composite surface "${k}" — nested stitches are not supported.`);
+    }
+    const uniqueKeys = new Set(sheetKeys);
+    if (uniqueKeys.size !== sheetKeys.length) {
+      throw new UserError("stitch_sheets requires unique sheet keys; duplicate sheets specified.");
+    }
+    const dims: Record<string, Dim> = {};
+    for (const s of resolvedSheets) {
+      dims[s.key] = { w: s.widthPx, h: s.heightPx };
+    }
+
+    let members: StitchMember[];
+    if (opts.members && Array.isArray(opts.members) && opts.members.length > 0) {
+      if (opts.members.length !== sheetKeys.length) {
+        throw new UserError(`Expected ${sheetKeys.length} member offset entries, got ${opts.members.length}.`);
+      }
+      const memberKeys = new Set<string>();
+      for (const m of opts.members) {
+        if (!uniqueKeys.has(m.key)) {
+          throw new UserError(`Member key "${m.key}" is not among the stitched sheets.`);
+        }
+        if (memberKeys.has(m.key)) {
+          throw new UserError(`Duplicate member key "${m.key}" in members array.`);
+        }
+        if (!Number.isFinite(m.dx) || !Number.isFinite(m.dy)) {
+          throw new UserError(`Invalid non-finite offset for member "${m.key}".`);
+        }
+        memberKeys.add(m.key);
+      }
+      members = normalizeMembers(opts.members);
+    } else if (opts.align) {
+      const initial = autoButt(sheetKeys, dims);
+      const aligned = alignMembers(
+        initial,
+        dims,
+        opts.align.anchor,
+        opts.align.moving,
+      );
+      if ("error" in aligned) {
+        throw new UserError(aligned.error);
+      }
+      members = aligned.members;
+    } else {
+      members = autoButt(sheetKeys, dims);
+    }
+
+    const extent = stitchExtent(members, dims);
+    const id = mintStitchId();
+    const name = opts.name?.trim() || "Stitched sheets";
+
+    const calibratedMembers = resolvedSheets.filter((s) => s.upp != null);
+    let inheritedUpp: number | null = null;
+    let inheritedScaleSource: string | undefined;
+    let inheritedConfirmed: boolean | undefined;
+
+    if (calibratedMembers.length > 0) {
+      const firstUpp = calibratedMembers[0].upp as number;
+      if (calibratedMembers.every((s) => Math.abs((s.upp as number) - firstUpp) < 1e-6)) {
+        inheritedUpp = firstUpp;
+        inheritedScaleSource = calibratedMembers[0].scaleSource ?? "inherited";
+        inheritedConfirmed = calibratedMembers[0].scaleConfirmed;
+      }
+    }
+
+    const st: Stitch = {
+      id,
+      name,
+      members,
+      created_at: new Date().toISOString(),
+    };
+    this.stitches.set(id, st);
+
+    this.sheets.set(id, {
+      key: id,
+      ord: this.nextOrd++,
+      pageNum: 0,
+      widthPt: extent.w / 2.0,
+      heightPt: extent.h / 2.0,
+      widthPx: extent.w,
+      heightPx: extent.h,
+      sheetNumber: name,
+      detected: null,
+      upp: inheritedUpp,
+      scaleSource: inheritedScaleSource,
+      scaleConfirmed: inheritedConfirmed,
+      text: [],
+    });
+
+    return {
+      stitch_id: id,
+      name,
+      extent: {
+        width_px: extent.w,
+        height_px: extent.h,
+      },
+      members: st.members.map((m) => ({ key: m.key, dx: m.dx, dy: m.dy })),
+      scale: {
+        upp: inheritedUpp,
+        ...(inheritedConfirmed !== undefined ? { scale_confirmed: inheritedConfirmed } : {}),
+      },
+      note: `Created composite surface "${name}" (${extent.w}x${extent.h} px) from ${st.members.length} sheets. Reference as sheet "${id}".`,
+    };
+  }
+
+  listStitches() {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    return {
+      stitches: [...this.stitches.values()].map((st) => {
+        const s = this.sheets.get(st.id);
+        const shapesOnStitch = this.shapes.filter((x) => x.sheet_id === st.id).length;
+        return {
+          id: st.id,
+          name: st.name,
+          extent: {
+            width_px: s?.widthPx ?? 0,
+            height_px: s?.heightPx ?? 0,
+          },
+          members: st.members.map((m) => ({ key: m.key, dx: m.dx, dy: m.dy })),
+          scale: {
+            upp: s?.upp ?? null,
+            ...(s?.scaleConfirmed !== undefined ? { scale_confirmed: s.scaleConfirmed } : {}),
+          },
+          shape_count: shapesOnStitch,
+          ...(st.created_at ? { created_at: st.created_at } : {}),
+        };
+      }),
+    };
+  }
+
+  importStitches(raw: unknown): void {
+    const stitches = sanitizeStitches(raw, 4);
+    for (const st of stitches) {
+      if (this.stitches.has(st.id)) continue;
+      this.stitches.set(st.id, st);
+      const dims: Record<string, Dim> = {};
+      for (const m of st.members) {
+        const ms = this.sheets.get(m.key);
+        if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
+      }
+      const extent = stitchExtent(st.members, dims);
+      if (!this.sheets.has(st.id)) {
+        this.sheets.set(st.id, {
+          key: st.id,
+          ord: this.nextOrd++,
+          pageNum: 0,
+          widthPt: extent.w / 2.0,
+          heightPt: extent.h / 2.0,
+          widthPx: extent.w,
+          heightPx: extent.h,
+          sheetNumber: st.name,
+          detected: null,
+          upp: null,
+          text: [],
+        });
+      }
+      if (this.sheets.get(st.id)?.upp == null) {
+        const calibratedMembers = st.members
+          .map((m) => this.sheets.get(m.key))
+          .filter((s): s is SheetState => !!s && s.upp != null);
+        if (calibratedMembers.length > 0) {
+          const firstUpp = calibratedMembers[0].upp as number;
+          if (calibratedMembers.every((s) => Math.abs((s.upp as number) - firstUpp) < 1e-6)) {
+            const sh = this.sheets.get(st.id)!;
+            sh.upp = firstUpp;
+            sh.scaleSource = calibratedMembers[0].scaleSource ?? "inherited";
+            sh.scaleConfirmed = calibratedMembers[0].scaleConfirmed;
+          }
+        }
+      }
+    }
   }
 
   /** The computed Report document — "opentakeoff.report.v1", the SAME schema
@@ -5185,6 +5430,7 @@ export class Session {
       let vecBudget = 30_000_000; // segments across the whole hunt
       let skippedHeavy = 0;
       for (const s of this.sheets.values()) {
+        if (this.stitches.has(s.key) || !s.page) continue;
         if (!s.spans) s.spans = textSpans(s.page);
         const spans = s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0, ...(t.rot ? { rot: t.rot } : {}) }));
         let segs: number[] | undefined;
@@ -5347,7 +5593,7 @@ export class Session {
     const query = q.trim();
     if (!query) throw new UserError("q must be a non-empty string.");
     const s = this.sheet(name);
-    if (!s.spans) s.spans = textSpans(s.page);
+    if (!s.spans) s.spans = s.page ? textSpans(s.page) : [];
     const r = opts.region;
     const needle = query.toLowerCase();
     const limit = opts.limit ?? 200;

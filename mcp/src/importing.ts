@@ -73,6 +73,8 @@ export async function importTakeoff(session: Session, filePath: string) {
   // (the session's current proposal is untouched by an import).
   session.proposals = (Array.isArray(payload.proposals) ? payload.proposals as TakeoffProposal[] : []).filter((p) => p && typeof p === "object" && typeof p.id === "string");
   session.conditionEditProposals = (Array.isArray(payload.condition_edit_proposals) ? payload.condition_edit_proposals as ConditionEditProposal[] : []).filter((p) => p && typeof p === "object" && typeof p.id === "string");
+  // stitches (#161): transport — restore composite surfaces so sheet calibration and shapes can resolve them
+  session.importStitches(payload.stitches);
   // scales: mergeTakeoffImport already applied "the session's calibration wins
   // per sheet" — adopt the merged rows onto sheets this document actually has
   for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: boolean }[]) ?? []) {
