@@ -17,6 +17,7 @@ import { oneClickEnabled, commandBoxEnabled } from "../lib/gate.js";
 import { useEffect, useRef } from "react";
 import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
 import { Z, S } from "../lib/ui.js";
+import { ScanStar } from "../brand/marks.jsx";
 import { keyLabel, keyText, isApplePlatform } from "../lib/keys.ts";
 
 const GUIDE_URL = "https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/USER_GUIDE.md";
@@ -173,8 +174,8 @@ export default function UserGuide({ onClose, onTour, onConnect }) {
             )}
             {onConnect && (
               <button type="button" onClick={onConnect}
-                style={{ padding: "8px 14px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", fontSize: 12.5, cursor: "pointer" }}>
-                Connect your AI
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", fontSize: 12.5, cursor: "pointer" }}>
+                <ScanStar size={12} style={{ color: "var(--cobalt)" }} />Connect your AI
               </button>
             )}
           </div>

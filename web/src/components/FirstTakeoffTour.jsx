@@ -10,6 +10,7 @@
 // pointer-events:none for the same reason.
 import { useEffect, useState } from "react";
 import { Z } from "../lib/ui.js";
+import { ScanStar } from "../brand/marks.jsx";
 import { keyText } from "../lib/keys.ts";
 import { TOUR_STEPS } from "../lib/firstTakeoff.js";
 
@@ -94,8 +95,8 @@ export default function FirstTakeoffTour({ done, step, sheetOpen, sampleBusy, on
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button type="button" onClick={onConnect}
-                style={{ padding: "8px 13px", border: "none", background: "var(--cobalt)", color: "var(--accent-contrast)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
-                Connect your AI
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 13px", border: "none", background: "var(--cobalt)", color: "var(--accent-contrast)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+                <ScanStar size={12} />Connect your AI
               </button>
               <button type="button" onClick={onClose}
                 style={{ padding: "8px 13px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", fontSize: 12.5, cursor: "pointer" }}>

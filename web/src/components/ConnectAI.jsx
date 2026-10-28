@@ -9,6 +9,7 @@
 // user's own machine.
 import { useEffect, useRef, useState } from "react";
 import { Z } from "../lib/ui.js";
+import { ScanStar } from "../brand/marks.jsx";
 import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
 import { samplePlanUrl, SAMPLE_PLAN_NAME } from "../lib/samplePlan.js";
 
@@ -124,7 +125,7 @@ export default function ConnectAI({ onClose }) {
         role="dialog" aria-modal="true" aria-label="Connect your AI" className="panel"
         style={{ width: "min(720px, 100%)", background: "var(--paper-bright)", color: "var(--ink)", border: "1px solid var(--ink-faint)", padding: "22px 26px 24px", boxShadow: "var(--shadow-2)", fontFamily: "var(--f-body)" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-          <strong style={{ fontFamily: "var(--f-display)", fontSize: 17, letterSpacing: "-0.02em" }}>Connect your AI</strong>
+          <strong style={{ display: "inline-flex", alignItems: "center", gap: 9, fontFamily: "var(--f-display)", fontSize: 17, letterSpacing: "-0.02em" }}><ScanStar size={17} reach={1.4} style={{ color: "var(--cobalt)" }} />Connect your AI</strong>
           <button type="button" onClick={onClose} title="Close (Esc)" aria-label="Close"
             style={{ background: "none", border: "none", color: "var(--ink-soft)", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 4 }}>×</button>
         </div>

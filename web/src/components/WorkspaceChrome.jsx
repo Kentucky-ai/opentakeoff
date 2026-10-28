@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
+import { ScanStar } from "../brand/marks.jsx";
 import { keyText } from "../lib/keys.ts";
 import { SheetTree } from "./SheetTree.jsx";
 import "./workspaceChrome.css";
@@ -11,7 +12,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
   onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, helpMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
   return <>
     <header className="calm-header">
-      <strong className="calm-brand">open<span>takeoff</span></strong>
+      <strong className="calm-brand"><ScanStar size={15} reach={1.6} working={running} />open<span>takeoff</span></strong>
       <div className="calm-project" title={title}><span>{title || "Untitled workspace"}</span><small>Premium workspace</small></div>
       <div className="calm-header-actions">
         <button type="button" onClick={onOpen} title="Open plans"><Icon name="plus" size={16} /><span>Open</span></button>
@@ -20,7 +21,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
         {pinControl}
         <button type="button" onClick={onSearch} className="calm-search-trigger" title="Find a tool or action"><Icon name="search" size={16} /><span>Find an action</span><kbd>{keyText("⌘K")}</kbd></button>
         <button type="button" aria-pressed={takeoffsOpen} onClick={onTakeoffs} title="Measured quantities, conditions, and supporting materials"><Icon name="product" size={16} />Quantities</button>
-        <button type="button" ref={workButtonRef} aria-expanded={workOpen} onClick={onWork} className="calm-work">Work{running ? <span className="calm-badge">Running</span> : pending > 0 ? <span className="calm-badge">{pending}</span> : null}</button>
+        <button type="button" ref={workButtonRef} aria-expanded={workOpen} onClick={onWork} className="calm-work"><ScanStar size={13} working={running} />Work{running ? <span className="calm-badge">Running</span> : pending > 0 ? <span className="calm-badge">{pending}</span> : null}</button>
         {panelTools}
         {onEstimate && <button type="button" onClick={onEstimate} title="Price the takeoff: material and labor per unit, markups, Excel">Estimate</button>}
         <button type="button" onClick={onReport} className="calm-report" data-tour="report"><Icon name="document" size={16} />Report</button>
