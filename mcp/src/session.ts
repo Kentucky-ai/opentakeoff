@@ -73,7 +73,7 @@ import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLf
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
 import {
   isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent,
-  alignMembers, seamClips, mergeSegs, normalizeMembers, type Stitch, type StitchMember, type Dim,
+  alignMembers, seamClips, mergePoints, mergeSegs, normalizeMembers, type Stitch, type StitchMember, type Dim,
 } from "../../web/src/lib/stitches.ts";
 
 // Conditions and snap behavior minted here are identical to the browser's
@@ -1171,6 +1171,7 @@ export class Session {
         if (ms) {
           const mgeo = await this.ensureGeometry(ms);
           perMember.push({
+            points: mgeo.points,
             segs: mgeo.segs,
             meta: mgeo.meta,
             imageArea: mgeo.imageArea,
@@ -1180,13 +1181,15 @@ export class Session {
           });
         }
       }
+      const pts = mergePoints(perMember);
       const merged = mergeSegs(perMember);
       s.geo = {
         segs: merged.segs,
         meta: merged.meta,
-        points: [],
+        points: pts,
         imageArea: merged.imageArea,
       };
+      s.snap = buildSnapGrid(pts, SNAP_CELL);
       return s.geo;
     }
     if (!s.page) {
@@ -1322,6 +1325,12 @@ export class Session {
    * primary; a mixed sheet retries on pixels only after the vector flood
    * fails. */
   private rasterPolicy(s: SheetState, geo: VectorGeometry): { rasterEligible: boolean; vectorViable: boolean } {
+    if (!s.page) {
+      return {
+        rasterEligible: false,
+        vectorViable: (geo.segs.length >> 2) >= RASTER_MIN_SEGS,
+      };
+    }
     const sheetArea = s.widthPx * s.heightPx;
     return {
       rasterEligible: sheetArea > 0 && geo.imageArea / sheetArea >= RASTER_MIN_IMG_FRAC,
@@ -5119,13 +5128,17 @@ export class Session {
         if (memberKeys.has(m.key)) {
           throw new UserError(`Duplicate member key "${m.key}" in members array.`);
         }
-        if (!Number.isFinite(m.dx) || !Number.isFinite(m.dy)) {
-          throw new UserError(`Invalid non-finite offset for member "${m.key}".`);
+        if (!Number.isFinite(m.dx) || !Number.isFinite(m.dy) || Math.abs(m.dx) > 1e6 || Math.abs(m.dy) > 1e6) {
+          throw new UserError(`Invalid or excessive offset for member "${m.key}".`);
         }
         memberKeys.add(m.key);
       }
       members = normalizeMembers(opts.members);
     } else if (opts.align) {
+      if (!Number.isFinite(opts.align.anchor[0]) || !Number.isFinite(opts.align.anchor[1]) ||
+          !Number.isFinite(opts.align.moving[0]) || !Number.isFinite(opts.align.moving[1])) {
+        throw new UserError("align anchor and moving coordinates must be finite numbers.");
+      }
       const initial = autoButt(sheetKeys, dims);
       const aligned = alignMembers(
         initial,
@@ -5142,8 +5155,11 @@ export class Session {
     }
 
     const extent = stitchExtent(members, dims);
+    if (extent.w <= 0 || extent.h <= 0 || extent.w > 1e6 || extent.h > 1e6) {
+      throw new UserError("Stitched composite extent is invalid or exceeds allowable dimensions.");
+    }
     const id = mintStitchId();
-    const name = opts.name?.trim() || "Stitched sheets";
+    const name = (opts.name?.trim() || "Stitched sheets").slice(0, 200);
 
     const calibratedMembers = resolvedSheets.filter((s) => s.upp != null);
     let inheritedUpp: number | null = null;
