@@ -207,3 +207,68 @@ test("stitch_sheets: alignment with anchor and moving points", async () => {
   // After alignment, sheet 2 moved left by 100px so dx is w1 - 100
   assert.equal(res.data.members[1].dx, w1 - 100);
 });
+
+test("stitch_sheets: security bounds, view refusal, cutout, and undo", async () => {
+  const client = await pair();
+  const { p1, p2, k1, k2 } = await setupTwoSheets();
+  await call(client, "load_plan", { path: p1 });
+  await call(client, "load_plan", { path: p2, merge: true });
+
+  // 1. Excessive offset rejected
+  const badOffset = await call(client, "stitch_sheets", {
+    sheets: [k1, k2],
+    members: [
+      { key: k1, dx: 0, dy: 0 },
+      { key: k2, dx: 1e8, dy: 0 },
+    ],
+  });
+  assert.equal(badOffset.isError, true);
+  assert.match(badOffset.data.error, /excessive/);
+
+  // 2. Non-finite align rejected
+  const badAlign = await call(client, "stitch_sheets", {
+    sheets: [k1, k2],
+    align: {
+      anchor: [NaN, 100],
+      moving: [100, 100],
+    },
+  });
+  assert.equal(badAlign.isError, true);
+  assert.match(badAlign.data.error, /expected number|finite/);
+
+  // 3. Valid stitch creation
+  const stitchRes = await call(client, "stitch_sheets", { sheets: [k1, k2] });
+  assert.equal(stitchRes.isError, false);
+  const stitchId = stitchRes.data.stitch_id;
+
+  // 4. view_sheet refuses stitched composite
+  const viewRes = await call(client, "view_sheet", { sheet: stitchId });
+  assert.equal(viewRes.isError, true);
+  assert.match(viewRes.data.error, /does not support view_sheet/);
+
+  // 5. Measure and cutout on stitch
+  await call(client, "set_scale", { sheet: stitchId, upp: 0.05 });
+  const poly = await call(client, "measure_polygon", {
+    sheet: stitchId,
+    verts: [[100, 100], [500, 100], [500, 500], [100, 500]],
+    condition: "CPT-1",
+  });
+  assert.equal(poly.isError, false);
+  const parentId = poly.data.shape_id;
+  assert.ok(parentId);
+
+  // Cutout hole
+  const cut = await call(client, "cut_out", {
+    parent_shape_id: parentId,
+    verts: [[200, 200], [300, 200], [300, 300], [200, 300]],
+  });
+  assert.equal(cut.isError, false);
+  assert.ok(cut.data.hole_sf > 0);
+
+  // 6. Undo cutout and parent
+  const undo = await call(client, "undo_last", { n: 1 });
+  assert.equal(undo.isError, false);
+  assert.equal(undo.data.undone, 1);
+  assert.equal(undo.data.steps.length, 1);
+});
+
