@@ -26,7 +26,7 @@ otherwise, and nothing an autonomous agent could call.
 OpenTakeoff is that engine, with two front ends sharing geometry and quantity modules:
 
 - **Review cleanup**—agents can edit annotation text with undo while preserving geometry and review; RFI-linked notes require browser review. Scope warnings distinguish numeric edge residue from real small overlaps.
-- **A stdio MCP server**—`npx -y opentakeoff-mcp`, <!--tool-count-->58<!--/tool-count--> tools, on the
+- **A stdio MCP server**—`npx -y opentakeoff-mcp` ([current tool list](MCP_TOOL_INDEX.md)), on the
   [official MCP registry](https://registry.modelcontextprotocol.io). An agent opens a plan,
   reads the title block, sets the scale, traces the rooms to their wall faces (the flood engine
   stays gated), checks its own work on a rendered overlay, and hands back a marked-up planset PDF.

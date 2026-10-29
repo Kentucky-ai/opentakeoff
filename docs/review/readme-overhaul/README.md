@@ -33,7 +33,7 @@ steps through Open, Scale, Trace, Derive and Deliver, and each stage lights as i
 |---|---|---|
 | `npm run check --prefix web` (Node 24.18.0) | pass | pass |
 | `node scripts/check-doc-links.mjs` | every link resolves | 45 files, every relative path and anchor resolves |
-| `npm run check:tool-count --prefix mcp` (now includes `docs/TOUR.md`) | 0 stale | 22 markers, 0 stale, 58 default / 60 gated / 11 setup tools |
+| `npm run check:tool-count --prefix mcp` | 0 stale | 21 markers, 0 stale, 58 default / 60 gated / 11 setup tools |
 | `npm run check:wiki --prefix mcp` | pass | 58 default tools, 9 wiki pages checked |
 | `npm run check --prefix protocol` | pass | 11 schema files, 16 transport cases |
 | README tool table | the 58 default tools, each once | 58 tools in 11 groups, matching `TOOL_NAMES` in `mcp/src/staging.ts` |
