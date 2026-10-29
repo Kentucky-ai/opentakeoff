@@ -11,7 +11,7 @@ Free, open source and local. Nothing uploads, and nobody has to sign up.
 [![MCP registry](https://img.shields.io/badge/MCP_registry-io.github.Kentucky--ai%2Fopentakeoff-0e1a2e)](https://registry.modelcontextprotocol.io)
 [![CI](https://github.com/Kentucky-ai/opentakeoff/actions/workflows/ci.yml/badge.svg)](https://github.com/Kentucky-ai/opentakeoff/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-0e1a2e.svg)](LICENSE)
-[![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%99%A5-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Kentucky-ai)
 
 ### [▶ Try it now](https://opentakeoff.kentucky-ai.com) &nbsp;·&nbsp; [🔌 Plug in your agent](#plug-it-into-your-agent) &nbsp;·&nbsp; [🛠 Send your first PR](#contribute)
 
@@ -192,39 +192,28 @@ its code in [FEATURES.md](FEATURES.md), and every click in the [user manual](doc
 request has to show that it works. It doesn't need to be big. People and agents are held to
 the same bar, and a PR that clears it merges fast.
 
-<table>
-<tr><td width="33%" valign="top">
+**1 · Find something.** Pick an [open issue](https://github.com/Kentucky-ai/opentakeoff/issues),
+an [RFC](https://github.com/Kentucky-ai/opentakeoff/labels/rfc), a
+[flagship](https://github.com/Kentucky-ai/opentakeoff/labels/flagship) challenge, a
+[`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue),
+or a bug you hit on your own plans. If it's still an idea, start in
+[Discussions](https://github.com/Kentucky-ai/opentakeoff/discussions).
 
-**1 · Find something**
-
-- An [open issue](https://github.com/Kentucky-ai/opentakeoff/issues)
-- An [RFC](https://github.com/Kentucky-ai/opentakeoff/labels/rfc) or a [flagship](https://github.com/Kentucky-ai/opentakeoff/labels/flagship) challenge
-- A [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue)
-- A bug you hit on your own plans
-- An idea for [Discussions](https://github.com/Kentucky-ai/opentakeoff/discussions)
-
-</td><td width="33%" valign="top">
-
-**2 · Build it**
+**2 · Build it.**
 
 ```bash
-git clone https://github.com/<you>/opentakeoff
-cd opentakeoff/web
-npm ci && npm run dev
-# http://localhost:5173
-npm run check   # the exact CI gate
+git clone https://github.com/<you>/opentakeoff && cd opentakeoff/web
+npm ci && npm run dev    # http://localhost:5173
+npm run check            # the exact CI gate
 ```
 
-</td><td width="33%" valign="top">
+**3 · Prove it.**
 
-**3 · Prove it**
-
-- **Visible change:** a screenshot of each surface you changed, or a short recording
-- **Engine change:** a before/after table and an exact-output gate, with the command that reproduces it
-- **Notes for the reviewer:** coordinate spaces, limits you chose on purpose, and anything you didn't verify
-
-</td></tr>
-</table>
+| Your change | The evidence it carries |
+|---|---|
+| **Visible** (a panel, a tool, an export) | A screenshot of each surface you changed, and a short recording for a flow |
+| **Engine** (geometry, totals, MCP, readers) | An exact-output gate, a before/after table with its conditions, and the command that reproduces it |
+| **Any PR** | Notes for the reviewer: coordinate spaces, limits you chose on purpose, and anything you didn't verify |
 
 Two merged PRs show the bar well. [#346](https://github.com/Kentucky-ai/opentakeoff/pull/346)
 covers a UI feature with a screenshot of each surface, a recording and the reviewer's notes.
