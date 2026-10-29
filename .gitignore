@@ -24,7 +24,8 @@ server/.venv/
 
 # Editor / OS
 .DS_Store
-.vscode/
+.vscode/*
+!.vscode/mcp.json
 .idea/
 *.log
 

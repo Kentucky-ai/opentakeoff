@@ -1,0 +1,56 @@
+name: 🐞 Bug report
+description: Something measured wrong, rendered wrong, or broke.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A bug that reproduces on the bundled sample plan (**Load sample plan** in the app) gets fixed fastest. Your plans never leave your machine, so crop anything sensitive from screenshots.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      options:
+        - Browser canvas (opentakeoff.kentucky-ai.com)
+        - Browser canvas (self-hosted or local dev)
+        - MCP server (opentakeoff-mcp)
+        - Export (CSV, Excel, Marked Set PDF, DXF, proposal)
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      placeholder: I traced room 134 with Area and the Report showed 0 SF.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Click Load sample plan
+        2. Set the scale from the note
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: numbers
+    attributes:
+      label: Numbers, if it's a quantity bug
+      description: Measured value versus expected value, the sheet's scale, and whether waste or a multiplier was involved.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, recording or MCP transcript
+      description: A screenshot of the canvas (and the Report, for quantity bugs), or the tool call and its response for an MCP bug.
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: Chrome 131 on Windows 11, vector PDF / opentakeoff-mcp 0.9.100 in Claude Code
+  - type: markdown
+    attributes:
+      value: |
+        **Planning to fix it yourself?** Read [CLA.md](https://github.com/Kentucky-ai/opentakeoff/blob/main/CLA.md) and post its agreement text yourself, or link your earlier agreement comment. Reporting or discussing a bug does not require signing.

@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "opentakeoff": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "opentakeoff-mcp"]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "opentakeoff": {
+      "command": "npx",
+      "args": ["-y", "opentakeoff-mcp"]
+    }
+  }
+}
