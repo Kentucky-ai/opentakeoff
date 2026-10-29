@@ -22,6 +22,9 @@
 .calm-brand span {
   color:var(--cobalt);
 }
+.calm-brand .ot-scan-star {
+  margin:-2px var(--sp-2) 0 0;
+}
 .calm-project {
   border-left:var(--rule-soft);
   padding-left:var(--sp-4);

@@ -1,7 +1,7 @@
 // AI settings — bring your own key. Opened from the Agent panel; the agent
 // stays dormant until this is configured (ai.js isAiConfigured).
 import { useState } from "react";
-import { Icon } from "../brand/icons.jsx";
+import { ScanStar } from "../brand/marks.jsx";
 import { aiConfig, saveAiConfig } from "../lib/ai.js";
 
 export default function AiSettings({ onClose }) {
@@ -14,7 +14,7 @@ export default function AiSettings({ onClose }) {
     <div onClick={() => onClose(false)} style={{ position: "absolute", inset: 0, zIndex: 60, background: "rgba(14,26,46,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 520, maxWidth: "100%", maxHeight: "90%", overflow: "auto", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--ink)" }}>
-          <Icon name="target" size={16} />
+          <ScanStar size={16} style={{ color: "var(--cobalt)" }} />
           <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>AI — bring your own key</strong>
         </div>
         <div style={{ padding: 16, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>

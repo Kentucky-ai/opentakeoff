@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { keyText } from "../lib/keys.ts";
 import { Icon } from "../brand/icons.jsx";
+import { ScanStar } from "../brand/marks.jsx";
 
 const evidenceText = (ev) => {
   if (!ev) return "";
@@ -39,7 +40,7 @@ export default function AgentPanel({
     <div style={{ width: embedded ? "100%" : 340, flex: embedded ? 1 : undefined, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: embedded ? undefined : "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
       {/* header strip — matches the docked-panel chrome */}
       {!embedded && <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-        <Icon name="target" size={15} />
+        <ScanStar size={15} working={running} />
         <strong style={{ flex: 1, fontSize: 12.5 }}>Agent{proposals.length ? ` · ${proposals.length} pending` : ""}</strong>
         <button onClick={onClose} title="Close panel" style={{ border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>×</button>
       </div>}
