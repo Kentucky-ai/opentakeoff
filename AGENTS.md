@@ -4,6 +4,22 @@ OpenTakeoff has two audiences: people working on the repository and agents
 performing takeoffs. Start with the [wiki index](docs/wiki/README.md); read only
 the page needed for the current task.
 
+## Quick start
+
+**To run a takeoff**, you don't need a clone. Connect the published server
+(`npx -y opentakeoff-mcp`, Node 20+). In this repository, `.mcp.json`,
+`.cursor/mcp.json` and `.vscode/mcp.json` already register it. Read the
+`takeoff://wiki` resource first, then follow the standard finish in the
+[agent manual](docs/AGENT_GUIDE.md): `load_plan`, `set_scale`, rooms on the wall
+faces, `view_sheet` with an overlay, and `export_marked_pdf`. The bundled plan
+`demo/sample-finish-plan.pdf` has a finish schedule to resolve tags against.
+
+**To change the code**, read the [repository guide](docs/wiki/repo-guide.md),
+branch, run `npm ci && npm run check` in `web/`, and open a PR that meets the
+[evidence bar](CONTRIBUTING.md#the-evidence-bar). A PR from an agent merges under
+the same bar as anyone else's. The person running the agent signs the
+[CLA](CLA.md).
+
 | Task | Read next |
 |---|---|
 | Change code, test, ship or open a PR | [Repository guide](docs/wiki/repo-guide.md) — required before editing |

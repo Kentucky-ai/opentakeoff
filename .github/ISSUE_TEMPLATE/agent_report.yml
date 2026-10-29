@@ -1,0 +1,39 @@
+name: 🤖 Agent / MCP report
+description: An agent drove opentakeoff-mcp and something was confusing, refused, wrong or missing.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OpenTakeoff is built for agents to drive. If a tool description misled your agent, a refusal didn't say what to do next, or a verb you needed doesn't exist, this is the place. Agents may file this form themselves; include the transcript.
+  - type: input
+    id: client
+    attributes:
+      label: Client, model and server version
+      placeholder: Claude Code, opentakeoff-mcp 0.9.100
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What the agent was asked to do
+    validations:
+      required: true
+  - type: textarea
+    id: transcript
+    attributes:
+      label: The tool calls and responses
+      description: Paste the relevant calls and what came back. Trim private plan content.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        **Planning to fix it?** Read [CLA.md](https://github.com/Kentucky-ai/opentakeoff/blob/main/CLA.md) and post its agreement text yourself (the person running the agent signs), or link your earlier agreement comment.

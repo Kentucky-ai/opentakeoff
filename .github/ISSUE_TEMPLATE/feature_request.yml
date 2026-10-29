@@ -1,0 +1,33 @@
+name: ✨ Feature request
+description: A tool, workflow or trade the canvas or the MCP server should serve.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: job
+    attributes:
+      label: The job you're trying to do
+      description: What you're estimating and where the current tools fall short. A real workflow beats an abstract feature.
+      placeholder: I trace corridors on hospital finish plans and need ...
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: What it should do, ideally click by click (or call by call for MCP).
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you use today
+      description: If another tool does this, describe the behavior and what you'd keep or change. Describe what it does, not the brand. OpenTakeoff builds its own take, not copies.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: How would we know it works?
+      description: The check a reviewer could run, such as a room on the sample plan and the number it should produce.
+  - type: markdown
+    attributes:
+      value: |
+        **Planning to build it?** Read [CLA.md](https://github.com/Kentucky-ai/opentakeoff/blob/main/CLA.md) and post its agreement text yourself, or link your earlier agreement comment. Suggesting or discussing a feature does not require signing.

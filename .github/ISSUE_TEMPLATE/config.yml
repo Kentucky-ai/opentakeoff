@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Questions, ideas and show-and-tell
+    url: https://github.com/Kentucky-ai/opentakeoff/discussions
+    about: Ask how to do something, float an idea before it is an issue, or show a takeoff you ran.
+  - name: 🔌 Connect OpenTakeoff to your AI
+    url: https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/CONNECT.md
+    about: Step-by-step MCP setup for Claude Code, Codex, Cursor, VS Code and Claude Desktop.
+  - name: 🔒 Report a security issue privately
+    url: https://github.com/Kentucky-ai/opentakeoff/security/advisories/new
+    about: Read SECURITY.md first. Do not open a public issue for a vulnerability.
