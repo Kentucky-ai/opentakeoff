@@ -281,7 +281,7 @@ If OpenTakeoff saved you an afternoon, a ⭐ helps the next estimator find it.
 
 ## Who's building this
 
-I run estimating for a commercial flooring company and build the AI my own department uses.
+I run estimating for a commercial flooring company, and the takeoff tool I bid with is one I wrote.
 OpenTakeoff is the open half of that work: a measuring engine for anyone, person or agent,
 who needs to read a building. The models trained on our own estimating archive stay ours, and
 the boundary is drawn in public so it can be held to account.

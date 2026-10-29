@@ -419,7 +419,7 @@ a phone or tablet, or a browser that reports 4 GB of memory or less), least rece
 ## The research program
 
 OpenTakeoff is the open half of an applied-research program run by a working commercial
-flooring estimator who builds the AI his own department uses
+flooring estimator who bids with the tools the program builds
 ([Kentucky AI](https://kentucky-ai.com)). The open-core boundary is the same one the better
 open scientific software draws: **the measurement engine—rendering, scale, geometry, exports,
 the MCP server—is AGPL-3.0 and stays open. The models trained on our own estimating archive
