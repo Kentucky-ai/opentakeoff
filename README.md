@@ -27,7 +27,7 @@ engine for that job. It has two front ends:
 
 - **🧑‍🔧 A browser canvas for people.** Drag in a plan set, set the scale, trace rooms, and
   export a report and a marked-up planset.
-- **🤖 An MCP server for agents.** It offers <!--tool-count-->60<!--/tool-count--> tools over
+- **🤖 An MCP server for agents.** It offers <!--tool-count-->61<!--/tool-count--> tools over
   stdio. An agent drives the same engine with the same math and the same scale gate as the
   canvas, and its work stays a dashed proposal until a person accepts it.
 
@@ -85,7 +85,7 @@ The step-by-step walkthrough for each client is in [Connect OpenTakeoff to your 
 The server can also describe itself: read the `takeoff://wiki` resource before you load a plan.
 
 <details>
-<summary><strong>All <!--tool-count-->60<!--/tool-count--> tools, grouped by stage</strong></summary>
+<summary><strong>All <!--tool-count-->61<!--/tool-count--> tools, grouped by stage</strong></summary>
 
 <br/>
 
@@ -180,7 +180,7 @@ takeoff. Everything is in the [CHANGELOG](CHANGELOG.md), and the older highlight
 | **Estimate** | Unit prices, tax, overhead and profit, an Excel export and a **bid proposal PDF** |
 | **Report and export** | SF, SY, LF and EA per condition, with and without waste. Exports CSV, JSON, Excel, DXF and a **Marked Set PDF** |
 | **Review** | Revisions with quantity deltas, markups, approval seals, an RFI register, and agent proposals you accept or reject |
-| **MCP server** | <!--tool-count-->60<!--/tool-count--> tools, sheet resources, a packaged wiki and multi-document sessions ([`mcp/`](mcp/README.md)) |
+| **MCP server** | <!--tool-count-->61<!--/tool-count--> tools, sheet resources, a packaged wiki and multi-document sessions ([`mcp/`](mcp/README.md)) |
 | **Privacy** | Runs only in the client. Work is stored in IndexedDB and localStorage and is never uploaded |
 
 You'll find every feature in depth in [**the tour**](docs/TOUR.md), every feature mapped to

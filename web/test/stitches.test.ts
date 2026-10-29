@@ -9,6 +9,7 @@ import {
   isStitchKey, mintStitchId, sanitizeStitches, normalizeMembers, autoButt,
   stitchExtent, memberBoxes, memberAtPoint, alignMembers, seamClips,
   mergePoints, mergeSegs, stitchAlive, stitchLayoutSig, stitchPagePlan, memberEmbed,
+  checkSeamLinework,
 } from "../src/lib/stitches.js";
 
 const MAX = 4;
@@ -207,4 +208,42 @@ test("memberEmbed: holds for a rotated (b,c ≠ 0) viewport transform", () => {
   }
   // clip corners through T⁻¹: v=(0..100, 0..200) local → u=(v.y/s, v.x/s)
   assert.deepEqual(bbox, { left: 0, bottom: 0, right: 100, top: 50 });
+});
+
+test("checkSeamLinework: collinear alignment, offsets, and rotation gates", () => {
+  const members = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 80, dy: 0 }];
+  const testDims = { A: { w: 100, h: 100 }, B: { w: 100, h: 100 } };
+  const upp = 0.05555555555555555; // 1/8" = 1'-0" (1.5 px = 1 inch)
+
+  // 1. Clean alignment
+  const segsA = new Float32Array([70, 50, 95, 50]);
+  const segsB = new Float32Array([5, 50, 30, 50]);
+  const exact = checkSeamLinework(members, testDims, { A: segsA, B: segsB }, upp);
+  assert.equal(exact.passed, true);
+  assert.equal(exact.withheld, false);
+  assert.equal(exact.max_in, 0);
+  assert.equal(exact.median_in, 0);
+  assert.equal(exact.leftover_rotation_deg, 0);
+  assert.equal(exact.sample_count, 1);
+  assert.equal(exact.withheld_reasons.length, 0);
+
+  // 2. 3" displacement (4.5 px) -> withheld (exceeds 0.50" tolerance)
+  const segsB_off = new Float32Array([5, 54.5, 30, 54.5]);
+  const off = checkSeamLinework(members, testDims, { A: segsA, B: segsB_off }, upp);
+  assert.equal(off.passed, false);
+  assert.equal(off.withheld, true);
+  assert.equal(off.max_in, 3);
+  assert.equal(off.median_in, 3);
+  assert.ok(off.withheld_reasons[0].includes('exceeds 0.50" tolerance'));
+  assert.equal(off.discrepancies.length, 1);
+  assert.equal(off.discrepancies[0].at[0], 90);
+
+  // 3. Rotation > 0.25 deg -> withheld
+  // 25 px run with 2 px rise = atan2(2, 25) = ~4.57 degrees
+  const segsB_rot = new Float32Array([5, 50, 30, 52]);
+  const rot = checkSeamLinework(members, testDims, { A: segsA, B: segsB_rot }, upp);
+  assert.equal(rot.passed, false);
+  assert.equal(rot.withheld, true);
+  assert.ok(rot.leftover_rotation_deg > 0.25);
+  assert.ok(rot.withheld_reasons.some((r) => r.includes("Leftover rotation")));
 });

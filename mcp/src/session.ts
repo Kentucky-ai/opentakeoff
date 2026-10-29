@@ -5,15 +5,17 @@
 // what the canvas commits (web/src/pages/TakeoffCanvas.jsx), so an exported
 // takeoff round-trips into the app.
 import path from "node:path";
-import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
+import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, createRenderingCanvas, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
 import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
 import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, type SheetGraph, type SheetSpans, type Bbox } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
 // Condition twins — the inheritance rule, shared with the canvas so a headless session and
 // the app can never disagree about what a twin holds (web/test/variants.test.ts).
-import { mintTwin, splitFromFamily, variantTag, propagateRowAdd, propagateRowPatch, propagateRowRemove,
-         markRowLocal, dropRowLocal, type VariantCond, type VariantRow } from "../../web/src/lib/variants.ts";
+import {
+  mintTwin, splitFromFamily, variantTag, propagateRowAdd, propagateRowPatch, propagateRowRemove,
+  markRowLocal, dropRowLocal, type VariantCond, type VariantRow
+} from "../../web/src/lib/variants.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import { buildSheetDxf, type DxfBuild } from "../../web/src/lib/dxf.ts";
 import {
@@ -73,7 +75,8 @@ import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLf
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
 import {
   isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent,
-  alignMembers, seamClips, mergePoints, mergeSegs, normalizeMembers, type Stitch, type StitchMember, type Dim,
+  alignMembers, seamClips, mergePoints, mergeSegs, normalizeMembers,
+  checkSeamLinework, type Stitch, type StitchMember, type Dim, type SeamCheckResult, type SeamCheckDiscrepancy,
 } from "../../web/src/lib/stitches.ts";
 
 // Conditions and snap behavior minted here are identical to the browser's
@@ -289,8 +292,8 @@ export interface ShapeOrigin {
    * committed shape: a wall-separated run is a question, and questions do not
    * become shapes. */
   derived?:
-    | { from_shape_id: string; gross_lf: number; openings_lf: number }
-    | { between_shape_ids: string[]; between: string[]; case: "butt"; gap_in: number };
+  | { from_shape_id: string; gross_lf: number; openings_lf: number }
+  | { between_shape_ids: string[]; between: string[]; case: "butt"; gap_in: number };
   /** rule_v1 (#88/#207): the correction rule that minted this deduct, the
    * estimator's seed correction it re-ran, and the room it landed in — the
    * same three-way citation the canvas's Apply stamps. */
@@ -655,8 +658,10 @@ export type JournalPayload =
   | { op: "edit"; tool: string; before: Shape }
   | { op: "annotation_text"; tool: string; id: string; before: string }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
-  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[]; dropped_before?: string[];
-      family?: { condition_id: string; before: MaterialRow[]; dropped_before?: string[] }[] }
+  | {
+    op: "materials"; tool: string; condition_id: string; before: MaterialRow[]; dropped_before?: string[];
+    family?: { condition_id: string; before: MaterialRow[]; dropped_before?: string[] }[]
+  }
   | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; rise_ft?: number; drop_ft?: number; roll_setup?: Record<string, unknown> } }
   | { op: "duplicate_condition"; tool: string; condition_id: string; parent_id: string; parent_had_family: boolean }
   | { op: "split_condition"; tool: string; condition_id: string; before: { variant_of?: string; materials?: unknown; materials_dropped?: string[] } }
@@ -790,7 +795,7 @@ export class Session {
     const base = path.basename(filePath);
     const merging = !!opts.merge && this.docs.size > 0;   // merge into empty = plain first load
     if (!merging) {
-      for (const d of this.docs.values()) await d.doc.destroy().catch(() => {});
+      for (const d of this.docs.values()) await d.doc.destroy().catch(() => { });
       this.docs.clear();
       this.sheets.clear();
       this.stitches.clear();
@@ -864,6 +869,10 @@ export class Session {
 
   /** The file (basename) a sheet key belongs to — the key codec's inverse. */
   fileFor(sheetKey: string): string {
+    if (this.stitches.has(sheetKey)) {
+      const st = this.stitches.get(sheetKey)!;
+      if (st.members[0]) return this.fileFor(st.members[0].key);
+    }
     return sheetKey.split("#")[0];
   }
 
@@ -930,7 +939,16 @@ export class Session {
    * canvas-native RENDER_SCALE), cached per sheet until the next load_plan. */
   async renderSheetPng(ord: number): Promise<Uint8Array> {
     const s = this.sheetForPage(ord);
-    if (!s.page) throw new UserError(`Sheet "${s.key}" is a stitched composite and does not support page rendering. View member sheets instead.`);
+    if (!s.page) {
+      if (this.stitches.has(s.key)) {
+        if (!s.png) {
+          const view = await this.viewSheet(s.key, { px: Math.min(IMAGE_MAX_EDGE, Math.max(s.widthPx, s.heightPx)) });
+          s.png = view.png;
+        }
+        return s.png;
+      }
+      throw new UserError(`Sheet "${s.key}" has no rendered page data.`);
+    }
     if (!s.png) {
       const scale = Math.min(RENDER_SCALE, IMAGE_MAX_EDGE / Math.max(s.widthPt, s.heightPt));
       s.png = await s.page.renderPng(scale);
@@ -955,13 +973,75 @@ export class Session {
     const ppf = gridPxPerFoot(opts.grid, s.upp);
     const sheetShapes = this.shapes.filter((x) => x.sheet_id === s.key);
     let marksDrawn = 0;
-    if (!s.page) throw new UserError(`Sheet "${s.key}" is a stitched composite and does not support view_sheet. View member sheets instead.`);
-    const { png, width, height, zoom } = await s.page.renderRegionPng(r, px, (ctx, toCanvas) => {
-      if (ppf) drawGrid(ctx as Ctx2D, toCanvas as ToCanvas, r, ppf);
-      if (opts.overlay) drawShapes(ctx as Ctx2D, toCanvas as ToCanvas, sheetShapes, s.widthPx, s.heightPx, px);
-      // #297 — disclosure marks: what the reply names, the picture shows
-      if (opts.marks) marksDrawn = drawMarks(ctx as Ctx2D, toCanvas as ToCanvas, opts.marks, px);
-    });
+    let png: Uint8Array;
+    let width: number;
+    let height: number;
+    let zoom: number;
+
+    if (this.stitches.has(s.key)) {
+      const st = this.stitches.get(s.key)!;
+      const dims: Record<string, Dim> = {};
+      for (const m of st.members) {
+        const ms = this.sheets.get(m.key);
+        if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
+      }
+      const clips = seamClips(st.members, dims);
+      const w = r.x1 - r.x0;
+      const h = r.y1 - r.y0;
+      zoom = px / Math.max(w, h);
+      width = Math.max(1, Math.round(w * zoom));
+      height = Math.max(1, Math.round(h * zoom));
+      const target = await createRenderingCanvas(width, height);
+      const ctx = target.context as unknown as Ctx2D & {
+        fillRect(x: number, y: number, w: number, h: number): void;
+        save(): void;
+        rect(x: number, y: number, w: number, h: number): void;
+        clip(): void;
+        restore(): void;
+      };
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+
+      for (let i = 0; i < st.members.length; i++) {
+        const m = st.members[i];
+        const clip = clips[i];
+        if (clip.x1 <= r.x0 || clip.x0 >= r.x1 || clip.y1 <= r.y0 || clip.y0 >= r.y1) continue;
+        const ms = this.sheets.get(m.key);
+        if (!ms || !ms.page) continue;
+        const rvp = ms.page.getViewport({
+          scale: RENDER_SCALE * zoom,
+          offsetX: (-r.x0 + m.dx) * zoom,
+          offsetY: (-r.y0 + m.dy) * zoom,
+        });
+        const clipX = (clip.x0 - r.x0) * zoom;
+        const clipY = (clip.y0 - r.y0) * zoom;
+        const clipW = (clip.x1 - clip.x0) * zoom;
+        const clipH = (clip.y1 - clip.y0) * zoom;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(clipX, clipY, clipW, clipH);
+        ctx.clip();
+        await ms.page.renderToContext(ctx, rvp);
+        ctx.restore();
+      }
+
+      const toCanvas: ToCanvas = (x, y) => [(x - r.x0) * zoom, (y - r.y0) * zoom];
+      if (ppf) drawGrid(ctx as unknown as Ctx2D, toCanvas, r, ppf);
+      if (opts.overlay) drawShapes(ctx as unknown as Ctx2D, toCanvas, sheetShapes, s.widthPx, s.heightPx, px);
+      if (opts.marks) marksDrawn = drawMarks(ctx as unknown as Ctx2D, toCanvas, opts.marks, px);
+      png = new Uint8Array(target.canvas.toBuffer("image/png"));
+    } else {
+      if (!s.page) throw new UserError(`Sheet "${s.key}" has no rendered page data.`);
+      const res = await s.page.renderRegionPng(r, px, (ctx, toCanvas) => {
+        if (ppf) drawGrid(ctx as Ctx2D, toCanvas as ToCanvas, r, ppf);
+        if (opts.overlay) drawShapes(ctx as Ctx2D, toCanvas as ToCanvas, sheetShapes, s.widthPx, s.heightPx, px);
+        if (opts.marks) marksDrawn = drawMarks(ctx as Ctx2D, toCanvas as ToCanvas, opts.marks, px);
+      });
+      png = res.png;
+      width = res.width;
+      height = res.height;
+      zoom = res.zoom;
+    }
     return {
       png,
       meta: {
@@ -978,6 +1058,7 @@ export class Session {
       },
     };
   }
+
 
   /** sheet_context (issue #29): the classified vectors, the positioned text,
    * and the hatch-family instances of ONE region, in ONE frame — image px,
@@ -1408,8 +1489,10 @@ export class Session {
       const repriced: Shape[] = recalibrateShapes(before, dims, upp, this.conditions);
       // Initial calibration without geometry has nothing to undo. A changed
       // calibration and its quantities restore together before older edits.
-      if (s.upp !== null || before.length) this.record({ op: "scale", tool: "set_scale", sheet_id: s.key,
-        upp: s.upp, source: s.scaleSource, confirmed: s.scaleConfirmed, shapes: structuredClone(before) });
+      if (s.upp !== null || before.length) this.record({
+        op: "scale", tool: "set_scale", sheet_id: s.key,
+        upp: s.upp, source: s.scaleSource, confirmed: s.scaleConfirmed, shapes: structuredClone(before)
+      });
       const byId = new Map(repriced.map((sh) => [sh.id, sh]));
       this.shapes = this.shapes.map((sh) => byId.get(sh.id) ?? sh);
     }
@@ -1616,6 +1699,7 @@ export class Session {
       ? traceRegion(f, RASTER_RDP_EPS)
       : snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
     if (ring.length < 3) throw new UserError("Couldn't trace that space into a polygon.");
+    this.checkStitchMeasurement(s, ring);
     const areaPx2 = ringArea(ring);
     const perimPx = closedMetrics(ring).perim;
     if (s.upp == null) {
@@ -1847,6 +1931,7 @@ export class Session {
         }
         let shape_id: string | undefined;
         if (tag) {
+          this.checkStitchMeasurement(s, c.ring);
           // flood provenance + confidence stamp centrally in commit() from
           // the harvested evidence — nothing hand-listed here (audit A2)
           const shape = this.commit(s, tag, opts.role, c.ring, { area_sf, perimeter_lf }, {
@@ -1926,10 +2011,60 @@ export class Session {
     return { pts: flat, arcs: marks.length };
   }
 
+  private checkStitchMeasurement(s: SheetState, points: Point[]): void {
+    if (!this.stitches.has(s.key) || points.length === 0) return;
+    const st = this.stitches.get(s.key)!;
+    const dims: Record<string, Dim> = {};
+    for (const m of st.members) {
+      const ms = this.sheets.get(m.key);
+      if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
+    }
+    const clips = seamClips(st.members, dims);
+    const memberIndices = new Set<number>();
+    for (const [x, y] of points) {
+      for (let i = 0; i < clips.length; i++) {
+        const c = clips[i];
+        if (x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1) {
+          memberIndices.add(i);
+        }
+      }
+    }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const [x, y] of points) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    let crossesSeam = memberIndices.size > 1;
+    if (!crossesSeam && clips.length >= 2) {
+      for (let i = 0; i < clips.length - 1; i++) {
+        const seamX = (clips[i].x1 + clips[i + 1].x0) / 2;
+        const seamY = (clips[i].y1 + clips[i + 1].y0) / 2;
+        if ((minX < seamX && maxX > seamX) || (minY < seamY && maxY > seamY)) {
+          crossesSeam = true;
+          break;
+        }
+      }
+    }
+
+    if (!crossesSeam) return;
+
+    if (st.aligned === false) {
+      throw new UserError(
+        `Cannot measure across seam on unaligned stitch "${st.id}". Align the stitch across match lines with align_stitch before measuring across the seam.`
+      );
+    }
+    if (st.seam_check && !st.seam_check.passed) {
+      throw new UserError(
+        `Cannot measure across seam on stitch "${st.id}": seam check withheld (${st.seam_check.withheld_reasons.join(" ")}). Measure each member sheet separately.`
+      );
+    }
+  }
+
   measurePolygon(name: string, verts: Point[], opts: { condition?: string; role: "floor_area" | "deduct"; arc_through?: number[] }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
     const { pts: ring, arcs } = this.bend(verts, opts.arc_through, true, "measure_polygon");
+    this.checkStitchMeasurement(s, ring);
     const { area_sf = 0, perimeter_lf = 0 } = this.quantify(s, opts.role, ring);
     let shape_id: string | undefined;
     // agent-supplied coordinates are a hand trace by a machine hand: manual
@@ -1949,6 +2084,7 @@ export class Session {
     // from, so a bare measurement carries only what the call states.
     const own = { ...(opts.rise_ft !== undefined ? { rise_ft: opts.rise_ft } : {}), ...(opts.drop_ft !== undefined ? { drop_ft: opts.drop_ft } : {}) };
     const vertical = this.verticalFor(opts.condition, own);
+    this.checkStitchMeasurement(s, run);
     const computed = this.quantify(s, "linear", run, undefined, vertical);
     const length_lf = computed.perimeter_lf ?? 0;
     let shape_id: string | undefined;
@@ -1977,6 +2113,7 @@ export class Session {
     if (s.upp == null) throw new UserError(this.scaleGate(s));
     // bend BEFORE the height gate so a bad arc refuses with nothing minted
     const bent = this.bend(pts, opts.arc_through, false, "measure_surface");
+    this.checkStitchMeasurement(s, bent.pts);
     pts = bent.pts;
     const existing = this.conditions.find((x) => x.finish_tag === opts.condition);
     const h = opts.height_ft ?? (Number(existing?.height_ft) || 0);
@@ -2310,8 +2447,8 @@ export class Session {
       min_fraction: opts.min_fraction ?? 0.05,
       note: !floors ? "No floor_area shapes to compare."
         : r.collisions.length ? `${r.collisions.length} pair(s) on different conditions share floor — every total downstream counts that floor twice. scope_merge a pair with the winner stated, or view_sheet its look region and re-trace.`
-        : r.duplicates.length ? "No cross-condition collision; the same-condition pairs listed are double traces — delete_shape one of each."
-        : "No shared floor on the compared sheets.",
+          : r.duplicates.length ? "No cross-condition collision; the same-condition pairs listed are double traces — delete_shape one of each."
+            : "No shared floor on the compared sheets.",
     };
   }
 
@@ -2465,8 +2602,8 @@ export class Session {
     const sheetKeys = opts.sheet
       ? [this.sheet(opts.sheet).key]
       : [...new Set(this.shapes
-          .filter((x) => x.measure_role === "floor_area" && activeCondIds.has(x.condition_id))
-          .map((x) => x.sheet_id))];
+        .filter((x) => x.measure_role === "floor_area" && activeCondIds.has(x.condition_id))
+        .map((x) => x.sheet_id))];
     const skipped_sheets: { sheet_id: string; reason: "no_scale" | "no_vector_mask" }[] = [];
     const sheetData = new Map<string, SheetRuleData>();
     for (const key of sheetKeys) {
@@ -2490,13 +2627,13 @@ export class Session {
         const vertsPx: Point[] = cand.verts_norm.map(([nx, ny]) => [nx * d.imgW, ny * d.imgH]);
         const shape = this.commit(this.sheet(cand.sheet_id), cond.finish_tag, "deduct", vertsPx,
           { area_sf: cand.area_sf, perimeter_lf: round2(closedMetrics(vertsPx).perim * d.upp) }, {
-            method: "rule_v1",
-            actor: "rule",
-            reviewed: false,
-            rule_id: rule.id,
-            seed_shape_id: rule.seed_shape_id,
-            container_shape_id: cand.container_shape_id,
-          });
+          method: "rule_v1",
+          actor: "rule",
+          reviewed: false,
+          rule_id: rule.id,
+          seed_shape_id: rule.seed_shape_id,
+          container_shape_id: cand.container_shape_id,
+        });
         ids.push(shape.id);
         sf += cand.area_sf;
       }
@@ -2917,7 +3054,7 @@ export class Session {
             let n = 0;
             for (let i = 0; i + 3 < segs.length && n < 3; i += 4) {
               if (segs[i] >= bx0 && segs[i] <= bx1 && segs[i + 1] >= by0 && segs[i + 1] <= by1 &&
-                  segs[i + 2] >= bx0 && segs[i + 2] <= bx1 && segs[i + 3] >= by0 && segs[i + 3] <= by1) n++;
+                segs[i + 2] >= bx0 && segs[i + 2] <= bx1 && segs[i + 3] >= by0 && segs[i + 3] <= by1) n++;
             }
             // An EQUIPMENT mark is annotated by a leader to its drawn device,
             // never by a value under it — the tag-over-value rule is the air
@@ -4015,15 +4152,15 @@ export class Session {
     const condTagAfter = patch.condition !== undefined ? patch.condition : this.conditions.find((x) => x.id === cur.condition_id)?.finish_tag;
     const computed =
       role === "count" ? { count: cur.computed.count ?? 1 }
-      : role === "linear" ? Session.linearQty(openLen(vertsPx) * upp, cur.origin?.derived ? { rise: 0, drop: 0 } : this.verticalFor(condTagAfter, legs))
-      : role === "surface_area" ? (() => {
-          const LF = openLen(vertsPx) * upp;
-          return { area_sf: round2(LF * heightFor()), perimeter_lf: round2(LF) };
-        })()
-      : (() => {
-          const met = closedMetrics(vertsPx);
-          return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
-        })();
+        : role === "linear" ? Session.linearQty(openLen(vertsPx) * upp, cur.origin?.derived ? { rise: 0, drop: 0 } : this.verticalFor(condTagAfter, legs))
+          : role === "surface_area" ? (() => {
+            const LF = openLen(vertsPx) * upp;
+            return { area_sf: round2(LF * heightFor()), perimeter_lf: round2(LF) };
+          })()
+            : (() => {
+              const met = closedMetrics(vertsPx);
+              return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
+            })();
 
     const before: Shape = structuredClone(cur);
     const condition_id = patch.condition !== undefined ? this.conditionFor(patch.condition).id : cur.condition_id;
@@ -4040,14 +4177,16 @@ export class Session {
       ...(nextLabel ? { label: nextLabel } : {}),
       ...(role === "surface_area" ? { height_ft: Number(cur.height_ft) || heightFor() } : {}),
       ...legs,
-      ...(cur.origin ? { origin: {
-        ...cur.origin,
-        agent_edits: (cur.origin.agent_edits ?? 0) + 1,
-        // a reassign onto a different tag is the agent choosing the finish —
-        // keeping "schedule" (and its citation) past that point would be a lie
-        ...(patch.condition !== undefined && cur.origin.assignment?.source === "schedule"
-          ? { assignment: { source: "asserted" as const } } : {}),
-      } } : {}),
+      ...(cur.origin ? {
+        origin: {
+          ...cur.origin,
+          agent_edits: (cur.origin.agent_edits ?? 0) + 1,
+          // a reassign onto a different tag is the agent choosing the finish —
+          // keeping "schedule" (and its citation) past that point would be a lie
+          ...(patch.condition !== undefined && cur.origin.assignment?.source === "schedule"
+            ? { assignment: { source: "asserted" as const } } : {}),
+        }
+      } : {}),
     };
     // the spread above carried the old label through — clearing means the key
     // GOES, so an export never ships label: "" for "no room"
@@ -4121,8 +4260,10 @@ export class Session {
     const cid = c.id;
     const snap = [cid, ...this.descendantConditionIds(cid)].map((id) => {
       const x = this.conditions.find((q) => q.id === id)! as unknown as VariantCond;
-      return { condition_id: id, before: structuredClone(x.materials) as unknown as MaterialRow[],
-               ...(x.materials_dropped ? { dropped_before: [...x.materials_dropped] } : {}) };
+      return {
+        condition_id: id, before: structuredClone(x.materials) as unknown as MaterialRow[],
+        ...(x.materials_dropped ? { dropped_before: [...x.materials_dropped] } : {})
+      };
     });
 
     // The family rules are the canvas's, verb for verb (TakeoffCanvas.jsx):
@@ -4183,10 +4324,12 @@ export class Session {
     this.conditions = conds as unknown as Condition[];
 
     const [primary, ...familySnap] = snap;
-    this.record({ op: "materials", tool: "edit_materials", condition_id: cid,
-                  before: primary.before,
-                  ...(primary.dropped_before ? { dropped_before: primary.dropped_before } : {}),
-                  ...(familySnap.length ? { family: familySnap } : {}) });
+    this.record({
+      op: "materials", tool: "edit_materials", condition_id: cid,
+      before: primary.before,
+      ...(primary.dropped_before ? { dropped_before: primary.dropped_before } : {}),
+      ...(familySnap.length ? { family: familySnap } : {})
+    });
 
     return {
       condition: tag, condition_id: cid,
@@ -4343,8 +4486,10 @@ export class Session {
     });
     if (parentPatch) Object.assign(src, parentPatch);
     this.conditions.push(twin as unknown as Condition);
-    this.record({ op: "duplicate_condition", tool: "duplicate_condition", condition_id: twin.id, parent_id: src.id,
-                  parent_had_family: !parentPatch });
+    this.record({
+      op: "duplicate_condition", tool: "duplicate_condition", condition_id: twin.id, parent_id: src.id,
+      parent_had_family: !parentPatch
+    });
     return {
       condition: newTag, condition_id: twin.id, variant_of: src.id, variant_label: lab,
       family_id: twin.family_id as string,
@@ -4363,12 +4508,16 @@ export class Session {
     }
     const cond = c as unknown as VariantCond;
     if (!cond.variant_of) {
-      return { condition: tag, condition_id: c.id, split: false, frozen_rows: 0,
-               note: "Already owns its materials — nothing was following." };
+      return {
+        condition: tag, condition_id: c.id, split: false, frozen_rows: 0,
+        note: "Already owns its materials — nothing was following."
+      };
     }
     const frozen = (cond.materials || []).filter((r) => r.inherited).length;
-    const before = structuredClone({ variant_of: cond.variant_of, materials: cond.materials,
-                                     materials_dropped: cond.materials_dropped });
+    const before = structuredClone({
+      variant_of: cond.variant_of, materials: cond.materials,
+      materials_dropped: cond.materials_dropped
+    });
     const [next] = splitFromFamily([cond], cond.id);
     Object.assign(c, next);
     // splitFromFamily cuts variant_of and the tombstones BY OMISSION —
@@ -4378,9 +4527,11 @@ export class Session {
     delete (c as unknown as VariantCond).variant_of;
     delete (c as unknown as VariantCond).materials_dropped;
     this.record({ op: "split_condition", tool: "split_condition", condition_id: c.id, before });
-    return { condition: tag, condition_id: c.id, split: true, frozen_rows: frozen,
-             family_id: cond.family_id as string | undefined,
-             note: "Frozen at its current values; edits to the original no longer reach it. It still groups with its family." };
+    return {
+      condition: tag, condition_id: c.id, split: true, frozen_rows: frozen,
+      family_id: cond.family_id as string | undefined,
+      note: "Frozen at its current values; edits to the original no longer reach it. It still groups with its family."
+    };
   }
 
   /** Step back over this session's own last n mutations, newest first. Each
@@ -5091,7 +5242,7 @@ export class Session {
     return s;
   }
 
-  stitchSheets(opts: {
+  async stitchSheets(opts: {
     sheets: string[];
     name?: string;
     align?: { anchor: [number, number]; moving: [number, number] };
@@ -5136,7 +5287,7 @@ export class Session {
       members = normalizeMembers(opts.members);
     } else if (opts.align) {
       if (!Number.isFinite(opts.align.anchor[0]) || !Number.isFinite(opts.align.anchor[1]) ||
-          !Number.isFinite(opts.align.moving[0]) || !Number.isFinite(opts.align.moving[1])) {
+        !Number.isFinite(opts.align.moving[0]) || !Number.isFinite(opts.align.moving[1])) {
         throw new UserError("align anchor and moving coordinates must be finite numbers.");
       }
       const initial = autoButt(sheetKeys, dims);
@@ -5161,24 +5312,57 @@ export class Session {
     const id = mintStitchId();
     const name = (opts.name?.trim() || "Stitched sheets").slice(0, 200);
 
-    const calibratedMembers = resolvedSheets.filter((s) => s.upp != null);
-    let inheritedUpp: number | null = null;
-    let inheritedScaleSource: string | undefined;
-    let inheritedConfirmed: boolean | undefined;
-
-    if (calibratedMembers.length > 0) {
-      const firstUpp = calibratedMembers[0].upp as number;
-      if (calibratedMembers.every((s) => Math.abs((s.upp as number) - firstUpp) < 1e-6)) {
-        inheritedUpp = firstUpp;
-        inheritedScaleSource = calibratedMembers[0].scaleSource ?? "inherited";
-        inheritedConfirmed = calibratedMembers[0].scaleConfirmed;
+    // Scale check: every member sheet must be calibrated with set_scale
+    for (const s of resolvedSheets) {
+      if (s.upp == null) {
+        throw new UserError(`Member sheet "${s.key}" is not calibrated. Calibrate all member sheets with set_scale before stitching.`);
       }
+    }
+    const firstUpp = resolvedSheets[0].upp!;
+    for (let i = 1; i < resolvedSheets.length; i++) {
+      const s = resolvedSheets[i];
+      if (Math.abs(s.upp! - firstUpp) > 1e-6) {
+        const fmtScale = (sh: SheetState) => {
+          const sc = STANDARD_SCALES.find((x) => Math.abs(x.upp - sh.upp!) < 1e-6);
+          return `${sh.upp} ft/px${sc ? ` (${sc.label})` : ""}`;
+        };
+        throw new UserError(
+          `Scale mismatch: sheet "${resolvedSheets[0].key}" scale is ${fmtScale(resolvedSheets[0])} but sheet "${s.key}" scale is ${fmtScale(s)}. Member sheets must have the exact same scale.`
+        );
+      }
+    }
+
+    const firstConfirmed = resolvedSheets[0].scaleConfirmed;
+    for (let i = 1; i < resolvedSheets.length; i++) {
+      const s = resolvedSheets[i];
+      if (s.scaleConfirmed !== firstConfirmed) {
+        throw new UserError(
+          `Scale confirmation mismatch: sheet "${resolvedSheets[0].key}" is ${resolvedSheets[0].scaleConfirmed ? "confirmed" : "unconfirmed"} but sheet "${s.key}" is ${s.scaleConfirmed ? "confirmed" : "unconfirmed"}. Member sheets must have the exact same scale confirmation status.`
+        );
+      }
+    }
+
+    const inheritedUpp = firstUpp;
+    const inheritedScaleSource = resolvedSheets[0].scaleSource ?? "inherited";
+    const inheritedConfirmed = firstConfirmed;
+
+    const isAligned = !!opts.align;
+    let seamCheck: SeamCheckResult | undefined;
+    if (isAligned) {
+      const memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array }> = {};
+      for (const ms of resolvedSheets) {
+        const geo = await this.ensureGeometry(ms);
+        memberSegs[ms.key] = { segs: geo.segs, meta: geo.meta };
+      }
+      seamCheck = checkSeamLinework(members, dims, memberSegs, inheritedUpp);
     }
 
     const st: Stitch = {
       id,
       name,
       members,
+      aligned: isAligned,
+      ...(seamCheck ? { seam_check: seamCheck } : {}),
       created_at: new Date().toISOString(),
     };
     this.stitches.set(id, st);
@@ -5202,6 +5386,7 @@ export class Session {
     return {
       stitch_id: id,
       name,
+      aligned: isAligned,
       extent: {
         width_px: extent.w,
         height_px: extent.h,
@@ -5211,7 +5396,84 @@ export class Session {
         upp: inheritedUpp,
         ...(inheritedConfirmed !== undefined ? { scale_confirmed: inheritedConfirmed } : {}),
       },
-      note: `Created composite surface "${name}" (${extent.w}x${extent.h} px) from ${st.members.length} sheets. Reference as sheet "${id}".`,
+      ...(seamCheck ? { seam_check: seamCheck } : {}),
+      note: isAligned
+        ? `Created aligned composite surface "${name}" (${extent.w}x${extent.h} px) from ${st.members.length} sheets. Reference as sheet "${id}".`
+        : `Created composite surface "${name}" (${extent.w}x${extent.h} px) in starting auto-butt layout (aligned: false). Pass alignment points with align_stitch before measuring across the seam. Reference as sheet "${id}".`,
+    };
+  }
+
+  async alignStitch(opts: {
+    stitch: string;
+    anchor: [number, number];
+    moving: [number, number];
+    tolerance_in?: number;
+    rot_tolerance_deg?: number;
+  }) {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    const st = this.stitch(opts.stitch);
+    const s = this.sheet(st.id);
+    const resolvedSheets = st.members.map((m) => this.sheet(m.key));
+    const dims: Record<string, Dim> = {};
+    for (const ms of resolvedSheets) {
+      dims[ms.key] = { w: ms.widthPx, h: ms.heightPx };
+    }
+
+    if (!Number.isFinite(opts.anchor[0]) || !Number.isFinite(opts.anchor[1]) ||
+      !Number.isFinite(opts.moving[0]) || !Number.isFinite(opts.moving[1])) {
+      throw new UserError("align anchor and moving coordinates must be finite numbers.");
+    }
+
+    const aligned = alignMembers(
+      st.members,
+      dims,
+      opts.anchor,
+      opts.moving,
+    );
+    if ("error" in aligned) {
+      throw new UserError(aligned.error);
+    }
+
+    st.members = aligned.members;
+    st.aligned = true;
+
+    const extent = stitchExtent(st.members, dims);
+    s.widthPx = extent.w;
+    s.heightPx = extent.h;
+    s.widthPt = extent.w / 2.0;
+    s.heightPt = extent.h / 2.0;
+    s.geo = undefined;
+    s.snap = undefined;
+    s.mask = undefined;
+
+    const memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array }> = {};
+    for (const ms of resolvedSheets) {
+      const geo = await this.ensureGeometry(ms);
+      memberSegs[ms.key] = { segs: geo.segs, meta: geo.meta };
+    }
+
+    const seamCheck = checkSeamLinework(
+      st.members,
+      dims,
+      memberSegs,
+      s.upp ?? 0.05,
+      { tolerance_in: opts.tolerance_in, rot_tolerance_deg: opts.rot_tolerance_deg },
+    );
+    st.seam_check = seamCheck;
+
+    return {
+      stitch_id: st.id,
+      name: st.name,
+      aligned: true,
+      extent: {
+        width_px: extent.w,
+        height_px: extent.h,
+      },
+      members: st.members.map((m) => ({ key: m.key, dx: m.dx, dy: m.dy })),
+      seam_check: seamCheck,
+      note: seamCheck.passed
+        ? `Stitch "${st.name}" aligned and verified. Seam check passed: linework mismatch max ${seamCheck.max_in.toFixed(2)}" (median ${seamCheck.median_in.toFixed(2)}"), leftover rotation ${seamCheck.leftover_rotation_deg.toFixed(2)}°.`
+        : `Stitch "${st.name}" aligned, but seam check was WITHHELD (${seamCheck.withheld_reasons.join(" ")}). View discrepancies with view_sheet. Measuring across seam is refused until alignment is within tolerance.`,
     };
   }
 
@@ -5228,7 +5490,9 @@ export class Session {
             width_px: s?.widthPx ?? 0,
             height_px: s?.heightPx ?? 0,
           },
+          aligned: !!st.aligned,
           members: st.members.map((m) => ({ key: m.key, dx: m.dx, dy: m.dy })),
+          ...(st.seam_check ? { seam_check: st.seam_check } : {}),
           scale: {
             upp: s?.upp ?? null,
             ...(s?.scaleConfirmed !== undefined ? { scale_confirmed: s.scaleConfirmed } : {}),
@@ -5244,7 +5508,11 @@ export class Session {
     const stitches = sanitizeStitches(raw, 4);
     for (const st of stitches) {
       if (this.stitches.has(st.id)) continue;
-      this.stitches.set(st.id, st);
+      this.stitches.set(st.id, {
+        ...st,
+        ...(st.aligned !== undefined ? { aligned: st.aligned } : {}),
+        ...(st.seam_check ? { seam_check: st.seam_check } : {}),
+      });
       const dims: Record<string, Dim> = {};
       for (const m of st.members) {
         const ms = this.sheets.get(m.key);
@@ -5571,7 +5839,7 @@ export class Session {
     const k = (kind || "").toLowerCase();
     const want = /room/.test(k) ? "room-finish"
       : /equip|mechanical|mep|hvac|plumb|electr|fan|pump|heater|unit|valve|diffuser|grille|fixture|device/.test(k) ? "equipment"
-      : /finish|material|product|code|mark/.test(k) ? "finish" : k;
+        : /finish|material|product|code|mark/.test(k) ? "finish" : k;
     const hits = g.tables.filter((t) => t.kind === want);
     if (!hits.length) {
       const found = g.tables.map((t) => `${t.kind} on ${t.sheet}`).join(" | ");
