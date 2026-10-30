@@ -38,12 +38,12 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
   </>;
 }
 
-export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle, namer = null, countKnown = () => true, hold }) {
+export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle, namer = null, countKnown = () => true, hold, onReorderPages, onRotatePage, onDeletePage }) {
   const [query, setQuery] = useState("");
   return <aside className="calm-navigator" data-dock-side={dockSide} style={{ width, order: dockSide === "right" ? 20 : -20 }} hidden={!open} aria-label="Sheet navigator" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
     <header>{dockHandle}<strong>Sheets <small>{items.length}</small></strong><button type="button" aria-label="Close sheet navigator" onClick={onClose}>×</button></header>
     <label><Icon name="search" size={15} /><input name="workspace-sheet-search" aria-label="Find a sheet" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a sheet…" /></label>
-    <SheetTree items={items} current={current} onSelect={onSelect} namer={namer} countKnown={countKnown} query={query} hold={hold} onSearchAll={onGallery} />
+    <SheetTree items={items} current={current} onSelect={onSelect} namer={namer} countKnown={countKnown} query={query} hold={hold} onSearchAll={onGallery} onReorderPages={onReorderPages} onRotatePage={onRotatePage} onDeletePage={onDeletePage} />
     <footer><button type="button" onClick={onGallery}><Icon name="sheets" size={16} />Open visual gallery</button></footer>
   </aside>;
 }
