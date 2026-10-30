@@ -50,27 +50,32 @@ export async function reorderPdfPages(
   const totalPages = srcDoc.getPageCount();
 
   if (pageOrder.length !== totalPages) {
-    throw new Error(`pageOrder length (${pageOrder.length}) must match total pages (${totalPages})`);
+    throw new Error(
+      `pageOrder length (${pageOrder.length}) must match document page count (${totalPages})`
+    );
   }
 
-  const indices = pageOrder.map((p) => {
-    if (p < 1 || p > totalPages) {
-      throw new Error(`Invalid page number ${p} in pageOrder`);
+  const seen = new Set<number>();
+  for (const p of pageOrder) {
+    if (p < 1 || p > totalPages || seen.has(p)) {
+      throw new Error(`Invalid pageOrder: ${pageOrder.join(",")}`);
     }
-    return p - 1;
-  });
+    seen.add(p);
+  }
 
   const destDoc = await PDFDocument.create();
+  const indices = pageOrder.map((p) => p - 1);
   const copiedPages = await destDoc.copyPages(srcDoc, indices);
-  for (const p of copiedPages) {
-    destDoc.addPage(p);
+
+  for (const page of copiedPages) {
+    destDoc.addPage(page);
   }
 
   return await destDoc.save({ useObjectStreams: false });
 }
 
 /**
- * Delete a page from a PDF document.
+ * Delete a single page from a PDF document.
  * @param pdfBytes Raw PDF bytes
  * @param pageNumber 1-based page number to remove
  * @returns Modified PDF bytes
@@ -81,9 +86,11 @@ export async function deletePdfPage(
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
   const totalPages = doc.getPageCount();
+
   if (totalPages <= 1) {
-    throw new Error("Cannot delete the only page in a PDF document");
+    throw new Error("Cannot delete the only page in a document");
   }
+
   if (pageNumber < 1 || pageNumber > totalPages) {
     throw new Error(`Page ${pageNumber} out of range (1..${totalPages})`);
   }
@@ -93,10 +100,10 @@ export async function deletePdfPage(
 }
 
 /**
- * Extract a subset of pages into a new PDF document.
+ * Extract specific pages into a new PDF document.
  * @param pdfBytes Raw PDF bytes
  * @param pageNumbers Array of 1-based page numbers to extract
- * @returns New PDF bytes containing only the requested pages
+ * @returns Extracted PDF bytes
  */
 export async function extractPdfPages(
   pdfBytes: Uint8Array,
@@ -151,3 +158,30 @@ export async function mergePdfDocuments(
   return await destDoc.save({ useObjectStreams: false });
 }
 
+/**
+ * Insert pages from source PDF into target PDF at a given page index.
+ * @param targetBytes Target PDF bytes
+ * @param sourceBytes Source PDF bytes to insert
+ * @param insertAfterPage 1-based page index to insert after (0 = at start, targetPageCount = at end)
+ * @returns Modified PDF bytes and number of pages inserted
+ */
+export async function insertPdfPages(
+  targetBytes: Uint8Array,
+  sourceBytes: Uint8Array,
+  insertAfterPage: number
+): Promise<{ pdfBytes: Uint8Array; insertedCount: number }> {
+  const targetDoc = await PDFDocument.load(targetBytes, { updateMetadata: false });
+  const sourceDoc = await PDFDocument.load(sourceBytes, { updateMetadata: false });
+  const totalTarget = targetDoc.getPageCount();
+  const insertIndex = Math.max(0, Math.min(totalTarget, insertAfterPage));
+
+  const sourcePageIndices = Array.from({ length: sourceDoc.getPageCount() }, (_, i) => i);
+  const copiedPages = await targetDoc.copyPages(sourceDoc, sourcePageIndices);
+
+  for (let i = 0; i < copiedPages.length; i++) {
+    targetDoc.insertPage(insertIndex + i, copiedPages[i]);
+  }
+
+  const pdfBytes = await targetDoc.save({ useObjectStreams: false });
+  return { pdfBytes, insertedCount: copiedPages.length };
+}

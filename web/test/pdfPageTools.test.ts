@@ -9,6 +9,7 @@ import {
   deletePdfPage,
   extractPdfPages,
   mergePdfDocuments,
+  insertPdfPages,
 } from "../src/lib/pdfPageTools.ts";
 
 const SAMPLE_PATH = fileURLToPath(new URL("../public/demo/sample-finish-plan.pdf", import.meta.url));
@@ -63,3 +64,9 @@ test("mergePdfDocuments: combines two documents into one", async () => {
   assert.equal(doc.getPageCount(), 4);
 });
 
+test("insertPdfPages: inserts pages after specified page index", async () => {
+  const res = await insertPdfPages(sampleBytes, sampleBytes, 1);
+  assert.equal(res.insertedCount, 2);
+  const doc = await PDFDocument.load(res.pdfBytes);
+  assert.equal(doc.getPageCount(), 4);
+});
