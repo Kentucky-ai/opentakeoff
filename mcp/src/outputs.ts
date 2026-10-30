@@ -1210,3 +1210,38 @@ export const exportProposalOutput = {
   path: z.string(), pages: z.number().int(), base_bid: z.number(), itemized: z.boolean(), complete: z.boolean(), unpriced: z.array(unpricedRow),
   note: z.string().optional(),
 };
+
+export const rotatePageOutput = {
+  sheet: z.string(),
+  angle: z.number().int(),
+  width_px: z.number(),
+  height_px: z.number(),
+  shapes_transformed: z.number().int(),
+  markups_transformed: z.number().int(),
+  note: z.string(),
+};
+
+export const reorderPagesOutput = {
+  file: z.string(),
+  order: z.array(z.number().int()),
+  sheets: z.array(z.string()),
+  shapes_remapped: z.number().int(),
+  note: z.string(),
+};
+
+export const extractPagesOutput = {
+  source_file: z.string(),
+  output_file: z.string(),
+  extracted_pages: z.array(z.number().int()),
+  page_count: z.number().int(),
+  shapes_carried: z.number().int(),
+  note: z.string(),
+};
+
+export const mergeDocumentsOutput = {
+  merged_files: z.array(z.string()),
+  output_file: z.string(),
+  total_pages: z.number().int(),
+  shapes_remapped: z.number().int(),
+  note: z.string(),
+};

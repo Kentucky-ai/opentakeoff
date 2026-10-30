@@ -25,6 +25,7 @@ import {
   proposeConditionEditOutput, withdrawConditionEditOutput,
   scopeDuplicatesOutput, scopeMergeOutput,
   setPricingOutput, setEstimateSettingsOutput, estimateSummaryOutput, exportEstimateOutput, exportProposalOutput,
+  rotatePageOutput, reorderPagesOutput, extractPagesOutput, mergeDocumentsOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
@@ -695,6 +696,45 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     outputSchema: findTextOutput,
   }, run("find_text", (a) => session.findText(a.sheet, a.q, { region: a.region, limit: a.limit })));
+
+  server.registerTool("rotate_page", {
+    description: `Rotate a sheet's page in the PDF (90, 180, or 270 degrees clockwise) before measuring. Transforms all existing takeoff shapes, markups, and calibrations on that sheet to remain locked to the drawing. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string().describe('Sheet key ("plan.pdf", "plan.pdf#2") or sheet number ("A-101")'),
+      angle: z.union([z.literal(90), z.literal(180), z.literal(270)]).describe("Clockwise rotation angle in degrees: 90, 180, or 270"),
+    },
+    outputSchema: rotatePageOutput,
+  }, run("rotate_page", ({ sheet, angle }) => session.rotatePage(sheet, angle)));
+
+  server.registerTool("reorder_pages", {
+    description: `Reorder pages in a loaded PDF document. Remaps all takeoff sheet keys so measurements and annotations follow their pages. ${COORDS}`,
+    inputSchema: {
+      file: z.string().describe('The loaded PDF file name (e.g. "plan.pdf")'),
+      order: z.array(z.number().int().min(1)).describe("1-based new page order, e.g. [2, 1, 3] to swap pages 1 and 2"),
+    },
+    outputSchema: reorderPagesOutput,
+  }, run("reorder_pages", ({ file, order }) => session.reorderPages(file, order)));
+
+  server.registerTool("extract_pages", {
+    description: `Extract a subset of pages from a loaded PDF into a new PDF file on disk. Carries all takeoff shapes and annotations on those pages into the new document (mapped to pages 1..N). ${COORDS}`,
+    inputSchema: {
+      file: z.string().describe("The loaded PDF file name"),
+      pages: z.array(z.number().int().min(1)).describe("1-based page numbers to extract, e.g. [2, 3]"),
+      output_path: z.string().optional().describe('Destination file path (default: "<file>_extracted.pdf")'),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
+    },
+    outputSchema: extractPagesOutput,
+  }, run("extract_pages", ({ file, pages, output_path, overwrite }) => session.extractPages(file, pages, output_path, overwrite)));
+
+  server.registerTool("merge_documents", {
+    description: `Merge multiple PDF files into one combined PDF document on disk. Combines the pages and remaps takeoff keys from all source documents. ${COORDS}`,
+    inputSchema: {
+      files: z.array(z.string()).describe("List of PDF files to merge in order (can be loaded file names or file paths on disk)"),
+      output_path: z.string().describe("Destination path for the merged PDF"),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
+    },
+    outputSchema: mergeDocumentsOutput,
+  }, run("merge_documents", ({ files, output_path, overwrite }) => session.mergeDocuments(files, output_path, overwrite)));
 
   server.registerTool("view_sheet", {
     description: `SEE the sheet — render the page (or a crop of it) to a PNG image. This is your eyes on the plan, so CROP, DON'T SQUINT: the render downsamples to the px budget (≤2000 long side), which on an E-size sheet is ~4 sheet pixels per returned pixel — a full-sheet render finds WHERE things are, and only a tight region crop can tell you what the linework and labels actually say. Never audit a trace or read a dimension off a full-sheet render. region is in image px — the same space as every other tool — so a feature at pixel (ix, iy) of the returned image sits at x = region_x0 + ix × (region_x1 − region_x0) / img_w (same for y), and those coordinates go straight into ${oneClick ? "one_click, " : ""}measure_polygon, or read_sheet_text. overlay:true burns the session's committed shapes into the render (human-affirmed ink solid red, unreviewed machine shapes dashed blue) — render again after committing to verify your geometry landed where you intended, and sanity-check what you see: a fixture-sized ring where a room should be means the seed landed inside a stall or casework; an outsized ring means the flood escaped through an opening. To MEASURE rather than guess, pass grid: a calibrated measuring grid is burned in — thin lines every 1 ft, heavy blue every 5 ft, foot labels along the crop edges, feet counted from the crop's top-left corner. Count grid cells between walls exactly like an estimator scaling a plan; never derive a dimension by eye when the grid can give it to you. grid "auto" uses the sheet's set scale; before set_scale, pass the drawing scale read off the title block as inches-per-foot — "1/4" for a 1/4" = 1'-0" plan, "3/16", "0.25". marks (#297) burns DISCLOSURE layers into the render, so what a reply names, the picture shows: pass the coordinate lists a tool disclosed — question: withheld placements (orange ?-circles), struck: rejections a counter-example or luminance gate refused (magenta struck ×), ring: reference points like the sweep's own seed (violet double ring). The colors sit deliberately off the common CAD pens so they cannot vanish into color-plotted work. An overlay audit without marks shows only committed ink — the validation trap where 37 disclosed near-misses read as "it missed them". Rendering needs the optional native canvas (@napi-rs/canvas); where it isn't installed this tool errors cleanly and every other tool still works. ${COORDS}`,
