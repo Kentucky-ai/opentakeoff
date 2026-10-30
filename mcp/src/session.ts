@@ -5,6 +5,10 @@
 // what the canvas commits (web/src/pages/TakeoffCanvas.jsx), so an exported
 // takeoff round-trips into the app.
 import path from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { rotateShape, rotateMarkup, rotateApproval, buildKeyRemap, remapTakeoffSheetKeys, formatSheetKey } from "../../web/src/lib/pageTransforms.ts";
+import { rotatePdfPage, reorderPdfPages, extractPdfPages, mergePdfDocuments } from "../../web/src/lib/pdfPageTools.ts";
+import { assertWritable } from "./safewrite.ts";
 import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
 import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
@@ -847,6 +851,259 @@ export class Session {
       note: merging
         ? `Merged ${base} into the working set (${added.length} sheet${added.length === 1 ? "" : "s"} added) — every prior scale, condition, and shape kept. The sheet graph now spans ${this.docs.size} documents.`
         : "Replaced the previous session — all prior scales, conditions, and shapes were cleared.",
+    };
+  }
+
+  async rotatePage(sheetName: string, angle: 90 | 180 | 270) {
+    const s = this.sheet(sheetName);
+    const file = this.fileFor(s.key);
+    const docEntry = this.docs.get(file);
+    if (!docEntry) throw new UserError(`Document for sheet ${s.key} not found.`);
+
+    const pdfBytes = await readFile(docEntry.path);
+    const rotatedBytes = await rotatePdfPage(new Uint8Array(pdfBytes), s.pageNum, angle);
+    await writeFile(docEntry.path, rotatedBytes);
+
+    await docEntry.doc.destroy().catch(() => {});
+    const newDoc = await openPdf(docEntry.path);
+    docEntry.doc = newDoc;
+
+    const ph = await newDoc.page(s.pageNum);
+    s.page = ph;
+    s.widthPt = ph.widthPt;
+    s.heightPt = ph.heightPt;
+    s.widthPx = ph.viewport.width;
+    s.heightPx = ph.viewport.height;
+    s.text = positionedText(ph);
+    s.geo = undefined;
+    s.mask = undefined;
+
+    let shapesTransformed = 0;
+    this.shapes = this.shapes.map((sh) => {
+      if (sh.sheet_id === s.key) {
+        shapesTransformed++;
+        return rotateShape(sh, angle);
+      }
+      return sh;
+    });
+
+    let markupsTransformed = 0;
+    this.markups = this.markups.map((m) => {
+      if (m.sheet_id === s.key) {
+        markupsTransformed++;
+        return rotateMarkup(m, angle, { w: s.widthPx, h: s.heightPx });
+      }
+      return m;
+    });
+
+    this.approvals = this.approvals.map((ap) => {
+      if (ap.sheet_id === s.key) return rotateApproval(ap, angle);
+      return ap;
+    });
+
+    return {
+      sheet: s.key,
+      angle,
+      width_px: s.widthPx,
+      height_px: s.heightPx,
+      shapes_transformed: shapesTransformed,
+      markups_transformed: markupsTransformed,
+      note: `Rotated ${s.key} ${angle}° clockwise. ${shapesTransformed} shape(s) and ${markupsTransformed} markup(s) transformed to stay locked to the drawing.`,
+    };
+  }
+
+  async reorderPages(fileName: string, pageOrder: number[]) {
+    const base = path.basename(fileName);
+    const docEntry = this.docs.get(base);
+    if (!docEntry) throw new UserError(`Document "${fileName}" is not loaded.`);
+
+    const totalPages = docEntry.doc.numPages;
+    if (pageOrder.length !== totalPages) {
+      throw new UserError(`pageOrder length (${pageOrder.length}) must match total pages in ${base} (${totalPages}).`);
+    }
+
+    const seen = new Set<number>();
+    for (const p of pageOrder) {
+      if (p < 1 || p > totalPages || seen.has(p)) {
+        throw new UserError(`Invalid pageOrder: must be a permutation of 1..${totalPages}.`);
+      }
+      seen.add(p);
+    }
+
+    const pdfBytes = await readFile(docEntry.path);
+    const reorderedBytes = await reorderPdfPages(new Uint8Array(pdfBytes), pageOrder);
+    await writeFile(docEntry.path, reorderedBytes);
+
+    await docEntry.doc.destroy().catch(() => {});
+    const newDoc = await openPdf(docEntry.path);
+    docEntry.doc = newDoc;
+
+    const oldToNew = new Map<number, number>();
+    pageOrder.forEach((oldP, idx) => oldToNew.set(oldP, idx + 1));
+
+    const remap = buildKeyRemap(base, (oldP) => oldToNew.get(oldP)!, totalPages);
+
+    let shapesRemapped = 0;
+    this.shapes = this.shapes.map((sh) => {
+      const nextKey = remap.get(sh.sheet_id);
+      if (nextKey && nextKey !== sh.sheet_id) {
+        shapesRemapped++;
+        return { ...sh, sheet_id: nextKey };
+      }
+      return sh;
+    });
+
+    this.markups = this.markups.map((m) => {
+      const nextKey = remap.get(m.sheet_id);
+      return nextKey && nextKey !== m.sheet_id ? { ...m, sheet_id: nextKey } : m;
+    });
+
+    this.approvals = this.approvals.map((ap) => {
+      const nextKey = remap.get(ap.sheet_id);
+      return nextKey && nextKey !== ap.sheet_id ? { ...ap, sheet_id: nextKey } : ap;
+    });
+
+    const oldSheets = new Map([...this.sheets.entries()].filter(([k]) => this.fileFor(k) === base));
+    for (const [k] of oldSheets) {
+      this.sheets.delete(k);
+    }
+
+    const newSheetKeys: string[] = [];
+    for (let newP = 1; newP <= totalPages; newP++) {
+      const oldP = pageOrder[newP - 1];
+      const oldKey = formatSheetKey(base, oldP);
+      const oldState = oldSheets.get(oldKey);
+      const key = formatSheetKey(base, newP);
+      newSheetKeys.push(key);
+
+      const ph = await newDoc.page(newP);
+      const state = {
+        key,
+        name: key,
+        pageNum: newP,
+        ord: newP,
+        widthPt: ph.widthPt,
+        heightPt: ph.heightPt,
+        widthPx: ph.viewport.width,
+        heightPx: ph.viewport.height,
+        sheetNumber: extractSheetNumber(ph.textContent, ph.viewport),
+        detected: detectScale(ph.textContent, ph.viewport),
+        upp: oldState?.upp ?? null,
+        text: positionedText(ph),
+        page: ph,
+      };
+      this.sheets.set(key, state as any);
+    }
+
+    return {
+      file: base,
+      order: pageOrder,
+      sheets: newSheetKeys,
+      shapes_remapped: shapesRemapped,
+      note: `Reordered ${base} according to [${pageOrder.join(", ")}]. ${shapesRemapped} shape(s) remapped to follow their pages.`,
+    };
+  }
+
+  async extractPages(fileName: string, pageNumbers: number[], outputPath?: string, overwrite?: boolean) {
+    const base = path.basename(fileName);
+    const docEntry = this.docs.get(base);
+    if (!docEntry) throw new UserError(`Document "${fileName}" is not loaded.`);
+
+    const totalPages = docEntry.doc.numPages;
+    for (const p of pageNumbers) {
+      if (p < 1 || p > totalPages) {
+        throw new UserError(`Page ${p} is out of range for ${base} (1..${totalPages}).`);
+      }
+    }
+
+    const outPath = outputPath
+      ? path.resolve(outputPath)
+      : path.join(path.dirname(docEntry.path), `${path.basename(base, ".pdf")}_extracted.pdf`);
+
+    await assertWritable(outPath, "pdf", overwrite);
+
+    const pdfBytes = await readFile(docEntry.path);
+    const extractedBytes = await extractPdfPages(new Uint8Array(pdfBytes), pageNumbers);
+    await writeFile(outPath, extractedBytes);
+
+    const outBase = path.basename(outPath);
+    const remap = new Map<string, string | null>();
+    for (let p = 1; p <= totalPages; p++) {
+      const oldKey = formatSheetKey(base, p);
+      const idx = pageNumbers.indexOf(p);
+      remap.set(oldKey, idx >= 0 ? formatSheetKey(outBase, idx + 1) : null);
+    }
+
+    const carriedTakeoff = remapTakeoffSheetKeys(
+      { shapes: this.shapes, markups: this.markups, approvals: this.approvals },
+      remap
+    );
+
+    return {
+      source_file: base,
+      output_file: outPath,
+      extracted_pages: pageNumbers,
+      page_count: pageNumbers.length,
+      shapes_carried: carriedTakeoff.shapes?.length || 0,
+      note: `Extracted ${pageNumbers.length} page(s) from ${base} into ${outPath}. ${carriedTakeoff.shapes?.length || 0} shape(s) carried.`,
+    };
+  }
+
+  async mergeDocuments(files: string[], outputPath: string, overwrite?: boolean) {
+    if (!Array.isArray(files) || files.length < 2) {
+      throw new UserError("merge_documents requires at least 2 files to merge.");
+    }
+
+    const outPath = path.resolve(outputPath);
+    await assertWritable(outPath, "pdf", overwrite);
+
+    const byteList: Uint8Array[] = [];
+    const sourceDocs: Array<{ name: string; pageCount: number }> = [];
+
+    for (const f of files) {
+      const base = path.basename(f);
+      let pdfBytes: Uint8Array;
+      if (this.docs.has(base)) {
+        const docEntry = this.docs.get(base)!;
+        pdfBytes = new Uint8Array(await readFile(docEntry.path));
+        sourceDocs.push({ name: base, pageCount: docEntry.doc.numPages });
+      } else {
+        const resolved = path.resolve(f);
+        pdfBytes = new Uint8Array(await readFile(resolved));
+        const tempDoc = await openPdf(resolved);
+        sourceDocs.push({ name: base, pageCount: tempDoc.numPages });
+        await tempDoc.destroy().catch(() => {});
+      }
+      byteList.push(pdfBytes);
+    }
+
+    const mergedBytes = await mergePdfDocuments(byteList);
+    await writeFile(outPath, mergedBytes);
+
+    const outBase = path.basename(outPath);
+    let curNewPage = 1;
+    const remap = new Map<string, string>();
+
+    for (const s of sourceDocs) {
+      for (let p = 1; p <= s.pageCount; p++) {
+        const oldKey = formatSheetKey(s.name, p);
+        const newKey = formatSheetKey(outBase, curNewPage);
+        remap.set(oldKey, newKey);
+        curNewPage++;
+      }
+    }
+
+    const remappedTakeoff = remapTakeoffSheetKeys(
+      { shapes: this.shapes, markups: this.markups, approvals: this.approvals },
+      remap
+    );
+
+    return {
+      merged_files: files.map((f) => path.basename(f)),
+      output_file: outPath,
+      total_pages: curNewPage - 1,
+      shapes_remapped: remappedTakeoff.shapes?.length || 0,
+      note: `Merged ${files.length} document(s) into ${outPath} (${curNewPage - 1} pages total).`,
     };
   }
 
