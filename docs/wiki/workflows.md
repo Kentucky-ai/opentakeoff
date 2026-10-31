@@ -8,7 +8,8 @@ gallery…**) to open the sheet gallery, then select the
 On the composite, choose **Align**, click a recognizable point near the joint,
 then click the same drawn point on the other sheet. Check a second recognizable
 point and the scale before tracing. Align translates a member; it does not
-rotate or resize it. Once shapes exist on a stitch, alignment is locked.
+rotate or resize it. If members have different orientations, rotate them first
+with the page rotation tool (`]` or `↻`). Once shapes exist on a stitch, alignment is locked.
 
 If the controls seem missing, **Stitch N into one surface** is in the gallery
 footer and requires 2–4 selected sheets; **Align** appears only on an open

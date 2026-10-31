@@ -954,6 +954,12 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 **Workspace layout.** Premium workspace is the default for browsers without a saved layout choice. From Classic, choose **⋯ → Premium layout — compact controls** for compact drawing controls. **Classic layout** returns immediately. Measuring tools keep their sidebar order and shortcuts; **All controls** reveals the existing toolbar for advanced settings. **Properties** opens the active condition editor. **Sheets** opens your plan set as a tree: each multi-page PDF is a folder of its pages and each one-page PDF a row. A row shows the sheet number printed in the title block's sheet-number box once that page's text has been read — when you open it, when the gallery draws its thumbnail, or when plan search reads it — and the label its tab shows until then. Numbers are saved with a local project, so it reopens with them; a Drive project reads them again each session. Search matches numbers, labels and file names. In the tree, arrow keys move, Right and Left open and close folders, and Enter opens a sheet. The sheet tabs and visual gallery remain available. **Find an action** (Cmd/Ctrl+K outside text fields) searches tools, sheets, scale choices and file actions; use arrows and Enter, or click a result.
 
+**PDF page tools.** You can manipulate pages directly in the browser with every takeoff, markup, and approval seal staying locked to its drawing geometry:
+- **Rotate:** Press `]` to rotate the active sheet 90° clockwise, or `[` for 270° clockwise (90° counter-clockwise). You can also click the `↻` icon on any sheet row in the Sheets navigator tree, or choose *Rotate page* from the **File** menu.
+- **Reorder:** In the Sheets navigator tree, click and drag any page row up or down within a multi-page PDF to reorder pages. `⌘Z` (or `Ctrl+Z`) restores the previous page order and takeoffs.
+- **Delete with undo:** Click `×` on a sheet row in the Sheets tree, or choose **File → Delete current page…**. If the page carries takeoffs, the app prompts with the count before removing; `⌘Z` restores the deleted page and all of its measurements.
+- **Extract & Merge:** Under the **File** menu, choose **Extract pages from set…** to pull a page range into a new PDF carrying its takeoffs, or **Merge PDF sets…** to combine multiple open PDFs into one multi-page set. **Insert pages from PDF…** appends external pages behind the active sheet, and **Export edited PDF…** downloads the modified PDF.
+
 **Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
 
 **One place for panel tools.** Quantities, Work, Markup list, Stamps, RFI register and Revisions live in the top toolbar. In Focus mode, the panel controls move to the right edge. **Create annotation** in the drawing toolbar creates clouds, callouts, text and highlights; **Markup list** opens existing annotations. Supporting materials remain under **Quantities → Materials** or a condition’s **Materials** button.
@@ -1214,6 +1220,16 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `T` | Trace another one like it—arms the shape's condition (the selected shape keeps its own quantities), sets the ╱ Straight / ⌒ Curve switch to match, and arms the tool that drew it: a four-corner axis-aligned ring re-arms Rectangle (or Deduct rectangle), anything else its own Area, Cut Out, Linear, Surface Area or Count. The selection drops. With nothing selected, or a markup selected, the message bar says so and nothing arms |
 | `⌫` | Delete (a picked vertex first, else the shape or markup) |
 | Double-click a markup | Edit its text in place |
+
+### Page tools
+
+| Key / action | Effect |
+|---|---|
+| `]` | Rotate current page 90° clockwise (takeoffs follow) |
+| `[` | Rotate current page 270° clockwise (90° counter-clockwise) |
+| Drag sheet row | In the Sheets sidebar tree, drag a page row up or down to reorder pages within a multi-page PDF |
+| `↻` on sheet row | Rotate page 90° clockwise |
+| `×` on sheet row | Delete page (prompts before removing takeoffs; `⌘Z` restores page and takeoffs) |
 
 ### View and navigation
 
