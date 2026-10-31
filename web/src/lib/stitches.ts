@@ -413,107 +413,106 @@ export function checkSeamLinework(
       seamMax = Math.min(clips[ai].x1, clips[bi].x1);
     }
 
-    type Cross = { pos: number; angle: number; p0: [number, number]; p1: [number, number] };
-    const extractCrossings = (m: StitchMember, data: { segs: ArrayLike<number>; meta?: Uint8Array } | ArrayLike<number>): Cross[] => {
-      const segs = (data as any)?.segs ?? data;
-      const meta = (data as any)?.meta;
-      const dataSegs = segs;
-      const dataMeta = meta;
-      const res: Cross[] = [];
+    const envelopePx = Math.max(80, upp > 0 ? (24 / (upp * 12)) : 150);
+
+    type Seg = { x0: number; y0: number; x1: number; y1: number; mx: number; my: number; len: number; ang: number; nx: number; ny: number };
+    const extract = (m: StitchMember, data: { segs: ArrayLike<number>; meta?: Uint8Array } | ArrayLike<number>, pad = 0): Seg[] => {
+      const dataSegs = (data as any)?.segs ?? data;
+      const dataMeta = (data as any)?.meta;
+      const res: Seg[] = [];
       if (!dataSegs || !dataSegs.length) return res;
       const n = dataSegs.length >> 2;
       for (let s = 0; s < n; s++) {
         if (dataMeta && (dataMeta[s] & 1)) continue; // skip curve chords
-        const x0 = dataSegs[s * 4] + m.dx, y0 = dataSegs[s * 4 + 1] + m.dy;
-        const x1 = dataSegs[s * 4 + 2] + m.dx, y1 = dataSegs[s * 4 + 3] + m.dy;
+        let x0 = dataSegs[s * 4] + m.dx, y0 = dataSegs[s * 4 + 1] + m.dy;
+        let x1 = dataSegs[s * 4 + 2] + m.dx, y1 = dataSegs[s * 4 + 3] + m.dy;
         const len = Math.hypot(x1 - x0, y1 - y0);
         if (len < 6) continue;
+        const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
 
         if (horizontal) {
-          const span = Math.abs(x1 - x0);
-          if (span < 4) continue;
-          const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
-          if (minX > seamCoord + 15 || maxX < seamCoord - 15) continue;
-          const t = (seamCoord - x0) / (x1 - x0);
-          if (t < -0.25 || t > 1.25) continue;
-          const crossY = y0 + t * (y1 - y0);
-          if (crossY < seamMin - 50 || crossY > seamMax + 50) continue;
-          let ang = Math.atan2(y1 - y0, x1 - x0);
-          while (ang > Math.PI / 2) ang -= Math.PI;
-          while (ang < -Math.PI / 2) ang += Math.PI;
-          res.push({ pos: crossY, angle: ang, p0: [x0, y0], p1: [x1, y1] });
+          if (mx < seamCoord - envelopePx - pad || mx > seamCoord + envelopePx + pad) continue;
+          if (my < seamMin - 50 || my > seamMax + 50) continue;
         } else {
-          const span = Math.abs(y1 - y0);
-          if (span < 4) continue;
-          const minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
-          if (minY > seamCoord + 15 || maxY < seamCoord - 15) continue;
-          const t = (seamCoord - y0) / (y1 - y0);
-          if (t < -0.25 || t > 1.25) continue;
-          const crossX = x0 + t * (x1 - x0);
-          if (crossX < seamMin - 50 || crossX > seamMax + 50) continue;
-          let ang = Math.atan2(y1 - y0, x1 - x0);
-          while (ang > Math.PI / 2) ang -= Math.PI;
-          while (ang < -Math.PI / 2) ang += Math.PI;
-          res.push({ pos: crossX, angle: ang, p0: [x0, y0], p1: [x1, y1] });
+          if (my < seamCoord - envelopePx - pad || my > seamCoord + envelopePx + pad) continue;
+          if (mx < seamMin - 50 || mx > seamMax + 50) continue;
         }
+
+        if (x0 > x1 || (x0 === x1 && y0 > y1)) {
+          [x0, x1] = [x1, x0];
+          [y0, y1] = [y1, y0];
+        }
+        let ang = Math.atan2(y1 - y0, x1 - x0);
+        while (ang > Math.PI / 2) ang -= Math.PI;
+        while (ang < -Math.PI / 2) ang += Math.PI;
+        const nx = -Math.sin(ang);
+        const ny = Math.cos(ang);
+        res.push({ x0, y0, x1, y1, mx, my, len, ang, nx, ny });
       }
       return res;
     };
 
-    const clusterCrossings = (crossings: Cross[]): Cross[] => {
-      crossings.sort((a, b) => a.pos - b.pos);
-      const clusters: Cross[] = [];
-      for (const c of crossings) {
-        const prev = clusters[clusters.length - 1];
-        if (prev && Math.abs(prev.pos - c.pos) < 2.0 && Math.abs(prev.angle - c.angle) < 0.08) {
-          prev.pos = (prev.pos + c.pos) / 2;
-          prev.angle = (prev.angle + c.angle) / 2;
-        } else {
-          clusters.push({ ...c });
-        }
-      }
-      return clusters;
-    };
+    const extractedA = extract(mA, segsA, 0);
+    const extractedB = extract(mB, segsB, 50);
 
-    const crA = clusterCrossings(extractCrossings(mA, segsA));
-    const crB = clusterCrossings(extractCrossings(mB, segsB));
+    const maxSearchPx = Math.max(30, upp > 0 ? (12 / (upp * 12)) : 60);
 
-    const maxSearchPx = Math.max(100, upp > 0 ? (24 / (upp * 12)) : 200);
-    const usedB = new Set<number>();
-
-    for (const ca of crA) {
-      let bestIdx = -1;
+    for (const sa of extractedA) {
       let bestDist = Infinity;
-      for (let j = 0; j < crB.length; j++) {
-        if (usedB.has(j)) continue;
-        const cb = crB[j];
-        let angDiff = Math.abs(ca.angle - cb.angle);
-        if (angDiff > Math.PI / 2) angDiff = Math.PI - angDiff;
-        if (angDiff > 0.22) continue;
-        const dist = Math.abs(ca.pos - cb.pos);
-        if (dist <= maxSearchPx && dist < bestDist) {
-          bestDist = dist;
-          bestIdx = j;
+      let bestMatch: { missPx: number; angDiff: number; pB: [number, number]; at: [number, number] } | null = null;
+
+      for (const sb of extractedB) {
+        let dang = Math.abs(sa.ang - sb.ang);
+        if (dang > Math.PI / 2) dang = Math.PI - dang;
+        if (dang > 0.08) continue; // angle within ~4.6 deg
+
+        // 1. Direct counterpart matching in overlap corridor
+        if (Math.abs(sa.len - sb.len) <= Math.max(5, sa.len * 0.25)) {
+          const d = Math.hypot(sb.mx - sa.mx, sb.my - sa.my);
+          if (d <= maxSearchPx && d < bestDist) {
+            bestDist = d;
+            bestMatch = {
+              missPx: d,
+              angDiff: dang,
+              pB: [sb.x0, sb.y0],
+              at: [+((sa.mx + sb.mx) / 2).toFixed(1), +((sa.my + sb.my) / 2).toFixed(1)],
+            };
+          }
+        }
+
+        // 2. Collinear continuation across the seam (two halves meeting at seam)
+        const perp = Math.abs((sb.mx - sa.mx) * sa.nx + (sb.my - sa.my) * sa.ny);
+        if (perp <= maxSearchPx && perp < bestDist) {
+          const minCoord = horizontal ? Math.min(sa.x0, sa.x1, sb.x0, sb.x1) : Math.min(sa.y0, sa.y1, sb.y0, sb.y1);
+          const maxCoord = horizontal ? Math.max(sa.x0, sa.x1, sb.x0, sb.x1) : Math.max(sa.y0, sa.y1, sb.y0, sb.y1);
+          if (minCoord <= seamCoord && maxCoord >= seamCoord) {
+            bestDist = perp;
+            bestMatch = {
+              missPx: perp,
+              angDiff: dang,
+              pB: [sb.x0, sb.y0],
+              at: horizontal ? [seamCoord, +(sa.my).toFixed(1)] : [+(sa.mx).toFixed(1), seamCoord],
+            };
+          }
         }
       }
-      if (bestIdx >= 0) {
-        usedB.add(bestIdx);
-        const cb = crB[bestIdx];
-        const missPx = bestDist;
-        const missIn = upp > 0 ? missPx * upp * 12 : 0;
-        let angleErr = cb.angle - ca.angle;
-        if (angleErr > Math.PI / 2) angleErr -= Math.PI;
-        if (angleErr < -Math.PI / 2) angleErr += Math.PI;
-        const at: [number, number] = horizontal
-          ? [+seamCoord.toFixed(1), +((ca.pos + cb.pos) / 2).toFixed(1)]
-          : [+((ca.pos + cb.pos) / 2).toFixed(1), +seamCoord.toFixed(1)];
-        allMatched.push({ miss_px: missPx, miss_in: missIn, angle_err: angleErr, at, pA: ca.p0, pB: cb.p0 });
+
+      if (bestMatch && bestDist <= maxSearchPx) {
+        const missIn = upp > 0 ? bestMatch.missPx * upp * 12 : 0;
+        allMatched.push({
+          miss_px: bestMatch.missPx,
+          miss_in: missIn,
+          angle_err: bestMatch.angDiff,
+          at: bestMatch.at,
+          pA: [sa.x0, sa.y0],
+          pB: bestMatch.pB,
+        });
         discrepancies.push({
-          at,
-          miss_px: +missPx.toFixed(2),
+          at: bestMatch.at,
+          miss_px: +bestMatch.missPx.toFixed(2),
           miss_in: +missIn.toFixed(2),
-          sheet_a_pt: [+ca.p0[0].toFixed(1), +ca.p0[1].toFixed(1)],
-          sheet_b_pt: [+cb.p0[0].toFixed(1), +cb.p0[1].toFixed(1)],
+          sheet_a_pt: [+sa.x0.toFixed(1), +sa.y0.toFixed(1)],
+          sheet_b_pt: [+bestMatch.pB[0].toFixed(1), +bestMatch.pB[1].toFixed(1)],
         });
       }
     }
@@ -523,14 +522,16 @@ export function checkSeamLinework(
   let maxPx = 0, medianPx = 0, maxIn = 0, medianIn = 0, leftoverRotationDeg = 0;
 
   if (sampleCount > 0) {
-    const sortedPx = allMatched.map((m) => m.miss_px).sort((a, b) => a - b);
-    const sortedIn = allMatched.map((m) => m.miss_in).sort((a, b) => a - b);
-    const sortedAng = allMatched.map((m) => m.angle_err).sort((a, b) => a - b);
+    allMatched.sort((a, b) => a.miss_px - b.miss_px);
+    const medIdx = Math.floor(sampleCount * 0.50);
+    const p95Idx = Math.min(sampleCount - 1, Math.floor(sampleCount * 0.95));
 
-    maxPx = +sortedPx[sortedPx.length - 1].toFixed(2);
-    medianPx = +sortedPx[Math.floor(sortedPx.length / 2)].toFixed(2);
-    maxIn = +sortedIn[sortedIn.length - 1].toFixed(2);
-    medianIn = +sortedIn[Math.floor(sortedIn.length / 2)].toFixed(2);
+    medianPx = +allMatched[medIdx].miss_px.toFixed(2);
+    medianIn = +allMatched[medIdx].miss_in.toFixed(2);
+    maxPx = +allMatched[p95Idx].miss_px.toFixed(2);
+    maxIn = +allMatched[p95Idx].miss_in.toFixed(2);
+
+    const sortedAng = allMatched.map(m => m.angle_err).sort((a, b) => a - b);
     leftoverRotationDeg = +(sortedAng[Math.floor(sortedAng.length / 2)] * 180 / Math.PI).toFixed(2);
   }
 
