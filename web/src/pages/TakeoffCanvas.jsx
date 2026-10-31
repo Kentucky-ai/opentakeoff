@@ -865,6 +865,11 @@ export default function TakeoffCanvas() {
       redoStackRef.current = [...redoStackRef.current, { family: "approval", cmd: res.inverse, inverse: entry.inverse }];
       return;
     }
+    if (entry.family === "page_tool" || typeof entry.undo === "function") {
+      entry.undo?.();
+      redoStackRef.current = [...redoStackRef.current, entry];
+      return;
+    }
     const res = applyShapeCommand(shapes, entry.inverse);
     setShapes(res.shapes);
     redoStackRef.current = [...redoStackRef.current, { cmd: res.inverse, inverse: entry.inverse }];
@@ -883,6 +888,11 @@ export default function TakeoffCanvas() {
       const res = applyApprovalCommand(approvals, entry.cmd);
       setApprovals(res.approvals);
       undoStackRef.current = [...undoStackRef.current, { family: "approval", cmd: entry.cmd, inverse: res.inverse }];
+      return;
+    }
+    if (entry.family === "page_tool" || typeof entry.redo === "function") {
+      entry.redo?.();
+      undoStackRef.current = [...undoStackRef.current, entry];
       return;
     }
     const res = applyShapeCommand(shapes, entry.cmd);
@@ -3472,9 +3482,9 @@ export default function TakeoffCanvas() {
             setShapes(prevShapes);
             setMarkups(prevMarkups);
             setApprovals(prevApprovals);
-            setPage(prevPage);
             setDocEpoch((e) => e + 1);
             await refreshSheets();
+            goToSheet(target);
             setCommitMsg(`Restored page ${targetPage} and its takeoffs.`);
           },
           redo: async () => {
