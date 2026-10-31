@@ -1210,3 +1210,94 @@ export const exportProposalOutput = {
   path: z.string(), pages: z.number().int(), base_bid: z.number(), itemized: z.boolean(), complete: z.boolean(), unpriced: z.array(unpricedRow),
   note: z.string().optional(),
 };
+
+export const seamCheckSchema = z.object({
+  passed: z.boolean().describe("true = linework mismatch and leftover rotation are within stated tolerances"),
+  withheld: z.boolean().describe("true = seam check did not pass tolerance; measuring across seam is refused"),
+  tolerance_in: z.number().describe("Stated displacement tolerance in inches"),
+  rot_tolerance_deg: z.number().describe("Stated rotation tolerance in degrees"),
+  max_px: z.number().describe("Maximum linework displacement in image pixels"),
+  median_px: z.number().describe("Median linework displacement in image pixels"),
+  max_in: z.number().describe("Maximum linework displacement in inches at set scale"),
+  median_in: z.number().describe("Median linework displacement in inches at set scale"),
+  leftover_rotation_deg: z.number().describe("Leftover rotation between member sheets in degrees"),
+  sample_count: z.number().int().describe("Number of wall linework crossings sampled across the match line"),
+  withheld_reasons: z.array(z.string()).describe("Disclosed reasons for withholding if tolerances are exceeded"),
+  discrepancies: z.array(z.object({
+    at: point.describe("Stitch coordinates along the seam line to inspect with view_sheet"),
+    miss_px: z.number().describe("Displacement in pixels"),
+    miss_in: z.number().describe("Displacement in inches at scale"),
+    sheet_a_pt: point.optional(),
+    sheet_b_pt: point.optional(),
+  })).describe("Discrepancy locations along the match line"),
+  note: z.string().describe("Seam check summary note"),
+});
+
+export const alignStitchOutput = {
+  stitch_id: z.string().describe("The aligned composite surface key (starts with stitch:)"),
+  name: z.string().describe("Name of the stitched surface"),
+  aligned: z.boolean().describe("true = alignment completed"),
+  extent: z.object({
+    width_px: z.number(),
+    height_px: z.number(),
+  }).describe("Composite surface dimensions in image px at render scale 2.0"),
+  members: z.array(z.object({
+    key: z.string(),
+    dx: z.number(),
+    dy: z.number(),
+  })).describe("Member sheet placements within the composite surface"),
+  seam_check: seamCheckSchema.describe("Seam linework check results"),
+  note: z.string(),
+};
+
+export const stitchSheetsOutput = {
+  stitch_id: z.string().describe("The created composite surface key (starts with stitch:)"),
+  name: z.string().describe("Name of the stitched surface"),
+  aligned: z.boolean().describe("true = aligned across match lines; false = starting auto-butt layout"),
+  extent: z.object({
+    width_px: z.number(),
+    height_px: z.number(),
+  }).describe("Composite surface dimensions in image px at render scale 2.0"),
+  members: z.array(z.object({
+    key: z.string(),
+    dx: z.number(),
+    dy: z.number(),
+  })).describe("Member sheet placements within the composite surface"),
+  scale: z.object({
+    upp: z.number().nullable().optional(),
+    scale_confirmed: z.boolean().optional(),
+  }).describe("Scale status inherited from member sheets, if all member scales agree"),
+  seam_check: seamCheckSchema.optional().describe("Seam linework check results when align was provided"),
+  note: z.string(),
+};
+
+export const listStitchesOutput = {
+  stitches: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    aligned: z.boolean().optional().describe("true = aligned with match points; false = auto-butt"),
+    extent: z.object({
+      width_px: z.number(),
+      height_px: z.number(),
+    }),
+    members: z.array(z.object({
+      key: z.string(),
+      dx: z.number(),
+      dy: z.number(),
+    })),
+    scale: z.object({
+      upp: z.number().nullable().optional(),
+      scale_confirmed: z.boolean().optional(),
+    }),
+    shape_count: z.number().int(),
+    seam_check: z.object({
+      passed: z.boolean(),
+      max_in: z.number(),
+      median_in: z.number(),
+      leftover_rotation_deg: z.number(),
+      withheld: z.boolean(),
+    }).optional().describe("Seam check summary when aligned"),
+    created_at: z.string().optional(),
+  })),
+};
+

@@ -54,7 +54,7 @@ unchanged; no Academy interoperability is claimed.
 | `scale-conflict` | unsupported | Merge into conflicting local calibration | Import refuses atomically with source and destination unchanged; no unit conversion inferred. |
 | `draft-import` | needs-adapter | Unadapted draft document → current import | Draft structure validates but browser and MCP imports still reject its identifier; conversion must be explicit. |
 | `adapter-roundtrip` | conforms | Opt-in canvas ↔ draft, then archive/browser/MCP | Both conversions preserve all JSON values except schema. Five manual roles and 37 LF base, corrected originals, evidence and existing review survive supported transport; MCP still cannot mint human approval. |
-| `stitch-mcp` | unsupported | Browser composite → MCP export | Archive retains composite records; MCP omits stitches and composite calibration while retaining shapes referencing the unavailable frame. |
+| `stitch-mcp` | conforms | Browser composite → MCP export | Archive, browser merge, and MCP export/import round-trip preserve composite stitch definitions, composite calibration, and shapes referencing the composite frame. |
 | `extensions-mcp` | unsupported | Whole browser workspace → MCP export | Top-level extensions, project metadata and rules survive archive but not MCP export; shape extensions survive. Imported rules remain in session only. |
 | `missing-source` | unsupported | Unloaded source sheet → MCP | Import retains the shape but cannot export its unloaded sheet calibration. Schema validity does not prove source availability. |
 | `transitions-roundtrip` | conforms | Derived transition through archive/MCP | A 10 LF shared edge retains exact geometry, paired source IDs and pending proposal; a six-inch wall gap creates no threshold. |

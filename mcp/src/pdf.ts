@@ -55,6 +55,8 @@ export interface PageHandle {
    * dedicated mask render (dark themes must never invert the ink). Same
    * @napi-rs/canvas requirement as renderPng. */
   renderRgba(scale: number, width: number, height: number): Promise<Uint8ClampedArray>;
+  getViewport(opts: { scale: number; offsetX?: number; offsetY?: number }): ViewportLike;
+  renderToContext(ctx: object, viewport: ViewportLike, background?: string): Promise<void>;
 }
 
 /** The document's NodeCanvasFactory — present on the proxy at runtime, absent
@@ -175,6 +177,11 @@ export async function openPdf(filePath: string): Promise<DocHandle> {
             factory.destroy(target);
           }
         },
+        getViewport: (opts) => page.getViewport(opts),
+        async renderToContext(ctx, rvp, background) {
+          await ensureCanvasGlobals();
+          await page.render({ canvasContext: ctx as never, viewport: rvp as never, ...(background ? { background } : {}) }).promise;
+        },
       };
     },
     async layers(): Promise<OcgEntry[]> {
@@ -261,4 +268,15 @@ function rawSpans(ph: PageHandle): RawSpan[] {
 export function textSpans(ph: PageHandle): TextSpan[] {
   // abutting runs joined (textjoin.ts); the origin fields stay internal
   return joinAbuttingSpans(rawSpans(ph)).map(({ ox: _ox, oy: _oy, ...span }) => span);
+}
+
+export async function createRenderingCanvas(width: number, height: number): Promise<{
+  canvas: { toBuffer(mime: "image/png"): Buffer };
+  context: object;
+}> {
+  await ensureCanvasGlobals();
+  const napi = await import("@napi-rs/canvas");
+  const canvas = napi.createCanvas(width, height);
+  const context = canvas.getContext("2d");
+  return { canvas, context };
 }

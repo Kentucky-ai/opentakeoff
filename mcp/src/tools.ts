@@ -25,6 +25,7 @@ import {
   proposeConditionEditOutput, withdrawConditionEditOutput,
   scopeDuplicatesOutput, scopeMergeOutput,
   setPricingOutput, setEstimateSettingsOutput, estimateSummaryOutput, exportEstimateOutput, exportProposalOutput,
+  stitchSheetsOutput, alignStitchOutput, listStitchesOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
@@ -113,42 +114,42 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }));
 
   if (oneClick) {
-  server.registerTool("one_click", {
-    description: `One-Click Area: click inside a room (image px) and the plan's vector linework bounds it — the sealed flood engine (RFC #60), contour trace, vertices snapped to true PDF endpoints. The engine's arguments are FEET-TRUE through the sheet's scale, exactly the canvas's: gap sealing bridges up to a door-width opening (disclosed as gap_sealed_px — that much boundary is synthetic), door-swing wedges annex the swing a doorway sweeps (door_wedges), and the minimum-passage rule keeps sub-half-foot slits from conjoining two rooms (min_pass_px/min_pass_delta). Every trace carries the engine's own account of itself: confidence (0..1, with confidence_factors naming what deducted) — a review PRIORITIZER, never a verification. 1.0 means every signal ran clean, not that the trace is right; a LOW confidence is a view_sheet {overlay: true} audit prompt, not a fact to bid from — put eyes on the flagged edge before the total means anything. SCANNED sheets work too (#154): where vectors can't bound the room (an image-only scan, or a scan wrapper whose only linework is the title block), the flood falls back automatically to the sheet's rendered pixels — same engine the canvas uses — and the reply plus the committed shape's origin carry raster_traced: true so a pixel-bounded ring is never mistaken for a vector-snapped one. Vector always wins where it works; a raster ring's corners are unsnapped, so audit it with view_sheet {overlay: true} before trusting the total. With the sheet's scale set, returns area_sf / perimeter_lf; pass condition (a finish tag, e.g. "CPT-1") to commit the traced shape to the takeoff — the full engine account rides the committed shape's origin, so the export tells the truth about how each shape was made. Without a scale it returns px-only quantities with a warning and commits nothing (the engine also degrades to its scale-blind fallbacks — a weaker measurement, one more reason set_scale comes first). role "deduct" makes the committed shape subtract. After committing, LOOK at what landed — view_sheet {overlay: true} — and fix an overshot ring with edit_shape before trusting any total. ${COORDS}`,
-    inputSchema: {
-      sheet: z.string(),
-      x: z.number(),
-      y: z.number(),
-      condition: z.string().optional().describe("Finish tag to commit under (minted on first use)"),
-      role: roleSchema,
-      return_verts: z.boolean().default(false).describe("Include the traced polygon's vertices (image px)"),
-      sensitivity: z.number().min(0).max(1).optional().describe("Fill sensitivity, the same knob the canvas has: 0 strict (hatch/light linework always blocks), 0.5 balanced (default), 1 aggressive (crosses more hatch, tolerates more growth). Raise it when a flood stops short at hatching INSIDE the room; verify the grown ring with view_sheet overlay before committing"),
-      layers: layersFilterSchema,
-    },
-    outputSchema: oneClickOutput,
-  }, run("one_click", (a) => session.oneClick(a.sheet, a.x, a.y, { condition: a.condition, role: a.role, returnVerts: a.return_verts, sensitivity: a.sensitivity, layers: a.layers })));
+    server.registerTool("one_click", {
+      description: `One-Click Area: click inside a room (image px) and the plan's vector linework bounds it — the sealed flood engine (RFC #60), contour trace, vertices snapped to true PDF endpoints. The engine's arguments are FEET-TRUE through the sheet's scale, exactly the canvas's: gap sealing bridges up to a door-width opening (disclosed as gap_sealed_px — that much boundary is synthetic), door-swing wedges annex the swing a doorway sweeps (door_wedges), and the minimum-passage rule keeps sub-half-foot slits from conjoining two rooms (min_pass_px/min_pass_delta). Every trace carries the engine's own account of itself: confidence (0..1, with confidence_factors naming what deducted) — a review PRIORITIZER, never a verification. 1.0 means every signal ran clean, not that the trace is right; a LOW confidence is a view_sheet {overlay: true} audit prompt, not a fact to bid from — put eyes on the flagged edge before the total means anything. SCANNED sheets work too (#154): where vectors can't bound the room (an image-only scan, or a scan wrapper whose only linework is the title block), the flood falls back automatically to the sheet's rendered pixels — same engine the canvas uses — and the reply plus the committed shape's origin carry raster_traced: true so a pixel-bounded ring is never mistaken for a vector-snapped one. Vector always wins where it works; a raster ring's corners are unsnapped, so audit it with view_sheet {overlay: true} before trusting the total. With the sheet's scale set, returns area_sf / perimeter_lf; pass condition (a finish tag, e.g. "CPT-1") to commit the traced shape to the takeoff — the full engine account rides the committed shape's origin, so the export tells the truth about how each shape was made. Without a scale it returns px-only quantities with a warning and commits nothing (the engine also degrades to its scale-blind fallbacks — a weaker measurement, one more reason set_scale comes first). role "deduct" makes the committed shape subtract. After committing, LOOK at what landed — view_sheet {overlay: true} — and fix an overshot ring with edit_shape before trusting any total. ${COORDS}`,
+      inputSchema: {
+        sheet: z.string(),
+        x: z.number(),
+        y: z.number(),
+        condition: z.string().optional().describe("Finish tag to commit under (minted on first use)"),
+        role: roleSchema,
+        return_verts: z.boolean().default(false).describe("Include the traced polygon's vertices (image px)"),
+        sensitivity: z.number().min(0).max(1).optional().describe("Fill sensitivity, the same knob the canvas has: 0 strict (hatch/light linework always blocks), 0.5 balanced (default), 1 aggressive (crosses more hatch, tolerates more growth). Raise it when a flood stops short at hatching INSIDE the room; verify the grown ring with view_sheet overlay before committing"),
+        layers: layersFilterSchema,
+      },
+      outputSchema: oneClickOutput,
+    }, run("one_click", (a) => session.oneClick(a.sheet, a.x, a.y, { condition: a.condition, role: a.role, returnVerts: a.return_verts, sensitivity: a.sensitivity, layers: a.layers })));
 
-  server.registerTool("detect_rooms", {
-    description: `Batch room detection: reads every room-number label off the sheet's text layer (e.g. "134", "OFFICE 101") and runs One-Click at each — one call instead of read_sheet_text + reasoning + N one_click calls. An OCR'd scan (text layer, no vector linework) floods the rendered pixels instead (#154), disclosed per room and on origin as raster_traced. A seed is only reported as a room once it survives three gates, and everything skipped is counted and reasoned in \`withheld\` — never dropped silently, because a room the tool tells you it skipped is a question you can ask, while one it hides is a hole in a bid. The gates: a flood that leaked or landed in dense linework never becomes a region; two labels flooding the SAME region commit once (the extra labels ride on \`merged_labels\` — double-counting an area is the worst failure an estimating tool has); and a flood that is enclosed and clean but smaller than min_area_sf is a room-number bubble, a door swing, or a wall cavity rather than a room. Every room floods through the SAME sealed engine a single one_click runs (RFC #60 — feet-true gap sealing, door-swing wedges, the minimum-passage rule), so a batch detection and a click at the same seed measure the same square footage; each room carries the engine's account of its own trace (confidence + confidence_factors, gap_sealed_px, door_wedges, min_pass_px/min_pass_delta), and the same account rides origin on everything committed. Confidence is a review prioritizer, never a verification — a low-confidence room is a view_sheet {overlay: true} audit prompt, not a fact to bid from. With the sheet's scale set, returns area_sf/perimeter_lf per room. Every committed room carries the room number it was traced from as the shape's \`label\`, so a sweep arrives already sliced by room — that field is what the Report's per-room grouping and the workbook's floor × room tab read, and it is the one thing about a batch that cannot be recovered downstream if it is dropped. TO COMMIT, choose the honest source of the finish tag: assign_from_schedule: true routes every room through its OWN room-finish schedule row and commits each under the FLOOR finish that row states — when a schedule exists in the set, THIS is the default move, because one agent-chosen tag across N rooms flattens real finish variety into a wrong bid; condition commits every room under that one stated tag (only right when the rooms genuinely share it; role "deduct" makes them subtract). Without a scale, returns px-only quantities per room and commits nothing — the plausibility floor needs real units, so it only applies once a scale is set. A batch commit is NOT finished until you have LOOKED at it: view_sheet {overlay: true}, audit every ring against the walls, fix misses with edit_shape / delete_shape — before the totals mean anything. ${COORDS}`,
-    inputSchema: {
-      sheet: z.string(),
-      condition: z.string().optional().describe("Finish tag to commit every detected room under (minted on first use). Mutually exclusive with assign_from_schedule"),
-      assign_from_schedule: z.boolean().default(false).describe("Commit each room under the FLOOR finish its OWN room-finish schedule row states (resolve_tag's chain, per room): the citation rides origin.assignment, and rooms the schedule cannot answer for — no row, no FLOOR cell, a compound cell like \"CPT-1/VCT-1\" — are returned in unresolved[] with reasons and seeds instead of committed under a guess. Needs the sheet's scale and a room-finish schedule in the working set (merge the schedule sheet in with load_plan first). Mutually exclusive with condition"),
-      role: roleSchema,
-      return_verts: z.boolean().default(false).describe("Include each traced polygon's vertices (image px)"),
-      min_area_sf: z.number().positive().default(5).describe("Plausibility floor: enclosed non-bubble regions smaller than this are withheld as cavities, not rooms. Default 5 SF — below any real finished space (a broom closet is ~10 SF). Lower it to inspect what was skipped."),
-      sensitivity: z.number().min(0).max(1).optional().describe("Fill sensitivity, the same knob the canvas has: 0 strict (hatch/light linework always blocks), 0.5 balanced (default), 1 aggressive (crosses more hatch, tolerates more growth). Raise it when a flood stops short at hatching INSIDE the room; verify the grown ring with view_sheet overlay before committing"),
-      layers: layersFilterSchema,
-    },
-    outputSchema: detectRoomsOutput,
-  }, run("detect_rooms", (a) => {
-    // the set_scale "exactly one of" convention: both sources of a finish tag
-    // at once is a contradiction, refused before any flooding
-    if (a.assign_from_schedule && a.condition !== undefined) {
-      throw new UserError("Provide at most one of: condition (every room under one stated tag) or assign_from_schedule (each room's own schedule row decides).");
-    }
-    return session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers, assignFromSchedule: a.assign_from_schedule });
-  }));
+    server.registerTool("detect_rooms", {
+      description: `Batch room detection: reads every room-number label off the sheet's text layer (e.g. "134", "OFFICE 101") and runs One-Click at each — one call instead of read_sheet_text + reasoning + N one_click calls. An OCR'd scan (text layer, no vector linework) floods the rendered pixels instead (#154), disclosed per room and on origin as raster_traced. A seed is only reported as a room once it survives three gates, and everything skipped is counted and reasoned in \`withheld\` — never dropped silently, because a room the tool tells you it skipped is a question you can ask, while one it hides is a hole in a bid. The gates: a flood that leaked or landed in dense linework never becomes a region; two labels flooding the SAME region commit once (the extra labels ride on \`merged_labels\` — double-counting an area is the worst failure an estimating tool has); and a flood that is enclosed and clean but smaller than min_area_sf is a room-number bubble, a door swing, or a wall cavity rather than a room. Every room floods through the SAME sealed engine a single one_click runs (RFC #60 — feet-true gap sealing, door-swing wedges, the minimum-passage rule), so a batch detection and a click at the same seed measure the same square footage; each room carries the engine's account of its own trace (confidence + confidence_factors, gap_sealed_px, door_wedges, min_pass_px/min_pass_delta), and the same account rides origin on everything committed. Confidence is a review prioritizer, never a verification — a low-confidence room is a view_sheet {overlay: true} audit prompt, not a fact to bid from. With the sheet's scale set, returns area_sf/perimeter_lf per room. Every committed room carries the room number it was traced from as the shape's \`label\`, so a sweep arrives already sliced by room — that field is what the Report's per-room grouping and the workbook's floor × room tab read, and it is the one thing about a batch that cannot be recovered downstream if it is dropped. TO COMMIT, choose the honest source of the finish tag: assign_from_schedule: true routes every room through its OWN room-finish schedule row and commits each under the FLOOR finish that row states — when a schedule exists in the set, THIS is the default move, because one agent-chosen tag across N rooms flattens real finish variety into a wrong bid; condition commits every room under that one stated tag (only right when the rooms genuinely share it; role "deduct" makes them subtract). Without a scale, returns px-only quantities per room and commits nothing — the plausibility floor needs real units, so it only applies once a scale is set. A batch commit is NOT finished until you have LOOKED at it: view_sheet {overlay: true}, audit every ring against the walls, fix misses with edit_shape / delete_shape — before the totals mean anything. ${COORDS}`,
+      inputSchema: {
+        sheet: z.string(),
+        condition: z.string().optional().describe("Finish tag to commit every detected room under (minted on first use). Mutually exclusive with assign_from_schedule"),
+        assign_from_schedule: z.boolean().default(false).describe("Commit each room under the FLOOR finish its OWN room-finish schedule row states (resolve_tag's chain, per room): the citation rides origin.assignment, and rooms the schedule cannot answer for — no row, no FLOOR cell, a compound cell like \"CPT-1/VCT-1\" — are returned in unresolved[] with reasons and seeds instead of committed under a guess. Needs the sheet's scale and a room-finish schedule in the working set (merge the schedule sheet in with load_plan first). Mutually exclusive with condition"),
+        role: roleSchema,
+        return_verts: z.boolean().default(false).describe("Include each traced polygon's vertices (image px)"),
+        min_area_sf: z.number().positive().default(5).describe("Plausibility floor: enclosed non-bubble regions smaller than this are withheld as cavities, not rooms. Default 5 SF — below any real finished space (a broom closet is ~10 SF). Lower it to inspect what was skipped."),
+        sensitivity: z.number().min(0).max(1).optional().describe("Fill sensitivity, the same knob the canvas has: 0 strict (hatch/light linework always blocks), 0.5 balanced (default), 1 aggressive (crosses more hatch, tolerates more growth). Raise it when a flood stops short at hatching INSIDE the room; verify the grown ring with view_sheet overlay before committing"),
+        layers: layersFilterSchema,
+      },
+      outputSchema: detectRoomsOutput,
+    }, run("detect_rooms", (a) => {
+      // the set_scale "exactly one of" convention: both sources of a finish tag
+      // at once is a contradiction, refused before any flooding
+      if (a.assign_from_schedule && a.condition !== undefined) {
+        throw new UserError("Provide at most one of: condition (every room under one stated tag) or assign_from_schedule (each room's own schedule row decides).");
+      }
+      return session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers, assignFromSchedule: a.assign_from_schedule });
+    }));
   }
 
   server.registerTool("propose_takeoff", {
@@ -726,6 +727,42 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     traceToolCall("view_sheet", a, startedAt, reply);
     return reply;
   });
+
+  server.registerTool("stitch_sheets", {
+    description: `Stitch 2–4 plan sheets together into a composite working surface across match-lines (#161) — the browser canvas's Stitched Sheets feature. Shapes traced on the returned stitch reference bind to the composite key ("stitch:<uid>") and measure continuously across seam boundaries once aligned. By default sheets create in auto-butt layout (aligned: false). Use align_stitch with two matching reference points to align sheets across their match line and run the automated linework seam check; measuring across a seam on an unaligned or withheld stitch is refused. Member sheets must have calibrated, matching scales. ${COORDS}`,
+    inputSchema: {
+      sheets: z.array(z.string()).min(2).max(4).describe("2–4 sheet keys or sheet numbers to stitch together"),
+      name: z.string().optional().describe('Optional human-readable label for the composite sheet (defaults to "Stitched sheets")'),
+      align: z.object({
+        anchor: pointSchema.describe("First alignment point in image px"),
+        moving: pointSchema.describe("Second alignment point in image px — sheet under moving translates to anchor"),
+      }).optional().describe("Two-point match line alignment"),
+      members: z.array(z.object({
+        key: z.string(),
+        dx: z.number(),
+        dy: z.number(),
+      })).optional().describe("Explicit member sheet placements in image px (alternative to auto-butt or align)"),
+    },
+    outputSchema: stitchSheetsOutput,
+  }, run("stitch_sheets", (a) => session.stitchSheets(a)));
+
+  server.registerTool("align_stitch", {
+    description: `Align a composite stitched sheet surface across its match line using two matching reference points (image px) — one on each member sheet. Performs a seam check across the match line: analyzes vector wall linework crossing the seam, reports maximum and median linework displacement (px and inches at scale), leftover rotation, and withholding status. Refuses if linework mismatch exceeds tolerance (0.50 in / 1/2"). ${COORDS}`,
+    inputSchema: {
+      stitch: z.string().describe("The stitch key (starts with stitch:) to align"),
+      anchor: pointSchema.describe("First alignment point in image px"),
+      moving: pointSchema.describe("Second alignment point in image px — sheet under moving translates to anchor"),
+      tolerance_in: z.number().positive().optional().describe("Linework displacement tolerance in inches (default: 0.50)"),
+      rot_tolerance_deg: z.number().positive().optional().describe("Leftover rotation tolerance in degrees (default: 0.25)"),
+    },
+    outputSchema: alignStitchOutput,
+  }, run("align_stitch", (a) => session.alignStitch(a)));
+
+  server.registerTool("list_stitches", {
+    description: "List all existing composite stitched sheet surfaces in the current session, including dimensions, member sheet placements, inherited scale, and shape counts.",
+    inputSchema: {},
+    outputSchema: listStitchesOutput,
+  }, run("list_stitches", () => session.listStitches()));
 
   // ── annotations (#114) — the agent half of markup.condition_id (#112) ──────
   // A human could attach a note to a scope; an agent could not even SEE one

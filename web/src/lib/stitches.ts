@@ -26,7 +26,7 @@ export function mintStitchId(): string {
 }
 
 export interface StitchMember { key: string; dx: number; dy: number }
-export interface Stitch { id: string; name: string; members: StitchMember[]; created_at?: string }
+export interface Stitch { id: string; name: string; members: StitchMember[]; aligned?: boolean; seam_check?: SeamCheckResult; created_at?: string }
 export interface Dim { w: number; h: number }
 export interface Box { x0: number; y0: number; x1: number; y1: number }
 
@@ -61,6 +61,8 @@ export function sanitizeStitches(raw: unknown, maxMembers: number): Stitch[] {
       id: s.id,
       name: typeof s.name === "string" && s.name.trim() ? s.name : "Stitched sheets",
       members: normalizeMembers(members),
+      ...(typeof s.aligned === "boolean" ? { aligned: s.aligned } : {}),
+      ...(s.seam_check && typeof s.seam_check === "object" ? { seam_check: s.seam_check as SeamCheckResult } : {}),
       ...(typeof s.created_at === "string" ? { created_at: s.created_at } : {}),
     });
   }
@@ -325,4 +327,245 @@ export function pinnedFiles(o: { keys: Iterable<string>; stitchById: Record<stri
     else add(k);
   }
   return files;
+}
+
+// ── match-line seam check ──────────────────────────────────────────────────
+export interface SeamCheckDiscrepancy {
+  at: [number, number];
+  miss_px: number;
+  miss_in: number;
+  sheet_a_pt: [number, number];
+  sheet_b_pt: [number, number];
+}
+
+export interface SeamCheckResult {
+  passed: boolean;
+  withheld: boolean;
+  tolerance_in: number;
+  rot_tolerance_deg: number;
+  max_px: number;
+  median_px: number;
+  max_in: number;
+  median_in: number;
+  leftover_rotation_deg: number;
+  sample_count: number;
+  withheld_reasons: string[];
+  discrepancies: SeamCheckDiscrepancy[];
+  note: string;
+}
+
+export function checkSeamLinework(
+  members: StitchMember[],
+  dims: Record<string, Dim>,
+  memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array } | ArrayLike<number>>,
+  upp: number,
+  opts?: { tolerance_in?: number; rot_tolerance_deg?: number },
+): SeamCheckResult {
+  const toleranceIn = opts?.tolerance_in ?? 0.50; // 0.50 inches (1/2") default tolerance
+  const rotToleranceDeg = opts?.rot_tolerance_deg ?? 0.25; // 0.25 deg rotation tolerance
+  const clips = seamClips(members, dims);
+  const boxes = memberBoxes(members, dims);
+
+  if (members.length < 2) {
+    return {
+      passed: true,
+      withheld: false,
+      tolerance_in: toleranceIn,
+      rot_tolerance_deg: rotToleranceDeg,
+      max_px: 0,
+      median_px: 0,
+      max_in: 0,
+      median_in: 0,
+      leftover_rotation_deg: 0,
+      sample_count: 0,
+      withheld_reasons: [],
+      discrepancies: [],
+      note: "Single member — no seam to check.",
+    };
+  }
+
+  const cxs = boxes.map((b) => (b.x0 + b.x1) / 2);
+  const cys = boxes.map((b) => (b.y0 + b.y1) / 2);
+  const spread = (a: number[]) => Math.max(...a) - Math.min(...a);
+  const horizontal = spread(cxs) >= spread(cys);
+  const order = boxes.map((_, i) => i).sort((a, b) => (horizontal ? boxes[a].x0 - boxes[b].x0 : boxes[a].y0 - boxes[b].y0));
+
+  const allMatched: Array<{ miss_px: number; miss_in: number; angle_err: number; at: [number, number]; pA: [number, number]; pB: [number, number] }> = [];
+  const discrepancies: SeamCheckDiscrepancy[] = [];
+
+  for (let k = 0; k + 1 < order.length; k++) {
+    const ai = order[k], bi = order[k + 1];
+    const mA = members[ai], mB = members[bi];
+    const segsA = memberSegs[mA.key];
+    const segsB = memberSegs[mB.key];
+    if (!segsA || !segsB) continue;
+
+    let seamCoord: number;
+    let seamMin: number;
+    let seamMax: number;
+    if (horizontal) {
+      seamCoord = (clips[ai].x1 + clips[bi].x0) / 2;
+      seamMin = Math.max(clips[ai].y0, clips[bi].y0);
+      seamMax = Math.min(clips[ai].y1, clips[bi].y1);
+    } else {
+      seamCoord = (clips[ai].y1 + clips[bi].y0) / 2;
+      seamMin = Math.max(clips[ai].x0, clips[bi].x0);
+      seamMax = Math.min(clips[ai].x1, clips[bi].x1);
+    }
+
+    const envelopePx = Math.max(80, upp > 0 ? (24 / (upp * 12)) : 150);
+
+    type Seg = { x0: number; y0: number; x1: number; y1: number; mx: number; my: number; len: number; ang: number; nx: number; ny: number };
+    const extract = (m: StitchMember, data: { segs: ArrayLike<number>; meta?: Uint8Array } | ArrayLike<number>, pad = 0): Seg[] => {
+      const dataSegs = (data as any)?.segs ?? data;
+      const dataMeta = (data as any)?.meta;
+      const res: Seg[] = [];
+      if (!dataSegs || !dataSegs.length) return res;
+      const n = dataSegs.length >> 2;
+      for (let s = 0; s < n; s++) {
+        if (dataMeta && (dataMeta[s] & 1)) continue; // skip curve chords
+        let x0 = dataSegs[s * 4] + m.dx, y0 = dataSegs[s * 4 + 1] + m.dy;
+        let x1 = dataSegs[s * 4 + 2] + m.dx, y1 = dataSegs[s * 4 + 3] + m.dy;
+        const len = Math.hypot(x1 - x0, y1 - y0);
+        if (len < 6) continue;
+        const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+
+        if (horizontal) {
+          if (mx < seamCoord - envelopePx - pad || mx > seamCoord + envelopePx + pad) continue;
+          if (my < seamMin - 50 || my > seamMax + 50) continue;
+        } else {
+          if (my < seamCoord - envelopePx - pad || my > seamCoord + envelopePx + pad) continue;
+          if (mx < seamMin - 50 || mx > seamMax + 50) continue;
+        }
+
+        if (x0 > x1 || (x0 === x1 && y0 > y1)) {
+          [x0, x1] = [x1, x0];
+          [y0, y1] = [y1, y0];
+        }
+        let ang = Math.atan2(y1 - y0, x1 - x0);
+        while (ang > Math.PI / 2) ang -= Math.PI;
+        while (ang < -Math.PI / 2) ang += Math.PI;
+        const nx = -Math.sin(ang);
+        const ny = Math.cos(ang);
+        res.push({ x0, y0, x1, y1, mx, my, len, ang, nx, ny });
+      }
+      return res;
+    };
+
+    const extractedA = extract(mA, segsA, 0);
+    const extractedB = extract(mB, segsB, 50);
+
+    const maxSearchPx = Math.max(30, upp > 0 ? (12 / (upp * 12)) : 60);
+
+    for (const sa of extractedA) {
+      let bestDist = Infinity;
+      let bestMatch: { missPx: number; angDiff: number; pB: [number, number]; at: [number, number] } | null = null;
+
+      for (const sb of extractedB) {
+        let dang = Math.abs(sa.ang - sb.ang);
+        if (dang > Math.PI / 2) dang = Math.PI - dang;
+        if (dang > 0.08) continue; // angle within ~4.6 deg
+
+        // 1. Direct counterpart matching in overlap corridor
+        if (Math.abs(sa.len - sb.len) <= Math.max(5, sa.len * 0.25)) {
+          const d = Math.hypot(sb.mx - sa.mx, sb.my - sa.my);
+          if (d <= maxSearchPx && d < bestDist) {
+            bestDist = d;
+            bestMatch = {
+              missPx: d,
+              angDiff: dang,
+              pB: [sb.x0, sb.y0],
+              at: [+((sa.mx + sb.mx) / 2).toFixed(1), +((sa.my + sb.my) / 2).toFixed(1)],
+            };
+          }
+        }
+
+        // 2. Collinear continuation across the seam (two halves meeting at seam)
+        const perp = Math.abs((sb.mx - sa.mx) * sa.nx + (sb.my - sa.my) * sa.ny);
+        if (perp <= maxSearchPx && perp < bestDist) {
+          const minCoord = horizontal ? Math.min(sa.x0, sa.x1, sb.x0, sb.x1) : Math.min(sa.y0, sa.y1, sb.y0, sb.y1);
+          const maxCoord = horizontal ? Math.max(sa.x0, sa.x1, sb.x0, sb.x1) : Math.max(sa.y0, sa.y1, sb.y0, sb.y1);
+          if (minCoord <= seamCoord && maxCoord >= seamCoord) {
+            bestDist = perp;
+            bestMatch = {
+              missPx: perp,
+              angDiff: dang,
+              pB: [sb.x0, sb.y0],
+              at: horizontal ? [seamCoord, +(sa.my).toFixed(1)] : [+(sa.mx).toFixed(1), seamCoord],
+            };
+          }
+        }
+      }
+
+      if (bestMatch && bestDist <= maxSearchPx) {
+        const missIn = upp > 0 ? bestMatch.missPx * upp * 12 : 0;
+        allMatched.push({
+          miss_px: bestMatch.missPx,
+          miss_in: missIn,
+          angle_err: bestMatch.angDiff,
+          at: bestMatch.at,
+          pA: [sa.x0, sa.y0],
+          pB: bestMatch.pB,
+        });
+        discrepancies.push({
+          at: bestMatch.at,
+          miss_px: +bestMatch.missPx.toFixed(2),
+          miss_in: +missIn.toFixed(2),
+          sheet_a_pt: [+sa.x0.toFixed(1), +sa.y0.toFixed(1)],
+          sheet_b_pt: [+bestMatch.pB[0].toFixed(1), +bestMatch.pB[1].toFixed(1)],
+        });
+      }
+    }
+  }
+
+  const sampleCount = allMatched.length;
+  let maxPx = 0, medianPx = 0, maxIn = 0, medianIn = 0, leftoverRotationDeg = 0;
+
+  if (sampleCount > 0) {
+    allMatched.sort((a, b) => a.miss_px - b.miss_px);
+    const medIdx = Math.floor(sampleCount * 0.50);
+    const p95Idx = Math.min(sampleCount - 1, Math.floor(sampleCount * 0.95));
+
+    medianPx = +allMatched[medIdx].miss_px.toFixed(2);
+    medianIn = +allMatched[medIdx].miss_in.toFixed(2);
+    maxPx = +allMatched[p95Idx].miss_px.toFixed(2);
+    maxIn = +allMatched[p95Idx].miss_in.toFixed(2);
+
+    const sortedAng = allMatched.map(m => m.angle_err).sort((a, b) => a - b);
+    leftoverRotationDeg = +(sortedAng[Math.floor(sortedAng.length / 2)] * 180 / Math.PI).toFixed(2);
+  }
+
+  const withheldReasons: string[] = [];
+  if (maxIn > toleranceIn) {
+    withheldReasons.push(`Wall linework mismatch max ${maxIn.toFixed(2)}" (median ${medianIn.toFixed(2)}") exceeds ${toleranceIn.toFixed(2)}" tolerance.`);
+  }
+  if (Math.abs(leftoverRotationDeg) > rotToleranceDeg) {
+    withheldReasons.push(`Leftover rotation ${Math.abs(leftoverRotationDeg).toFixed(2)}° exceeds ${rotToleranceDeg.toFixed(2)}° tolerance.`);
+  }
+
+  const passed = sampleCount > 0 && withheldReasons.length === 0;
+  const withheld = sampleCount > 0 && !passed;
+  discrepancies.sort((a, b) => b.miss_px - a.miss_px);
+
+  const note = sampleCount === 0
+    ? "No wall linework detected crossing the seam line. Verify alignment with view_sheet overlay:true."
+    : passed
+      ? `Seam check passed: ${sampleCount} wall lines verified across match line (max ${maxIn.toFixed(2)}", median ${medianIn.toFixed(2)}", rotation ${leftoverRotationDeg.toFixed(2)}°).`
+      : `Seam check withheld: ${withheldReasons.join(" ")} Inspect coordinates with view_sheet.`;
+
+  return {
+    passed,
+    withheld,
+    tolerance_in: toleranceIn,
+    rot_tolerance_deg: rotToleranceDeg,
+    max_px: maxPx,
+    median_px: medianPx,
+    max_in: maxIn,
+    median_in: medianIn,
+    leftover_rotation_deg: leftoverRotationDeg,
+    sample_count: sampleCount,
+    withheld_reasons: withheldReasons,
+    discrepancies: discrepancies.slice(0, 20),
+    note,
+  };
 }

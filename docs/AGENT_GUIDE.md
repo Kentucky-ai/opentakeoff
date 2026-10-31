@@ -154,14 +154,21 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
 
 ## 5. What has no agent verb, and why
 
-- **Stitching.** The canvas joins 2–4 sheets split at a match line into one composite surface. No
-  MCP verb creates, aligns, or addresses a stitch, and this is not staged for later exposure.
-  Aligning a match line means clicking the same drawn wall junction on both halves—judgment
-  whose failure mode is a subtly sloppy join that silently skews every quantity crossing the seam.
-  On a split floor: measure each member sheet as its own surface, and tell the user a
-  seam-crossing room needs their stitch in the app. Never approximate one by combining sheets
-  yourself. (A stitched takeoff round-tripped through `import_takeoff` → `export_takeoff` comes
-  back without its stitches; when a stitch is in play, the app's own save is the one to keep.)
+- **Stitching without alignment verification.** The canvas joins 2–4 sheets split at a match line into
+  one composite surface (`stitch:<uid>`). Over MCP, stitching is supported via `stitch_sheets` and `align_stitch`,
+  governed by a strict verification protocol:
+  1. `stitch_sheets` creates the starting layout (`aligned: false`). Member sheets must be calibrated to matching scales.
+  2. `align_stitch` aligns the member sheets with anchor and moving points across the match line. It runs an automated linework seam check (`checkSeamLinework`), measuring wall displacement and leftover rotation. If mismatch exceeds 0.50" or rotation exceeds 0.25°, the stitch is withheld with discrepancy coordinates.
+  3. `view_sheet` renders the seam crop with overlay so the agent can inspect its own join.
+  4. Measure across the seam only after the seam check passes (`aligned: true`). If the seam check is withheld, measure each sheet separately and tell the user. Cross-seam measurements on unaligned or withheld stitches are refused.
+  Import/export preserves composite stitch records losslessly. Shapes committed to a stitch retain `reviewed: false` so they import dashed into the canvas for estimator sign-off.
+
+
+
+
+
+
+
 - **Revision history.** MCP takeoff export is a current document, not the browser's snapshot
   store or PDF revision history. A browser `.otk` archive carries current takeoff/plan data,
   but also omits those histories. Never claim an archive or current takeoff reconstructs past
@@ -183,7 +190,7 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
 
 ## 6. Staged tool exposure
 
-By default every client gets all <!--tool-count-->58<!--/tool-count--> tool schemas on `tools/list`—the flat contract every
+By default every client gets all <!--tool-count-->61<!--/tool-count--> tool schemas on `tools/list`—the flat contract every
 published client already expects.
 
 Fifty-two descriptions is real token weight for a session that may never touch half of them, so the
@@ -193,7 +200,7 @@ server can stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage starts enabled—<!--tool-count-setup-->11<!--/tool-count-setup--> tools that orient you: `load_plan`,
+Staged, only the **setup** stage starts enabled—<!--tool-count-setup-->14<!--/tool-count-setup--> tools that orient you: `load_plan`,
 `sheet_info`, `set_scale`, `sheet_graph`, `resolve_tag`, `find_schedule`, `read_sheet_text`,
 `find_text`, `sheet_context`, `get_sheet_vectors`, `view_sheet`—plus one opener, `open_tool_stage`. Call it with
 `"measure"`, `"revise"`, or `"handoff"` and that group's tools enable and fire
@@ -310,7 +317,7 @@ Follow [Geometry from source to review](GEOMETRY_WORKFLOW.md) when tracing a rea
 ## Geometry review cleanup
 
 Use the [generated tool index](MCP_TOOL_INDEX.md) for the
-<!--tool-count-->58<!--/tool-count--> default tools, their stages and required arguments.
+<!--tool-count-->61<!--/tool-count--> default tools, their stages and required arguments.
 The [geometry workflow](GEOMETRY_WORKFLOW.md) is the source-to-handoff route.
 
 - Shorten a note with `list_annotations` then `edit_annotation`; empty text clears
