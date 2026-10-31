@@ -3370,6 +3370,10 @@ export default function TakeoffCanvas() {
   const rotateCurrentSheet = async (angle, targetKey = sheetKey) => {
     const target = targetKey || sheetKey;
     if (!target) return;
+    if (isStitchKey(target)) {
+      setCommitMsg("To rotate a stitched plan, rotate its source sheets.");
+      return;
+    }
     const { file, page: targetPage } = parseSheetKey(target);
     try {
       setCommitMsg(`Rotating ${target} ${angle}° clockwise…`);
@@ -3424,6 +3428,10 @@ export default function TakeoffCanvas() {
   const deleteCurrentSheet = async (targetKey = sheetKey) => {
     const target = targetKey || sheetKey;
     if (!target) return;
+    if (isStitchKey(target)) {
+      setCommitMsg("To delete a sheet, delete from its source document.");
+      return;
+    }
     const { file, page: targetPage } = parseSheetKey(target);
     const curDocPages = knownPages[file] || (file === active ? pageCount : 1);
     if (curDocPages <= 1) {
