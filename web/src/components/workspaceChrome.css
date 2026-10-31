@@ -234,6 +234,7 @@
   border-radius:var(--r-1);
   color:var(--ink);
   cursor:pointer;
+  user-select:none;
 }
 .calm-sheet-tree [role=treeitem]:hover { background:var(--tint-select); }
 .calm-sheet-tree [role=treeitem]:focus-visible { outline:2px solid var(--cobalt); outline-offset:-2px; }
@@ -251,6 +252,12 @@
 .calm-sheet-tree .calm-level-chip { font:var(--fs-xs) var(--f-mono); font-style:normal; padding:0 var(--sp-1); border:var(--rule-soft); border-radius:var(--r-1); color:var(--ink-secondary); }
 .calm-sheet-tree p { padding:var(--sp-3); color:var(--ink-secondary); }
 .calm-sheet-tree .calm-tree-note button { display:inline; padding:0; border:0; background:none; color:var(--cobalt); text-decoration:underline; cursor:pointer; font:inherit; }
+.calm-sheet-tree [role=treeitem].is-drag-over { outline: 2px dashed var(--cobalt); background: var(--tint-select); }
+.calm-sheet-tree .calm-sheet-row-tools { display: flex; gap: 2px; opacity: 0; transition: opacity .12s ease; margin-left: auto; }
+.calm-sheet-tree [role=treeitem]:hover .calm-sheet-row-tools, .calm-sheet-tree [role=treeitem]:focus-within .calm-sheet-row-tools { opacity: 1; }
+.calm-sheet-tree .calm-tree-action-btn { background: none; border: 1px solid var(--rule-soft); border-radius: var(--r-1); cursor: pointer; padding: 0 4px; font-size: var(--fs-xs); color: var(--ink-secondary); line-height: 1.2; }
+.calm-sheet-tree .calm-tree-action-btn:hover { background: var(--paper-warm); color: var(--cobalt); }
+
 .calm-navigator footer {
   padding:var(--sp-3);
   border-top:var(--rule-soft);

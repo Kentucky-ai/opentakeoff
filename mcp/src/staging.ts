@@ -17,6 +17,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
   setup: [
     "load_plan", "sheet_info", "set_scale", "sheet_graph", "resolve_tag",
     "find_schedule", "read_sheet_text", "find_text", "sheet_context", "get_sheet_vectors", "view_sheet",
+    "rotate_page", "reorder_pages", "extract_pages", "merge_documents",
   ],
   measure: [
     "propose_takeoff",

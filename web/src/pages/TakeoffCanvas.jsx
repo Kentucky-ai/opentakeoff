@@ -127,6 +127,8 @@ import { buildLayerInfos, effectiveLayerRoles, layerRoleCodes, segRoles, sanitiz
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { deriveTransitionRuns, transitionRefusal } from "../lib/transitions";
 import { conditionTotals, verticalWallSf, downloadText } from "../lib/totals.js";
+import { rotatePdfPage, reorderPdfPages, deletePdfPage, extractPdfPages, mergePdfDocuments, insertPdfPages } from "../lib/pdfPageTools.ts";
+import { rotateTakeoffOnSheet, remapTakeoffSheetKeys, buildKeyRemap, formatSheetKey } from "../lib/pageTransforms.ts";
 import { measurementBreakdown } from "../lib/measurementBreakdown.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
@@ -863,6 +865,11 @@ export default function TakeoffCanvas() {
       redoStackRef.current = [...redoStackRef.current, { family: "approval", cmd: res.inverse, inverse: entry.inverse }];
       return;
     }
+    if (entry.family === "page_tool" || typeof entry.undo === "function") {
+      entry.undo?.();
+      redoStackRef.current = [...redoStackRef.current, entry];
+      return;
+    }
     const res = applyShapeCommand(shapes, entry.inverse);
     setShapes(res.shapes);
     redoStackRef.current = [...redoStackRef.current, { cmd: res.inverse, inverse: entry.inverse }];
@@ -881,6 +888,11 @@ export default function TakeoffCanvas() {
       const res = applyApprovalCommand(approvals, entry.cmd);
       setApprovals(res.approvals);
       undoStackRef.current = [...undoStackRef.current, { family: "approval", cmd: entry.cmd, inverse: res.inverse }];
+      return;
+    }
+    if (entry.family === "page_tool" || typeof entry.redo === "function") {
+      entry.redo?.();
+      undoStackRef.current = [...undoStackRef.current, entry];
       return;
     }
     const res = applyShapeCommand(shapes, entry.cmd);
@@ -3354,6 +3366,373 @@ export default function TakeoffCanvas() {
   // snapshotted first, so the work is one Revisions-panel restore away — the
   // PDFs themselves are gone either way (local plans aren't stored elsewhere);
   // restored shapes re-attach by sheet name when the same files are re-opened.
+  // ── PDF Page Tools (#578) ────────────────────────────────────────────────
+  const rotateCurrentSheet = async (angle, targetKey = sheetKey) => {
+    const target = targetKey || sheetKey;
+    if (!target) return;
+    if (isStitchKey(target)) {
+      setCommitMsg("To rotate a stitched plan, rotate its source sheets.");
+      return;
+    }
+    const { file, page: targetPage } = parseSheetKey(target);
+    try {
+      setCommitMsg(`Rotating ${target} ${angle}° clockwise…`);
+      const origBytes = await store.loadPdfData(file);
+      const rotatedBytes = await rotatePdfPage(new Uint8Array(origBytes), targetPage, angle);
+
+      const prevShapes = shapes;
+      const prevMarkups = markups;
+      const prevApprovals = approvals;
+
+      const dims = panelImgs[target] || { w: stage.w, h: stage.h };
+      const rotated = rotateTakeoffOnSheet({ shapes, markups, approvals }, target, angle, dims);
+
+      await store.addPdf(new File([rotatedBytes], file, { type: "application/pdf" }));
+      evictDoc(file);
+      forgetPages([file]);
+
+      setShapes(rotated.shapes);
+      setMarkups(rotated.markups);
+      setApprovals(rotated.approvals);
+
+      undoStackRef.current = [
+        ...undoStackRef.current,
+        {
+          family: "page_tool",
+          undo: async () => {
+            await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
+            evictDoc(file);
+            forgetPages([file]);
+            setShapes(prevShapes);
+            setMarkups(prevMarkups);
+            setApprovals(prevApprovals);
+            setDocEpoch((e) => e + 1);
+            await refreshSheets();
+            goToSheet(target);
+            setCommitMsg(`Undid rotation on ${target}.`);
+          },
+          redo: async () => {
+            await rotateCurrentSheet(angle, target);
+          },
+        },
+      ];
+
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      const count = rotated.shapes?.filter((s) => s.sheet_id === target).length || 0;
+      setCommitMsg(`Rotated ${target} ${angle}° clockwise — ${count} takeoff(s) followed.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't rotate sheet: ${e?.message || e}`);
+    }
+  };
+
+  const deleteCurrentSheet = async (targetKey = sheetKey) => {
+    const target = targetKey || sheetKey;
+    if (!target) return;
+    if (isStitchKey(target)) {
+      setCommitMsg("To delete a sheet, delete from its source document.");
+      return;
+    }
+    const { file, page: targetPage } = parseSheetKey(target);
+    const curDocPages = knownPages[file] || (file === active ? pageCount : 1);
+    if (curDocPages <= 1) {
+      alert("Cannot delete the only page in the document. Close the PDF instead.");
+      return;
+    }
+
+    const takeoffsOnPage =
+      shapes.filter((s) => s.sheet_id === target).length +
+      markups.filter((m) => m.sheet_id === target).length +
+      approvals.filter((a) => a.sheet_id === target).length;
+
+    if (takeoffsOnPage > 0) {
+      const ok = window.confirm(
+        `Sheet "${target}" has ${takeoffsOnPage} takeoff measurement(s)/markup(s). Delete this page? (Undo restores both page and takeoffs)`
+      );
+      if (!ok) return;
+    }
+
+    try {
+      setCommitMsg(`Deleting ${target}…`);
+      const origBytes = await store.loadPdfData(file);
+      const { PDFDocument } = await import("pdf-lib");
+      const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+      const curDocPages = srcDoc.getPageCount();
+      if (curDocPages <= 1) {
+        alert("Cannot delete the only page in the document. Close the PDF instead.");
+        return;
+      }
+      const newBytes = await deletePdfPage(new Uint8Array(origBytes), targetPage);
+
+      const prevShapes = shapes;
+      const prevMarkups = markups;
+      const prevApprovals = approvals;
+
+      const remap = buildKeyRemap(
+        file,
+        (p) => (p === targetPage ? null : p > targetPage ? p - 1 : p),
+        curDocPages
+      );
+      const remapped = remapTakeoffSheetKeys({ shapes, markups, approvals }, remap);
+
+      await store.addPdf(new File([newBytes], file, { type: "application/pdf" }));
+      evictDoc(file);
+      forgetPages([file]);
+
+      setShapes(remapped.shapes);
+      setMarkups(remapped.markups);
+      setApprovals(remapped.approvals);
+
+      const nextPage = Math.max(1, Math.min(targetPage, curDocPages - 1));
+      setPage(nextPage);
+
+      undoStackRef.current = [
+        ...undoStackRef.current,
+        {
+          family: "page_tool",
+          undo: async () => {
+            await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
+            evictDoc(file);
+            forgetPages([file]);
+            setShapes(prevShapes);
+            setMarkups(prevMarkups);
+            setApprovals(prevApprovals);
+            setDocEpoch((e) => e + 1);
+            await refreshSheets();
+            goToSheet(target);
+            setCommitMsg(`Restored page ${targetPage} and its takeoffs.`);
+          },
+          redo: async () => {
+            await deleteCurrentSheet(target);
+          },
+        },
+      ];
+
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      setCommitMsg(`Deleted page ${targetPage} from ${file}. ⌘Z restores it.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't delete page: ${e?.message || e}`);
+    }
+  };
+
+  const reorderDocumentPages = async (fileName, fromPage, toPage) => {
+    const file = fileName || active;
+    if (!file || fromPage === toPage) return;
+    try {
+      setCommitMsg(`Reordering pages in ${file}…`);
+      const origBytes = await store.loadPdfData(file);
+      const { PDFDocument } = await import("pdf-lib");
+      const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+      const totalPages = srcDoc.getPageCount();
+      if (totalPages <= 1) return;
+
+      const order = Array.from({ length: totalPages }, (_, i) => i + 1);
+      const [moved] = order.splice(fromPage - 1, 1);
+      order.splice(toPage - 1, 0, moved);
+
+      const reorderedBytes = await reorderPdfPages(new Uint8Array(origBytes), order);
+
+      const prevShapes = shapes;
+      const prevMarkups = markups;
+      const prevApprovals = approvals;
+
+      const oldToNew = new Map();
+      order.forEach((oldP, idx) => oldToNew.set(oldP, idx + 1));
+      const remap = buildKeyRemap(file, (oldP) => oldToNew.get(oldP), totalPages);
+      const remapped = remapTakeoffSheetKeys({ shapes, markups, approvals }, remap);
+
+      await store.addPdf(new File([reorderedBytes], file, { type: "application/pdf" }));
+      evictDoc(file);
+      forgetPages([file]);
+
+      setShapes(remapped.shapes);
+      setMarkups(remapped.markups);
+      setApprovals(remapped.approvals);
+
+      undoStackRef.current = [
+        ...undoStackRef.current,
+        {
+          family: "page_tool",
+          undo: async () => {
+            await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
+            evictDoc(file);
+            forgetPages([file]);
+            setShapes(prevShapes);
+            setMarkups(prevMarkups);
+            setApprovals(prevApprovals);
+            setDocEpoch((e) => e + 1);
+            await refreshSheets();
+            goToSheet(formatSheetKey(file, fromPage));
+            setCommitMsg(`Undid page reorder in ${file}.`);
+          },
+          redo: async () => {
+            await reorderDocumentPages(file, fromPage, toPage);
+          },
+        },
+      ];
+
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      setCommitMsg(`Reordered ${file} (page ${fromPage} → ${toPage}). Takeoffs followed.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't reorder pages: ${e?.message || e}`);
+    }
+  };
+
+  const extractPageRange = async (fileName = active) => {
+    const file = fileName || active;
+    if (!file) return;
+    const totalPages = knownPages[file] || (file === active ? pageCount : 1);
+    const input = window.prompt(
+      `Enter page numbers or ranges to extract (1-${totalPages}), e.g. 1-2, 4:`,
+      String(page)
+    );
+    if (!input) return;
+
+    const pages = new Set();
+    for (const part of input.split(/[\s,]+/)) {
+      if (!part) continue;
+      const m = part.match(/^(\d+)(?:-(\d+))?$/);
+      if (!m) continue;
+      const s = parseInt(m[1], 10);
+      const e = m[2] ? parseInt(m[2], 10) : s;
+      for (let p = Math.min(s, e); p <= Math.max(s, e); p++) {
+        if (p >= 1 && p <= totalPages) pages.add(p);
+      }
+    }
+    const pageList = [...pages].sort((a, b) => a - b);
+    if (!pageList.length) {
+      alert("No valid pages specified.");
+      return;
+    }
+
+    try {
+      setCommitMsg(`Extracting ${pageList.length} page(s) from ${file}…`);
+      const origBytes = await store.loadPdfData(file);
+      const extractedBytes = await extractPdfPages(new Uint8Array(origBytes), pageList);
+
+      const outName = `${file.replace(/\.pdf$/i, "")}_extracted.pdf`;
+      const remap = new Map();
+      for (let p = 1; p <= totalPages; p++) {
+        const oldKey = formatSheetKey(file, p);
+        const idx = pageList.indexOf(p);
+        remap.set(oldKey, idx >= 0 ? formatSheetKey(outName, idx + 1) : null);
+      }
+      const carried = remapTakeoffSheetKeys({ shapes, markups, approvals }, remap);
+
+      await store.addPdf(new File([extractedBytes], outName, { type: "application/pdf" }));
+      setShapes((s) => [...s, ...(carried.shapes || [])]);
+      setMarkups((m) => [...m, ...(carried.markups || [])]);
+      setApprovals((a) => [...a, ...(carried.approvals || [])]);
+
+      await refreshSheets();
+      setActive(outName);
+      setPage(1);
+      setCommitMsg(`Extracted ${pageList.length} page(s) into ${outName} with takeoffs carried.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't extract pages: ${e?.message || e}`);
+    }
+  };
+
+  const mergePdfSets = async () => {
+    if (sheets.length < 2) {
+      alert("Open at least 2 PDF files to merge them.");
+      return;
+    }
+    const outName = `${(projectName || "merged").trim().replace(/[^\w.\- ]+/g, "") || "merged"}_set.pdf`;
+    try {
+      setCommitMsg(`Merging ${sheets.length} PDFs into ${outName}…`);
+      const byteList = [];
+      const sourceDocs = [];
+      for (const s of sheets) {
+        const b = await store.loadPdfData(s.name);
+        byteList.push(new Uint8Array(b));
+        sourceDocs.push({ name: s.name, pageCount: knownPages[s.name] || (s.name === active ? pageCount : 1) });
+      }
+
+      const mergedBytes = await mergePdfDocuments(byteList);
+      let curNewPage = 1;
+      const remap = new Map();
+      for (const s of sourceDocs) {
+        for (let p = 1; p <= s.pageCount; p++) {
+          remap.set(formatSheetKey(s.name, p), formatSheetKey(outName, curNewPage));
+          curNewPage++;
+        }
+      }
+      const carried = remapTakeoffSheetKeys({ shapes, markups, approvals }, remap);
+
+      await store.addPdf(new File([mergedBytes], outName, { type: "application/pdf" }));
+      setShapes((s) => [...s, ...(carried.shapes || [])]);
+      setMarkups((m) => [...m, ...(carried.markups || [])]);
+      setApprovals((a) => [...a, ...(carried.approvals || [])]);
+
+      await refreshSheets();
+      setActive(outName);
+      setPage(1);
+      setCommitMsg(`Merged ${sheets.length} files into ${outName} (${curNewPage - 1} pages).`);
+    } catch (e) {
+      setCommitMsg(`Couldn't merge documents: ${e?.message || e}`);
+    }
+  };
+
+  const insertPagesFromPdf = () => {
+    if (!active) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf";
+    input.onchange = async (e) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+      try {
+        setCommitMsg(`Inserting pages from ${file.name}…`);
+        const insertBytes = new Uint8Array(await file.arrayBuffer());
+        const curBytes = new Uint8Array(await store.loadPdfData(active));
+        const res = await insertPdfPages(curBytes, insertBytes, page);
+
+        const curDocPages = knownPages[active] || pageCount || 1;
+        const insertedCount = res.insertedCount;
+
+        const remap = buildKeyRemap(
+          active,
+          (p) => (p <= page ? p : p + insertedCount),
+          curDocPages
+        );
+        const remapped = remapTakeoffSheetKeys({ shapes, markups, approvals }, remap);
+
+        await store.addPdf(new File([res.pdfBytes], active, { type: "application/pdf" }));
+        evictDoc(active);
+        forgetPages([active]);
+
+        setShapes(remapped.shapes);
+        setMarkups(remapped.markups);
+        setApprovals(remapped.approvals);
+
+        setDocEpoch((e) => e + 1);
+        await refreshSheets();
+        setCommitMsg(`Inserted ${insertedCount} page(s) after page ${page}.`);
+      } catch (err) {
+        setCommitMsg(`Couldn't insert pages: ${err?.message || err}`);
+      }
+    };
+    input.click();
+  };
+
+  const exportEditedPdf = async () => {
+    if (!active) {
+      setCommitMsg("No active plan to export.");
+      return;
+    }
+    try {
+      const bytes = await store.loadPdfData(active);
+      const base = active.replace(/\.pdf$/i, "");
+      downloadArchive(`${base}-edited.pdf`, new Uint8Array(bytes));
+      setCommitMsg(`Exported ${base}-edited.pdf.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't export PDF: ${e?.message || e}`);
+    }
+  };
+
   const clearWorkspace = async () => {
     const names = sheets.map((s) => s.name);
     let saved = false;
@@ -3848,6 +4227,16 @@ export default function TakeoffCanvas() {
         const label = [...MEASURE_TOOLS, ...CUT_TOOLS].find((x) => x.id === plan.tool)?.label || plan.tool;
         const tag = condById[plan.conditionId]?.finish_tag;
         setCommitMsg(`${label} armed${tag ? ` under ${tag}` : ""}${plan.curve ? " · Curve" : ""} — trace the next one.`);
+        return;
+      }
+      if (e.key === "]" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        rotateCurrentSheet(90);
+        return;
+      }
+      if (e.key === "[" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        rotateCurrentSheet(270);
         return;
       }
       const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension", y: "symbol" };
@@ -9080,6 +9469,57 @@ export default function TakeoffCanvas() {
     title: "Save the WHOLE job as one portable .otk file — every plan PDF plus the full takeoff. Open it on any machine (drop it like a plan, or Add plans), archive it, or hand it to another estimator; unlike Export takeoff, the plans travel inside.",
     onSelect: exportProjectArchive,
   });
+  sheetMenuItems.push({ section: "Page tools" });
+  sheetMenuItems.push({
+    id: "rotate-page-cw", icon: "redo", label: "Rotate page 90° clockwise",
+    title: "Rotate current page 90° clockwise — every takeoff and markup stays locked to the drawing",
+    shortcut: "]",
+    disabled: !active,
+    onSelect: () => rotateCurrentSheet(90),
+  });
+  sheetMenuItems.push({
+    id: "rotate-page-180", icon: "redo", label: "Rotate page 180°",
+    title: "Rotate current page 180°",
+    disabled: !active,
+    onSelect: () => rotateCurrentSheet(180),
+  });
+  sheetMenuItems.push({
+    id: "rotate-page-ccw", icon: "undo", label: "Rotate page 270° clockwise",
+    title: "Rotate current page 270° clockwise (90° counter-clockwise)",
+    shortcut: "[",
+    disabled: !active,
+    onSelect: () => rotateCurrentSheet(270),
+  });
+  sheetMenuItems.push({
+    id: "delete-page", icon: "cross", label: "Delete current page…",
+    title: "Delete this page from the document — asks before removing takeoffs, and undo restores them",
+    disabled: !active || pageCount <= 1,
+    onSelect: () => deleteCurrentSheet(),
+  });
+  sheetMenuItems.push({
+    id: "extract-pages", icon: "document", label: "Extract pages from set…",
+    title: "Extract a range of pages into a new PDF, carrying takeoffs along",
+    disabled: !active,
+    onSelect: () => extractPageRange(),
+  });
+  sheetMenuItems.push({
+    id: "merge-docs", icon: "sheets", label: "Merge PDF sets…",
+    title: "Combine multiple open PDF files into one set, remapping all takeoffs",
+    disabled: sheets.length < 2,
+    onSelect: mergePdfSets,
+  });
+  sheetMenuItems.push({
+    id: "insert-pages", icon: "document", label: "Insert pages from PDF…",
+    title: "Insert pages from another PDF file into the active document",
+    disabled: !active,
+    onSelect: insertPagesFromPdf,
+  });
+  sheetMenuItems.push({
+    id: "export-edited-pdf", icon: "document", label: "Export edited PDF…",
+    title: "Export the modified PDF with all rotations, reordering and page edits applied",
+    disabled: !active,
+    onSelect: exportEditedPdf,
+  });
   sheetMenuItems.push({ section: "Profile — your templates, stamps & report setup" });
   sheetMenuItems.push({
     id: "company-setup", icon: "document", label: "Company setup…",
@@ -10786,7 +11226,7 @@ export default function TakeoffCanvas() {
 
       {/* canvas + issue desk */}
       <div data-canvas-workspace style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" /* anchors the narrow-screen panel overlay */ }}>
-       {workspaceLayout && <><WorkspaceNavigator open={!focusMode && workspaceNavigationOpen} items={workspaceSheets} current={treeCurrent} namer={namer} countKnown={countKnown} hold={ocrHold} onSelect={(key) => openSheets([key], false)} onClose={() => setWorkspaceNavigationOpen(false)} onGallery={() => { setView("gallery"); setWorkspaceNavigationOpen(false); }} dockSide={workspaceArrangement.sheets} width={workspaceArrangement.sheetWidth} dockHandle={workspaceDockHandle("sheets", "Sheets")} /><DockTargets dragging={workspaceDragging} /></>}
+       {workspaceLayout && <><WorkspaceNavigator open={!focusMode && workspaceNavigationOpen} items={workspaceSheets} current={treeCurrent} namer={namer} countKnown={countKnown} hold={ocrHold} onSelect={(key) => openSheets([key], false)} onClose={() => setWorkspaceNavigationOpen(false)} onGallery={() => { setView("gallery"); setWorkspaceNavigationOpen(false); }} dockSide={workspaceArrangement.sheets} width={workspaceArrangement.sheetWidth} dockHandle={workspaceDockHandle("sheets", "Sheets")} onReorderPages={(f, fromP, toP) => reorderDocumentPages(f, fromP, toP)} onRotatePage={(k, a) => rotateCurrentSheet(a, k)} onDeletePage={(k) => deleteCurrentSheet(k)} /><DockTargets dragging={workspaceDragging} /></>}
        {/* tool rail — machined faces grouped by MCP module (the concept shell).
            Individual tiles replace deck 2's Measure/Cut Out menus; Markup keeps
            its variety flyout on one tile (five markup kinds don't earn five
