@@ -110,10 +110,9 @@ export function SheetTree({
           "aria-posinset": place.get(r.id)[0], "aria-setsize": place.get(r.id)[1],
           tabIndex: r.id === tabRow ? 0 : -1,
           onFocus: () => setFocusId(r.id),
-          onMouseDown: noFocus,
         };
         if (n.kind === "folder") {
-          return <div key={r.id} {...common} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={`${n.file} · ${n.pages} sheets`} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
+          return <div key={r.id} {...common} onMouseDown={noFocus} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={`${n.file} · ${n.pages} sheets`} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
             <Icon name="chevronRight" size={14} /><span><strong>{base(n.file)}</strong></span><small>{n.pages} sheets</small>{n.shapes > 0 && <em>{n.shapes}</em>}
           </div>;
         }
