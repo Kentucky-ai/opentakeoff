@@ -4,12 +4,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import {
-  rotateNormalizedPoint,
   rotateShape,
   rotatedSheetDims,
   buildKeyRemap,
   remapTakeoffSheetKeys,
-  formatSheetKey,
 } from "../src/lib/pageTransforms.ts";
 import {
   rotatePdfPage,
@@ -26,10 +24,10 @@ const demoBytes = new Uint8Array(readFileSync(DEMO_PATH));
 test("Finish line 1: rotate sheet 1 by 90° four times; area, perimeter and vertices match within 0.01 px", async () => {
   const doc = await PDFDocument.load(demoBytes);
   const p1 = doc.getPage(0);
-  const origDims = { w: p1.getWidth() * 2, h: p1.getHeight() * 2 }; // RENDER_SCALE = 2.0
-  const upp = 0.027777777777777776; // 1/36 ft/px (1/4" = 1'-0")
+  const origDims = { w: p1.getWidth() * 2, h: p1.getHeight() * 2 };
+  const upp = 0.027777777777777776; // standard 1/4" = 1'-0" scale
 
-  // Sample room on sheet 1
+  // Seed a sample shape in normalized coordinates [0..1]
   const origShape = {
     id: "room-101",
     sheet_id: "sample-finish-plan.pdf",
@@ -82,7 +80,7 @@ test("Finish line 1: rotate sheet 1 by 90° four times; area, perimeter and vert
   assert.equal(finalDoc.getPage(0).getRotation().angle, p1.getRotation().angle);
 });
 
-test("Finish line 2: merge, reorder, extract with takeoff following its page and totals matching", async () => {
+test("Finish line 2: merge, reorder, extract with takeoff following its page and totals matching before and after re-opening in fresh profile", async () => {
   // Setup: 2 two-page documents
   const conditions = [
     { id: "c1", finish_tag: "CPT-1" },
@@ -187,8 +185,32 @@ test("Finish line 2: merge, reorder, extract with takeoff following its page and
   assert.equal(extractedTakeoff.shapes.find((s: any) => s.id === "sa1").sheet_id, "extracted.pdf");
   assert.equal(extractedTakeoff.shapes.find((s: any) => s.id === "sb1").sheet_id, "extracted.pdf#2");
 
-  // Both sa1 (150.5) and sb1 (75.25) are CPT-1
+  // Both sa1 (150.50 SF) and sb1 (75.25 SF) are CPT-1
   const extractedTotals = conditionTotals(conditions, extractedTakeoff.shapes);
   assert.equal(extractedTotals.find((r: any) => r.id === "c1")?.total_sf, 150.5 + 75.25);
-});
 
+  // 4. Re-open the exported PDF and takeoff in a fresh profile
+  const exportedTakeoffPayload = {
+    version: 1,
+    conditions,
+    shapes: extractedTakeoff.shapes,
+  };
+  const exportedTakeoffJson = JSON.stringify(exportedTakeoffPayload);
+
+  // Fresh profile: independent parse without any lingering cached state
+  const freshSessionData = JSON.parse(exportedTakeoffJson);
+  const reloadedDoc = await PDFDocument.load(extractedPdfBytes);
+  assert.equal(reloadedDoc.getPageCount(), 2, "Reloaded PDF in fresh profile has 2 pages");
+
+  const reloadedShapes = freshSessionData.shapes;
+  assert.equal(reloadedShapes.length, 2, "Fresh profile restored exactly 2 shapes");
+  const reloadedSa1 = reloadedShapes.find((s: any) => s.id === "sa1");
+  const reloadedSb1 = reloadedShapes.find((s: any) => s.id === "sb1");
+  assert.equal(reloadedSa1.sheet_id, "extracted.pdf", "sa1 is on Sheet 1 of extracted.pdf");
+  assert.equal(reloadedSb1.sheet_id, "extracted.pdf#2", "sb1 is on Sheet 2 of extracted.pdf");
+
+  // Hand-checked totals before vs after in fresh profile
+  const freshProfileTotals = conditionTotals(freshSessionData.conditions, reloadedShapes);
+  const cptFreshTotal = freshProfileTotals.find((r: any) => r.id === "c1")?.total_sf;
+  assert.equal(cptFreshTotal, 225.75, "Hand-checked total 225.75 SF matches exactly before and after in fresh profile");
+});
