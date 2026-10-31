@@ -174,7 +174,7 @@ export function SheetTree({
                   ↻
                 </button>
               )}
-              {onDeletePage && (
+              {onDeletePage && isPage && (
                 <button
                   type="button"
                   title="Delete page"

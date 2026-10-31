@@ -862,9 +862,8 @@ export class Session {
 
     const pdfBytes = await readFile(docEntry.path);
     const rotatedBytes = await rotatePdfPage(new Uint8Array(pdfBytes), s.pageNum, angle);
-    await writeFile(docEntry.path, rotatedBytes);
-
     await docEntry.doc.destroy().catch(() => {});
+    await writeFile(docEntry.path, rotatedBytes);
     const newDoc = await openPdf(docEntry.path);
     docEntry.doc = newDoc;
 
@@ -932,9 +931,8 @@ export class Session {
 
     const pdfBytes = await readFile(docEntry.path);
     const reorderedBytes = await reorderPdfPages(new Uint8Array(pdfBytes), pageOrder);
-    await writeFile(docEntry.path, reorderedBytes);
-
     await docEntry.doc.destroy().catch(() => {});
+    await writeFile(docEntry.path, reorderedBytes);
     const newDoc = await openPdf(docEntry.path);
     docEntry.doc = newDoc;
 

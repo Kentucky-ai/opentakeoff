@@ -3408,6 +3408,7 @@ export default function TakeoffCanvas() {
             setApprovals(prevApprovals);
             setDocEpoch((e) => e + 1);
             await refreshSheets();
+            goToSheet(target);
             setCommitMsg(`Undid rotation on ${target}.`);
           },
           redo: async () => {
@@ -3454,6 +3455,13 @@ export default function TakeoffCanvas() {
     try {
       setCommitMsg(`Deleting ${target}…`);
       const origBytes = await store.loadPdfData(file);
+      const { PDFDocument } = await import("pdf-lib");
+      const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+      const curDocPages = srcDoc.getPageCount();
+      if (curDocPages <= 1) {
+        alert("Cannot delete the only page in the document. Close the PDF instead.");
+        return;
+      }
       const newBytes = await deletePdfPage(new Uint8Array(origBytes), targetPage);
 
       const prevShapes = shapes;
@@ -3512,16 +3520,18 @@ export default function TakeoffCanvas() {
   const reorderDocumentPages = async (fileName, fromPage, toPage) => {
     const file = fileName || active;
     if (!file || fromPage === toPage) return;
-    const totalPages = knownPages[file] || (file === active ? pageCount : 1);
-    if (totalPages <= 1) return;
-
-    const order = Array.from({ length: totalPages }, (_, i) => i + 1);
-    const [moved] = order.splice(fromPage - 1, 1);
-    order.splice(toPage - 1, 0, moved);
-
     try {
       setCommitMsg(`Reordering pages in ${file}…`);
       const origBytes = await store.loadPdfData(file);
+      const { PDFDocument } = await import("pdf-lib");
+      const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+      const totalPages = srcDoc.getPageCount();
+      if (totalPages <= 1) return;
+
+      const order = Array.from({ length: totalPages }, (_, i) => i + 1);
+      const [moved] = order.splice(fromPage - 1, 1);
+      order.splice(toPage - 1, 0, moved);
+
       const reorderedBytes = await reorderPdfPages(new Uint8Array(origBytes), order);
 
       const prevShapes = shapes;
@@ -3554,6 +3564,7 @@ export default function TakeoffCanvas() {
             setApprovals(prevApprovals);
             setDocEpoch((e) => e + 1);
             await refreshSheets();
+            goToSheet(formatSheetKey(file, fromPage));
             setCommitMsg(`Undid page reorder in ${file}.`);
           },
           redo: async () => {
