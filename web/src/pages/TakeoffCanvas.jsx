@@ -3474,7 +3474,6 @@ export default function TakeoffCanvas() {
       const prevShapes = shapes;
       const prevMarkups = markups;
       const prevApprovals = approvals;
-      const prevPage = page;
 
       const remap = buildKeyRemap(
         file,
