@@ -10939,6 +10939,7 @@ export default function TakeoffCanvas() {
           { id: "report", icon: "document", label: "Report", onSelect: () => setShowReport(true) },
           "divider",
           { section: "Drawing" },
+          ...(panels.length === 1 && isStitchKey(panels[0].key) ? [{ id: "stitch-align", icon: "calibrate", label: "Align match line", active: tool === "stitch-align", onSelect: () => setTool((t) => (t === "stitch-align" ? "select" : "stitch-align")) }] : []),
           { id: "snap", label: "Snap to plan lines", checked: snapOn, stayOpen: true, onSelect: () => setSnapOn((v) => !v) },
           { id: "angle", label: "45° / 90° guides", checked: angleOn, stayOpen: true, onSelect: () => setAngleOn((v) => !v) },
           { id: "zone", icon: "zone", label: "Zone check", active: tool === "zone", onSelect: () => setTool((t) => (t === "zone" ? "select" : "zone")) },
