@@ -11,6 +11,7 @@ import {
   rotateTakeoffOnSheet,
   buildKeyRemap,
   remapTakeoffSheetKeys,
+  remapWorkspaceState,
   formatSheetKey,
 } from "../src/lib/pageTransforms.ts";
 import { computeShapeMetrics } from "../src/lib/shapeMetrics.js";
@@ -192,5 +193,136 @@ test("remapTakeoffSheetKeys: updates shapes, markups, sheets, tabs, approvals", 
 
   assert.deepEqual(remapped.sheet_tabs, ["doc.pdf#2", "doc.pdf", "other.pdf"]);
   assert.equal(remapped.approvals[0].sheet_id, "doc.pdf#2");
+});
+
+test("remapWorkspaceState: remaps all 11+ per-sheet maps, swapping scales when pages reorder", () => {
+  // Two sheets at DIFFERENT scales:
+  // Sheet 1 (AF101 / doc.pdf): 1/8" = 1'-0" (upp ~ 0.027778)
+  // Sheet 2 (AF600 / doc.pdf#2): 1/4" = 1'-0" (upp ~ 0.055556)
+  const state = {
+    shapes: [
+      { id: "s1", sheet_id: "doc.pdf" },
+      { id: "s2", sheet_id: "doc.pdf#2" },
+    ],
+    markups: [
+      { id: "m1", sheet_id: "doc.pdf" },
+    ],
+    approvals: [
+      { id: "a1", sheet_id: "doc.pdf" },
+    ],
+    scales: {
+      "doc.pdf": 0.027777777777777776,
+      "doc.pdf#2": 0.05555555555555555,
+    },
+    scaleSources: {
+      "doc.pdf": "standard",
+      "doc.pdf#2": "calibrated",
+    },
+    scaleUnconfirmed: {
+      "doc.pdf#2": true,
+    } as Record<string, boolean>,
+    sheetLevels: {
+      "doc.pdf": "L1",
+      "doc.pdf#2": "L2",
+    } as Record<string, string>,
+    sheetGroup: ["doc.pdf", "doc.pdf#2"],
+    lastGroup: ["doc.pdf"],
+    openTabs: ["doc.pdf", "doc.pdf#2"],
+    stitches: [
+      {
+        id: "stitch-1",
+        members: [{ key: "doc.pdf", x: 0, y: 0 }, { key: "doc.pdf#2", x: 100, y: 0 }],
+      },
+    ],
+    layerOverrides: {
+      "doc.pdf": { ocg1: "exclude" },
+    } as Record<string, any>,
+    rfis: [
+      { id: "rfi-1", sheet_id: "doc.pdf" },
+    ],
+  };
+
+  // Reorder: swap page 1 and page 2 ([2, 1])
+  const remap = buildKeyRemap("doc.pdf", { 1: 2, 2: 1 }, 2);
+  const remapped = remapWorkspaceState(state, remap);
+
+  // Scales must swap with their sheets:
+  // Page 1 now has 1/4", Page 2 now has 1/8"
+  assert.equal(remapped.scales["doc.pdf"], 0.05555555555555555);
+  assert.equal(remapped.scales["doc.pdf#2"], 0.027777777777777776);
+
+  // Scale sources and unconfirmed flags swap
+  assert.equal(remapped.scaleSources["doc.pdf"], "calibrated");
+  assert.equal(remapped.scaleSources["doc.pdf#2"], "standard");
+  assert.equal(remapped.scaleUnconfirmed["doc.pdf"], true);
+  assert.equal(remapped.scaleUnconfirmed["doc.pdf#2"], undefined);
+
+  // Sheet levels swap
+  assert.equal(remapped.sheetLevels["doc.pdf"], "L2");
+  assert.equal(remapped.sheetLevels["doc.pdf#2"], "L1");
+
+  // Tabs and groups
+  assert.deepEqual(remapped.openTabs, ["doc.pdf#2", "doc.pdf"]);
+  assert.deepEqual(remapped.sheetGroup, ["doc.pdf#2", "doc.pdf"]);
+  assert.deepEqual(remapped.lastGroup, ["doc.pdf#2"]);
+
+  // Stitches
+  assert.equal(remapped.stitches[0].members[0].key, "doc.pdf#2");
+  assert.equal(remapped.stitches[0].members[1].key, "doc.pdf");
+
+  // Layer overrides and rfis
+  assert.deepEqual(remapped.layerOverrides["doc.pdf#2"], { ocg1: "exclude" });
+  assert.equal(remapped.rfis[0].sheet_id, "doc.pdf#2");
+
+  // Shapes and markups
+  assert.equal(remapped.shapes[0].sheet_id, "doc.pdf#2");
+  assert.equal(remapped.shapes[1].sheet_id, "doc.pdf");
+  assert.equal(remapped.markups[0].sheet_id, "doc.pdf#2");
+  assert.equal(remapped.approvals[0].sheet_id, "doc.pdf#2");
+});
+
+test("remapWorkspaceState: deletion drops the deleted sheet across all maps and shifts later sheets", () => {
+  const state = {
+    shapes: [
+      { id: "s1", sheet_id: "doc.pdf" },
+      { id: "s2", sheet_id: "doc.pdf#2" },
+      { id: "s3", sheet_id: "doc.pdf#3" },
+    ],
+    scales: {
+      "doc.pdf": 0.02,
+      "doc.pdf#2": 0.04,
+      "doc.pdf#3": 0.08,
+    },
+    openTabs: ["doc.pdf", "doc.pdf#2", "doc.pdf#3"],
+    sheetLevels: {
+      "doc.pdf": "L1",
+      "doc.pdf#2": "L2",
+      "doc.pdf#3": "L3",
+    },
+  };
+
+  // Delete page 2: page 1 stays 1, page 2 is deleted (null), page 3 becomes 2
+  const remap = buildKeyRemap(
+    "doc.pdf",
+    (p) => (p === 2 ? null : p > 2 ? p - 1 : p),
+    3
+  );
+  const remapped = remapWorkspaceState(state, remap);
+
+  // s2 dropped, s3 moved to doc.pdf#2
+  assert.equal(remapped.shapes.length, 2);
+  assert.equal(remapped.shapes[0].sheet_id, "doc.pdf");
+  assert.equal(remapped.shapes[1].sheet_id, "doc.pdf#2");
+
+  // Scales: doc.pdf#2 dropped, doc.pdf#3's scale moved to doc.pdf#2
+  assert.equal(remapped.scales["doc.pdf"], 0.02);
+  assert.equal(remapped.scales["doc.pdf#2"], 0.08);
+  assert.equal(remapped.scales["doc.pdf#3"], undefined);
+
+  // Tabs and levels
+  assert.deepEqual(remapped.openTabs, ["doc.pdf", "doc.pdf#2"]);
+  assert.equal(remapped.sheetLevels["doc.pdf"], "L1");
+  assert.equal(remapped.sheetLevels["doc.pdf#2"], "L3");
+  assert.equal(remapped.sheetLevels["doc.pdf#3"], undefined);
 });
 

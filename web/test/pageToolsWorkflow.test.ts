@@ -155,11 +155,13 @@ test("Finish line 2: merge, reorder, extract with takeoff following its page and
   const reorderedTakeoff = remapTakeoffSheetKeys(mergedTakeoff, reorderRemap);
 
   // The shape that was on page 1 ("sa1") is now on page 2 ("merged.pdf#2")
-  const sa1 = reorderedTakeoff.shapes.find((s: any) => s.id === "sa1");
+  const sa1 = reorderedTakeoff.shapes?.find((s: any) => s.id === "sa1");
+  assert.ok(sa1);
   assert.equal(sa1.sheet_id, "merged.pdf#2");
 
   // The shape that was on page 2 ("sa2") is now on page 1 ("merged.pdf")
-  const sa2 = reorderedTakeoff.shapes.find((s: any) => s.id === "sa2");
+  const sa2 = reorderedTakeoff.shapes?.find((s: any) => s.id === "sa2");
+  assert.ok(sa2);
   assert.equal(sa2.sheet_id, "merged.pdf");
 
   // Totals still match exactly
@@ -181,9 +183,9 @@ test("Finish line 2: merge, reorder, extract with takeoff following its page and
   };
 
   const extractedTakeoff = remapTakeoffSheetKeys(reorderedTakeoff, extractRemap);
-  assert.equal(extractedTakeoff.shapes.length, 2);
-  assert.equal(extractedTakeoff.shapes.find((s: any) => s.id === "sa1").sheet_id, "extracted.pdf");
-  assert.equal(extractedTakeoff.shapes.find((s: any) => s.id === "sb1").sheet_id, "extracted.pdf#2");
+  assert.equal(extractedTakeoff.shapes?.length, 2);
+  assert.equal(extractedTakeoff.shapes?.find((s: any) => s.id === "sa1")?.sheet_id, "extracted.pdf");
+  assert.equal(extractedTakeoff.shapes?.find((s: any) => s.id === "sb1")?.sheet_id, "extracted.pdf#2");
 
   // Both sa1 (150.50 SF) and sb1 (75.25 SF) are CPT-1
   const extractedTotals = conditionTotals(conditions, extractedTakeoff.shapes);

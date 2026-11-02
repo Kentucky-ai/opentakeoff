@@ -863,18 +863,29 @@ export class Session {
     };
   }
 
-  async rotatePage(sheetName: string, angle: 90 | 180 | 270) {
+  async rotatePage(sheetName: string, angle: 90 | 180 | 270, outputPath?: string, overwrite?: boolean) {
     const s = this.sheet(sheetName);
     const file = this.fileFor(s.key);
     const docEntry = this.docs.get(file);
     if (!docEntry) throw new UserError(`Document for sheet ${s.key} not found.`);
 
+    const outPath = outputPath
+      ? path.resolve(outputPath)
+      : path.join(path.dirname(docEntry.path), `${path.basename(file, ".pdf")}_rotated.pdf`);
+
+    await assertWritable(outPath, "pdf", overwrite);
+
     const pdfBytes = await readFile(docEntry.path);
     const rotatedBytes = await rotatePdfPage(new Uint8Array(pdfBytes), s.pageNum, angle);
+    await writeFile(outPath, rotatedBytes);
+
     await docEntry.doc.destroy().catch(() => {});
-    await writeFile(docEntry.path, rotatedBytes);
-    const newDoc = await openPdf(docEntry.path);
+    const newDoc = await openPdf(outPath);
     docEntry.doc = newDoc;
+    docEntry.path = outPath;
+
+    // Capture pre-rotation dimensions for rotateMarkup before s is updated
+    const origDims = { w: s.widthPx, h: s.heightPx };
 
     const ph = await newDoc.page(s.pageNum);
     s.page = ph;
@@ -899,7 +910,7 @@ export class Session {
     this.markups = this.markups.map((m) => {
       if (m.sheet_id === s.key) {
         markupsTransformed++;
-        return rotateMarkup(m, angle, { w: s.widthPx, h: s.heightPx });
+        return rotateMarkup(m, angle, origDims);
       }
       return m;
     });
@@ -912,15 +923,16 @@ export class Session {
     return {
       sheet: s.key,
       angle,
+      output_file: outPath,
       width_px: s.widthPx,
       height_px: s.heightPx,
       shapes_transformed: shapesTransformed,
       markups_transformed: markupsTransformed,
-      note: `Rotated ${s.key} ${angle}° clockwise. ${shapesTransformed} shape(s) and ${markupsTransformed} markup(s) transformed to stay locked to the drawing.`,
+      note: `Rotated ${s.key} ${angle}° clockwise. ${shapesTransformed} shape(s) and ${markupsTransformed} markup(s) transformed to stay locked to the drawing. Output saved to ${outPath}.`,
     };
   }
 
-  async reorderPages(fileName: string, pageOrder: number[]) {
+  async reorderPages(fileName: string, pageOrder: number[], outputPath?: string, overwrite?: boolean) {
     const base = path.basename(fileName);
     const docEntry = this.docs.get(base);
     if (!docEntry) throw new UserError(`Document "${fileName}" is not loaded.`);
@@ -938,12 +950,19 @@ export class Session {
       seen.add(p);
     }
 
+    const outPath = outputPath
+      ? path.resolve(outputPath)
+      : path.join(path.dirname(docEntry.path), `${path.basename(base, ".pdf")}_reordered.pdf`);
+
+    await assertWritable(outPath, "pdf", overwrite);
+
     const pdfBytes = await readFile(docEntry.path);
     const reorderedBytes = await reorderPdfPages(new Uint8Array(pdfBytes), pageOrder);
     await docEntry.doc.destroy().catch(() => {});
-    await writeFile(docEntry.path, reorderedBytes);
-    const newDoc = await openPdf(docEntry.path);
+    await writeFile(outPath, reorderedBytes);
+    const newDoc = await openPdf(outPath);
     docEntry.doc = newDoc;
+    docEntry.path = outPath;
 
     const oldToNew = new Map<number, number>();
     pageOrder.forEach((oldP, idx) => oldToNew.set(oldP, idx + 1));
@@ -1005,9 +1024,10 @@ export class Session {
     return {
       file: base,
       order: pageOrder,
+      output_file: outPath,
       sheets: newSheetKeys,
       shapes_remapped: shapesRemapped,
-      note: `Reordered ${base} according to [${pageOrder.join(", ")}]. ${shapesRemapped} shape(s) remapped to follow their pages.`,
+      note: `Reordered ${base} according to [${pageOrder.join(", ")}]. ${shapesRemapped} shape(s) remapped to follow their pages. Output saved to ${outPath}.`,
     };
   }
 
@@ -1035,10 +1055,21 @@ export class Session {
 
     const outBase = path.basename(outPath);
     const remap = new Map<string, string | null>();
+    const extractedOldKeys = new Set<string>();
+
     for (let p = 1; p <= totalPages; p++) {
       const oldKey = formatSheetKey(base, p);
       const idx = pageNumbers.indexOf(p);
-      remap.set(oldKey, idx >= 0 ? formatSheetKey(outBase, idx + 1) : null);
+      if (idx >= 0) {
+        remap.set(oldKey, formatSheetKey(outBase, idx + 1));
+        extractedOldKeys.add(oldKey);
+      } else {
+        remap.set(oldKey, null);
+      }
+    }
+
+    for (const k of this.sheets.keys()) {
+      if (!remap.has(k)) remap.set(k, null);
     }
 
     const carriedTakeoff = remapTakeoffSheetKeys(
@@ -1046,13 +1077,46 @@ export class Session {
       remap
     );
 
+    const carriedShapes = (carriedTakeoff.shapes || []).filter((s: any) => s.sheet_id.startsWith(outBase));
+
+    // Write companion takeoff JSON so the takeoff is carried with the new document
+    const takeoffPath = outPath.replace(/\.pdf$/i, ".takeoff.json");
+    await assertWritable(takeoffPath, "json", overwrite);
+
+    const carriedDoc = buildTakeoffDocument({
+      project_name: path.basename(outBase, ".pdf"),
+      units: "imperial",
+      client_info: this.clientInfo,
+      estimate_settings: this.estimateSettings,
+      bid_proposal: this.bidProposal,
+      sheets: [...this.sheets.values()]
+        .filter((sh) => extractedOldKeys.has(sh.key) && sh.upp != null)
+        .map((sh) => {
+          const nextKey = remap.get(sh.key)!;
+          return sheetEntry({
+            sheet_id: nextKey,
+            units_per_px: sh.upp as number,
+            scale_source: sh.scaleSource,
+            scale_confirmed: sh.scaleConfirmed,
+          });
+        }),
+      conditions: this.conditions,
+      shapes: carriedShapes,
+      markups: (carriedTakeoff.markups || []).filter((m: any) => m.sheet_id.startsWith(outBase)),
+      approvals: (carriedTakeoff.approvals || []).filter((a: any) => a.sheet_id.startsWith(outBase)),
+      rfis: this.liveRfis().filter((r) => r.sheet_id && extractedOldKeys.has(r.sheet_id)),
+    });
+
+    await writeFile(takeoffPath, JSON.stringify(carriedDoc, null, 2), "utf8");
+
     return {
       source_file: base,
       output_file: outPath,
+      takeoff_file: takeoffPath,
       extracted_pages: pageNumbers,
       page_count: pageNumbers.length,
-      shapes_carried: carriedTakeoff.shapes?.length || 0,
-      note: `Extracted ${pageNumbers.length} page(s) from ${base} into ${outPath}. ${carriedTakeoff.shapes?.length || 0} shape(s) carried.`,
+      shapes_carried: carriedShapes.length,
+      note: `Extracted ${pageNumbers.length} page(s) from ${base} into ${outPath}. ${carriedShapes.length} shape(s) carried into ${takeoffPath}.`,
     };
   }
 
@@ -1105,12 +1169,42 @@ export class Session {
       remap
     );
 
+    const takeoffPath = outPath.replace(/\.pdf$/i, ".takeoff.json");
+    await assertWritable(takeoffPath, "json", overwrite);
+
+    const mergedTakeoffDoc = buildTakeoffDocument({
+      project_name: path.basename(outBase, ".pdf"),
+      units: "imperial",
+      client_info: this.clientInfo,
+      estimate_settings: this.estimateSettings,
+      bid_proposal: this.bidProposal,
+      sheets: [...this.sheets.values()]
+        .filter((sh) => remap.has(sh.key) && sh.upp != null)
+        .map((sh) => {
+          const nextKey = remap.get(sh.key)!;
+          return sheetEntry({
+            sheet_id: nextKey,
+            units_per_px: sh.upp as number,
+            scale_source: sh.scaleSource,
+            scale_confirmed: sh.scaleConfirmed,
+          });
+        }),
+      conditions: this.conditions,
+      shapes: remappedTakeoff.shapes || [],
+      markups: remappedTakeoff.markups || [],
+      approvals: remappedTakeoff.approvals || [],
+      rfis: this.liveRfis().filter((r) => r.sheet_id && remap.has(r.sheet_id)).map((r) => ({ ...r, sheet_id: remap.get(r.sheet_id!)! })),
+    });
+
+    await writeFile(takeoffPath, JSON.stringify(mergedTakeoffDoc, null, 2), "utf8");
+
     return {
       merged_files: files.map((f) => path.basename(f)),
       output_file: outPath,
+      takeoff_file: takeoffPath,
       total_pages: curNewPage - 1,
       shapes_remapped: remappedTakeoff.shapes?.length || 0,
-      note: `Merged ${files.length} document(s) into ${outPath} (${curNewPage - 1} pages total).`,
+      note: `Merged ${files.length} document(s) into ${outPath} (${curNewPage - 1} pages total). Takeoffs carried into ${takeoffPath}.`,
     };
   }
 
