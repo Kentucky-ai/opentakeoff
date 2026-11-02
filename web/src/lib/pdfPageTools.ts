@@ -30,6 +30,7 @@ export async function rotatePdfPage(
   const currentAngle = page.getRotation().angle;
   const newAngle = ((currentAngle + normAngle) % 360 + 360) % 360;
   page.setRotation(degrees(newAngle));
+  doc.setProducer("OpenTakeoff");
 
   return await doc.save({ useObjectStreams: false });
 }
@@ -46,8 +47,8 @@ export async function reorderPdfPages(
 ): Promise<Uint8Array> {
   if (!Array.isArray(pageOrder) || pageOrder.length === 0) return pdfBytes;
 
-  const srcDoc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
-  const totalPages = srcDoc.getPageCount();
+  const doc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
+  const totalPages = doc.getPageCount();
 
   if (pageOrder.length !== totalPages) {
     throw new Error(
@@ -63,15 +64,28 @@ export async function reorderPdfPages(
     seen.add(p);
   }
 
-  const destDoc = await PDFDocument.create();
-  const indices = pageOrder.map((p) => p - 1);
-  const copiedPages = await destDoc.copyPages(srcDoc, indices);
-
-  for (const page of copiedPages) {
-    destDoc.addPage(page);
+  let isIdentity = true;
+  for (let i = 0; i < totalPages; i++) {
+    if (pageOrder[i] !== i + 1) {
+      isIdentity = false;
+      break;
+    }
   }
+  if (isIdentity) return pdfBytes;
 
-  return await destDoc.save({ useObjectStreams: false });
+  // In-place reordering on the same document:
+  // Appends pages in the new desired order to the page tree, then removes the original pages.
+  // Preserves document Catalog dictionary (/OCProperties / layers) verbatim.
+  const originalPages = doc.getPages();
+  for (const p of pageOrder) {
+    doc.addPage(originalPages[p - 1]);
+  }
+  for (let i = 0; i < totalPages; i++) {
+    doc.removePage(0);
+  }
+  doc.setProducer("OpenTakeoff");
+
+  return await doc.save({ useObjectStreams: false });
 }
 
 /**
@@ -96,6 +110,7 @@ export async function deletePdfPage(
   }
 
   doc.removePage(pageNumber - 1);
+  doc.setProducer("OpenTakeoff");
   return await doc.save({ useObjectStreams: false });
 }
 
@@ -113,27 +128,33 @@ export async function extractPdfPages(
     throw new Error("Must specify at least one page to extract");
   }
 
-  const srcDoc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
-  const totalPages = srcDoc.getPageCount();
+  const doc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
+  const totalPages = doc.getPageCount();
 
-  const indices = pageNumbers.map((p) => {
+  for (const p of pageNumbers) {
     if (p < 1 || p > totalPages) {
       throw new Error(`Page ${p} out of range (1..${totalPages})`);
     }
-    return p - 1;
-  });
-
-  const destDoc = await PDFDocument.create();
-  const copiedPages = await destDoc.copyPages(srcDoc, indices);
-  for (const p of copiedPages) {
-    destDoc.addPage(p);
   }
 
-  return await destDoc.save({ useObjectStreams: false });
+  // In-place extraction on source document:
+  // Appends desired pages in order, then removes the original pages.
+  // Preserves document Catalog (/OCProperties / layers) and document-level resources.
+  const originalPages = doc.getPages();
+  for (const p of pageNumbers) {
+    doc.addPage(originalPages[p - 1]);
+  }
+  for (let i = 0; i < totalPages; i++) {
+    doc.removePage(0);
+  }
+  doc.setProducer("OpenTakeoff");
+
+  return await doc.save({ useObjectStreams: false });
 }
 
 /**
  * Merge multiple PDF documents into a single document.
+ * Preserves Catalog dictionary and /OCProperties (layers).
  * @param pdfs Array of PDF byte arrays in order of concatenation
  * @returns Merged PDF bytes
  */
@@ -143,19 +164,31 @@ export async function mergePdfDocuments(
   if (!Array.isArray(pdfs) || pdfs.length === 0) {
     throw new Error("Must provide at least one PDF to merge");
   }
+  if (pdfs.length === 1) return pdfs[0];
 
-  const destDoc = await PDFDocument.create();
+  // Base the merged document on the first PDF so its Catalog, metadata,
+  // and /OCProperties (layers) are preserved.
+  const mergedDoc = await PDFDocument.load(pdfs[0], { updateMetadata: false });
+  const { PDFName } = await import("pdf-lib");
+  const ocPropsName = PDFName.of("OCProperties");
 
-  for (const bytes of pdfs) {
-    const srcDoc = await PDFDocument.load(bytes, { updateMetadata: false });
+  for (let i = 1; i < pdfs.length; i++) {
+    const srcDoc = await PDFDocument.load(pdfs[i], { updateMetadata: false });
     const indices = srcDoc.getPageIndices();
-    const copiedPages = await destDoc.copyPages(srcDoc, indices);
+    const copiedPages = await mergedDoc.copyPages(srcDoc, indices);
     for (const p of copiedPages) {
-      destDoc.addPage(p);
+      mergedDoc.addPage(p);
+    }
+    if (!mergedDoc.catalog.has(ocPropsName) && srcDoc.catalog.has(ocPropsName)) {
+      const ocProp = srcDoc.catalog.get(ocPropsName);
+      if (ocProp && typeof (ocProp as any).clone === "function") {
+        mergedDoc.catalog.set(ocPropsName, (ocProp as any).clone(mergedDoc.context));
+      }
     }
   }
 
-  return await destDoc.save({ useObjectStreams: false });
+  mergedDoc.setProducer("OpenTakeoff");
+  return await mergedDoc.save({ useObjectStreams: false });
 }
 
 /**
@@ -182,6 +215,7 @@ export async function insertPdfPages(
     targetDoc.insertPage(insertIndex + i, copiedPages[i]);
   }
 
+  targetDoc.setProducer("OpenTakeoff");
   const pdfBytes = await targetDoc.save({ useObjectStreams: false });
   return { pdfBytes, insertedCount: copiedPages.length };
 }

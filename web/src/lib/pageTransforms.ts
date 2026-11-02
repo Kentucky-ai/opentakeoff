@@ -231,9 +231,10 @@ export function rotateTakeoffOnSheet(
     m?.sheet_id === sheetId ? rotateMarkup(m, a, sheetDims) : m
   );
 
-  const approvals = (takeoff.approvals || []).map((ap) =>
-    ap?.sheet_id === sheetId ? rotateApproval(ap, a) : ap
-  );
+  const approvals = (takeoff.approvals || [])
+    .map((ap) =>
+      ap?.sheet_id === sheetId ? rotateApproval(ap, a) : ap
+    );
 
   return {
     ...takeoff,
@@ -278,38 +279,49 @@ export function buildKeyRemap(
   return remap;
 }
 
-/**
- * Remap sheet_id across all takeoff structures (shapes, markups, sheets/calibrations,
- * approvals, tabs, groups, stitches).
- * Items whose sheet_id maps to null are deleted.
- */
-export function remapTakeoffSheetKeys(
-  takeoff: {
-    shapes?: any[];
-    markups?: any[];
-    sheets?: any[];
-    approvals?: any[];
-    rfis?: any[];
-    sheet_tabs?: string[];
-    sheet_group?: string[];
-    last_group?: string[];
-    stitches?: any[];
-    [key: string]: any;
-  },
-  keyMap: Map<string, string | null> | Record<string, string | null>
-) {
-  const map = keyMap instanceof Map ? keyMap : new Map(Object.entries(keyMap));
+export interface WorkspaceSheetState {
+  shapes?: any[];
+  markups?: any[];
+  approvals?: any[];
+  scales?: Record<string, number>;
+  scaleSources?: Record<string, string>;
+  scaleUnconfirmed?: Record<string, boolean>;
+  sheetLevels?: Record<string, string>;
+  sheetGroup?: string[];
+  lastGroup?: string[];
+  openTabs?: string[];
+  stitches?: any[];
+  layerOverrides?: Record<string, any>;
+  rfis?: any[];
+  sheets?: any[];
+  sheet_tabs?: string[];
+  sheet_group?: string[];
+  last_group?: string[];
+  layer_overrides?: Record<string, any>;
+  [key: string]: any;
+}
 
+/**
+ * Pure function that remaps EVERY per-sheet data structure in OpenTakeoff
+ * (shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
+ * sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis, sheets).
+ * Items mapped to null are dropped (deleted).
+ */
+export function remapWorkspaceState<T extends WorkspaceSheetState>(
+  state: T,
+  keyMap: Map<string, string | null> | Record<string, string | null>
+): T {
+  const map = keyMap instanceof Map ? keyMap : new Map(Object.entries(keyMap));
   const remapKey = (k: string): string | null => (map.has(k) ? map.get(k)! : k);
 
-  const shapes = (takeoff.shapes || [])
+  const shapes = (state.shapes || [])
     .map((s) => {
       const nextKey = remapKey(s.sheet_id);
       return nextKey ? { ...s, sheet_id: nextKey } : null;
     })
     .filter(Boolean);
 
-  const markups = (takeoff.markups || [])
+  const markups = (state.markups || [])
     .map((m) => {
       const nextKey = remapKey(m.sheet_id);
       if (!nextKey) return null;
@@ -322,57 +334,122 @@ export function remapTakeoffSheetKeys(
     })
     .filter(Boolean);
 
-  const sheets = (takeoff.sheets || [])
-    .map((sh) => {
-      const nextKey = remapKey(sh.sheet_id);
-      return nextKey ? { ...sh, sheet_id: nextKey } : null;
-    })
-    .filter(Boolean);
-
-  const approvals = (takeoff.approvals || [])
+  const approvals = (state.approvals || [])
     .map((ap) => {
       const nextKey = remapKey(ap.sheet_id);
       return nextKey ? { ...ap, sheet_id: nextKey } : null;
     })
     .filter(Boolean);
 
-  const rfis = (takeoff.rfis || []).map((r) => {
+  const scales: Record<string, number> = {};
+  if (state.scales) {
+    for (const [k, v] of Object.entries(state.scales)) {
+      const nextKey = remapKey(k);
+      if (nextKey) scales[nextKey] = v;
+    }
+  }
+
+  const scaleSources: Record<string, string> = {};
+  if (state.scaleSources) {
+    for (const [k, v] of Object.entries(state.scaleSources)) {
+      const nextKey = remapKey(k);
+      if (nextKey) scaleSources[nextKey] = v;
+    }
+  }
+
+  const scaleUnconfirmed: Record<string, boolean> = {};
+  if (state.scaleUnconfirmed) {
+    for (const [k, v] of Object.entries(state.scaleUnconfirmed)) {
+      const nextKey = remapKey(k);
+      if (nextKey) scaleUnconfirmed[nextKey] = v;
+    }
+  }
+
+  const sheetLevels: Record<string, string> = {};
+  if (state.sheetLevels) {
+    for (const [k, v] of Object.entries(state.sheetLevels)) {
+      const nextKey = remapKey(k);
+      if (nextKey) sheetLevels[nextKey] = v;
+    }
+  }
+
+  const layerOverrides: Record<string, any> = {};
+  const rawLayerOverrides = state.layerOverrides || state.layer_overrides;
+  if (rawLayerOverrides) {
+    for (const [k, v] of Object.entries(rawLayerOverrides)) {
+      const nextKey = remapKey(k);
+      if (nextKey) layerOverrides[nextKey] = v;
+    }
+  }
+
+  const rawTabs = state.openTabs || state.sheet_tabs || [];
+  const openTabs = rawTabs
+    .map(remapKey)
+    .filter((k): k is string => typeof k === "string" && k.length > 0);
+
+  const rawGroup = state.sheetGroup || state.sheet_group || [];
+  const sheetGroup = rawGroup
+    .map(remapKey)
+    .filter((k): k is string => typeof k === "string" && k.length > 0);
+
+  const rawLastGroup = state.lastGroup || state.last_group || [];
+  const lastGroup = rawLastGroup
+    .map(remapKey)
+    .filter((k): k is string => typeof k === "string" && k.length > 0);
+
+  const stitches = (state.stitches || []).map((st) => {
+    const nextMembers = (st.members || [])
+      .map((mem: any) => {
+        const nextKey = remapKey(mem.key);
+        return nextKey ? { ...mem, key: nextKey } : null;
+      })
+      .filter(Boolean);
+    return { ...st, members: nextMembers };
+  });
+
+  const rfis = (state.rfis || []).map((r) => {
     if (!r.sheet_id) return r;
     const nextKey = remapKey(r.sheet_id);
     return nextKey ? { ...r, sheet_id: nextKey } : r;
   });
 
-  const sheet_tabs = (takeoff.sheet_tabs || [])
-    .map(remapKey)
-    .filter((k): k is string => typeof k === "string" && k.length > 0);
-
-  const sheet_group = (takeoff.sheet_group || [])
-    .map(remapKey)
-    .filter((k): k is string => typeof k === "string" && k.length > 0);
-
-  const last_group = (takeoff.last_group || [])
-    .map(remapKey)
-    .filter((k): k is string => typeof k === "string" && k.length > 0);
-
-  const stitches = (takeoff.stitches || []).map((st) => {
-    const nextMembers = (st.members || []).map((mem: any) => {
-      const nextKey = remapKey(mem.key);
-      return nextKey ? { ...mem, key: nextKey } : mem;
-    });
-    return { ...st, members: nextMembers };
-  });
+  const sheets = (state.sheets || [])
+    .map((sh) => {
+      const nextKey = remapKey(sh.sheet_id);
+      return nextKey ? { ...sh, sheet_id: nextKey } : null;
+    })
+    .filter(Boolean);
 
   return {
-    ...takeoff,
+    ...state,
     shapes,
     markups,
-    sheets,
     approvals,
-    rfis,
-    sheet_tabs,
-    sheet_group,
-    last_group,
+    scales,
+    scaleSources,
+    scaleUnconfirmed,
+    sheetLevels,
+    layerOverrides,
+    openTabs,
+    sheetGroup,
+    lastGroup,
     stitches,
+    rfis,
+    sheets,
+    sheet_tabs: openTabs,
+    sheet_group: sheetGroup,
+    last_group: lastGroup,
+    layer_overrides: layerOverrides,
   };
 }
 
+/**
+ * Remap sheet_id across all takeoff structures.
+ * Alias calling remapWorkspaceState.
+ */
+export function remapTakeoffSheetKeys<T extends WorkspaceSheetState>(
+  takeoff: T,
+  keyMap: Map<string, string | null> | Record<string, string | null>
+): T {
+  return remapWorkspaceState(takeoff, keyMap);
+}
