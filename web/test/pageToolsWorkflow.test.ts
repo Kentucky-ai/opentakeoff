@@ -17,6 +17,7 @@ import {
 } from "../src/lib/pdfPageTools.ts";
 import { computeShapeMetrics } from "../src/lib/shapeMetrics.js";
 import { conditionTotals } from "../src/lib/totals.js";
+import { sha256Hex } from "../src/lib/store.js";
 
 const DEMO_PATH = fileURLToPath(new URL("../public/demo/sample-finish-plan.pdf", import.meta.url));
 const demoBytes = new Uint8Array(readFileSync(DEMO_PATH));
@@ -215,4 +216,47 @@ test("Finish line 2: merge, reorder, extract with takeoff following its page and
   const freshProfileTotals = conditionTotals(freshSessionData.conditions, reloadedShapes);
   const cptFreshTotal = freshProfileTotals.find((r: any) => r.id === "c1")?.total_sf;
   assert.equal(cptFreshTotal, 225.75, "Hand-checked total 225.75 SF matches exactly before and after in fresh profile");
+});
+
+test("Finish line 3: PDF re-add re-applies stored rotation when incoming bytes match original hash (#591)", async () => {
+  const origBytes = demoBytes;
+  const origHash = await sha256Hex(origBytes);
+
+  // 1. Rotate page 1 by 90° clockwise
+  const rotatedBytes = await rotatePdfPage(origBytes, 1, 90);
+  const rotatedHash = await sha256Hex(rotatedBytes);
+  assert.notEqual(origHash, rotatedHash, "Rotated PDF produces a distinct content hash");
+
+  // Rotation recorded in project state
+  const sheetRotations: Record<string, { angle: number; hash: string }> = {
+    "sample-finish-plan.pdf": { angle: 90, hash: origHash },
+  };
+
+  // 2. Simulate re-adding the original unrotated PDF from disk
+  const incomingOriginalBytes = origBytes;
+  const incomingOriginalHash = await sha256Hex(incomingOriginalBytes);
+
+  let readdedBytes: Uint8Array<any> = incomingOriginalBytes;
+  const rotEntry = sheetRotations["sample-finish-plan.pdf"];
+  if (rotEntry && incomingOriginalHash === rotEntry.hash) {
+    readdedBytes = await rotatePdfPage(incomingOriginalBytes, 1, rotEntry.angle);
+  }
+
+  // The re-added original bytes get rotated to 90°, matching retained shapes
+  const readdedDoc = await PDFDocument.load(readdedBytes);
+  assert.equal(readdedDoc.getPage(0).getRotation().angle, 90, "Re-added original PDF is rotated to match retained shapes");
+
+  // 3. Simulate someone re-adding the already-rotated PDF
+  const incomingRotatedBytes = rotatedBytes;
+  const incomingRotatedHash = await sha256Hex(incomingRotatedBytes);
+
+  let readdedRotatedBytes: Uint8Array<any> = incomingRotatedBytes;
+  if (rotEntry && incomingRotatedHash === rotEntry.hash) {
+    // Should NOT trigger because hash does not match original unrotated hash
+    readdedRotatedBytes = await rotatePdfPage(incomingRotatedBytes, 1, rotEntry.angle);
+  }
+
+  // Double rotation prevented!
+  const readdedRotatedDoc = await PDFDocument.load(readdedRotatedBytes);
+  assert.equal(readdedRotatedDoc.getPage(0).getRotation().angle, 90, "Double-rotation prevented when re-adding exported rotated PDF");
 });

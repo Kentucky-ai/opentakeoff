@@ -326,3 +326,27 @@ test("remapWorkspaceState: deletion drops the deleted sheet across all maps and 
   assert.equal(remapped.sheetLevels["doc.pdf#3"], undefined);
 });
 
+test("remapWorkspaceState: sheetRotations follow remapped sheet keys and drop deleted sheets (#591)", () => {
+  const state = {
+    sheetRotations: {
+      "doc.pdf": { angle: 90, hash: "hash1" },
+      "doc.pdf#2": { angle: 180, hash: "hash1" },
+      "doc.pdf#3": { angle: 270, hash: "hash1" },
+    },
+  };
+
+  // Swap page 1 and page 2:
+  const remapSwap = buildKeyRemap("doc.pdf", { 1: 2, 2: 1, 3: 3 }, 3);
+  const remappedSwap = remapWorkspaceState(state, remapSwap);
+  assert.deepEqual(remappedSwap.sheetRotations["doc.pdf"], { angle: 180, hash: "hash1" });
+  assert.deepEqual(remappedSwap.sheetRotations["doc.pdf#2"], { angle: 90, hash: "hash1" });
+  assert.deepEqual(remappedSwap.sheetRotations["doc.pdf#3"], { angle: 270, hash: "hash1" });
+
+  // Delete page 2:
+  const remapDelete = buildKeyRemap("doc.pdf", (p) => (p === 2 ? null : p > 2 ? p - 1 : p), 3);
+  const remappedDelete = remapWorkspaceState(state, remapDelete);
+  assert.deepEqual(remappedDelete.sheetRotations["doc.pdf"], { angle: 90, hash: "hash1" });
+  assert.deepEqual(remappedDelete.sheetRotations["doc.pdf#2"], { angle: 270, hash: "hash1" });
+  assert.equal(remappedDelete.sheetRotations["doc.pdf#3"], undefined);
+});
+

@@ -294,6 +294,7 @@ export interface WorkspaceSheetState {
   layerOverrides?: Record<string, any>;
   rfis?: any[];
   sheets?: any[];
+  sheetRotations?: Record<string, { angle: number; hash: string }>;
   sheet_tabs?: string[];
   sheet_group?: string[];
   last_group?: string[];
@@ -420,6 +421,14 @@ export function remapWorkspaceState<T extends WorkspaceSheetState>(
     })
     .filter(Boolean);
 
+  const sheetRotations: Record<string, { angle: number; hash: string }> = {};
+  if (state.sheetRotations) {
+    for (const [k, v] of Object.entries(state.sheetRotations)) {
+      const nextKey = remapKey(k);
+      if (nextKey) sheetRotations[nextKey] = v;
+    }
+  }
+
   return {
     ...state,
     shapes,
@@ -436,6 +445,7 @@ export function remapWorkspaceState<T extends WorkspaceSheetState>(
     stitches,
     rfis,
     sheets,
+    sheetRotations,
     sheet_tabs: openTabs,
     sheet_group: sheetGroup,
     last_group: lastGroup,
