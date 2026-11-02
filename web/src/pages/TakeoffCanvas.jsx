@@ -23,7 +23,7 @@ import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut, metaDelete } from "../lib/store.js";
+import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut, metaDelete, sha256Hex } from "../lib/store.js";
 import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
@@ -417,6 +417,11 @@ export default function TakeoffCanvas() {
   // Stitches (#161): persisted match-line composites (lib/stitches.ts) — a
   // stitch opens as ONE panel; its members are a render-time concern only.
   const [stitches, setStitches] = useState([]);
+  // PDF rotation tracking (#591): sheetKey -> { angle, hash } where hash is original file SHA-256
+  const [sheetRotations, setSheetRotations] = useState({});
+  const sheetRotationsRef = useRef(sheetRotations);
+  sheetRotationsRef.current = sheetRotations;
+  const [rotatingKey, setRotatingKey] = useState(null); // sheetKey currently reloading rotated tiles (prevents flash)
   const [alignPt, setAlignPt] = useState(null);       // stitch-align first click (stage px) — ephemeral, never persisted
   const [zoneCheck, setZoneCheck] = useState(null);   // ephemeral zone-check region {key, pts (norm)} — never persisted (buildPayload doesn't read it)
   const [zoneExpand, setZoneExpand] = useState(null); // zone panel: condition id with materials expanded
@@ -1950,6 +1955,20 @@ export default function TakeoffCanvas() {
     onChange: (m) => { knownPagesRef.current = m; setKnownPages(m); },
   }));
   const rememberPages = useCallback((name, count) => pageCounts.remember(name, count), [pageCounts]);
+  const rotationCacheKey = "sheet_rotations:" + (projectIdFromUrl() || "local");
+  useEffect(() => {
+    metaGet(rotationCacheKey).then((r) => {
+      if (r && typeof r === "object") {
+        setSheetRotations(r);
+        sheetRotationsRef.current = r;
+      }
+    }).catch(() => {});
+  }, [rotationCacheKey]);
+  const saveSheetRotations = useCallback((rots) => {
+    setSheetRotations(rots);
+    sheetRotationsRef.current = rots;
+    metaPut(rotationCacheKey, rots).catch(() => {});
+  }, [rotationCacheKey]);
   // Import from schedule's plan set (#498), rebuilt only when the dialog's
   // read or the set's pages change: the dialog re-checks every row against
   // every sheet's index whenever this object changes, so a fresh one per
@@ -2097,7 +2116,30 @@ export default function TakeoffCanvas() {
       return;
     }
     const results = [];
-    for (const f of pdfs) { try { results.push(await store.addPdf(f)); } catch (e) { setCommitMsg(`Couldn't open ${f.name}: ${e.message || e}`); } }
+    for (const f of pdfs) {
+      try {
+        let fileToAdd = f;
+        const matchingRots = Object.entries(sheetRotationsRef.current).filter(([k, r]) => {
+          return parseSheetKey(k).file === f.name && r && r.angle > 0;
+        });
+        if (matchingRots.length > 0) {
+          const incomingBytes = await f.arrayBuffer();
+          const incomingHash = await sha256Hex(incomingBytes);
+          // Only re-apply stored rotation when the re-added bytes are the original file (#591)
+          if (incomingHash === matchingRots[0][1].hash) {
+            let curBytes = new Uint8Array(incomingBytes);
+            for (const [k, rot] of matchingRots) {
+              const { page: pageNum } = parseSheetKey(k);
+              curBytes = await rotatePdfPage(curBytes, pageNum, rot.angle);
+            }
+            fileToAdd = new File([curBytes], f.name, { type: "application/pdf" });
+          }
+        }
+        results.push(await store.addPdf(fileToAdd));
+      } catch (e) {
+        setCommitMsg(`Couldn't open ${f.name}: ${e.message || e}`);
+      }
+    }
     // A re-added name's search entry, OCR reads and thumbnail records (whose
     // text-layer flag seeds the index) start over unless its bytes are known
     // to be the same (readdEffects); a cached read goes back into the
@@ -3048,6 +3090,7 @@ export default function TakeoffCanvas() {
       }
       if (stale()) return;
       setStatus("ready");
+      setRotatingKey(null);
       // title-block labels — current page now, then once per file scan the rest so
       // the pager + pinned tabs + provenance deep-jump can show real sheet numbers
       const lead = metas.find((m) => m.file === active);
@@ -3418,6 +3461,7 @@ export default function TakeoffCanvas() {
       return;
     }
     const { file, page: targetPage } = parseSheetKey(target);
+    setRotatingKey(target);
     try {
       setCommitMsg(`Rotating ${target} ${angle}° clockwise…`);
       const origBytes = await store.loadPdfData(file);
@@ -3426,6 +3470,19 @@ export default function TakeoffCanvas() {
       const prevShapes = shapes;
       const prevMarkups = markups;
       const prevApprovals = approvals;
+
+      // Track cumulative rotation and baseline content hash (#591)
+      const prevRotations = { ...sheetRotationsRef.current };
+      const prevRot = prevRotations[target];
+      const origHash = prevRot?.hash || (await sha256Hex(origBytes));
+      const nextAngle = ((prevRot?.angle || 0) + angle) % 360;
+      const nextRotations = { ...prevRotations };
+      if (nextAngle === 0) {
+        delete nextRotations[target];
+      } else {
+        nextRotations[target] = { angle: nextAngle, hash: origHash };
+      }
+      saveSheetRotations(nextRotations);
 
       const dims = panelImgs[target] || { w: stage.w, h: stage.h };
       const rotated = rotateTakeoffOnSheet({ shapes, markups, approvals }, target, angle, dims);
@@ -3443,6 +3500,7 @@ export default function TakeoffCanvas() {
         {
           family: "page_tool",
           undo: async () => {
+            saveSheetRotations(prevRotations);
             await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
             evictDoc(file);
             forgetPages([file]);
@@ -3462,9 +3520,11 @@ export default function TakeoffCanvas() {
 
       setDocEpoch((e) => e + 1);
       await refreshSheets();
+      setTimeout(() => setRotatingKey(null), 800);
       const count = rotated.shapes?.filter((s) => s.sheet_id === target).length || 0;
       setCommitMsg(`Rotated ${target} ${angle}° clockwise — ${count} takeoff(s) followed.`);
     } catch (e) {
+      setRotatingKey(null);
       setCommitMsg(`Couldn't rotate sheet: ${e?.message || e}`);
     }
   };
@@ -3536,6 +3596,7 @@ export default function TakeoffCanvas() {
       const prevStitches = stitches;
       const prevLayerOverrides = layerOverrides;
       const prevRfis = rfis;
+      const prevRotations = sheetRotationsRef.current;
 
       const remap = buildKeyRemap(
         file,
@@ -3546,6 +3607,7 @@ export default function TakeoffCanvas() {
         {
           shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+          sheetRotations: prevRotations,
         },
         remap
       );
@@ -3567,6 +3629,7 @@ export default function TakeoffCanvas() {
       setStitches(remapped.stitches);
       setLayerOverrides(remapped.layerOverrides);
       setRfis(remapped.rfis);
+      saveSheetRotations(remapped.sheetRotations || {});
 
       const nextPage = Math.max(1, Math.min(targetPage, curDocPages - 1));
       setPage(nextPage);
@@ -3576,6 +3639,7 @@ export default function TakeoffCanvas() {
         {
           family: "page_tool",
           undo: async () => {
+            saveSheetRotations(prevRotations);
             await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
             evictDoc(file);
             forgetPages([file]);
@@ -3641,6 +3705,7 @@ export default function TakeoffCanvas() {
       const prevStitches = stitches;
       const prevLayerOverrides = layerOverrides;
       const prevRfis = rfis;
+      const prevRotations = sheetRotationsRef.current;
 
       const oldToNew = new Map();
       order.forEach((oldP, idx) => oldToNew.set(oldP, idx + 1));
@@ -3649,6 +3714,7 @@ export default function TakeoffCanvas() {
         {
           shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+          sheetRotations: prevRotations,
         },
         remap
       );
@@ -3670,12 +3736,14 @@ export default function TakeoffCanvas() {
       setStitches(remapped.stitches);
       setLayerOverrides(remapped.layerOverrides);
       setRfis(remapped.rfis);
+      saveSheetRotations(remapped.sheetRotations || {});
 
       undoStackRef.current = [
         ...undoStackRef.current,
         {
           family: "page_tool",
           undo: async () => {
+            saveSheetRotations(prevRotations);
             await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
             evictDoc(file);
             forgetPages([file]);
@@ -3866,6 +3934,7 @@ export default function TakeoffCanvas() {
       const prevStitches = stitches;
       const prevLayerOverrides = layerOverrides;
       const prevRfis = rfis;
+      const prevRotations = sheetRotationsRef.current;
       const prevActive = active;
       const prevPage = page;
 
@@ -3873,6 +3942,7 @@ export default function TakeoffCanvas() {
         {
           shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+          sheetRotations: prevRotations,
         },
         remap
       );
@@ -3899,12 +3969,14 @@ export default function TakeoffCanvas() {
       setStitches(remapped.stitches);
       setLayerOverrides(remapped.layerOverrides);
       setRfis(remapped.rfis);
+      saveSheetRotations(remapped.sheetRotations || {});
 
       undoStackRef.current = [
         ...undoStackRef.current,
         {
           family: "page_tool",
           undo: async () => {
+            saveSheetRotations(prevRotations);
             await store.removePdf(outName);
             evictDoc(outName);
             for (const s of sourceDocs) {
@@ -3980,6 +4052,7 @@ export default function TakeoffCanvas() {
         const prevStitches = stitches;
         const prevLayerOverrides = layerOverrides;
         const prevRfis = rfis;
+        const prevRotations = sheetRotationsRef.current;
 
         const remap = buildKeyRemap(
           active,
@@ -3990,6 +4063,7 @@ export default function TakeoffCanvas() {
           {
             shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
             sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+            sheetRotations: prevRotations,
           },
           remap
         );
@@ -4011,12 +4085,14 @@ export default function TakeoffCanvas() {
         setStitches(remapped.stitches);
         setLayerOverrides(remapped.layerOverrides);
         setRfis(remapped.rfis);
+        saveSheetRotations(remapped.sheetRotations || {});
 
         undoStackRef.current = [
           ...undoStackRef.current,
           {
             family: "page_tool",
             undo: async () => {
+              saveSheetRotations(prevRotations);
               await store.addPdf(new File([curBytes], active, { type: "application/pdf" }));
               evictDoc(active);
               forgetPages([active]);
@@ -10232,7 +10308,7 @@ export default function TakeoffCanvas() {
               const dn = (vn) => vn.map(([x, y]) => [x * p.img.w, y * p.img.h]);
               const label = labelFor(p);
               return (
-                <g key={p.key} transform={`translate(${p.xOffset},0)`}>
+                <g key={p.key} transform={`translate(${p.xOffset},0)`} style={{ opacity: rotatingKey === p.key ? 0 : 1, transition: "opacity 120ms ease" }}>
                   {panels.length > 1 && <text x={0} y={-26} fontSize={64} fontWeight={700} fill={darkMode ? "#9a917f" : "#6b6256"}>{label}</text>}
                   {/* Fill/stroke logic for one shape lives in shapeGlyphs.jsx,
                         shared byte-for-byte with the reference pane's read-only
