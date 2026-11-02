@@ -1,3 +1,4 @@
+import { coverageText } from './coveragePresentation.js';
 // Role-aware takeoff totaling — the same rules the original commit endpoint used
 // (see the reference test in the project history), reimplemented client-side:
 //
@@ -427,9 +428,8 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // supporting materials — per condition, then a combined buy list. Coverage
   // rates deliberately stay as entered (SF/LF-based) in metric mode — the
   // upstream metric contract; the report panel carries the footnote.
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const perCond = [];
-  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, coverageText(m, units), m.note || ""]);
   if (perCond.length) {
     lines.push("");
     lines.push(["Finish", "Material", "Qty", "Unit", "Coverage", "Note"].map(esc).join(","));

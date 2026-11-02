@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // ToolMenu — brand dropdown for the takeoff toolbar (and tab overflow).
 // STACK-style state+switcher: the trigger face can show the currently armed
 // tool while the panel switches it. Square corners, paper/ink/cobalt tokens.
@@ -73,7 +74,7 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
 
   return (
     <span ref={rootRef} style={{ position: "relative", display: "inline-flex" }}>
-      <button type="button" onClick={toggle} title={title} disabled={disabled}
+      <button type="button" onClick={toggle} title={uiText(title)} disabled={disabled}
         style={{
           display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 10px", cursor: disabled ? "default" : "pointer",
           border: `1px solid ${active ? accentColor : "var(--ink-faint)"}`,
@@ -83,7 +84,7 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
           fontFamily: "var(--f-body)", fontSize: 12.5, fontWeight: 600, lineHeight: 1,
           ...faceStyle,
         }}>
-        {face}
+        {uiText(face)}
         <span style={{ display: "inline-flex", opacity: 0.7 }}><Icon name="chevronDown" size={11} /></span>
       </button>
       {open && (
@@ -103,18 +104,18 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
           {items.map((it, i) => {
             if (it === "divider") return <div key={i} style={{ height: 1, background: "var(--ink-faint)", margin: "4px 0" }} />;
             if (it.section) return (
-              <div key={i} style={{ padding: "6px 12px 3px", fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{it.section}</div>
+              <div key={i} style={{ padding: "6px 12px 3px", fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{uiText(it.section)}</div>
             );
             if (it.note) return (
-              <div key={i} style={{ padding: "6px 12px 8px", fontSize: 11, color: "var(--ink-muted)", lineHeight: 1.4 }}>{it.note}</div>
+              <div key={i} style={{ padding: "6px 12px 8px", fontSize: 11, color: "var(--ink-muted)", lineHeight: 1.4 }}>{uiText(it.note)}</div>
             );
-            if (it.custom) return <div key={it.id || i}>{it.custom}</div>;
+            if (it.custom) return <div key={it.id || i}>{uiText(it.custom)}</div>;
             const dis = !!it.disabled;
             const checkable = "checked" in it;
             const hi = !!it.highlight;
             const fg = hi ? "var(--accent-contrast)" : it.danger ? "var(--c-danger)" : "var(--ink)";
             return (
-              <button key={it.id || i} type="button" disabled={dis} title={it.title || ""}
+              <button key={it.id || i} type="button" disabled={dis} title={uiText(it.title || "")}
                 onClick={() => { if (!dis) { if (!it.stayOpen) setOpen(false); it.onSelect?.(); } }}
                 style={{
                   display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 12px",
@@ -127,8 +128,8 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
                 onMouseLeave={(e) => { e.currentTarget.style.background = hi ? "var(--cobalt)" : it.active ? "var(--paper-cream)" : "transparent"; if (!dis) it.onHover?.(false); }}>
                 {checkable && <span style={{ display: "inline-flex", width: 15, justifyContent: "center", color: hi ? "var(--accent-contrast)" : "var(--c-positive)", visibility: it.checked ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>}
                 {(it.icon || it.iconNode) && <span style={{ display: "inline-flex", width: 17, justifyContent: "center", color: hi ? "var(--accent-contrast)" : (it.tint || fg) }}>{it.iconNode || <Icon name={it.icon} size={16} />}</span>}
-                <span style={{ flex: 1, fontFamily: "var(--f-body)", fontSize: 13, fontWeight: hi || it.active ? 600 : 400 }}>{it.label}</span>
-                {it.shortcut && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: hi ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: hi ? 0.75 : 1 }}>{keyText(it.shortcut)}</span>}
+                <span style={{ flex: 1, fontFamily: "var(--f-body)", fontSize: 13, fontWeight: hi || it.active ? 600 : 400 }}>{uiText(it.label)}</span>
+                {it.shortcut && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: hi ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: hi ? 0.75 : 1 }}>{uiText(keyText(uiText(it.shortcut)))}</span>}
               </button>
             );
           })}

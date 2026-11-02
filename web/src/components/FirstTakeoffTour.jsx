@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // The guided first takeoff — a small card docked over the canvas that walks a
 // new user through one real takeoff: open the sample plan, set its scale, arm
 // Area, trace a room, open the Report.
@@ -58,14 +59,14 @@ export default function FirstTakeoffTour({ done, step, sheetOpen, sampleBusy, on
   const finished = !step;
   return (
     <>
-      <style>{`
+      <style>{uiText(`
         @keyframes ot-tour-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
         .ot-tour-spotlight { animation: ot-tour-pulse 1.4s ease-in-out infinite }
         @media (prefers-reduced-motion: reduce) { .ot-tour-spotlight { animation: none } }
-      `}</style>
+      `)}</style>
       {!finished && <Spotlight selector={step.target} />}
       <section
-        role="region" aria-label="Guided first takeoff" aria-live="polite"
+        role="region" aria-label={uiText("Guided first takeoff")} aria-live="polite"
         style={{
           position: "fixed", left: "calc(var(--rail-w, 52px) + 14px)", bottom: 38,
           // in progress it sits under every menu and dialog; the done card rises
@@ -78,54 +79,50 @@ export default function FirstTakeoffTour({ done, step, sheetOpen, sampleBusy, on
         }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
           <span className="t-label" style={{ color: "var(--cobalt)" }}>
-            {finished ? "First takeoff — done" : `First takeoff · step ${n + 1} of ${TOUR_STEPS.length}`}
+            {uiText(finished ? "First takeoff — done" : `First takeoff · step ${n + 1} of ${TOUR_STEPS.length}`)}
           </span>
-          <button type="button" onClick={onClose} title="End the guided takeoff" aria-label="End the guided takeoff"
+          <button type="button" onClick={onClose} title={uiText("End the guided takeoff")} aria-label={uiText("End the guided takeoff")}
             style={{ background: "none", border: "none", color: "var(--ink-soft)", fontSize: 17, cursor: "pointer", lineHeight: 1, padding: 2 }}>×</button>
         </div>
 
         {finished ? (
           <div style={{ marginTop: 8 }}>
             <strong style={{ fontFamily: "var(--f-display)", fontSize: 16 }}>
-              {result?.sf ? `You measured ${fmtSf(result.sf)}${result.tag ? ` of ${result.tag}` : ""}.` : "That's a takeoff."}
+              {uiText(result?.sf ? `You measured ${fmtSf(result.sf)}${result.tag ? ` of ${result.tag}` : ""}.` : "That's a takeoff.")}
             </strong>
             <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-soft)", margin: "6px 0 12px" }}>
-              Same loop for every finish: pick a condition, trace, read the Report. Press <kbd>?</kbd> any time for the shortcuts.
-              Next, hand the same engine to an AI agent.
-            </p>
+              {uiText("Same loop for every finish: pick a condition, trace, read the Report. Press ")}<kbd>?</kbd> {uiText("any time for the shortcuts. Next, hand the same engine to an AI agent.")}</p>
             <div style={{ display: "flex", gap: 8 }}>
               <button type="button" onClick={onConnect}
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 13px", border: "none", background: "var(--cobalt)", color: "var(--accent-contrast)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
-                <ScanStar size={12} />Connect your AI
-              </button>
+                <ScanStar size={12} />{uiText("Connect your AI")}</button>
               <button type="button" onClick={onClose}
                 style={{ padding: "8px 13px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", fontSize: 12.5, cursor: "pointer" }}>
-                Close
-              </button>
+                {uiText("Close")}</button>
             </div>
           </div>
         ) : (
           <>
-            <strong style={{ display: "block", marginTop: 6, fontFamily: "var(--f-display)", fontSize: 16 }}>{step.title}</strong>
-            <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-soft)", margin: "5px 0 0" }}>{keyText(step.body)}</p>
+            <strong style={{ display: "block", marginTop: 6, fontFamily: "var(--f-display)", fontSize: 16 }}>{uiText(step.title)}</strong>
+            <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-soft)", margin: "5px 0 0" }}>{uiText(keyText(uiText(step.body)))}</p>
             {step.id === "open" && !sheetOpen && (
               <button type="button" onClick={onLoadSample} disabled={sampleBusy}
                 style={{ marginTop: 11, padding: "8px 13px", border: "none", background: "var(--cobalt)", color: "var(--accent-contrast)", fontWeight: 700, fontSize: 12.5, cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1 }}>
-                {sampleBusy ? "Loading sample…" : "Load the sample plan"}
+                {uiText(sampleBusy ? "Loading sample…" : "Load the sample plan")}
               </button>
             )}
           </>
         )}
 
-        <ol aria-label="Steps" style={{ listStyle: "none", margin: "13px 0 0", padding: "10px 0 0", borderTop: "1px solid var(--ink-faint)", display: "flex", gap: 6 }}>
+        <ol aria-label={uiText("Steps")} style={{ listStyle: "none", margin: "13px 0 0", padding: "10px 0 0", borderTop: "1px solid var(--ink-faint)", display: "flex", gap: 6 }}>
           {TOUR_STEPS.map((s, i) => {
             const isDone = doneSet.has(s.id);
             const isNow = s.id === step?.id;
             return (
-              <li key={s.id} title={s.title} aria-current={isNow ? "step" : undefined}
+              <li key={s.id} title={uiText(s.title)} aria-current={isNow ? "step" : undefined}
                 style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 10, fontFamily: "var(--f-mono)", color: isDone ? "var(--c-positive)" : isNow ? "var(--cobalt)" : "var(--ink-muted)" }}>
                 <span style={{ height: 3, background: isDone ? "var(--c-positive)" : isNow ? "var(--cobalt)" : "var(--ink-faint)" }} />
-                {isDone ? "✓ " : `${i + 1} `}{s.title.split(" ").slice(-1)[0].toLowerCase()}
+                {uiText(isDone ? "✓ " : `${i + 1} `)}{uiText(s.title.split(" ").slice(-1)[0].toLowerCase())}
               </li>
             );
           })}

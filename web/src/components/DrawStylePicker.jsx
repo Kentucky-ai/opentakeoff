@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // DrawStylePicker — the drawing-style control for the ⋯ overflow menu. A
 // select-style face (active style's mini preview + name) that opens a checked
 // list of the four styles, each with the same two-bend preview the swatches
@@ -45,17 +46,17 @@ export default function DrawStylePicker({ styles, ids, activeId, onPick }) {
   return (
     <div ref={rootRef} style={{ padding: "8px 12px", position: "relative" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", whiteSpace: "nowrap" }}>Style</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", whiteSpace: "nowrap" }}>{uiText("Style")}</span>
         <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)}
-          title="Drawing style — the look of the measuring draft (stroke, vertices, readout chip). Applies to the canvas live."
+          title={uiText("Drawing style — the look of the measuring draft (stroke, vertices, readout chip). Applies to the canvas live.")}
           style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", cursor: "pointer", border: `1px solid ${open ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "var(--paper-cream)", color: "var(--ink)", fontSize: 12.5 }}>
           <StylePreview t={active} />
-          <span style={{ flex: 1, textAlign: "left" }}>{active.label}</span>
+          <span style={{ flex: 1, textAlign: "left" }}>{uiText(active.label)}</span>
           <span style={{ color: "var(--ink-muted)", fontSize: 11, transform: open ? "rotate(180deg)" : "none" }}>▾</span>
         </button>
       </div>
       {open && (
-        <div aria-label="Drawing style"
+        <div aria-label={uiText("Drawing style")}
           style={{ position: "absolute", left: 12, right: 12, top: "100%", marginTop: 2, zIndex: 70, background: "var(--paper-cream)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "4px 0" }}>
           {ids.map((id) => {
             const t = styles[id];
@@ -67,7 +68,7 @@ export default function DrawStylePicker({ styles, ids, activeId, onPick }) {
                 onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = "var(--paper-shadow)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = on ? "var(--tint-select)" : "transparent"; }}>
                 <StylePreview t={t} />
-                <span style={{ flex: 1 }}>{t.label}</span>
+                <span style={{ flex: 1 }}>{uiText(t.label)}</span>
                 <span style={{ display: "inline-flex", width: 14, justifyContent: "center", color: "var(--cobalt)", visibility: on ? "visible" : "hidden" }} aria-hidden="true">✓</span>
               </button>
             );

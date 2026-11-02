@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 import { useEffect, useRef, useState } from "react";
 import { parseSheetKey } from "../lib/sheets";
 import { previewPixelWidth, previewViewport } from "../lib/sheetPreview.js";
@@ -37,10 +38,10 @@ export default function SheetPreview({ sheet, label, withDoc, onClose, onOpen })
     }).catch(() => { if (live) setStatus("This preview could not load. Open the sheet to inspect it on the canvas."); });
     return () => { live = false; task?.cancel(); close(); };
   }, [sheet, withDoc]);
-  return <dialog ref={dialog} className="sheet-detail-dialog" aria-label={`Sheet preview: ${label}`} onCancel={(e) => { e.preventDefault(); onClose(); }}>
-    <header><div><small>Sheet preview</small><h2>{label}</h2></div><button type="button" onClick={onClose} aria-label="Close sheet preview">×</button></header>
-    <div className="sheet-detail-toolbar"><span>Inspect before opening</span><button type="button" aria-pressed={zoom} onClick={() => setZoom(v => !v)}>{zoom ? "Fit page" : "Actual pixels"}</button><button type="button" onClick={() => onOpen(sheet)}>Open sheet</button></div>
-    {status && <p role="status">{status}</p>}
-    <div className={`sheet-detail-paper${zoom ? " actual-pixels" : ""}`}><canvas ref={canvas} aria-label={`${label} rendered page`} hidden={!!status} /></div>
+  return <dialog ref={dialog} className="sheet-detail-dialog" aria-label={uiText(`Sheet preview: ${label}`)} onCancel={(e) => { e.preventDefault(); onClose(); }}>
+    <header><div><small>{uiText("Sheet preview")}</small><h2>{uiText(label)}</h2></div><button type="button" onClick={onClose} aria-label={uiText("Close sheet preview")}>×</button></header>
+    <div className="sheet-detail-toolbar"><span>{uiText("Inspect before opening")}</span><button type="button" aria-pressed={zoom} onClick={() => setZoom(v => !v)}>{uiText(zoom ? "Fit page" : "Actual pixels")}</button><button type="button" onClick={() => onOpen(sheet)}>{uiText("Open sheet")}</button></div>
+    {status && <p role="status">{uiText(status)}</p>}
+    <div className={`sheet-detail-paper${zoom ? " actual-pixels" : ""}`}><canvas ref={canvas} aria-label={uiText(`${label} rendered page`)} hidden={!!status} /></div>
   </dialog>;
 }

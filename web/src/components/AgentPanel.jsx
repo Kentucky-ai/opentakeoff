@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Agent panel — the docked right-rail surface for the in-canvas takeoff agent.
 // An estimator types a goal; the agent (running on the user's OWN model via
 // the BYO-AI seam) aims the app's deterministic tools and stages DASHED pencil
@@ -41,8 +42,8 @@ export default function AgentPanel({
       {/* header strip — matches the docked-panel chrome */}
       {!embedded && <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
         <ScanStar size={15} working={running} />
-        <strong style={{ flex: 1, fontSize: 12.5 }}>Agent{proposals.length ? ` · ${proposals.length} pending` : ""}</strong>
-        <button onClick={onClose} title="Close panel" style={{ border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>×</button>
+        <strong style={{ flex: 1, fontSize: 12.5 }}>{uiText("Agent")}{uiText(proposals.length ? ` · ${proposals.length} pending` : "")}</strong>
+        <button onClick={onClose} title={uiText("Close panel")} style={{ border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>×</button>
       </div>}
 
       {!configured ? (
@@ -50,13 +51,10 @@ export default function AgentPanel({
         // nothing runs, no pretense. Zero network calls until the user brings a key.
         <div style={{ padding: 14, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
           <p style={{ marginTop: 0 }}>
-            Connect your model to run an agent in this workspace.
-          </p>
+            {uiText("Connect your model to run an agent in this workspace.")}</p>
           <p style={{ color: "var(--ink-muted)" }}>
-            Describe the work, inspect the resulting proposals, and accept or reject them on the plan.
-            Imported agent takeoffs are available in Measurements without a model connection.
-          </p>
-          <button className="btn-primary" onClick={onOpenSettings} style={{ marginTop: 4 }}>AI settings…</button>
+            {uiText("Describe the work, inspect the resulting proposals, and accept or reject them on the plan. Imported agent takeoffs are available in Measurements without a model connection.")}</p>
+          <button className="btn-primary" onClick={onOpenSettings} style={{ marginTop: 4 }}>{uiText("AI settings…")}</button>
         </div>
       ) : (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -64,38 +62,38 @@ export default function AgentPanel({
           <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
             <textarea
               name="agent-goal" value={goal} onChange={(e) => setGoal(e.target.value)} rows={3}
-              placeholder={'e.g. "Take off the carpet per the finish schedule on this sheet."'}
+              placeholder={uiText('e.g. "Take off the carpet per the finish schedule on this sheet."')}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } }}
               style={{ width: "100%", boxSizing: "border-box", resize: "vertical", fontSize: 12.5, fontFamily: "inherit", padding: "6px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", color: "var(--ink)", outline: "none" }}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
               {running ? (
-                <button onClick={onStop} style={{ ...ctl, color: "var(--c-danger)", fontWeight: 600 }}>■ Stop</button>
+                <button onClick={onStop} style={{ ...ctl, color: "var(--c-danger)", fontWeight: 600 }}>{uiText("■ Stop")}</button>
               ) : (
-                <button onClick={run} disabled={!goal.trim()} className="btn-primary" style={{ padding: "5px 14px", fontSize: 12, cursor: goal.trim() ? "pointer" : "default", opacity: goal.trim() ? 1 : 0.5 }}>Run</button>
+                <button onClick={run} disabled={!goal.trim()} className="btn-primary" style={{ padding: "5px 14px", fontSize: 12, cursor: goal.trim() ? "pointer" : "default", opacity: goal.trim() ? 1 : 0.5 }}>{uiText("Run")}</button>
               )}
-              <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{running ? "Working — proposals land as dashed outlines." : keyText("⌘⏎ runs. Your key, your endpoint.")}</span>
+              <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{uiText(running ? "Working — proposals land as dashed outlines." : keyText(uiText("⌘⏎ runs. Your key, your endpoint.")))}</span>
               <span style={{ flex: 1 }} />
-              <button onClick={onOpenSettings} title="AI settings (endpoint / model / key)" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-muted)" }}><Icon name="sliders" size={13} /></button>
+              <button onClick={onOpenSettings} title={uiText("AI settings (endpoint / model / key)")} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-muted)" }}><Icon name="sliders" size={13} /></button>
             </div>
           </div>
 
           {/* streaming status log */}
           <div ref={logRef} style={{ flex: 1, minHeight: 60, overflow: "auto", padding: "8px 12px", fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1.55 }}>
-            {log.length === 0 && <div style={{ color: "var(--ink-muted)", fontFamily: "inherit" }}>No run yet.</div>}
+            {log.length === 0 && <div style={{ color: "var(--ink-muted)", fontFamily: "inherit" }}>{uiText("No run yet.")}</div>}
             {log.map((e, i) => (
-              <div key={i} style={{ color: LOG_STYLE[e.kind] || "var(--ink)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginBottom: 3 }}>{e.text}</div>
+              <div key={i} style={{ color: LOG_STYLE[e.kind] || "var(--ink)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginBottom: 3 }}>{uiText(e.text)}</div>
             ))}
           </div>
 
           {/* pending proposals — the accept gate */}
           <div style={{ borderTop: "1px solid var(--ink-faint)", maxHeight: "45%", display: "flex", flexDirection: "column", minHeight: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px" }}>
-              <strong style={{ flex: 1, fontSize: 11.5 }}>Proposals · {proposals.length}</strong>
+              <strong style={{ flex: 1, fontSize: 11.5 }}>{uiText("Proposals · ")}{uiText(proposals.length)}</strong>
               {proposals.length > 0 && (
                 <>
-                  <button onClick={onAcceptAll} style={{ ...ctl, color: "var(--c-positive)", fontWeight: 600 }} title={keyText("Accept every visible proposal (⏎ on the canvas does the same)")}>Accept all</button>
-                  <button onClick={onRejectAll} style={{ ...ctl, color: "var(--c-danger)" }} title="Discard every pending proposal (local only — nothing is recorded)">Reject all</button>
+                  <button onClick={onAcceptAll} style={{ ...ctl, color: "var(--c-positive)", fontWeight: 600 }} title={uiText(keyText(uiText("Accept every visible proposal (⏎ on the canvas does the same)")))}>{uiText("Accept all")}</button>
+                  <button onClick={onRejectAll} style={{ ...ctl, color: "var(--c-danger)" }} title={uiText("Discard every pending proposal (local only — nothing is recorded)")}>{uiText("Reject all")}</button>
                 </>
               )}
             </div>
@@ -106,15 +104,15 @@ export default function AgentPanel({
                   <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 12px", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
                     <span style={{ width: 10, height: 10, flexShrink: 0, background: cond?.color || "var(--cobalt)", border: "1px solid var(--ink-faint)" }} />
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontWeight: 600 }}>{cond?.finish_tag || "?"}</span>
-                      {p.measure_role === "deduct" ? " (deduct)" : ""} · {sheetLabel(p.sheet_id)}
-                      {p.area_sf != null ? ` · ${fmtArea(p.area_sf)}` : ""}
-                      <span style={{ display: "block", color: "var(--ink-muted)", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={evidenceText(p.evidence)}>
-                        {evidenceText(p.evidence) || "no evidence"}
+                      <span style={{ fontWeight: 600 }}>{uiText(cond?.finish_tag || "?")}</span>
+                      {uiText(p.measure_role === "deduct" ? " (deduct)" : "")} · {uiText(sheetLabel(p.sheet_id))}
+                      {uiText(p.area_sf != null ? ` · ${fmtArea(p.area_sf)}` : "")}
+                      <span style={{ display: "block", color: "var(--ink-muted)", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(evidenceText(p.evidence))}>
+                        {uiText(evidenceText(p.evidence) || "no evidence")}
                       </span>
                     </span>
-                    <button onClick={() => onAccept(p.id)} style={{ ...ctl, color: "var(--c-positive)", fontWeight: 600 }} title="Accept — commits as a takeoff (origin: agent, human-reviewed)">✓</button>
-                    <button onClick={() => onReject(p.id)} style={{ ...ctl, color: "var(--c-danger)" }} title="Reject — discard this proposal (local only)">✕</button>
+                    <button onClick={() => onAccept(p.id)} style={{ ...ctl, color: "var(--c-positive)", fontWeight: 600 }} title={uiText("Accept — commits as a takeoff (origin: agent, human-reviewed)")}>✓</button>
+                    <button onClick={() => onReject(p.id)} style={{ ...ctl, color: "var(--c-danger)" }} title={uiText("Reject — discard this proposal (local only)")}>✕</button>
                   </div>
                 );
               })}

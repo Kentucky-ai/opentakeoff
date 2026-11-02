@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // RevisionsPanel — save the takeoff as a named revision, then compare any two
 // (or a revision against the live takeoff) as quantity deltas: per condition,
 // per sheet, and on the supporting-materials buy list. Addendum lands → save
@@ -112,10 +113,10 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
   const delta = (v, isEa = false, convert = (x) => x) => {
     if (Math.abs(v) < (isEa ? 0.5 : 0.05)) return <span style={{ color: "var(--ink-muted)" }}>—</span>;
     const shown = convert(v);
-    return <span style={{ fontWeight: 700, color: v > 0 ? "var(--cobalt)" : "var(--c-danger)" }}>{v > 0 ? "+" : "−"}{num(Math.abs(shown), isEa ? 0 : 1)}</span>;
+    return <span style={{ fontWeight: 700, color: v > 0 ? "var(--cobalt)" : "var(--c-danger)" }}>{uiText(v > 0 ? "+" : "−")}{uiText(num(Math.abs(shown), isEa ? 0 : 1))}</span>;
   };
   const chip = (status) => (
-    <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[status] || "var(--ink)", fontWeight: 700 }}>{status}</span>
+    <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[status] || "var(--ink)", fontWeight: 700 }}>{uiText(status)}</span>
   );
 
   const condRows = diff ? diff.conditions.filter((c) => showUnchanged || c.status !== "unchanged") : [];
@@ -129,60 +130,57 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
     <div style={{ position: "absolute", inset: 0, zIndex: 50, display: "flex", flexDirection: "column", background: "var(--paper-cream)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <Icon name="revisions" size={18} />
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>Revisions</strong>
-        <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>save the takeoff at each bid revision, then compare what moved</span>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>{uiText("Revisions")}</strong>
+        <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{uiText("save the takeoff at each bid revision, then compare what moved")}</span>
         <div style={{ flex: 1 }} />
-        <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder={defaultName()}
+        <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder={uiText(defaultName())}
           className="field-input" style={{ width: 220, padding: "5px 9px", fontSize: 13 }}
           onKeyDown={(e) => { if (e.key === "Enter") save(saveName); }} name="revision-name" />
         <button className="btn-primary" onClick={() => save(saveName)} disabled={busy}
-          title="Snapshot the current takeoff (conditions, shapes, markups) as a named revision">
-          <Icon name="revisions" size={13} />Save revision
-        </button>
-        <button onClick={onClose} title="Back to the canvas"
+          title={uiText("Snapshot the current takeoff (conditions, shapes, markups) as a named revision")}>
+          <Icon name="revisions" size={13} />{uiText("Save revision")}</button>
+        <button onClick={onClose} title={uiText("Back to the canvas")}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12.5 }}>
-          <Icon name="close" size={12} />Close
-        </button>
+          <Icon name="close" size={12} />{uiText("Close")}</button>
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
-        {err && <p style={{ maxWidth: 980, margin: "0 auto 12px", color: "var(--c-danger)", fontSize: 12.5 }}>{err}</p>}
+        {err && <p style={{ maxWidth: 980, margin: "0 auto 12px", color: "var(--c-danger)", fontSize: 12.5 }}>{uiText(err)}</p>}
 
         {/* saved revisions */}
         <div style={{ maxWidth: 980, margin: "0 auto" }}>
           {revs === null ? (
-            <div style={{ padding: 24, textAlign: "center", color: "var(--ink-muted)" }}>Loading revisions…</div>
+            <div style={{ padding: 24, textAlign: "center", color: "var(--ink-muted)" }}>{uiText("Loading revisions…")}</div>
           ) : revs.length === 0 ? (
             <div style={{ padding: "28px 24px", textAlign: "center", color: "var(--ink-muted)", border: "1px dashed var(--ink-faint)", background: "var(--paper-bright)" }}>
-              No revisions yet. Save one now, and after the next addendum lands you can compare exactly which quantities moved.
-            </div>
+              {uiText("No revisions yet. Save one now, and after the next addendum lands you can compare exactly which quantities moved.")}</div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
               <thead><tr>
-                <th style={{ ...th, textAlign: "left" }}>Revision</th>
-                <th style={th}>Saved</th>
-                <th style={th}>Conditions</th>
-                <th style={th}>Shapes</th>
-                <th style={{ ...th, textAlign: "left", paddingLeft: 18 }}>Actions</th>
+                <th style={{ ...th, textAlign: "left" }}>{uiText("Revision")}</th>
+                <th style={th}>{uiText("Saved")}</th>
+                <th style={th}>{uiText("Conditions")}</th>
+                <th style={th}>{uiText("Shapes")}</th>
+                <th style={{ ...th, textAlign: "left", paddingLeft: 18 }}>{uiText("Actions")}</th>
               </tr></thead>
               <tbody>
                 {revs.map((r) => (
                   <tr key={r.id}>
-                    <td style={{ ...td, textAlign: "left", fontWeight: 600 }}>{r.name}</td>
-                    <td style={{ ...td, color: "var(--ink-muted)" }}>{r.created_at ? new Date(r.created_at).toLocaleString() : "—"}</td>
-                    <td style={td}>{r.conditions}</td>
-                    <td style={td}>{r.shapes}</td>
+                    <td style={{ ...td, textAlign: "left", fontWeight: 600 }}>{uiText(r.name)}</td>
+                    <td style={{ ...td, color: "var(--ink-muted)" }}>{uiText(r.created_at ? new Date(r.created_at).toLocaleString() : "—")}</td>
+                    <td style={td}>{uiText(r.conditions)}</td>
+                    <td style={td}>{uiText(r.shapes)}</td>
                     <td style={{ ...td, textAlign: "left", paddingLeft: 18 }}>
                       <button className="btn-ghost" style={{ fontSize: 11.5, padding: "3px 8px" }}
                         onClick={() => { setBaseId(r.id); setCompareId("current"); }}
-                        title="Diff this revision against the live takeoff">Compare with current</button>{" "}
+                        title={uiText("Diff this revision against the live takeoff")}>{uiText("Compare with current")}</button>{uiText(" ")}
                       <button className="btn-ghost" style={{ fontSize: 11.5, padding: "3px 8px", color: confirmId === `restore:${r.id}` ? "var(--c-warning)" : undefined }}
                         onClick={() => (confirmId === `restore:${r.id}` ? restore(r.id) : setConfirmId(`restore:${r.id}`))} disabled={busy}
-                        title="Replace the live takeoff with this revision — the live takeoff is auto-backed-up first">
-                        {confirmId === `restore:${r.id}` ? "Really restore? (auto-backup saved)" : "Restore"}</button>{" "}
+                        title={uiText("Replace the live takeoff with this revision — the live takeoff is auto-backed-up first")}>
+                        {uiText(confirmId === `restore:${r.id}` ? "Really restore? (auto-backup saved)" : "Restore")}</button>{uiText(" ")}
                       <button className="btn-ghost" style={{ fontSize: 11.5, padding: "3px 8px", color: confirmId === `del:${r.id}` ? "var(--c-danger)" : undefined }}
                         onClick={() => (confirmId === `del:${r.id}` ? del(r.id) : setConfirmId(`del:${r.id}`))} disabled={busy}>
-                        {confirmId === `del:${r.id}` ? "Really delete?" : "Delete"}</button>
+                        {uiText(confirmId === `del:${r.id}` ? "Really delete?" : "Delete")}</button>
                     </td>
                   </tr>
                 ))}
@@ -195,47 +193,45 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
         {revs?.length > 0 && (
           <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, color: "var(--ink)", margin: 0 }}>Compare</h3>
+              <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, color: "var(--ink)", margin: 0 }}>{uiText("Compare")}</h3>
               <select value={baseId} onChange={(e) => setBaseId(e.target.value)} style={sel} name="compare-baseline">
-                <option value="" disabled>baseline…</option>
-                {revs.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                <option value="" disabled>{uiText("baseline…")}</option>
+                {revs.map((r) => <option key={r.id} value={r.id}>{uiText(r.name)}</option>)}
               </select>
               <span style={{ color: "var(--ink-muted)" }}>→</span>
               <select value={compareId} onChange={(e) => setCompareId(e.target.value)} style={sel} name="compare-to">
-                <option value="current">Current takeoff</option>
-                {revs.filter((r) => r.id !== baseId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                <option value="current">{uiText("Current takeoff")}</option>
+                {revs.filter((r) => r.id !== baseId).map((r) => <option key={r.id} value={r.id}>{uiText(r.name)}</option>)}
               </select>
               <div style={{ flex: 1 }} />
               <label style={{ fontSize: 12, color: "var(--ink-muted)", display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-                <input type="checkbox" checked={showUnchanged} onChange={(e) => setShowUnchanged(e.target.checked)} name="show-unchanged" />show unchanged
-              </label>
-              <button className="btn-ghost" onClick={exportCsv} disabled={!diff}><Icon name="document" size={13} />Export compare CSV</button>
+                <input type="checkbox" checked={showUnchanged} onChange={(e) => setShowUnchanged(e.target.checked)} name="show-unchanged" />{uiText("show unchanged")}</label>
+              <button className="btn-ghost" onClick={exportCsv} disabled={!diff}><Icon name="document" size={13} />{uiText("Export compare CSV")}</button>
             </div>
 
             {!diff ? (
-              <p style={{ marginTop: 14, color: "var(--ink-muted)", fontSize: 12.5 }}>Pick a baseline revision to diff.</p>
+              <p style={{ marginTop: 14, color: "var(--ink-muted)", fontSize: 12.5 }}>{uiText("Pick a baseline revision to diff.")}</p>
             ) : identical ? (
               <p style={{ marginTop: 14, color: "var(--c-positive)", fontSize: 13, fontWeight: 600 }}>
-                Identical takeoffs — no visible quantity change between “{nameOf(baseId)}” and “{nameOf(compareId)}”.
+                {uiText("Identical takeoffs — no visible quantity change between “")}{uiText(nameOf(baseId))}{uiText("” and “")}{uiText(nameOf(compareId))}”.
               </p>
             ) : (
               <>
                 {/* headline: the ordered-quantity move */}
                 <p style={{ margin: "14px 0 10px", fontSize: 13, color: "var(--ink)" }}>
-                  <strong>{nameOf(baseId)}</strong> → <strong>{nameOf(compareId)}</strong>:{" "}
-                  ordered {AU} {num(av(diff.totals.a.total_sf_net))} → <strong>{num(av(diff.totals.b.total_sf_net))}</strong>{" "}
-                  ({delta(diff.totals.deltas.total_sf_net, false, av)}) · {diff.changed} condition{diff.changed === 1 ? "" : "s"} moved
-                </p>
+                  <strong>{uiText(nameOf(baseId))}</strong> → <strong>{uiText(nameOf(compareId))}</strong>:{uiText(" ")}
+                  {uiText("ordered ")}{uiText(AU)} {uiText(num(av(diff.totals.a.total_sf_net)))} → <strong>{uiText(num(av(diff.totals.b.total_sf_net)))}</strong>{uiText(" ")}
+                  ({uiText(delta(diff.totals.deltas.total_sf_net, false, av))}) · {uiText(diff.changed)} {uiText("condition")}{uiText(diff.changed === 1 ? "" : "s")} {uiText("moved")}</p>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
                   <thead><tr>
-                    <th style={{ ...th, textAlign: "left" }}>Finish</th>
-                    <th style={{ ...th, textAlign: "left" }}>Status</th>
-                    <th style={th}>Δ Floor {AU}</th>
-                    <th style={th}>Δ Wall {AU}</th>
-                    <th style={th}>Δ Border {AU}</th>
-                    <th style={th}>Δ {LU}</th>
-                    <th style={th}>Δ EA</th>
-                    <th style={{ ...th, color: "var(--cobalt)" }}>{AU} ordered</th>
+                    <th style={{ ...th, textAlign: "left" }}>{uiText("Finish")}</th>
+                    <th style={{ ...th, textAlign: "left" }}>{uiText("Status")}</th>
+                    <th style={th}>{uiText("Δ Floor ")}{uiText(AU)}</th>
+                    <th style={th}>{uiText("Δ Wall ")}{uiText(AU)}</th>
+                    <th style={th}>{uiText("Δ Border ")}{uiText(AU)}</th>
+                    <th style={th}>Δ {uiText(LU)}</th>
+                    <th style={th}>{uiText("Δ EA")}</th>
+                    <th style={{ ...th, color: "var(--cobalt)" }}>{uiText(AU)} {uiText("ordered")}</th>
                   </tr></thead>
                   <tbody>
                     {condRows.map((c) => (
@@ -243,76 +239,76 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                         <td style={{ ...td, textAlign: "left" }}>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                             <span style={{ width: 12, height: 12, background: c.color, display: "inline-block", border: "1px solid var(--ink-faint)" }} />
-                            <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{c.finish_tag}</strong>
+                            <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{uiText(c.finish_tag)}</strong>
                           </span>
                         </td>
-                        <td style={{ ...td, textAlign: "left" }}>{chip(c.status)}</td>
-                        <td style={td}>{delta(c.deltas.floor_sf, false, av)}</td>
-                        <td style={td}>{delta(c.deltas.wall_sf, false, av)}</td>
-                        <td style={td}>{delta(c.deltas.border_sf, false, av)}</td>
-                        <td style={td}>{delta(c.deltas.lf, false, lv)}</td>
-                        <td style={td}>{delta(c.deltas.ea, true)}</td>
+                        <td style={{ ...td, textAlign: "left" }}>{uiText(chip(c.status))}</td>
+                        <td style={td}>{uiText(delta(c.deltas.floor_sf, false, av))}</td>
+                        <td style={td}>{uiText(delta(c.deltas.wall_sf, false, av))}</td>
+                        <td style={td}>{uiText(delta(c.deltas.border_sf, false, av))}</td>
+                        <td style={td}>{uiText(delta(c.deltas.lf, false, lv))}</td>
+                        <td style={td}>{uiText(delta(c.deltas.ea, true))}</td>
                         <td style={{ ...td, color: "var(--cobalt)" }}>
-                          {c.a ? num(av(c.a.total_sf_net)) : "·"} → <strong>{c.b ? num(av(c.b.total_sf_net)) : "·"}</strong>
+                          {uiText(c.a ? num(av(c.a.total_sf_net)) : "·")} → <strong>{uiText(c.b ? num(av(c.b.total_sf_net)) : "·")}</strong>
                         </td>
                       </tr>
                     ))}
-                    {!condRows.length && <tr><td colSpan={8} style={{ ...td, textAlign: "center", color: "var(--ink-muted)" }}>Only unchanged conditions — tick “show unchanged” to list them.</td></tr>}
+                    {!condRows.length && <tr><td colSpan={8} style={{ ...td, textAlign: "center", color: "var(--ink-muted)" }}>{uiText("Only unchanged conditions — tick “show unchanged” to list them.")}</td></tr>}
                   </tbody>
                 </table>
 
                 {sheetRows.length > 0 && (
                   <>
-                    <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, color: "var(--ink)", margin: "22px 0 8px" }}>By sheet</h3>
+                    <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, color: "var(--ink)", margin: "22px 0 8px" }}>{uiText("By sheet")}</h3>
                     <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
                       <thead><tr>
-                        <th style={{ ...th, textAlign: "left" }}>Sheet</th>
-                        <th style={{ ...th, textAlign: "left" }}>Status</th>
-                        <th style={th}>Δ Floor {AU}</th>
-                        <th style={th}>Δ Wall {AU}</th>
-                        <th style={th}>Δ Border {AU}</th>
-                        <th style={th}>Δ {LU}</th>
-                        <th style={th}>Δ EA</th>
+                        <th style={{ ...th, textAlign: "left" }}>{uiText("Sheet")}</th>
+                        <th style={{ ...th, textAlign: "left" }}>{uiText("Status")}</th>
+                        <th style={th}>{uiText("Δ Floor ")}{uiText(AU)}</th>
+                        <th style={th}>{uiText("Δ Wall ")}{uiText(AU)}</th>
+                        <th style={th}>{uiText("Δ Border ")}{uiText(AU)}</th>
+                        <th style={th}>Δ {uiText(LU)}</th>
+                        <th style={th}>{uiText("Δ EA")}</th>
                       </tr></thead>
                       <tbody>
                         {sheetRows.map((s) => (
                           <tr key={s.sheet_id}>
-                            <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)" }}>{revSheetLabel(s.sheet_id)}</td>
-                            <td style={{ ...td, textAlign: "left" }}>{chip(s.status)}</td>
-                            <td style={td}>{delta(s.deltas.floor_sf, false, av)}</td>
-                            <td style={td}>{delta(s.deltas.wall_sf, false, av)}</td>
-                            <td style={td}>{delta(s.deltas.border_sf, false, av)}</td>
-                            <td style={td}>{delta(s.deltas.lf, false, lv)}</td>
-                            <td style={td}>{delta(s.deltas.ea, true)}</td>
+                            <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)" }}>{uiText(revSheetLabel(s.sheet_id))}</td>
+                            <td style={{ ...td, textAlign: "left" }}>{uiText(chip(s.status))}</td>
+                            <td style={td}>{uiText(delta(s.deltas.floor_sf, false, av))}</td>
+                            <td style={td}>{uiText(delta(s.deltas.wall_sf, false, av))}</td>
+                            <td style={td}>{uiText(delta(s.deltas.border_sf, false, av))}</td>
+                            <td style={td}>{uiText(delta(s.deltas.lf, false, lv))}</td>
+                            <td style={td}>{uiText(delta(s.deltas.ea, true))}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--ink-muted)" }}>Base measured quantities per sheet — multiplier and waste apply at condition level.</p>
+                    <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--ink-muted)" }}>{uiText("Base measured quantities per sheet — multiplier and waste apply at condition level.")}</p>
                   </>
                 )}
 
                 {matRows.length > 0 && (
                   <>
-                    <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, color: "var(--ink)", margin: "22px 0 8px" }}>Buy list</h3>
+                    <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, color: "var(--ink)", margin: "22px 0 8px" }}>{uiText("Buy list")}</h3>
                     <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
                       <thead><tr>
-                        <th style={{ ...th, textAlign: "left" }}>Material</th>
-                        <th style={{ ...th, textAlign: "left" }}>Status</th>
-                        <th style={th}>Qty ({nameOf(baseId)})</th>
-                        <th style={th}>Qty ({nameOf(compareId)})</th>
+                        <th style={{ ...th, textAlign: "left" }}>{uiText("Material")}</th>
+                        <th style={{ ...th, textAlign: "left" }}>{uiText("Status")}</th>
+                        <th style={th}>{uiText("Qty (")}{uiText(nameOf(baseId))})</th>
+                        <th style={th}>{uiText("Qty (")}{uiText(nameOf(compareId))})</th>
                         <th style={th}>Δ</th>
-                        <th style={{ ...th, textAlign: "left", paddingLeft: 16 }}>Unit</th>
+                        <th style={{ ...th, textAlign: "left", paddingLeft: 16 }}>{uiText("Unit")}</th>
                       </tr></thead>
                       <tbody>
                         {matRows.map((m, i) => (
                           <tr key={i}>
-                            <td style={{ ...td, textAlign: "left" }}>{m.name}</td>
-                            <td style={{ ...td, textAlign: "left" }}>{chip(m.status)}</td>
-                            <td style={td}>{num(m.a_qty, 2)}</td>
-                            <td style={{ ...td, fontWeight: 700 }}>{num(m.b_qty, 2)}</td>
-                            <td style={td}>{delta(m.delta)}</td>
-                            <td style={{ ...td, textAlign: "left", paddingLeft: 16, color: "var(--ink-muted)" }}>{m.unit || "—"}</td>
+                            <td style={{ ...td, textAlign: "left" }}>{uiText(m.name)}</td>
+                            <td style={{ ...td, textAlign: "left" }}>{uiText(chip(m.status))}</td>
+                            <td style={td}>{uiText(num(m.a_qty, 2))}</td>
+                            <td style={{ ...td, fontWeight: 700 }}>{uiText(num(m.b_qty, 2))}</td>
+                            <td style={td}>{uiText(delta(m.delta))}</td>
+                            <td style={{ ...td, textAlign: "left", paddingLeft: 16, color: "var(--ink-muted)" }}>{uiText(m.unit || "—")}</td>
                           </tr>
                         ))}
                       </tbody>

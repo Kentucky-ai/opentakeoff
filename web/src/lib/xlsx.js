@@ -1,3 +1,4 @@
+import { coverageText } from './coveragePresentation.js';
 // Minimal SpreadsheetML (.xlsx) writer — hand-rolled, zipped with fflate
 // (already a dependency; lazy-loaded like the ingest zip path — see #16).
 // No SheetJS (stale npm package with CVEs), no exceljs (~1MB).
@@ -62,9 +63,11 @@ export function sanitizeSheetName(name, used = new Set()) {
 //   number (finite)      → <c r=… ><v>…</v></c>
 //   null / undefined / "" → cell skipped entirely
 //   anything else         → inline string, XML-escaped
-export function sheetXml(rows) {
+export function sheetXml(rows, columnWidths = []) {
   const out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'];
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'];
+  if (columnWidths.length) out.push('<cols>' + columnWidths.map((width, i) => '<col min="' + (i+1) + '" max="' + (i+1) + '" width="' + Math.max(8,Math.min(60,Number(width)||16)) + '" customWidth="1"/>').join('') + '</cols>');
+  out.push('<sheetData>');
   rows.forEach((cells, ri) => {
     out.push(`<row r="${ri + 1}">`);
     cells.forEach((v, ci) => {
@@ -102,7 +105,7 @@ const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
 
 /**
  * Zip sheet definitions into an .xlsx byte array.
- * @param {Array<{name: string, rows: any[][]}>} sheets one entry per tab, in order
+ * @param {Array<{name: string, rows: any[][], columnWidths?: number[]}>} sheets one entry per tab, in order
  * @returns {Promise<Uint8Array>} download with MIME
  *   application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
  */
@@ -143,7 +146,7 @@ export async function buildXlsx(sheets) {
     "xl/_rels/workbook.xml.rels": strToU8(wbRels),
     "xl/styles.xml": strToU8(STYLES_XML),
   };
-  sheets.forEach((s, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(s.rows)); });
+  sheets.forEach((s, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(s.rows, s.columnWidths)); });
   return zipSync(files);
 }
 
@@ -206,10 +209,9 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   if (hasMultipliers(bySheet)) bySheetRows.push([], [BY_SHEET_BASE_NOTE]);
 
   // Materials — per condition, then the combined buy list (mirrors the CSV)
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const materials = [["Finish", "Material", "Qty", "Unit", "Coverage", "Note"]];
   for (const r of rows) for (const m of (r.materials || [])) {
-    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+    materials.push([r.finish_tag, m.name, m.qty, m.unit, coverageText(m, units), m.note || ""]);
   }
   const combined = materialsSummary(rows);
   if (combined.length) {

@@ -1,3 +1,5 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
+import { useTranslation } from "../lib/i18n/index.jsx";
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from '../brand/icons.jsx';
 import { ANNOTATION_DEFAULTS, ANNOTATION_PRESETS, annotationStyle, annotationScene, pathString, box, bounds, intersects, markupBounds, shiftedMarkup, textMatches } from '../lib/annotationTools.js';
@@ -23,7 +25,7 @@ export function AnnotationInk({ markup, panel, selected=false, zoom=1 }) {
   const scene = annotationScene(markup,panel.img.w,panel.img.h);
   return <g data-annotation-id={markup.id}>
     {scene.paths.map((p,i)=><path key={i} d={pathString(p.commands)} fill={p.fill||'none'} stroke={p.stroke||'none'} strokeWidth={p.stroke?Math.max(p.width,1.2/zoom):p.width} opacity={p.opacity} strokeDasharray={p.dash?.join(' ')} strokeLinecap="round" strokeLinejoin="round" style={p.blend ? {mixBlendMode:p.blend} : undefined}/>)}
-    {scene.texts.map((t,i)=><text key={i} x={t.x} y={t.y} fill={t.color} fontSize={t.size} fontFamily="Arial, sans-serif">{t.text}</text>)}
+    {scene.texts.map((t,i)=><text key={i} x={t.x} y={t.y} fill={t.color} fontSize={t.size} fontFamily="Arial, sans-serif">{uiText(t.text)}</text>)}
     {selected && <SelectedHandles markup={markup} panel={panel} zoom={zoom}/>}
   </g>;
 }
@@ -59,6 +61,7 @@ function paint(group,m,p) {
 }
 
 export function useAnnotationWorkbench(options) {
+  const { t: tr } = useTranslation();
   const current=useRef(options);current.current=options;
   const [mode,setMode]=useState('arrow'), [selected,setSelected]=useState([]), [review,setReview]=useState(null), [editor,setEditor]=useState(null), [busy,setBusy]=useState(false);
   const [sweepKind,setSweepKind]=useState('symbols'), [presetOpen,setPresetOpen]=useState(false), [presetName,setPresetName]=useState('');
@@ -72,7 +75,7 @@ export function useAnnotationWorkbench(options) {
   const clear=()=>{gesture.current=null;anchor.current=null;cancelAnimationFrame(frame.current);paint(preview.current);};
   useEffect(()=>{clear();setReview(null);setEditor(null);setSelected([]);request.current++;setBusy(false);},[signature]);
   useEffect(()=>{if(!active){clear();request.current++;setBusy(false);}},[active]);
-  useEffect(()=>{try{localStorage.setItem(options.storageKey,JSON.stringify({styles,presets}));}catch{options.message('Tool favorites could not be saved in this browser.');}},[styles,presets,options.storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{try{localStorage.setItem(options.storageKey,JSON.stringify({styles,presets}));}catch{options.message(uiText('Tool favorites could not be saved in this browser.'));}},[styles,presets,options.storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>()=>{cancelAnimationFrame(frame.current);request.current++;},[]);
   // Reflect selections made in the existing markup list without losing multi-select.
   useEffect(()=>{if(!options.selectedId)setSelected([]);else if(!state.current.selected.includes(options.selectedId))setSelected([options.selectedId]);},[options.selectedId]);
@@ -117,23 +120,23 @@ export function useAnnotationWorkbench(options) {
     const st=state.current,o=current.current,token=++request.current,region=box(local(a,p),local(b,p));
     if(st.mode==='selection'){
       const r=box(norm(a,p),norm(b,p)),found=o.markups.filter(m=>premiumSupported(m)&&m.sheet_id===p.key&&markupBounds(m)&&intersects(markupBounds(m),r));
-      setSelected(found.map(m=>m.id));o.setSelectedId(found[0]?.id||null);o.setTool('select');o.message(`${found.length} editable markup${found.length===1?'':'s'} selected.`);return;
+      setSelected(found.map(m=>m.id));o.setSelectedId(found[0]?.id||null);o.setTool('select');o.message(uiText(`${found.length} editable markup${found.length===1?'':'s'} selected.`));return;
     }
     setBusy(true);
     try{
       if(st.mode==='highlighter'){
         const runs=await o.readText(p.key);if(token!==request.current)return;
         const chosen=runs.filter(r=>intersects(r.rect,region));
-        if(!chosen.length){o.message('No selectable PDF text in that region. Use Freehand or Straight for raster content.');return;}
+        if(!chosen.length){o.message(uiText('No selectable PDF text in that region. Use Freehand or Straight for raster content.'));return;}
         const quads=chosen.map(r=>r.quad.map(q=>[q[0]/p.img.w,q[1]/p.img.h]));
         commitNew([{...draft(a,b,p),pts:undefined,quads,rect:bounds(quads.flat()),text:chosen.map(r=>r.text).join(' ')}]);
-        o.message(`Highlighted ${chosen.length} PDF text run${chosen.length===1?'':'s'}.`);return;
+        o.message(uiText(`Highlighted ${chosen.length} PDF text run${chosen.length===1?'':'s'}.`));return;
       }
       let rows=[],warning='';
       if(st.sweepKind==='text'){
         const runs=await o.readText(p.key);if(token!==request.current)return;
         rows=textMatches(runs,region).map(r=>({rect:r.rect,text:r.text,checked:true}));
-        if(!rows.length){o.message('No matching native PDF text. Sweep over a text label; a raster image has no native text to sweep.');return;}
+        if(!rows.length){o.message(uiText('No matching native PDF text. Sweep over a text label; a raster image has no native text to sweep.'));return;}
       }else{
         const res=await o.findSymbols(p.key,region);if(token!==request.current)return;
         const r=box(...(res.seed.rect||region)),w=r[1][0]-r[0][0],h=r[1][1]-r[0][1];
@@ -145,7 +148,7 @@ export function useAnnotationWorkbench(options) {
         }
         warning=(res.complete===false||res.candidates?.dropped>0)?`${res.candidates?.dropped||0} candidates were not scored. This is a partial search.`:'';
       }
-      setReview({key:p.key,rows,warning,text:'',kind:'cloud'});o.message(`${rows.length} results — review and choose which to annotate.`);
+      setReview({key:p.key,rows,warning,text:'',kind:'cloud'});o.message(uiText(`${rows.length} results — review and choose which to annotate.`));
     }catch(e){o.message(e.message||String(e));}finally{if(token===request.current)setBusy(false);}
   }
   const finish=(a,b,p)=>{
@@ -182,7 +185,7 @@ export function useAnnotationWorkbench(options) {
       return;
     }
     if(!st.active)return;
-    stop(e);if(anchor.current&&anchor.current.p.key!==p.key){clear();o.message('Keep both points on the same sheet.');return;}if(st.mode==='highlighter'&&st.style.mode==='freehand')gesture.current={kind:'ink',p,start:q,points:[q]};
+    stop(e);if(anchor.current&&anchor.current.p.key!==p.key){clear();o.message(uiText('Keep both points on the same sheet.'));return;}if(st.mode==='highlighter'&&st.style.mode==='freehand')gesture.current={kind:'ink',p,start:q,points:[q]};
     else gesture.current={kind:'draw',p,start:anchor.current?.point||q,second:!!anchor.current,down:q};
     e.currentTarget.setPointerCapture(e.pointerId);
   };
@@ -209,7 +212,7 @@ export function useAnnotationWorkbench(options) {
     if(g.kind==='move'){if(g.delta&&travel>3)commitEdit(g.rows.map(m=>shiftedMarkup(m,...g.delta)));return;}
     if(g.kind==='handle'){if(g.end&&travel>1)commitEdit([g.live]);return;}
     if(g.kind==='ink'){if(g.points.length>1)commitNew([{...draft(g.start,q,p),pts:g.points.map(v=>norm(v,p))}]);return;}
-    if(!panelFor(q)||panelFor(q).key!==p.key){anchor.current=null;o.message('Keep both corners on the same sheet.');return;}
+    if(!panelFor(q)||panelFor(q).key!==p.key){anchor.current=null;o.message(uiText('Keep both corners on the same sheet.'));return;}
     if(travel>4){anchor.current=null;finish(g.start,q,p);}else if(g.second){anchor.current=null;}else anchor.current={point:g.start,p};
   };
   const onDouble=e=>{
@@ -224,60 +227,61 @@ export function useAnnotationWorkbench(options) {
     const made=chosen.map(r=>{const a=[Math.max(0,r.rect[0][0]-pad),Math.max(0,r.rect[0][1]-pad)],b=[Math.min(p.img.w,r.rect[1][0]+pad),Math.min(p.img.h,r.rect[1][1]+pad)];
       const base={sheet_id:p.key,color:style.color,annotation_style:style,text:review.text.trim(),source_region:[a.map((x,i)=>x/(i?p.img.h:p.img.w)),b.map((x,i)=>x/(i?p.img.h:p.img.w))]};
       return review.kind==='cloud'?{...base,type:'cloud',rect:base.source_region}:{...base,type:'callout',target:[(a[0]+b[0])/2/p.img.w,(a[1]+b[1])/2/p.img.h],at:[Math.min(.8,(b[0]+20)/p.img.w),Math.max(0,a[1]/p.img.h)]};});
-    if(!made.length)return;commitNew(made);setReview(null);options.setTool('select');options.message(`Added ${made.length} ${review.kind==='cloud'?'clouds':'notes'} — undo removes the whole batch.`);
+    if(!made.length)return;commitNew(made);setReview(null);options.setTool('select');options.message(uiText(`Added ${made.length} ${review.kind==='cloud'?'clouds':'notes'} — undo removes the whole batch.`));
   };
   const shownStyle=!active&&selectedRows.length?annotationStyle({...style,...selectedRows[0].annotation_style,color:selectedRows[0].color||style.color}):style;
   const controls=(active||selectedRows.length>0)&&!editor&&!review;
   // Compact (workspace) chrome: the tool row folds into one split button in the
   // Condition row — face re-arms the last tool, caret lists them all.
-  const [lastKey,lastLabel,lastIcon]=tools.find(t=>t[0]===mode)||tools[0];
-  const control=<span className="annotation-split" role="group" aria-label="Annotate">
-    <button type="button" aria-pressed={active} disabled={!options.ready} onClick={()=>active?options.setTool('select'):arm(lastKey)} title={active?`${lastLabel} armed — click to put it down`:`Annotate — ${lastLabel}`}>{toolIcon(lastIcon)}<span>{lastLabel}</span></button>
-    <ToolMenu title="All annotate tools" disabled={!options.ready} onOpenChange={options.onMenuDepth} faceStyle={{padding:'4px 5px'}} face={null} items={[
-      {section:'Annotate'},
-      ...tools.map(([key,label,icon])=>({id:key,checked:active&&mode===key,iconNode:toolIcon(icon),label,onSelect:()=>arm(key),title:key==='selection'?'Sweep a box to select editable markups; Shift-click adds individual marks':label})),
+  const localizedTools=tools.map(([key,label,icon])=>[key,tr(label),icon]);
+  const [lastKey,lastLabel,lastIcon]=localizedTools.find(t=>t[0]===mode)||tools[0];
+  const control=<span className="annotation-split" role="group" aria-label={tr("Annotate")}>
+    <button type="button" aria-pressed={active} disabled={!options.ready} onClick={()=>active?options.setTool('select'):arm(lastKey)} title={uiText(active?`${lastLabel} — ${tr("Select")}`:`${tr("Annotate")} — ${lastLabel}`)}>{uiText(toolIcon(lastIcon))}<span>{uiText(lastLabel)}</span></button>
+    <ToolMenu title={tr("All annotate tools")} disabled={!options.ready} onOpenChange={options.onMenuDepth} faceStyle={{padding:'4px 5px'}} face={null} items={[
+      {section:tr("Annotate")},
+      ...localizedTools.map(([key,label,icon])=>({id:key,checked:active&&mode===key,iconNode:toolIcon(icon),label,onSelect:()=>arm(key),title:key==='selection'?'Sweep a box to select editable markups; Shift-click adds individual marks':label})),
       'divider',
-      {id:'favorites',checked:presetOpen,icon:'stamp',label:'Favorites',onSelect:()=>setPresetOpen(v=>!v),title:'Saved tool styles'},
+      {id:'favorites',checked:presetOpen,icon:'stamp',label:tr("Favorites"),onSelect:()=>setPresetOpen(v=>!v),title:tr("Saved tool styles")},
     ]}/>
   </span>;
   const hasRows=!options.compact||presetOpen||controls||editor||review;
   const toolbar=!hasRows?null:<div className="annotation-workbench" onKeyDown={e=>e.stopPropagation()}>
-    {!options.compact&&<div className="annotation-tool-row" role="toolbar" aria-label="Annotation tools">
-      <span className="annotation-caption">Annotate</span>
-      {tools.map(([key,label,icon])=><button key={key} type="button" aria-pressed={active&&mode===key} disabled={!options.ready} onClick={()=>arm(key)} title={key==='selection'?'Sweep a box to select editable markups; Shift-click adds individual marks':label}>{toolIcon(icon)}<span>{label}</span></button>)}
+    {!options.compact&&<div className="annotation-tool-row" role="toolbar" aria-label={tr("Annotation tools")}>
+      <span className="annotation-caption">{tr("Annotate")}</span>
+      {localizedTools.map(([key,label,icon])=><button key={key} type="button" aria-pressed={active&&mode===key} disabled={!options.ready} onClick={()=>arm(key)} title={uiText(key==='selection'?'Sweep a box to select editable markups; Shift-click adds individual marks':label)}>{uiText(toolIcon(icon))}<span>{uiText(label)}</span></button>)}
       <span className="annotation-divider"/>
-      <button type="button" aria-expanded={presetOpen} onClick={()=>setPresetOpen(v=>!v)}><Icon name="stamp" size={17}/>Favorites</button>
-      {selectedRows.length>0&&!active&&<span className="annotation-count">{selectedRows.length} selected</span>}
-      {busy&&<span role="status" className="annotation-hint">Reading this sheet…</span>}
+      <button type="button" aria-expanded={presetOpen} onClick={()=>setPresetOpen(v=>!v)}><Icon name="stamp" size={17}/>{tr("Favorites")}</button>
+      {selectedRows.length>0&&!active&&<span className="annotation-count">{uiText(selectedRows.length)} {uiText("selected")}</span>}
+      {busy&&<span role="status" className="annotation-hint">{uiText("Reading this sheet…")}</span>}
     </div>}
     {presetOpen&&<div className="annotation-favorites">
-      {presets.map(p=><button key={p.id} onClick={()=>{arm(p.tool);setStyles(s=>({...s,[p.tool]:annotationStyle(p.style)}));setPresetOpen(false);}}><i style={{background:annotationStyle(p.style).color}}/>{p.name}</button>)}
-      <input aria-label="Favorite name" placeholder="Name this style" maxLength={40} value={presetName} onChange={e=>setPresetName(e.target.value)}/>
-      <button disabled={!presetName.trim()||presets.length>=50} onClick={()=>{setPresets(ps=>[...ps,{id:id(),name:presetName.trim(),tool:mode,style:shownStyle}]);setPresetName('');}}>Save favorite</button>
+      {presets.map(p=><button key={p.id} onClick={()=>{arm(p.tool);setStyles(s=>({...s,[p.tool]:annotationStyle(p.style)}));setPresetOpen(false);}}><i style={{background:annotationStyle(p.style).color}}/>{uiText(p.name)}</button>)}
+      <input aria-label={uiText("Favorite name")} placeholder={uiText("Name this style")} maxLength={40} value={presetName} onChange={e=>setPresetName(e.target.value)}/>
+      <button disabled={!presetName.trim()||presets.length>=50} onClick={()=>{setPresets(ps=>[...ps,{id:id(),name:presetName.trim(),tool:mode,style:shownStyle}]);setPresetName('');}}>{uiText("Save favorite")}</button>
     </div>}
-    {controls&&<div className="annotation-properties" aria-label="Annotation properties">
-      {options.compact&&selectedRows.length>0&&!active&&<span className="annotation-count">{selectedRows.length} selected</span>}
-      {options.compact&&busy&&<span role="status" className="annotation-hint" style={{marginLeft:0}}>Reading this sheet…</span>}
-      <div className="annotation-swatches">{colors.map(c=><button key={c} aria-label={`Ink ${c}`} aria-pressed={shownStyle.color===c} style={{'--swatch':c}} onClick={()=>setStyle({color:c})}/>)}</div>
-      <label>Weight<select aria-label="Annotation line weight" value={shownStyle.stroke_pt} onChange={e=>setStyle({stroke_pt:+e.target.value})}>{[.5,1,1.5,2,3,4,6].map(v=><option key={v} value={v}>{v} pt</option>)}</select></label>
-      <label>Line<select aria-label="Annotation line style" value={shownStyle.line_style} onChange={e=>setStyle({line_style:e.target.value})}>{['solid','dashed','dotted'].map(v=><option key={v}>{v}</option>)}</select></label>
-      {(mode==='arrow'||mode==='callout'||selectedRows.some(m=>m.type==='arrow'||m.type==='callout'))&&<><label>Head<select aria-label="Arrowhead" value={shownStyle.head} onChange={e=>setStyle({head:e.target.value})}>{['filled','open','none'].map(v=><option key={v}>{v}</option>)}</select></label><label><input type="checkbox" checked={shownStyle.both} onChange={e=>setStyle({both:e.target.checked})}/>Both ends</label></>}
-      {(mode==='highlighter'||selectedRows.some(m=>m.type==='highlight'))&&<><div className="annotation-segments">{['freehand','straight','text'].map(v=><button key={v} aria-pressed={shownStyle.mode===v} onClick={()=>{clear();setStyle({mode:v});}}>{v}</button>)}</div><label>Width<select aria-label="Marker width" value={shownStyle.width_pt} onChange={e=>setStyle({width_pt:+e.target.value})}>{[4,6,10,16,24,40].map(v=><option key={v} value={v}>{v} pt</option>)}</select></label><label>Opacity<input aria-label="Highlight opacity" type="range" min=".1" max=".75" step=".05" value={shownStyle.opacity} onChange={e=>setStyle({opacity:+e.target.value})}/></label></>}
-      {(mode==='callout'||mode==='cloud'||selectedRows.some(m=>['cloud','callout','text'].includes(m.type)))&&<label>Text<select aria-label="Note text size" value={shownStyle.font_pt} onChange={e=>setStyle({font_pt:+e.target.value})}>{[6,8,10,12,16,20,24].map(v=><option key={v} value={v}>{v} pt</option>)}</select></label>}
-      {mode==='sweep'&&active&&<div className="annotation-segments">{[['symbols','Drawn symbols'],['text','PDF text']].map(([v,label])=><button key={v} aria-pressed={sweepKind===v} onClick={()=>{clear();setSweepKind(v);}}>{label}</button>)}</div>}
-      {selectedRows.length===1&&!active&&['cloud','callout','text'].includes(selectedRows[0].type)&&<button onClick={()=>setEditor({markup:selectedRows[0],text:selectedRows[0].text||'',fresh:false})}>Edit note</button>}
-      <span className="annotation-hint">{!active?'Drag handles to reshape · Shift-click to add':mode==='sweep'?'Box one example → review matches → apply':mode==='selection'?'Box the markups to edit together':mode==='highlighter'&&style.mode==='freehand'?'Drag to highlight · Esc to finish':mode==='highlighter'&&style.mode==='text'?'Box native text to highlight its runs':mode==='arrow'?'Target first, then tail · Shift constrains angle':'Click two points or drag · Esc cancels'}</span>
+    {controls&&<div className="annotation-properties" aria-label={uiText("Annotation properties")}>
+      {options.compact&&selectedRows.length>0&&!active&&<span className="annotation-count">{uiText(selectedRows.length)} {uiText("selected")}</span>}
+      {options.compact&&busy&&<span role="status" className="annotation-hint" style={{marginLeft:0}}>{uiText("Reading this sheet…")}</span>}
+      <div className="annotation-swatches">{colors.map(c=><button key={c} aria-label={uiText(`Ink ${c}`)} aria-pressed={shownStyle.color===c} style={{'--swatch':c}} onClick={()=>setStyle({color:c})}/>)}</div>
+      <label>{uiText("Weight")}<select aria-label={uiText("Annotation line weight")} value={shownStyle.stroke_pt} onChange={e=>setStyle({stroke_pt:+e.target.value})}>{[.5,1,1.5,2,3,4,6].map(v=><option key={v} value={v}>{uiText(v)} {uiText("pt")}</option>)}</select></label>
+      <label>{uiText("Line")}<select aria-label={uiText("Annotation line style")} value={shownStyle.line_style} onChange={e=>setStyle({line_style:e.target.value})}>{['solid','dashed','dotted'].map(v=><option key={v} value={v}>{uiText(v)}</option>)}</select></label>
+      {(mode==='arrow'||mode==='callout'||selectedRows.some(m=>m.type==='arrow'||m.type==='callout'))&&<><label>{uiText("Head")}<select aria-label={uiText("Arrowhead")} value={shownStyle.head} onChange={e=>setStyle({head:e.target.value})}>{['filled','open','none'].map(v=><option key={v} value={v}>{uiText(v)}</option>)}</select></label><label><input type="checkbox" checked={shownStyle.both} onChange={e=>setStyle({both:e.target.checked})}/>{uiText("Both ends")}</label></>}
+      {(mode==='highlighter'||selectedRows.some(m=>m.type==='highlight'))&&<><div className="annotation-segments">{['freehand','straight','text'].map(v=><button key={v} aria-pressed={shownStyle.mode===v} onClick={()=>{clear();setStyle({mode:v});}}>{uiText(v)}</button>)}</div><label>{uiText("Width")}<select aria-label={uiText("Marker width")} value={shownStyle.width_pt} onChange={e=>setStyle({width_pt:+e.target.value})}>{[4,6,10,16,24,40].map(v=><option key={v} value={v}>{uiText(v)} {uiText("pt")}</option>)}</select></label><label>{uiText("Opacity")}<input aria-label={uiText("Highlight opacity")} type="range" min=".1" max=".75" step=".05" value={shownStyle.opacity} onChange={e=>setStyle({opacity:+e.target.value})}/></label></>}
+      {(mode==='callout'||mode==='cloud'||selectedRows.some(m=>['cloud','callout','text'].includes(m.type)))&&<label>{uiText("Text")}<select aria-label={uiText("Note text size")} value={shownStyle.font_pt} onChange={e=>setStyle({font_pt:+e.target.value})}>{[6,8,10,12,16,20,24].map(v=><option key={v} value={v}>{uiText(v)} {uiText("pt")}</option>)}</select></label>}
+      {mode==='sweep'&&active&&<div className="annotation-segments">{[['symbols','Drawn symbols'],['text','PDF text']].map(([v,label])=><button key={v} aria-pressed={sweepKind===v} onClick={()=>{clear();setSweepKind(v);}}>{uiText(label)}</button>)}</div>}
+      {selectedRows.length===1&&!active&&['cloud','callout','text'].includes(selectedRows[0].type)&&<button onClick={()=>setEditor({markup:selectedRows[0],text:selectedRows[0].text||'',fresh:false})}>{uiText("Edit note")}</button>}
+      <span className="annotation-hint">{uiText(!active?'Drag handles to reshape · Shift-click to add':mode==='sweep'?'Box one example → review matches → apply':mode==='selection'?'Box the markups to edit together':mode==='highlighter'&&style.mode==='freehand'?'Drag to highlight · Esc to finish':mode==='highlighter'&&style.mode==='text'?'Box native text to highlight its runs':mode==='arrow'?'Target first, then tail · Shift constrains angle':'Click two points or drag · Esc cancels')}</span>
     </div>}
-    {editor&&<div className="annotation-note-editor"><label>{editor.markup.type==='cloud'?'Cloud note (optional)':'Note'}<textarea autoFocus aria-label="Annotation note" rows={2} maxLength={2000} value={editor.text} onChange={e=>setEditor(v=>({...v,text:e.target.value}))} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')applyNote();if(e.key==='Escape'){setEditor(null);paint(preview.current);}}}/></label><button className="annotation-primary" disabled={editor.markup.type==='callout'&&!editor.text.trim()} onClick={applyNote}>Apply note</button><button onClick={()=>{setEditor(null);paint(preview.current);}}>Cancel</button><span className="annotation-hint">⌘/Ctrl + Enter to apply</span></div>}
-    {review&&<div className="annotation-review" role="region" aria-label="Confirm Sweep matches">
-      <div className="annotation-review-heading"><strong>{review.rows.filter(r=>r.checked).length} of {review.rows.length} selected</strong><span>Check the list or click numbered results on the sheet.</span>{review.warning&&<span role="status">{review.warning}</span>}<button onClick={()=>setReview(r=>({...r,rows:r.rows.map(v=>({...v,checked:!v.held}))}))}>Select matches</button><button onClick={()=>setReview(r=>({...r,rows:r.rows.map(v=>({...v,checked:false}))}))}>Clear selection</button></div>
-      <div className="annotation-match-list" role="group" aria-label="Sweep matches">{review.rows.map((r,i)=><label key={i} className={r.checked?'is-selected':''}><input type="checkbox" checked={r.checked} aria-label={`Match ${i+1}: ${r.text}`} onChange={()=>toggleReview(i)}/><span className="annotation-match-number">{i+1}</span><span>{r.text}</span>{r.held&&<small>Check before including</small>}</label>)}</div>
-      <div className="annotation-review-actions"><label>Add<select aria-label="Sweep annotation" value={review.kind} onChange={e=>setReview(r=>({...r,kind:e.target.value}))}><option value="cloud">Cloud + optional note</option><option value="callout">Note with leader</option></select></label><input aria-label="Sweep note" placeholder={review.kind==='cloud'?'Optional note for each match':'Note for each match'} maxLength={2000} value={review.text} onChange={e=>setReview(r=>({...r,text:e.target.value}))}/><button className="annotation-primary" disabled={!review.rows.some(r=>r.checked)||(review.kind==='callout'&&!review.text.trim())} onClick={applyReview}>Apply to selected</button><button onClick={()=>setReview(null)}>Cancel</button></div>
+    {editor&&<div className="annotation-note-editor"><label>{uiText(editor.markup.type==='cloud'?'Cloud note (optional)':'Note')}<textarea autoFocus aria-label={uiText("Annotation note")} rows={2} maxLength={2000} value={editor.text} onChange={e=>setEditor(v=>({...v,text:e.target.value}))} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')applyNote();if(e.key==='Escape'){setEditor(null);paint(preview.current);}}}/></label><button className="annotation-primary" disabled={editor.markup.type==='callout'&&!editor.text.trim()} onClick={applyNote}>{uiText("Apply note")}</button><button onClick={()=>{setEditor(null);paint(preview.current);}}>{uiText("Cancel")}</button><span className="annotation-hint">{uiText("⌘/Ctrl + Enter to apply")}</span></div>}
+    {review&&<div className="annotation-review" role="region" aria-label={uiText("Confirm Sweep matches")}>
+      <div className="annotation-review-heading"><strong>{uiText(review.rows.filter(r=>r.checked).length)} {uiText("of ")}{uiText(review.rows.length)} {uiText("selected")}</strong><span>{uiText("Check the list or click numbered results on the sheet.")}</span>{review.warning&&<span role="status">{uiText(review.warning)}</span>}<button onClick={()=>setReview(r=>({...r,rows:r.rows.map(v=>({...v,checked:!v.held}))}))}>{uiText("Select matches")}</button><button onClick={()=>setReview(r=>({...r,rows:r.rows.map(v=>({...v,checked:false}))}))}>{uiText("Clear selection")}</button></div>
+      <div className="annotation-match-list" role="group" aria-label={uiText("Sweep matches")}>{review.rows.map((r,i)=><label key={i} className={r.checked?'is-selected':''}><input type="checkbox" checked={r.checked} aria-label={uiText(`Match ${i+1}: ${r.text}`)} onChange={()=>toggleReview(i)}/><span className="annotation-match-number">{uiText(i+1)}</span><span>{uiText(r.text)}</span>{r.held&&<small>{uiText("Check before including")}</small>}</label>)}</div>
+      <div className="annotation-review-actions"><label>{uiText("Add")}<select aria-label={uiText("Sweep annotation")} value={review.kind} onChange={e=>setReview(r=>({...r,kind:e.target.value}))}><option value="cloud">{uiText("Cloud + optional note")}</option><option value="callout">{uiText("Note with leader")}</option></select></label><input aria-label={uiText("Sweep note")} placeholder={uiText(review.kind==='cloud'?'Optional note for each match':'Note for each match')} maxLength={2000} value={review.text} onChange={e=>setReview(r=>({...r,text:e.target.value}))}/><button className="annotation-primary" disabled={!review.rows.some(r=>r.checked)||(review.kind==='callout'&&!review.text.trim())} onClick={applyReview}>{uiText("Apply to selected")}</button><button onClick={()=>setReview(null)}>{uiText("Cancel")}</button></div>
     </div>}
   </div>;
   const layer=<g>
     {options.tool==='select'&&selectedRows.filter(m=>!m.annotation_style).map(m=>{const p=options.panels.find(p=>p.key===m.sheet_id);return p?<g key={m.id} transform={`translate(${p.xOffset},0)`}><SelectedHandles markup={m} panel={p} zoom={options.zoom}/></g>:null;})}
-    {review&&(()=>{const p=options.panels.find(p=>p.key===review.key);if(!p)return null;return <g transform={`translate(${p.xOffset},0)`}>{review.rows.map((r,i)=>{const [a,b]=r.rect,z=options.zoom;return <g key={i} role="checkbox" tabIndex={0} aria-label={`Sheet match ${i+1}: ${r.text}`} aria-checked={r.checked} onKeyDown={e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();e.stopPropagation();toggleReview(i);}}} style={{pointerEvents:'all',cursor:'pointer'}} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggleReview(i);}}><rect x={a[0]-4/z} y={a[1]-4/z} width={Math.max(10/z,b[0]-a[0]+8/z)} height={Math.max(10/z,b[1]-a[1]+8/z)} fill={r.checked?'#2563eb':'#ed9a23'} fillOpacity={r.checked?.13:.05} stroke={r.checked?'#2563eb':'#ed9a23'} strokeWidth={2/z} strokeDasharray={r.checked?undefined:`${4/z} ${3/z}`}/><text x={a[0]} y={a[1]-8/z} fontSize={11/z} fill={r.checked?'#2563eb':'#b66b00'}>{i+1}{r.held?' ?':''}</text></g>;})}</g>;})()}
+    {review&&(()=>{const p=options.panels.find(p=>p.key===review.key);if(!p)return null;return <g transform={`translate(${p.xOffset},0)`}>{review.rows.map((r,i)=>{const [a,b]=r.rect,z=options.zoom;return <g key={i} role="checkbox" tabIndex={0} aria-label={uiText(`Sheet match ${i+1}: ${r.text}`)} aria-checked={r.checked} onKeyDown={e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();e.stopPropagation();toggleReview(i);}}} style={{pointerEvents:'all',cursor:'pointer'}} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggleReview(i);}}><rect x={a[0]-4/z} y={a[1]-4/z} width={Math.max(10/z,b[0]-a[0]+8/z)} height={Math.max(10/z,b[1]-a[1]+8/z)} fill={r.checked?'#2563eb':'#ed9a23'} fillOpacity={r.checked?.13:.05} stroke={r.checked?'#2563eb':'#ed9a23'} strokeWidth={2/z} strokeDasharray={r.checked?undefined:`${4/z} ${3/z}`}/><text x={a[0]} y={a[1]-8/z} fontSize={11/z} fill={r.checked?'#2563eb':'#b66b00'}>{uiText(i+1)}{uiText(r.held?' ?':'')}</text></g>;})}</g>;})()}
     <g ref={preview} style={{pointerEvents:'none'}}/>
   </g>;
   return {toolbar,control,layer,selected,active,onPointerDownCapture:onDown,onPointerMoveCapture:onMove,onPointerUpCapture:onUp,onDoubleClickCapture:onDouble,onPointerCancelCapture:e=>{if(gesture.current){stop(e);clear();}},render:(m,p)=>m.annotation_style&&premiumSupported(m)?<AnnotationInk key={m.id} markup={m} panel={p} selected={options.tool==='select'&&selected.includes(m.id)} zoom={options.zoom}/>:null};

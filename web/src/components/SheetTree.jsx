@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { buildTree, filterTree, visibleRows, nextFocus, treeKey, rowTitle } from "../lib/sheetTree.ts";
@@ -87,9 +88,9 @@ export function SheetTree({ items, current, onSelect, namer, countKnown, query, 
   for (const r of rows) { const k = r.parent ?? ""; const i = (sizes.get(k) ?? 0) + 1; sizes.set(k, i); place.set(r.id, [i, k]); }
   for (const [id, [i, k]] of place) place.set(id, [i, sizes.get(k)]);
 
-  if (!items.length) return <div className="calm-sheet-tree"><p>Open a plan to see its sheets here.</p></div>;
+  if (!items.length) return <div className="calm-sheet-tree"><p>{uiText("Open a plan to see its sheets here.")}</p></div>;
   return <div className="calm-sheet-tree">
-    <div role="tree" aria-label="Sheets" ref={treeRef} onKeyDown={onKeyDown}>
+    <div role="tree" aria-label={uiText("Sheets")} ref={treeRef} onKeyDown={onKeyDown}>
       {rows.map((r) => {
         const n = r.node;
         const common = {
@@ -100,23 +101,23 @@ export function SheetTree({ items, current, onSelect, namer, countKnown, query, 
           onMouseDown: noFocus,
         };
         if (n.kind === "folder") {
-          return <div key={r.id} {...common} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={`${n.file} · ${n.pages} sheets`} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
-            <Icon name="chevronRight" size={14} /><span><strong>{base(n.file)}</strong></span><small>{n.pages} sheets</small>{n.shapes > 0 && <em>{n.shapes}</em>}
+          return <div key={r.id} {...common} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={uiText(`${n.file} · ${n.pages} sheets`)} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
+            <Icon name="chevronRight" size={14} /><span><strong>{uiText(base(n.file))}</strong></span><small>{uiText(n.pages)} {uiText("sheets")}</small>{n.shapes > 0 && <em>{uiText(n.shapes)}</em>}
           </div>;
         }
-        return <div key={r.id} {...common} className={`calm-tree-sheet${r.depth === 2 ? " is-child" : ""}`} aria-current={n.key === current ? "page" : undefined} title={rowTitle(n)} onClick={() => { setFocusId(r.id); pick(n.key); }}>
+        return <div key={r.id} {...common} className={`calm-tree-sheet${r.depth === 2 ? " is-child" : ""}`} aria-current={n.key === current ? "page" : undefined} title={uiText(rowTitle(n))} onClick={() => { setFocusId(r.id); pick(n.key); }}>
           <Icon name="document" size={17} />
           <span>
-            <strong className={n.number ? "calm-sheet-number" : undefined}>{n.number ?? n.label}</strong>
-            {n.kind !== "sheet" && <small>{n.file}</small>}
+            <strong className={n.number ? "calm-sheet-number" : undefined}>{uiText(n.number ?? n.label)}</strong>
+            {n.kind !== "sheet" && <small>{uiText(n.file)}</small>}
           </span>
           {/* an unnumbered row's label already starts with its level */}
-          {n.level && n.number && <i className="calm-level-chip">{n.level}</i>}
-          {n.shapes > 0 && <em>{n.shapes}</em>}
+          {n.level && n.number && <i className="calm-level-chip">{uiText(n.level)}</i>}
+          {n.shapes > 0 && <em>{uiText(n.shapes)}</em>}
         </div>;
       })}
     </div>
-    {!rows.length && <p>No sheets match your search.</p>}
-    {query.trim() && unread > 0 && <p className="calm-tree-note">{unread} file{unread === 1 ? " isn't" : "s aren't"} fully numbered yet; open {unread === 1 ? "it" : "them"} to read {unread === 1 ? "its" : "their"} sheet numbers. <button type="button" onClick={onSearchAll}>Search all sheet text</button></p>}
+    {!rows.length && <p>{uiText("No sheets match your search.")}</p>}
+    {query.trim() && unread > 0 && <p className="calm-tree-note">{uiText(unread)} {uiText("file")}{uiText(unread === 1 ? " isn't" : "s aren't")} {uiText("fully numbered yet; open ")}{uiText(unread === 1 ? "it" : "them")} {uiText("to read ")}{uiText(unread === 1 ? "its" : "their")} {uiText("sheet numbers. ")}<button type="button" onClick={onSearchAll}>{uiText("Search all sheet text")}</button></p>}
   </div>;
 }

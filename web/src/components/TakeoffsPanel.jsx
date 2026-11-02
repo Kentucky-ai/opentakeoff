@@ -1,3 +1,7 @@
+import MaterialUnitSelector, { useMaterialUnit } from './MaterialUnitSelector.jsx';
+import { liquidFactor } from '../lib/materialUnits.js';
+import { getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
+import { useTranslation as useUiLocale } from "../lib/i18n/index.jsx";
 // TakeoffsPanel — the docked conditions panel on the canvas's right edge
 // (reflows the canvas, not an overlay): every condition with its running
 // totals and inline properties, plus the template Library, material-library
@@ -92,7 +96,7 @@ const btnClearX = { border: "none", background: "none", color: "var(--ink-muted)
 function GroutParamInput({ name, value, title, min = 0, max, width = 52, override, onCommit }) {
   const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
   return (
-    <input name={name} type="number" min={min || 0} max={max} step="any" title={title}
+    <input name={name} type="number" min={min || 0} max={max} step="any" title={uiText(title)}
       value={draft ?? (value > 0 ? String(value) : "")}
       onChange={(e) => { const t = e.target.value; setDraft(t); const v = draftCommitValue(t, min, max); if (v != null) onCommit(v); }}
       onBlur={() => {
@@ -128,7 +132,7 @@ function DimParamInput({ name, internal, units, kind, width, onCommit }) {
   };
   return (
     <input name={name} type="number" min="0" step={kind === "height" ? heightStep(units) : thickStep(units)}
-      placeholder={kind === "height" ? heightUnit(units) : thickUnit(units)}
+      placeholder={uiText(kind === "height" ? heightUnit(units) : thickUnit(units))}
       value={draft ?? dimInputStr(internal, units, kind)}
       onChange={(e) => { setDraft(e.target.value); commit(e.target.value); }}
       onBlur={() => { if (draft != null) commit(draft); setDraft(null); }}
@@ -162,7 +166,7 @@ function LibDraftInput({ name, value, number, placeholder, width, onCommitText }
         setDraft(null);
       }}
       onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur(); }}
-      placeholder={placeholder} style={{ ...ip, width }} />
+      placeholder={uiText(placeholder)} style={{ ...ip, width }} />
   );
 }
 
@@ -175,10 +179,10 @@ function CoveragePresetSelect({ material: m, onPick }) {
   return (
     <select name="coverage-preset" value={presets.some((t) => t.label === m.note) ? m.note : ""}
       onChange={(e) => { const t = presets.find((x) => x.label === e.target.value); if (t) onPick({ note: t.label, per: t.per }); }}
-      title="Coverage preset — trowel notch / spread rate. Generic industry-typical values; verify against the product data sheet."
+      title={uiText("Coverage preset — trowel notch / spread rate. Generic industry-typical values; verify against the product data sheet.")}
       style={{ ...ip, background: "var(--paper-bright)" }}>
-      <option value="">preset…</option>
-      {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/{m.unit || "unit"}</option>)}
+      <option value="">{uiText("preset…")}</option>
+      {presets.map((t) => <option key={t.label} value={t.label}>{uiText(t.label)} · {uiText(t.per)} {uiText("SF/")}{uiText(m.unit || "unit")}</option>)}
     </select>
   );
 }
@@ -187,18 +191,24 @@ function CoveragePresetSelect({ material: m, onPick }) {
 function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote,
     twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow,
     heightFt = 0 }) {
+  const liquidUnit = useMaterialUnit();
+  const metric = getLanguage() === "ru";
   // library link affordances (#47, all optional so the editor works standalone):
   // linked lines show ⛓; a field differing from its library entry tints amber
   // and grows a per-field ↺ revert; unlinked lines can be promoted to the library
   const OV = "1px solid var(--c-warning)";
   const rv = (m, f) => (
-    <button onClick={() => onRevert(m, f)} title="Revert this field to the library value"
+    <button onClick={() => onRevert(m, f)} title={uiText("Revert this field to the library value")}
       style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-warning)", cursor: "pointer", fontSize: 11, lineHeight: 1 }}>↺</button>
   );
   return (
     <>
+      <div style={{margin:"8px 0"}}><MaterialUnitSelector /></div>
       {(materials || []).map((m) => {
         const lm = libById ? libById[m.lib_id] : null;
+        const volumeFactor = liquidFactor(m.unit, liquidUnit);
+        const basisFactor = metric ? (m.basis === 'count' ? 1 : m.basis === 'linear' || m.basis === 'seam_lf' ? 0.3048 : 0.09290304) : 1;
+        const perFactor = basisFactor / (volumeFactor || 1);
         const ov = (f) => (lm && overridden ? overridden(m, lm, f) : false);
         // On a base (linear) line the piece's long dimension is the CONDITION's height,
         // so it is derived in, not stored on the row — and the calculator below renders
@@ -215,52 +225,51 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
           onUpdate(m.id, { grout, ...(groutDerivedFields(grout, m.basis, heightFt) || {}) });
         };
         const gi = (key, title, extra) => (
-          <GroutParamInput name={`grout-${key}`} value={g[key]} title={title} override={ov("grout")}
+          <GroutParamInput name={`grout-${key}`} value={g[key]} title={uiText(title)} override={ov("grout")}
             onCommit={(v) => setGrout({ [key]: v })} {...extra} />
         );
         return (
           <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
             {/* family state: this row still follows the original, or it is this condition's own */}
             {twin && (
-              <span title={m.inherited
+              <span title={uiText(m.inherited
                 ? `Following ${parentTag || "the family"} — edit any field here and this row stops following (the others keep following)`
-                : `This row is this condition's own${m.origin_id ? ` — it no longer follows ${parentTag || "the family"}` : ""}`}
+                : `This row is this condition's own${m.origin_id ? ` — it no longer follows ${parentTag || "the family"}` : ""}`)}
                 style={{ fontSize: 10, lineHeight: 1, cursor: "default", padding: "2px 3px",
                   color: m.inherited ? "var(--ink-faint)" : "var(--cobalt)",
-                  border: `1px solid ${m.inherited ? "var(--ink-faint)" : "var(--cobalt)"}` }}>{m.inherited ? "↳" : "✎"}</span>
+                  border: `1px solid ${m.inherited ? "var(--ink-faint)" : "var(--cobalt)"}` }}>{uiText(m.inherited ? "↳" : "✎")}</span>
             )}
             {twin && !m.inherited && m.origin_id && onFollowFamilyRow && (
-              <button onClick={() => onFollowFamilyRow(m.id)} title={`Follow the family again — take this row's values back from ${parentTag || "the original"}`}
-                style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>↺ follow</button>
+              <button onClick={() => onFollowFamilyRow(m.id)} title={uiText(`Follow the family again — take this row's values back from ${parentTag || "the original"}`)}
+                style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>{uiText("↺ follow")}</button>
             )}
-            {lm && <span title={`Linked to “${lm.name}” in the material library — amber fields differ from the library values`} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
-            <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
-            {ov("name") && rv(m, "name")}
+            {lm && <span title={uiText(`Linked to “${lm.name}” in the material library — amber fields differ from the library values`)} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
+            <input name="material-name" value={uiText(m.name)} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder={uiText("Material (e.g. Adhesive)")} style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
+            {uiText(ov("name") && rv(m, "name"))}
             <span style={{ color: "var(--ink-muted)" }}>1</span>
-            <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
-            {ov("unit") && rv(m, "unit")}
-            <span style={{ color: "var(--ink-muted)" }}>per</span>
-            <input name="material-per" type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
-            {ov("per") && rv(m, "per")}
+            <input name="material-unit" readOnly={volumeFactor !== null} title={uiText('Liquid material units')} value={volumeFactor !== null ? uiText(liquidUnit) : uiText(m.unit)} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder={uiText("unit")} style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
+            {uiText(ov("unit") && rv(m, "unit"))}
+            <span style={{ color: "var(--ink-muted)" }}>{uiText("per")}</span>
+            <input name="material-per" type="number" min="0" step="any" value={m.per ? Number((m.per * perFactor).toFixed(6)) : ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) / perFactor })} placeholder={uiText("0")} style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
+            {uiText(ov("per") && rv(m, "per"))}
             <select name="material-basis" value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)", ...(ov("basis") ? { border: OV } : {}) }}>
-              <option value="area">floor SF</option>
-              <option value="linear">linear LF</option>
-              <option value="count">each</option>
-              <option value="seam_lf" title="Figured seam length from the roll layout — 0 until this condition carries a roll setup">seam LF</option>
+              <option value="area">{metric ? 'пола, м²' : uiText('floor SF')}</option>
+              <option value="linear">{metric ? 'длины, м' : uiText('linear LF')}</option>
+              <option value="count">{uiText("each")}</option>
+              <option value="seam_lf" title={uiText("Figured seam length from the roll layout — 0 until this condition carries a roll setup")}>{metric ? 'шва, м' : uiText('seam LF')}</option>
             </select>
-            {ov("basis") && rv(m, "basis")}
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "var(--c-warning)" : "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
-              <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
-            </label>
-            {ov("round") && rv(m, "round")}
+            {uiText(ov("basis") && rv(m, "basis"))}
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "var(--c-warning)" : "var(--ink-muted)" }} title={uiText("Round up to whole units (you buy whole buckets/bags)")}>
+              <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />{uiText('Round to source packages')}</label>
+            {uiText(ov("round") && rv(m, "round"))}
             <CoveragePresetSelect material={m} onPick={(patch) => onUpdate(m.id, patch)} />
-            <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
-            {ov("note") && rv(m, "note")}
+            <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder={uiText("note (coats, trowel…)")} style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
+            {uiText(ov("note") && rv(m, "note"))}
             {!lm && onPromote && (
-              <button onClick={() => onPromote(m)} title="Save this material to the library (this line becomes linked)"
-                style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>→ lib</button>
+              <button onClick={() => onPromote(m)} title={uiText("Save this material to the library (this line becomes linked)")}
+                style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>{uiText("→ lib")}</button>
             )}
-            <button onClick={() => onRemove(m.id)} title="Remove this material"
+            <button onClick={() => onRemove(m.id)} title={uiText("Remove this material")}
               style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕</button>
             {/* the calculator renders ONLY when the line HAS geometry; a grout
                 line without it keeps its rate untouched behind an explicit
@@ -269,62 +278,60 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
                 {isLinearGrout(m) ? (
                   <>
-                    <span>base</span>
+                    <span>{uiText("base")}</span>
                     {/* read-only: the height belongs to the CONDITION, and an editable copy
                         here would be a second owner of one number. No height = not figurable,
                         which says so rather than deriving off a default. */}
-                    <span title="Base height — set on the condition, not here"
+                    <span title={uiText("Base height — set on the condition, not here")}
                       style={{ fontFamily: "var(--f-mono, monospace)", padding: "2px 5px", border: "1px dashed var(--ink-faint)",
                         color: Number(heightFt) > 0 ? "var(--ink)" : "var(--c-warning)" }}>
-                      {Number(heightFt) > 0 ? `${inFrac(Number(heightFt) * 12)}″ H` : "set height on condition"}
+                      {uiText(Number(heightFt) > 0 ? `${inFrac(Number(heightFt) * 12)}″ H` : "set height on condition")}
                     </span>
                     {/* piece height defaults to the base height (one course); a SHORTER one
                         is multi-course base, where the interior horizontal joints are real */}
-                    <span>· pc</span>
-                    {gi("tileL", "Piece height (in) — defaults to the base height (one course). Enter a SHORTER piece for multi-course base (a 6″ band of 2×2 mosaic is three courses)", { width: 52 })}
+                    <span>{uiText("· pc")}</span>
+                    {uiText(gi("tileL", "Piece height (in) — defaults to the base height (one course). Enter a SHORTER piece for multi-course base (a 6″ band of 2×2 mosaic is three courses)", { width: 52 }))}
                     <span>×</span>
-                    {gi("tileW", "Piece width (in) — for field-cut base, the parent tile dimension you did NOT rip")}
+                    {uiText(gi("tileW", "Piece width (in) — for field-cut base, the parent tile dimension you did NOT rip"))}
                     {baseCourses(g, heightFt) > 1 && (
-                      <span title="Courses of base — a fractional last course is a CUT (waste), not more grout">
-                        ({Math.round(baseCourses(g, heightFt) * 100) / 100} crs)
-                      </span>
+                      <span title={uiText("Courses of base — a fractional last course is a CUT (waste), not more grout")}>
+                        ({uiText(Math.round(baseCourses(g, heightFt) * 100) / 100)} {uiText("crs)")}</span>
                     )}
                   </>
                 ) : (
                   <>
-                    <span>tile</span>
-                    {gi("tileL", "Tile length (in)")}
+                    <span>{uiText("tile")}</span>
+                    {uiText(gi("tileL", "Tile length (in)"))}
                     <span>×</span>
-                    {gi("tileW", "Tile width (in)")}
+                    {uiText(gi("tileW", "Tile width (in)"))}
                   </>
                 )}
-                <span>× thick</span>
-                {gi("tileT", "Tile thickness (in)")}
-                <span>″ · joint</span>
-                {gi("joint", "Joint width (in) — 1/32″ to 1/2″", { min: 0.03125, max: 0.5, width: 62 })}
-                <span>″ · bag</span>
-                {gi("bagLbs", "Bag size (lbs)")}
-                <span>lb</span>
-                {ov("grout") && rv(m, "grout")}
+                <span>{uiText("× thick")}</span>
+                {uiText(gi("tileT", "Tile thickness (in)"))}
+                <span>{uiText("″ · joint")}</span>
+                {uiText(gi("joint", "Joint width (in) — 1/32″ to 1/2″", { min: 0.03125, max: 0.5, width: 62 }))}
+                <span>{uiText("″ · bag")}</span>
+                {uiText(gi("bagLbs", "Bag size (lbs)"))}
+                <span>{uiText("lb")}</span>
+                {uiText(ov("grout") && rv(m, "grout"))}
                 {groutRateStale(m, heightFt) && (
                   <button onClick={() => setGrout({})}
-                    title={`This line's rate (${m.per} per LF-basis unit) is not what its geometry and this condition's base height derive. A rate figured for a different base height — from a library entry or a hand edit — does not follow the height here. Click to re-derive.`}
+                    title={uiText(`This line's rate (${m.per} per LF-basis unit) is not what its geometry and this condition's base height derive. A rate figured for a different base height — from a library entry or a hand edit — does not follow the height here. Click to re-derive.`)}
                     style={{ padding: "1px 6px", borderRadius: 0, border: "1px solid var(--c-warning)", background: "transparent", color: "var(--c-warning)", cursor: "pointer", fontSize: 11 }}>
-                    ⚠ rate ≠ geometry · re-derive
-                  </button>
+                    {uiText("⚠ rate ≠ geometry · re-derive")}</button>
                 )}
               </div>
             )}
             {showsGroutDeriveAffordance(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, paddingLeft: 14 }}>
                 <button onClick={() => setGrout({})}
-                  title={isLinearGrout(m)
+                  title={uiText(isLinearGrout(m)
                     ? "Start the base-grout calculator with standard geometry (3/8″ thick @ 1/8″ joint, 25 lb bag) — the piece height comes from the condition. REPLACES this line's coverage rate and note"
-                    : "Start the grout calculator with standard tile geometry (12×24×3/8″ @ 1/8″, 25 lb bag) — REPLACES this line's coverage rate and note with the derived values"}
+                    : "Start the grout calculator with standard tile geometry (12×24×3/8″ @ 1/8″, 25 lb bag) — REPLACES this line's coverage rate and note with the derived values")}
                   style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
-                  {isLinearGrout(m) ? "derive from base geometry…" : "derive from tile geometry…"}
+                  {uiText(isLinearGrout(m) ? "derive from base geometry…" : "derive from tile geometry…")}
                 </button>
-                {ov("grout") && rv(m, "grout")}
+                {uiText(ov("grout") && rv(m, "grout"))}
               </div>
             )}
           </div>
@@ -340,11 +347,11 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             return (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-muted)" }}>
                 <span style={{ color: "var(--c-danger)" }}>✕</span>
-                <span style={{ textDecoration: "line-through" }}>{src?.name || "(removed material)"}</span>
-                <span style={{ fontSize: 10 }}>removed here</span>
+                <span style={{ textDecoration: "line-through" }}>{uiText(src?.name || "(removed material)")}</span>
+                <span style={{ fontSize: 10 }}>{uiText("removed here")}</span>
                 {src && onRestoreDroppedRow && (
-                  <button onClick={() => onRestoreDroppedRow(k)} title={`Put it back — takes the row from ${parentTag || "the family"} again`}
-                    style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>↺ restore</button>
+                  <button onClick={() => onRestoreDroppedRow(k)} title={uiText(`Put it back — takes the row from ${parentTag || "the family"} again`)}
+                    style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>{uiText("↺ restore")}</button>
                 )}
               </div>
             );
@@ -352,13 +359,13 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
         </div>
       )}
       <button onClick={onAdd}
-        style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add material</button>
+        style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>{uiText("+ add material")}</button>
       {onAttach && (library || []).length > 0 && (
         <select name="attach-material" value="" onChange={(e) => { if (e.target.value) onAttach(e.target.value); }}
-          title="Attach a material from the library — the line copies the library values and stays linked"
+          title={uiText("Attach a material from the library — the line copies the library values and stays linked")}
           style={{ ...ip, marginLeft: 6, background: "var(--paper-bright)", color: "var(--ink-muted)" }}>
-          <option value="">+ from library…</option>
-          {library.map((lm) => <option key={lm.id} value={lm.id}>{lm.name || "(unnamed)"}{lm.per ? ` · ${lm.per}/${lm.unit || "?"}` : ""}</option>)}
+          <option value="">{uiText("+ from library…")}</option>
+          {library.map((lm) => <option key={lm.id} value={lm.id}>{uiText(lm.name || "(unnamed)")}{uiText(lm.per ? ` · ${lm.per}/${lm.unit || "?"}` : "")}</option>)}
         </select>
       )}
     </>
@@ -375,11 +382,11 @@ function ColumnSelects({ columns, cond, onAssign }) {
         const v = attrValue(cond?.attrs, cc.id);   // the shared assigned-value rule (hydrate sanitizes, this keeps the display consistent)
         return (
           <label key={cc.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, marginRight: 12, marginBottom: 6 }}>
-            <span style={{ color: "var(--ink-muted)" }}>{columnLabel(cc)}</span>
+            <span style={{ color: "var(--ink-muted)" }}>{uiText(columnLabel(cc))}</span>
             <select name="assign-column-value" value={v} onChange={(e) => onAssign(cc.id, e.target.value)} style={{ ...ip, background: "var(--paper-bright)" }}>
-              <option value="">Unassigned</option>
-              {cc.values.map((val) => <option key={val} value={val}>{val}</option>)}
-              {v && !cc.values.includes(v) && <option value={v}>{v} (removed)</option>}
+              <option value="">{uiText("Unassigned")}</option>
+              {cc.values.map((val) => <option key={val} value={val}>{uiText(val)}</option>)}
+              {v && !cc.values.includes(v) && <option value={v}>{uiText(v)} {uiText("(removed)")}</option>}
             </select>
           </label>
         );
@@ -394,8 +401,8 @@ function AddValueInput({ onAdd }) {
   const commit = () => { const t = v.trim(); if (t) onAdd(t); setV(""); };
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <input name="column-add-value" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && commit()} placeholder="add value" style={{ ...ip, width: 90 }} />
-      <button onClick={commit} title="Add this value to the list"
+      <input name="column-add-value" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && commit()} placeholder={uiText("add value")} style={{ ...ip, width: 90 }} />
+      <button onClick={commit} title={uiText("Add this value to the list")}
         style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+</button>
     </span>
   );
@@ -434,43 +441,41 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       : { padding: "4px 12px 10px", display: "flex", flexDirection: "column", gap: 7, fontSize: 11 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <input name="condition-finish-tag" value={c.finish_tag} onChange={(e) => onUpdateCond({ finish_tag: e.target.value })}
-          title="Rename this condition / finish tag"
+          title={uiText("Rename this condition / finish tag")}
           style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
         <MultiplierField value={c.multiplier || 1} onChange={(n) => onUpdateCond({ multiplier: n })} />
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
-          <span style={{ color: "var(--ink-muted)" }}>Waste</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={uiText("Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).")}>
+          <span style={{ color: "var(--ink-muted)" }}>{uiText("Waste")}</span>
           <input name="condition-waste-pct" type="number" min="0" step="1" value={c.waste_pct ?? 0}
             onChange={(e) => onUpdateCond({ waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
             style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
           <span style={{ color: "var(--ink-muted)" }}>%</span>
         </span>
       </div>
-      {isRow && rule()}
+      {uiText(isRow && rule())}
       {isRow ? (
         <div ref={paletteRef} style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
-          <button data-testid="line-swatch" title={`Line color — ${c.color || "default"}`} aria-expanded={paletteOpen === "line"}
+          <button data-testid="line-swatch" title={uiText(`Line color — ${c.color || "default"}`)} aria-expanded={paletteOpen === "line"}
             onClick={() => setPaletteOpen((v) => (v === "line" ? null : "line"))}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 4px", borderRadius: 0, border: `1px solid ${paletteOpen === "line" ? "var(--ink)" : "var(--ink-faint)"}`, background: "var(--paper-bright)", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
             <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, border: "1px solid var(--ink-faint)", background: `linear-gradient(to top right, transparent calc(50% - 1.5px), ${activeColor} calc(50% - 1.5px), ${activeColor} calc(50% + 1.5px), transparent calc(50% + 1.5px))` }} />
-            Line
-          </button>
-          <button data-testid="fill-swatch" title={`Fill color — ${c.fill === NO_FILL || !c.fill ? "none" : c.fill}`} aria-expanded={paletteOpen === "fill"}
+            {uiText("Line")}</button>
+          <button data-testid="fill-swatch" title={uiText(`Fill color — ${c.fill === NO_FILL || !c.fill ? "none" : c.fill}`)} aria-expanded={paletteOpen === "fill"}
             onClick={() => setPaletteOpen((v) => (v === "fill" ? null : "fill"))}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 4px", borderRadius: 0, border: `1px solid ${paletteOpen === "fill" ? "var(--ink)" : "var(--ink-faint)"}`, background: "var(--paper-bright)", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
             {c.fill && c.fill !== NO_FILL
               ? <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, background: c.fill, opacity: 0.55, border: "1px solid var(--ink-faint)" }} />
               : <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, border: "1px solid var(--ink-faint)", fontSize: 9, lineHeight: "14px", textAlign: "center", color: "var(--c-danger)" }}>⦸</span>}
-            Fill
-          </button>
+            {uiText("Fill")}</button>
           {paletteOpen && (
-            <div role="dialog" aria-label={paletteOpen === "line" ? "Line color" : "Fill color"}
+            <div role="dialog" aria-label={uiText(paletteOpen === "line" ? "Line color" : "Fill color")}
               style={{ position: "absolute", top: 26, left: paletteOpen === "line" ? 0 : 62, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, 16px)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)" }}>
               {paletteOpen === "fill" && (
-                <button title="No fill" onClick={() => { onUpdateCond({ fill: NO_FILL }); setPaletteOpen(null); }} style={{ width: 16, height: 16, borderRadius: 4, padding: 0, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
+                <button title={uiText("No fill")} onClick={() => { onUpdateCond({ fill: NO_FILL }); setPaletteOpen(null); }} style={{ width: 16, height: 16, borderRadius: 4, padding: 0, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
               )}
               {PALETTE.map((p) => {
                 const on = paletteOpen === "line" ? c.color === p : c.fill === p;
-                return <button key={p} title={p} onClick={() => { onUpdateCond(paletteOpen === "line" ? { color: p } : { fill: p }); setPaletteOpen(null); }}
+                return <button key={p} title={uiText(p)} onClick={() => { onUpdateCond(paletteOpen === "line" ? { color: p } : { fill: p }); setPaletteOpen(null); }}
                   style={{ width: 16, height: 16, borderRadius: 4, padding: 0, background: p, opacity: paletteOpen === "fill" ? 0.55 : 1, border: on ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />;
               })}
             </div>
@@ -479,64 +484,64 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            <span style={{ color: "var(--ink-muted)", width: 26 }}>Line</span>
-            {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+            <span style={{ color: "var(--ink-muted)", width: 26 }}>{uiText("Line")}</span>
+            {PALETTE.map((p) => <button key={p} title={uiText(p)} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            <span style={{ color: "var(--ink-muted)", width: 26 }}>Fill</span>
-            <button title="No fill" onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
-            {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+            <span style={{ color: "var(--ink-muted)", width: 26 }}>{uiText("Fill")}</span>
+            <button title={uiText("No fill")} onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
+            {PALETTE.map((p) => <button key={p} title={uiText(p)} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
           </div>
         </>
       )}
-      {isRow && rule()}
+      {uiText(isRow && rule())}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
-          <button onClick={() => setHatchOpen((v) => !v)} title="Choose a hatch pattern"
+          <button onClick={() => setHatchOpen((v) => !v)} title={uiText("Choose a hatch pattern")}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 2px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}>
             <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
-            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{(HATCHES.find((h) => h.id === (c.hatch || "solid")) || {}).label || "Solid"} ▾</span>
+            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{uiText((HATCHES.find((h) => h.id === (c.hatch || "solid")) || {}).label || "Solid")} ▾</span>
           </button>
           {hatchOpen && (
             <div style={{ position: "absolute", top: 26, left: 0, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, auto)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)" }}>
               {HATCHES.map((h) => {
                 const hOn = (c.hatch || "solid") === h.id;
-                return <button key={h.id} title={h.label} onClick={() => { onUpdateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: hOn ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={c.color} fill={c.fill} /></button>;
+                return <button key={h.id} title={uiText(h.label)} onClick={() => { onUpdateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: hOn ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={c.color} fill={c.fill} /></button>;
               })}
             </div>
           )}
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Line style — the outline dash for this finish's floor-area and linear takeoffs (canvas + Marked Set PDF). Surface walls and deducts keep their own dashing.">
-          <span style={{ color: "var(--ink-muted)" }}>Style</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={uiText("Line style — the outline dash for this finish's floor-area and linear takeoffs (canvas + Marked Set PDF). Surface walls and deducts keep their own dashing.")}>
+          <span style={{ color: "var(--ink-muted)" }}>{uiText("Style")}</span>
           <select name="condition-line-style" value={c.line_style || "solid"} onChange={(e) => onUpdateCond({ line_style: e.target.value })}
             style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
-            {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
+            {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{uiText(LINE_STYLES[id].label)}</option>)}
           </select>
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Height (${heightUnit(units)}) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.`}>
-          <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={uiText(`Height (${heightUnit(units)}) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.`)}>
+          <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>{uiText("Height")}</span>
           <DimParamInput name="condition-height-ft" internal={c.height_ft} units={units} kind="height" width={54}
             onCommit={(v) => onSetCondParam("height_ft", v)} />
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Thickness (${thickUnit(units)}) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.`}>
-          <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={uiText(`Thickness (${thickUnit(units)}) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.`)}>
+          <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>{uiText("Thickness")}</span>
           <DimParamInput name="condition-thickness-in" internal={c.thickness_in} units={units} kind="thickness" width={50}
             onCommit={(v) => onSetCondParam("thickness_in", v)} />
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Rise (${heightUnit(units)}) — the vertical leg UP every Linear run of this condition adds to its plan length (a home run rising to a box, a riser to the ceiling). LF = plan + rise + drop. Changing it re-flows existing runs; select a run to give it its own rise.`}>
-          <span style={{ color: "var(--ink-muted)" }}>↑ Rise</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={uiText(`Rise (${heightUnit(units)}) — the vertical leg UP every Linear run of this condition adds to its plan length (a home run rising to a box, a riser to the ceiling). LF = plan + rise + drop. Changing it re-flows existing runs; select a run to give it its own rise.`)}>
+          <span style={{ color: "var(--ink-muted)" }}>{uiText("↑ Rise")}</span>
           <DimParamInput name="condition-rise-ft" internal={c.rise_ft} units={units} kind="height" width={48}
             onCommit={(v) => onSetCondParam("rise_ft", v)} />
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Drop (${heightUnit(units)}) — the vertical leg DOWN every Linear run of this condition adds to its plan length (a drop from the ceiling to a panel or device). LF = plan + rise + drop. Changing it re-flows existing runs; select a run to give it its own drop.`}>
-          <span style={{ color: "var(--ink-muted)" }}>↓ Drop</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={uiText(`Drop (${heightUnit(units)}) — the vertical leg DOWN every Linear run of this condition adds to its plan length (a drop from the ceiling to a panel or device). LF = plan + rise + drop. Changing it re-flows existing runs; select a run to give it its own drop.`)}>
+          <span style={{ color: "var(--ink-muted)" }}>{uiText("↓ Drop")}</span>
           <DimParamInput name="condition-drop-ft" internal={c.drop_ft} units={units} kind="height" width={48}
             onCommit={(v) => onSetCondParam("drop_ft", v)} />
         </span>
       </div>
-      {conditionColumns.length > 0 && isRow && rule()}
+      {uiText(conditionColumns.length > 0 && isRow && rule())}
       {conditionColumns.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title="Classify this condition — the Report can group and export by these (manage columns in the Columns tab)">
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title={uiText("Classify this condition — the Report can group and export by these (manage columns in the Columns tab)")}>
           <ColumnSelects columns={conditionColumns} cond={c} onAssign={onAssignAttr} />
         </div>
       )}
@@ -560,13 +565,13 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       {!isRow && !hasRollSetup(c) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 6, marginTop: 1, borderTop: "1px solid var(--ink-faint)" }}>
           <select name="condition-roll-optin" value=""
-            title="Make this condition a roll-goods material — its floor areas get figured into roll cuts (seams, order footage, a cut diagram)"
+            title={uiText("Make this condition a roll-goods material — its floor areas get figured into roll cuts (seams, order footage, a cut diagram)")}
             onChange={(e) => { if (e.target.value) onUpdateCond({ roll_setup: mintRollSetup(e.target.value) }); }}
             style={{ padding: "3px 6px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", fontSize: 11.5, cursor: "pointer" }}>
-            <option value="">+ roll goods…</option>
-            <option value="carpet">Broadloom carpet</option>
-            <option value="sheet_vinyl">Sheet vinyl</option>
-            <option value="rubber">Sheet rubber</option>
+            <option value="">{uiText("+ roll goods…")}</option>
+            <option value="carpet">{uiText("Broadloom carpet")}</option>
+            <option value="sheet_vinyl">{uiText("Sheet vinyl")}</option>
+            <option value="rubber">{uiText("Sheet rubber")}</option>
           </select>
         </div>
       )}
@@ -582,60 +587,60 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
           <div style={{ display: "flex", flexDirection: "column", gap: 5, paddingTop: 6, marginTop: 1, borderTop: "1px solid var(--ink-faint)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ color: "var(--ink-muted)", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" }}
-                title="Roll-goods setup — the engine figures seams, cuts, and order footage from this condition's floor areas">Roll goods</span>
+                title={uiText("Roll-goods setup — the engine figures seams, cuts, and order footage from this condition's floor areas")}>{uiText("Roll goods")}</span>
               <select name="condition-roll-material" value={rs.material || "carpet"} onChange={(e) => patch({ material: e.target.value })} style={sel}
-                title="Material class — sets the cut overlay's material-true color">
-                {ROLL_FLOORING_TYPES.map((ft) => <option key={ft} value={ft}>{ft === "carpet" ? "carpet" : ft === "sheet_vinyl" ? "sheet vinyl" : "rubber"}</option>)}
+                title={uiText("Material class — sets the cut overlay's material-true color")}>
+                {ROLL_FLOORING_TYPES.map((ft) => <option key={ft} value={ft}>{uiText(ft === "carpet" ? "carpet" : ft === "sheet_vinyl" ? "sheet vinyl" : "rubber")}</option>)}
               </select>
-              <button onClick={() => onUpdateCond({ roll_setup: undefined })} title="Remove the roll-goods setup (cuts and order footage stop being figured; manual cut edits on shapes are kept but inert)"
+              <button onClick={() => onUpdateCond({ roll_setup: undefined })} title={uiText("Remove the roll-goods setup (cuts and order footage stop being figured; manual cut edits on shapes are kept but inert)")}
                 style={{ marginLeft: "auto", padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-              <span style={{ color: "var(--ink-muted)" }}>Roll</span>
+              <span style={{ color: "var(--ink-muted)" }}>{uiText("Roll")}</span>
               {rs.material === "carpet" ? (
                 <select name="condition-roll-width" value={String(rs.roll_width_ft)} onChange={(e) => patch({ roll_width_ft: parseFloat(e.target.value) || 12 })} style={sel}
-                  title="Roll width — broadloom comes 12′ or 15′">
+                  title={uiText("Roll width — broadloom comes 12′ or 15′")}>
                   <option value="12">12′</option>
                   <option value="15">15′</option>
                 </select>
               ) : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Roll width — resilient sheet widths vary by product (6′, 6′6″, 12′…)">
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={uiText("Roll width — resilient sheet widths vary by product (6′, 6′6″, 12′…)")}>
                   <input name="condition-roll-width-ft" type="number" min="0" step="1" value={wFt} onChange={(e) => setW(e.target.value, wIn)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>′</span>
                   <input name="condition-roll-width-in" type="number" min="0" max="11" step="1" value={wIn} onChange={(e) => setW(wFt, e.target.value)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>″</span>
                 </span>
               )}
-              <span style={{ color: "var(--ink-muted)" }} title="Max usable length of one physical roll — 0 = continuous (cut off one roll). When set, cuts pack across rolls and the diagram marks the roll breaks.">max</span>
+              <span style={{ color: "var(--ink-muted)" }} title={uiText("Max usable length of one physical roll — 0 = continuous (cut off one roll). When set, cuts pack across rolls and the diagram marks the roll breaks.")}>{uiText("max")}</span>
               <input name="condition-roll-length" type="number" min="0" step="5" value={rs.roll_length_ft || 0}
                 onChange={(e) => patch({ roll_length_ft: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
               <span style={{ color: "var(--ink-muted)" }}>′</span>
               <select name="condition-roll-direction" value={rs.direction || "auto"} onChange={(e) => patch({ direction: e.target.value })} style={sel}
-                title="Run direction — auto picks whichever needs less footage; force it when the pattern or the light dictates">
-                <option value="auto">auto</option>
+                title={uiText("Run direction — auto picks whichever needs less footage; force it when the pattern or the light dictates")}>
+                <option value="auto">{uiText("auto")}</option>
                 <option value="ns">N–S</option>
                 <option value="ew">E–W</option>
               </select>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-              <span style={{ color: "var(--ink-muted)" }} title="Seam allowance — extra width where two cuts meet, per seamed edge">Seam</span>
+              <span style={{ color: "var(--ink-muted)" }} title={uiText("Seam allowance — extra width where two cuts meet, per seamed edge")}>{uiText("Seam")}</span>
               <input name="condition-roll-seam" type="number" min="0" step="0.5" value={rs.seam_allowance_in ?? 2}
                 onChange={(e) => patch({ seam_allowance_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-              <span style={{ color: "var(--ink-muted)" }}>″ · wall</span>
+              <span style={{ color: "var(--ink-muted)" }}>{uiText("″ · wall")}</span>
               <input name="condition-roll-wall" type="number" min="0" step="0.5" value={rs.wall_overage_in ?? 3}
                 onChange={(e) => patch({ wall_overage_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-              <span style={{ color: "var(--ink-muted)" }}>″ · sells by</span>
+              <span style={{ color: "var(--ink-muted)" }}>{uiText("″ · sells by")}</span>
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
-                title="The unit this material sells in — a unit, never a dollar (the takeoff stays quantities-only)">
-                <option value="sy">SY</option>
-                <option value="sf">SF</option>
-                <option value="lf">LF</option>
+                title={uiText("The unit this material sells in — a unit, never a dollar (the takeoff stays quantities-only)")}>
+                <option value="sy">{uiText("SY")}</option>
+                <option value="sf">{uiText("SF")}</option>
+                <option value="lf">{uiText("LF")}</option>
               </select>
             </div>
             {rollInfo && (
               <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}
-                title="The figured order — how far down the roll the cuts reach (side-by-side cuts share length), rounded up to the inch. The Roll panel has the cut diagram.">
-                Figured: order {ftIn(rollInfo.orderFt)} · {rollInfo.qty} {rollInfo.unit.toUpperCase()}
-                {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : ""}
-                {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> · a cut exceeds one roll</span>}
+                title={uiText("The figured order — how far down the roll the cuts reach (side-by-side cuts share length), rounded up to the inch. The Roll panel has the cut diagram.")}>
+                {uiText("Figured: order ")}{uiText(ftIn(rollInfo.orderFt))} · {uiText(rollInfo.qty)} {uiText(rollInfo.unit.toUpperCase())}
+                {uiText(rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : "")}
+                {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> {uiText("· a cut exceeds one roll")}</span>}
               </div>
             )}
           </div>
@@ -644,10 +649,10 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       {!isRow && c.spec && typeof c.spec === "object" && !Array.isArray(c.spec) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 6, marginTop: 1, borderTop: "1px solid var(--ink-faint)" }}>
           <span style={{ color: "var(--ink-muted)", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" }}
-            title="Product spec imported from the finish schedule — editable; shown as read-only columns in the Report / CSV / XLSX">Spec</span>
+            title={uiText("Product spec imported from the finish schedule — editable; shown as read-only columns in the Report / CSV / XLSX")}>{uiText("Spec")}</span>
           {SPEC_FIELDS.map(({ field, header }) => (
             <label key={field} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ color: "var(--ink-muted)", width: 104, flexShrink: 0 }}>{header}</span>
+              <span style={{ color: "var(--ink-muted)", width: 104, flexShrink: 0 }}>{uiText(header)}</span>
               <input name={`condition-spec-${field}`} value={c.spec[field] || ""}
                 onChange={(e) => onUpdateCond({ spec: { ...c.spec, [field]: e.target.value } })}
                 style={{ flex: 1, minWidth: 0, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, color: "var(--ink)" }} />
@@ -686,60 +691,56 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
       {!open ? (
         <button onClick={() => { setDraft({ id: c.id, a: opts[0]?.id || "", b: opts[1]?.id || "" }); setResult(null); }}
           disabled={opts.length < 2}
-          title={opts.length < 2
+          title={uiText(opts.length < 2
             ? "Two finishes with measured rooms on the open sheets are needed before anything can meet."
-            : `Derive where two finishes meet onto ${c.finish_tag}. Runs where the rooms butt inside one open space commit dashed, pending Accept; runs across a wall are reported and never counted — that transition is a threshold in a doorway no trace can locate.`}
+            : `Derive where two finishes meet onto ${c.finish_tag}. Runs where the rooms butt inside one open space commit dashed, pending Accept; runs across a wall are reported and never counted — that transition is a threshold in a doorway no trace can locate.`)}
           style={{ padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent",
             color: opts.length < 2 ? "var(--ink-faint)" : "var(--ink)", cursor: opts.length < 2 ? "default" : "pointer", fontSize: 11.5 }}>
-          ⟂ Transitions…
-        </button>
+          {uiText("⟂ Transitions…")}</button>
       ) : (
         <div>
           <div style={{ color: "var(--ink-muted)", marginBottom: 5 }}>
-            Derive onto <b style={{ color: "var(--ink)" }}>{c.finish_tag}</b> — where these two meet.
-          </div>
+            {uiText("Derive onto ")}<b style={{ color: "var(--ink)" }}>{uiText(c.finish_tag)}</b> {uiText("— where these two meet.")}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
             <select name="transition-a" value={draft.a} onChange={(e) => setDraft({ ...draft, a: e.target.value })} style={selStyle}>
-              {opts.map((s) => <option key={s.id} value={s.id}>{s.finish_tag} ({s.rooms})</option>)}
+              {opts.map((s) => <option key={s.id} value={s.id}>{uiText(s.finish_tag)} ({uiText(s.rooms)})</option>)}
             </select>
-            <span style={{ color: "var(--ink-muted)" }}>meets</span>
+            <span style={{ color: "var(--ink-muted)" }}>{uiText("meets")}</span>
             <select name="transition-b" value={draft.b} onChange={(e) => setDraft({ ...draft, b: e.target.value })} style={selStyle}>
-              {opts.map((s) => <option key={s.id} value={s.id}>{s.finish_tag} ({s.rooms})</option>)}
+              {opts.map((s) => <option key={s.id} value={s.id}>{uiText(s.finish_tag)} ({uiText(s.rooms)})</option>)}
             </select>
             <button name="transition-derive" onClick={run} disabled={!ready}
               style={{ padding: "2px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent",
-                color: ready ? "var(--ink)" : "var(--ink-faint)", cursor: ready ? "pointer" : "default", fontSize: 11 }}>Derive</button>
-            <button onClick={close} style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+                color: ready ? "var(--ink)" : "var(--ink-faint)", cursor: ready ? "pointer" : "default", fontSize: 11 }}>{uiText("Derive")}</button>
+            <button onClick={close} style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>{uiText("Cancel")}</button>
           </div>
           {result?.error && (
-            <div style={{ marginTop: 6, padding: "4px 6px", border: "1px solid var(--c-warning)", color: "var(--ink)", background: "var(--paper-bright)" }}>{result.error}</div>
+            <div style={{ marginTop: 6, padding: "4px 6px", border: "1px solid var(--c-warning)", color: "var(--ink)", background: "var(--paper-bright)" }}>{uiText(result.error)}</div>
           )}
           {result && !result.error && (
             <div style={{ marginTop: 6 }}>
               <div style={{ color: result.committed ? "var(--c-positive)" : "var(--ink-muted)" }}>
-                {result.committed
+                {uiText(result.committed
                   ? `${result.committed} run${result.committed === 1 ? "" : "s"} · ${result.total_lf} LF proposed on ${result.onto} — dashed until you Accept.`
-                  : "No butt joints between these two on the open sheets."}
+                  : "No butt joints between these two on the open sheets.")}
               </div>
               {result.withheld?.length > 0 && (
                 <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
                   <div style={{ color: "var(--ink-muted)", fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase" }}
-                    title="These rooms are adjacent across a partition. The transition is a threshold in the doorway, and nothing in the trace record says where the doorway is — so it is reported, never counted. Measure it at the door.">
-                    Reported, never counted
-                  </div>
+                    title={uiText("These rooms are adjacent across a partition. The transition is a threshold in the doorway, and nothing in the trace record says where the doorway is — so it is reported, never counted. Measure it at the door.")}>
+                    {uiText("Reported, never counted")}</div>
                   <ul style={{ margin: "3px 0 0", paddingLeft: 14, color: "var(--ink)" }}>
                     {result.withheld.map((w, i) => (
                       <li key={`${w.between_shape_ids.join("-")}-${i}`} style={{ marginBottom: 1 }}>
-                        {w.length_lf} LF across {w.gap_in}″ of wall
-                        <span style={{ color: "var(--ink-muted)" }}> — {w.between.join(" / ")}</span>
+                        {uiText(w.length_lf)} {uiText("LF across ")}{uiText(w.gap_in)}{uiText("″ of wall")}<span style={{ color: "var(--ink-muted)" }}> — {uiText(w.between.join(" / "))}</span>
                         {onLocate2 && (
-                          <button onClick={() => onLocate2(w.sheet_id, w.at)} title="Center the sheet on this run — find the door and measure the threshold there"
-                            style={{ marginLeft: 5, padding: 0, border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>look</button>
+                          <button onClick={() => onLocate2(w.sheet_id, w.at)} title={uiText("Center the sheet on this run — find the door and measure the threshold there")}
+                            style={{ marginLeft: 5, padding: 0, border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>{uiText("look")}</button>
                         )}
                       </li>
                     ))}
                   </ul>
-                  <div style={{ marginTop: 3, color: "var(--ink-muted)" }}>Adjacent, not joined — measure the threshold at the door.</div>
+                  <div style={{ marginTop: 3, color: "var(--ink-muted)" }}>{uiText("Adjacent, not joined — measure the threshold at the door.")}</div>
                 </div>
               )}
             </div>
@@ -760,8 +761,8 @@ export const ROW_TAG_MIN_W = 104;
 export function MultiplierChip({ mult }) {
   if (!(mult > 1)) return null;
   return (
-    <span data-multiplier-chip title={`Every quantity on this condition is multiplied by ${mult} — measure one unit, count it ${mult} times`}
-      style={{ marginLeft: 6, padding: "0 4px", fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, fontWeight: 700, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3 }}>×{mult}</span>
+    <span data-multiplier-chip title={uiText(`Every quantity on this condition is multiplied by ${mult} — measure one unit, count it ${mult} times`)}
+      style={{ marginLeft: 6, padding: "0 4px", fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, fontWeight: 700, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3 }}>×{uiText(mult)}</span>
   );
 }
 
@@ -772,12 +773,12 @@ export function MultiplierField({ value, onChange }) {
   const live = value > 1;
   return (
     <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "default" }}
-      title="Repeating units — measure one identical unit and multiply every quantity on this condition by N (Report and buy list included). Need the same finish at ×1 elsewhere? Supporting Materials → Duplicate for another area.">
+      title={uiText("Repeating units — measure one identical unit and multiply every quantity on this condition by N (Report and buy list included). Need the same finish at ×1 elsewhere? Supporting Materials → Duplicate for another area.")}>
       <span style={{ color: live ? "var(--cobalt)" : "var(--ink-muted)", fontWeight: live ? 700 : 400 }}>×</span>
       <input name="condition-multiplier" type="number" min="1" step="1" value={value}
         onChange={(e) => onChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
         style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: `1px solid ${live ? "var(--cobalt)" : "var(--ink-faint)"}`, fontSize: 12, fontWeight: live ? 700 : 400 }} />
-      <span style={{ color: live ? "var(--cobalt)" : "var(--ink-muted)" }}>{value === 1 ? "unit" : "units"}</span>
+      <span style={{ color: live ? "var(--cobalt)" : "var(--ink-muted)" }}>{uiText(value === 1 ? "unit" : "units")}</span>
     </label>
   );
 }
@@ -789,10 +790,10 @@ export function MultiplierField({ value, onChange }) {
 // click contract are testable without mounting the whole panel.
 export function ConditionEye({ tag, hidden, onToggle }) {
   return (
-    <button type="button" aria-pressed={!hidden} aria-label={`${hidden ? "Show" : "Hide"} ${tag} on the plan`}
+    <button type="button" aria-pressed={!hidden} aria-label={uiText(`${hidden ? "Show" : "Hide"} ${tag} on the plan`)}
       onClick={(e) => { e.stopPropagation(); onToggle(!!e.altKey); }}
       onDoubleClick={(e) => e.stopPropagation()}
-      title={keyText(hidden ? "Hidden on the plan — click to show (⌥-click shows only this one). Still counted in totals, report and exports." : "Hide on the plan (⌥-click shows only this one). Hiding never changes a quantity.")}
+      title={uiText(keyText(uiText(hidden ? "Hidden on the plan — click to show (⌥-click shows only this one). Still counted in totals, report and exports." : "Hide on the plan (⌥-click shows only this one). Hiding never changes a quantity.")))}
       style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 22, padding: 0, borderRadius: 0, border: `1px solid ${hidden ? "var(--c-danger)" : "var(--ink-faint)"}`, background: hidden ? "var(--c-danger)" : "transparent", color: hidden ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", lineHeight: 0 }}>
       <Icon name={hidden ? "eyeOff" : "eye"} size={15} />
     </button>
@@ -807,9 +808,9 @@ export function HiddenConditionsBar({ hidden, total, onShowAll }) {
   return (
     <div role="status" style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", background: "var(--c-danger)", color: "var(--paper-bright)", flexShrink: 0, fontSize: 11, fontWeight: 600 }}>
       <Icon name="eyeOff" size={14} />
-      <span style={{ flex: 1, minWidth: 0 }}>{hidden} of {total} hidden on the plan — totals unchanged</span>
-      <button type="button" onClick={onShowAll} title="Show every hidden condition again"
-        style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 0, border: "1px solid var(--paper-bright)", background: "transparent", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Show all</button>
+      <span style={{ flex: 1, minWidth: 0 }}>{uiText(hidden)} {uiText("of ")}{uiText(total)} {uiText("hidden on the plan — totals unchanged")}</span>
+      <button type="button" onClick={onShowAll} title={uiText("Show every hidden condition again")}
+        style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 0, border: "1px solid var(--paper-bright)", background: "transparent", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{uiText("Show all")}</button>
     </div>
   );
 }
@@ -839,6 +840,7 @@ function TakeoffsPanel({
   onToggleCollapse, onHoldGesture, onTogglePin,
   hiddenConds = NO_HIDDEN, onToggleHidden,
 }) {
+  useUiLocale();
   const [panelTab, setPanelTab] = useState("takeoffs");       // "takeoffs" | "library" | "materials" | "columns"
   const [condQuery, setCondQuery] = useState("");             // live filter over the condition list (transient, never persisted)
   const [matLibQuery, setMatLibQuery] = useState("");         // Materials tab search (transient; describes the browser-global library, so hydrate/epoch leaves it alone)
@@ -850,7 +852,7 @@ function TakeoffsPanel({
   const [bulkWaste, setBulkWaste] = useState("");
   const checkAnchorRef = useRef(null);
   const [panelMatOpen, setPanelMatOpen] = useState(false);    // supporting-materials editor expanded inline under the active row
-  const [twinDraft, setTwinDraft] = useState({ id: "", label: "" });   // inline "duplicate for another area" input (never a prompt)
+  const [twinDraft, setTwinDraft] = useState({ id: "", label: uiText("") });   // inline "duplicate for another area" input (never a prompt)
   // ⟂ Transitions — the two finishes to compare, and the last run's report.
   // Inline for the same reason the twin input is: a window.prompt freezes a
   // CDP/automation-driven session dead, and this panel is scripted in demos.
@@ -1027,9 +1029,9 @@ function TakeoffsPanel({
             onActivate(c.id);
           }}
           onDoubleClick={() => onLocate(c.id)}
-          title={reassigning ? "Reassign selected shape to this condition" : keyText("Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit · drag to the top-bar palette for one-click access)")}
+          title={uiText(reassigning ? "Reassign selected shape to this condition" : keyText(uiText("Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit · drag to the top-bar palette for one-click access)")))}
           style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, rowGap: 5, padding: "9px 12px", cursor: "pointer", outline: reassigning ? "1px dashed var(--cobalt)" : "none", outlineOffset: -3, userSelect: "none" }}>
-          {hot && <span title={pinned ? `Palette shortcut — press ${hIdx + 1} to activate` : `Press ${hIdx + 1} to activate (pin to lock this number)`} style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinned ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{hIdx + 1}</span>}
+          {hot && <span title={uiText(pinned ? `Palette shortcut — press ${hIdx + 1} to activate` : `Press ${hIdx + 1} to activate (pin to lock this number)`)} style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinned ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{uiText(hIdx + 1)}</span>}
           <ConditionEye tag={c.finish_tag} hidden={hidden} onToggle={(isolate) => onToggleHidden(c.id, isolate)} />
           <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0, opacity: hidden ? 0.35 : 1 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
           {/* the tag is the row's identity: it holds a floor (ROW_TAG_MIN_W) and
@@ -1038,44 +1040,44 @@ function TakeoffsPanel({
           <div style={{ minWidth: 0, flex: `1 1 ${ROW_TAG_MIN_W}px`, opacity: hidden ? 0.55 : 1 }}>
             <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {/* a twin reads as one: whose it is, and how many of its rows have gone their own way */}
-              {c.variant_of ? <span aria-hidden title="A twin — its materials follow another condition" style={{ color: "var(--ink-faint)", fontWeight: 400 }}>↳ </span> : null}
-              {c.finish_tag}<MultiplierChip mult={mult} />
+              {c.variant_of ? <span aria-hidden title={uiText("A twin — its materials follow another condition")} style={{ color: "var(--ink-faint)", fontWeight: 400 }}>↳ </span> : null}
+              {uiText(c.finish_tag)}<MultiplierChip mult={mult} />
               {c.variant_of && localCount(c) > 0 ? (
-                <span title={`${localCount(c)} material row${localCount(c) === 1 ? "" : "s"} no longer follow${localCount(c) === 1 ? "s" : ""} the family`}
-                  style={{ marginLeft: 5, fontFamily: "var(--f-mono,monospace)", fontSize: 9, fontWeight: 500, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{localCount(c)}</span>
+                <span title={uiText(`${localCount(c)} material row${localCount(c) === 1 ? "" : "s"} no longer follow${localCount(c) === 1 ? "s" : ""} the family`)}
+                  style={{ marginLeft: 5, fontFamily: "var(--f-mono,monospace)", fontSize: 9, fontWeight: 500, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{uiText(localCount(c))}</span>
               ) : null}
             </div>
             <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink-muted)" }}>
-              {qtys({ sf, wsf, lf, ea })}{!sf && !wsf && !lf && !ea && !projDiff ? "—" : ""}
+              {uiText(qtys({ sf, wsf, lf, ea }))}{uiText(!sf && !wsf && !lf && !ea && !projDiff ? "—" : "")}
               {projDiff ? (
-                <span title="Σ = whole project, every sheet. The leading numbers count the open sheets only." style={{ color: "var(--ink-faint)" }}>
-                  {(sf || wsf || lf || ea) ? " · " : ""}Σ {qtys(prQ) || "0"}
+                <span title={uiText("Σ = whole project, every sheet. The leading numbers count the open sheets only.")} style={{ color: "var(--ink-faint)" }}>
+                  {uiText((sf || wsf || lf || ea) ? " · " : "")}Σ {uiText(qtys(prQ) || "0")}
                 </span>
               ) : null}
             </div>
           </div>
           <span data-row-actions style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
-          <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{shapeCount}▦</span>
+          <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{uiText(shapeCount)}▦</span>
           {/* scope collision (#366): this condition shares floor with another
               (or with itself — a double trace). The badge is the count; the
               list under the ACTIVE row names each pair with a Look link. */}
           {collisionsByCond?.get(c.id)?.length ? (
-            <span data-collision-badge={c.id} title={`${collisionsByCond.get(c.id).length} shared-floor pair${collisionsByCond.get(c.id).length === 1 ? "" : "s"} — another condition claims the same floor, or a room is traced twice. Activate the row to see each pair.`}
-              style={{ flexShrink: 0, fontFamily: "var(--f-mono,monospace)", fontSize: 10, fontWeight: 700, color: "var(--c-danger)", border: "1px solid var(--c-danger)", borderRadius: 3, padding: "0 4px" }}>⚠ {collisionsByCond.get(c.id).length}</span>
+            <span data-collision-badge={c.id} title={uiText(`${collisionsByCond.get(c.id).length} shared-floor pair${collisionsByCond.get(c.id).length === 1 ? "" : "s"} — another condition claims the same floor, or a room is traced twice. Activate the row to see each pair.`)}
+              style={{ flexShrink: 0, fontFamily: "var(--f-mono,monospace)", fontSize: 10, fontWeight: 700, color: "var(--c-danger)", border: "1px solid var(--c-danger)", borderRadius: 3, padding: "0 4px" }}>⚠ {uiText(collisionsByCond.get(c.id).length)}</span>
           ) : null}
-          <button onClick={(e) => { e.stopPropagation(); onLocate(c.id); }} title="Zoom the canvas to this condition's takeoffs"
+          <button onClick={(e) => { e.stopPropagation(); onLocate(c.id); }} title={uiText("Zoom the canvas to this condition's takeoffs")}
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>⌖</button>
           <button onClick={(e) => { e.stopPropagation(); onSetActive(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
-            title="Supporting Materials — labor, subfloor & materials for this condition"
+            title={uiText("Supporting Materials — labor, subfloor & materials for this condition")}
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
-            <Icon name="product" size={11} />Materials{c.materials?.length ? ` (${c.materials.length})` : ""}
+            <Icon name="product" size={11} />{uiText("Materials")}{uiText(c.materials?.length ? ` (${c.materials.length})` : "")}
           </button>
           <button onClick={(e) => { e.stopPropagation(); onTogglePin(c.id); }}
-            title={pinned ? "Unpin from the top-bar palette" : (palette.length >= 9 ? "Palette is full (9)" : "Pin to the top-bar palette for one-click access")}
+            title={uiText(pinned ? "Unpin from the top-bar palette" : (palette.length >= 9 ? "Palette is full (9)" : "Pin to the top-bar palette for one-click access"))}
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", padding: "2px 5px", borderRadius: 0, border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "transparent", color: pinned ? "var(--cobalt)" : (!pinned && palette.length >= 9 ? "var(--ink-faint)" : "var(--ink-muted)"), cursor: "pointer", lineHeight: 0 }}>
             <Icon name="pin" size={12} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onDeleteCondition(c.id); }} title="Delete this condition (and its takeoffs)"
+          <button onClick={(e) => { e.stopPropagation(); onDeleteCondition(c.id); }} title={uiText("Delete this condition (and its takeoffs)")}
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕</button>
           </span>
         </div>
@@ -1085,19 +1087,19 @@ function TakeoffsPanel({
             render the same editor from one source of truth. */}
         {on && collisionsByCond?.get(c.id)?.length ? (
           <div data-collision-list={c.id} onClick={(e) => e.stopPropagation()} style={{ margin: "0 12px 8px", padding: "6px 8px", border: "1px solid var(--c-danger)", background: "var(--paper-bright)", fontSize: 11 }}>
-            <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--c-danger)", fontWeight: 700, marginBottom: 4 }}>Shared floor · counted twice in the totals</div>
+            <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--c-danger)", fontWeight: 700, marginBottom: 4 }}>{uiText("Shared floor · counted twice in the totals")}</div>
             {collisionsByCond.get(c.id).map((p) => {
               const other = p.a.condition_id === c.id ? p.b : p.a;
               const mine = p.a.condition_id === c.id ? p.a : p.b;
               return (
                 <div key={`${p.a.shape_id}-${p.b.shape_id}`} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)", padding: "1px 0" }}>
-                  <span style={{ color: "var(--ink-muted)" }}>{p.same_condition ? "⧉" : "↔"}</span>
+                  <span style={{ color: "var(--ink-muted)" }}>{uiText(p.same_condition ? "⧉" : "↔")}</span>
                   <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {p.same_condition ? `double trace${mine.label ? ` · ${mine.label}` : ""}` : `${other.condition}${other.label ? ` · ${other.label}` : ""}`}
-                    <span style={{ color: "var(--ink-muted)" }}> · {p.shared_sf === 0 ? "<0.01" : p.shared_sf} SF shared · {Math.round(p.fraction_of_smaller * 100)}%{p.a.reviewed && p.b.reviewed ? " · both accepted" : ""}</span>
+                    {uiText(p.same_condition ? `double trace${mine.label ? ` · ${mine.label}` : ""}` : `${other.condition}${other.label ? ` · ${other.label}` : ""}`)}
+                    <span style={{ color: "var(--ink-muted)" }}> · {uiText(p.shared_sf === 0 ? "<0.01" : p.shared_sf)} {uiText("SF shared · ")}{uiText(Math.round(p.fraction_of_smaller * 100))}%{uiText(p.a.reviewed && p.b.reviewed ? " · both accepted" : "")}</span>
                   </span>
-                  <button onClick={() => onLookAtCollision?.(p)} title="Frame both shapes on the plan"
-                    style={{ flexShrink: 0, padding: "1px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 10.5, fontWeight: 600 }}>Look</button>
+                  <button onClick={() => onLookAtCollision?.(p)} title={uiText("Frame both shapes on the plan")}
+                    style={{ flexShrink: 0, padding: "1px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 10.5, fontWeight: 600 }}>{uiText("Look")}</button>
                 </div>
               );
             })}
@@ -1115,22 +1117,22 @@ function TakeoffsPanel({
             <div data-condition-proposal={p.id} onClick={(e) => e.stopPropagation()}
               style={{ margin: "0 12px 8px", padding: "6px 8px", border: "1px dashed var(--cobalt)", background: "var(--paper-bright)", fontSize: 11.5 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--cobalt)", fontWeight: 700 }}>Proposed change</span>
+                <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--cobalt)", fontWeight: 700 }}>{uiText("Proposed change")}</span>
                 <span style={{ flex: 1 }} />
-                <button onClick={() => onAcceptConditionEdit?.(p.id)} title="Apply the proposed values to this condition — the same edit typing them here would make"
-                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--c-positive)", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Accept</button>
-                <button onClick={() => onRejectConditionEdit?.(p.id)} title="Drop the proposal — the condition stays as it is"
-                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>Reject</button>
+                <button onClick={() => onAcceptConditionEdit?.(p.id)} title={uiText("Apply the proposed values to this condition — the same edit typing them here would make")}
+                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--c-positive)", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>{uiText("Accept")}</button>
+                <button onClick={() => onRejectConditionEdit?.(p.id)} title={uiText("Drop the proposal — the condition stays as it is")}
+                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>{uiText("Reject")}</button>
               </div>
               {rows.map((r) => (
                 <div key={r.field} style={{ display: "flex", gap: 6, fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}>
-                  <span style={{ color: "var(--ink-muted)", minWidth: 68 }}>{r.field}</span>
-                  <span style={{ color: "var(--ink-muted)", textDecoration: "line-through" }}>{r.from}</span>
+                  <span style={{ color: "var(--ink-muted)", minWidth: 68 }}>{uiText(r.field)}</span>
+                  <span style={{ color: "var(--ink-muted)", textDecoration: "line-through" }}>{uiText(r.from)}</span>
                   <span>→</span>
-                  <strong>{r.to}</strong>
+                  <strong>{uiText(r.to)}</strong>
                 </div>
               ))}
-              {p.rationale ? <div style={{ marginTop: 4, color: "var(--ink-muted)", fontStyle: "italic" }}>{p.rationale}</div> : null}
+              {p.rationale ? <div style={{ marginTop: 4, color: "var(--ink-muted)", fontStyle: "italic" }}>{uiText(p.rationale)}</div> : null}
             </div>
           );
         })()}
@@ -1139,17 +1141,17 @@ function TakeoffsPanel({
           result={transResult} setResult={setTransResult} onDerive={onDeriveTransitions} onLocate2={onLocateTransition} />}
         {matOn && (
           <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
-            <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Supporting Materials — order qty = measured ÷ coverage, rounded up.</div>
+            <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>{uiText("Supporting Materials — order qty = measured ÷ coverage, rounded up.")}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>Labor</span>
-                <input name="condition-labor-type" value={c.laborType || ""} placeholder="e.g. Glue-down, Float, Nail-down"
+                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>{uiText("Labor")}</span>
+                <input name="condition-labor-type" value={c.laborType || ""} placeholder={uiText("e.g. Glue-down, Float, Nail-down")}
                   onChange={(e) => onUpdateCond({ laborType: e.target.value })}
                   style={{ ...ip, flex: 1, minWidth: 0 }} />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>Subfloor</span>
-                <input name="condition-subfloor-type" value={c.subfloorType || ""} placeholder="e.g. Ply, Concrete slab, OSB"
+                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>{uiText("Subfloor")}</span>
+                <input name="condition-subfloor-type" value={c.subfloorType || ""} placeholder={uiText("e.g. Ply, Concrete slab, OSB")}
                   onChange={(e) => onUpdateCond({ subfloorType: e.target.value })}
                   style={{ ...ip, flex: 1, minWidth: 0 }} />
               </label>
@@ -1161,14 +1163,14 @@ function TakeoffsPanel({
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, padding: "3px 6px", border: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11 }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-muted)" }}
-                    title={`These materials follow “${par?.finish_tag || "the original"}”. Edit a row and only that row stops following.`}>
-                    ↳ twin of <b style={{ color: "var(--ink)" }}>{par?.finish_tag || "—"}</b>
-                    {n ? <span style={{ color: "var(--cobalt)" }}> · {n} local</span> : null}
+                    title={uiText(`These materials follow “${par?.finish_tag || "the original"}”. Edit a row and only that row stops following.`)}>
+                    {uiText("↳ twin of ")}<b style={{ color: "var(--ink)" }}>{uiText(par?.finish_tag || "—")}</b>
+                    {n ? <span style={{ color: "var(--cobalt)" }}> · {uiText(n)} {uiText("local")}</span> : null}
                   </span>
                   {onSplitCondition && (
                     <button onClick={() => onSplitCondition(c.id)}
-                      title={`Split out — freeze the following rows where they stand and stop following “${par?.finish_tag || "the original"}”. Keeps its name and still groups with the family.`}
-                      style={{ padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 10.5, color: "var(--ink)", flexShrink: 0 }}>⤴ Split out</button>
+                      title={uiText(`Split out — freeze the following rows where they stand and stop following “${par?.finish_tag || "the original"}”. Keeps its name and still groups with the family.`)}
+                      style={{ padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 10.5, color: "var(--ink)", flexShrink: 0 }}>{uiText("⤴ Split out")}</button>
                   )}
                 </div>
               );
@@ -1184,27 +1186,27 @@ function TakeoffsPanel({
                 CDP/automation-driven session dead, and this panel is scripted in demos. */}
             {onDuplicateCondition && (twinDraft.id === c.id ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>Duplicate for</span>
+                <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>{uiText("Duplicate for")}</span>
                 <input name="twin-label" autoFocus value={twinDraft.label}
                   onChange={(e) => setTwinDraft({ id: c.id, label: e.target.value })}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && twinDraft.label.trim()) { onDuplicateCondition(c.id, twinDraft.label.trim()); setTwinDraft({ id: "", label: "" }); }
-                    if (e.key === "Escape") setTwinDraft({ id: "", label: "" });
+                    if (e.key === "Enter" && twinDraft.label.trim()) { onDuplicateCondition(c.id, twinDraft.label.trim()); setTwinDraft({ id: "", label: uiText("") }); }
+                    if (e.key === "Escape") setTwinDraft({ id: "", label: uiText("") });
                   }}
-                  placeholder="e.g. Level 2" style={{ ...ip, width: 120 }} />
+                  placeholder={uiText("e.g. Level 2")} style={{ ...ip, width: 120 }} />
                 <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>
-                  → <b style={{ color: "var(--ink)" }}>{twinDraft.label.trim() ? `${baseTagOf(c.finish_tag)} – ${twinDraft.label.trim()}` : "…"}</b>
+                  → <b style={{ color: "var(--ink)" }}>{uiText(twinDraft.label.trim() ? `${baseTagOf(c.finish_tag)} – ${twinDraft.label.trim()}` : "…")}</b>
                 </span>
-                <button onClick={() => { if (twinDraft.label.trim()) { onDuplicateCondition(c.id, twinDraft.label.trim()); setTwinDraft({ id: "", label: "" }); } }}
+                <button onClick={() => { if (twinDraft.label.trim()) { onDuplicateCondition(c.id, twinDraft.label.trim()); setTwinDraft({ id: "", label: uiText("") }); } }}
                   disabled={!twinDraft.label.trim()}
-                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: twinDraft.label.trim() ? "var(--ink)" : "var(--ink-faint)", cursor: twinDraft.label.trim() ? "pointer" : "default", fontSize: 11 }}>Duplicate</button>
-                <button onClick={() => setTwinDraft({ id: "", label: "" })}
-                  style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: twinDraft.label.trim() ? "var(--ink)" : "var(--ink-faint)", cursor: twinDraft.label.trim() ? "pointer" : "default", fontSize: 11 }}>{uiText("Duplicate")}</button>
+                <button onClick={() => setTwinDraft({ id: "", label: uiText("") })}
+                  style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>{uiText("Cancel")}</button>
               </div>
             ) : (
-              <button onClick={() => setTwinDraft({ id: c.id, label: "" })}
-                title="Duplicate this condition — the same finish measured somewhere else, with its own materials. Name the area (e.g. Level 2); no takeoffs come along, you measure into it, and its materials keep following this condition until you change them there."
-                style={{ marginTop: 6, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11.5 }}>⎘ Duplicate for another area…</button>
+              <button onClick={() => setTwinDraft({ id: c.id, label: uiText("") })}
+                title={uiText("Duplicate this condition — the same finish measured somewhere else, with its own materials. Name the area (e.g. Level 2); no takeoffs come along, you measure into it, and its materials keep following this condition until you change them there.")}
+                style={{ marginTop: 6, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11.5 }}>{uiText("⎘ Duplicate for another area…")}</button>
             ))}
           </div>
         )}
@@ -1223,21 +1225,21 @@ function TakeoffsPanel({
       : { width, order: dockSide ? dockSide === "left" ? -11 : 11 : undefined, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
       {!overlay && !layoutLocked && <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd} onLostPointerCapture={onResizeEnd}
-        title="Drag to resize"
+        title={uiText("Drag to resize")}
         style={{ order: dockSide === "left" ? 1 : undefined, width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div data-takeoffs-header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
-          {dockHandle}<span style={{ display: "inline-flex", gap: 2 }}>
+          {uiText(dockHandle)}<span style={{ display: "inline-flex", gap: 2 }}>
             {[["takeoffs", `Takeoffs · ${multiSheet ? "these sheets" : "this sheet"}`], ["library", `Library${templates.length ? ` (${templates.length})` : ""}`], ["materials", `Materials${matLib.length ? ` (${matLib.length})` : ""}`], ["columns", `Columns${conditionColumns.length ? ` (${conditionColumns.length})` : ""}`]].map(([id, label]) => (
               <button key={id} aria-pressed={panelTab === id} onClick={() => setPanelTab(id)}
-                style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
+                style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{uiText(label)}</button>
             ))}
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <button onClick={() => onPanelPrefs((p) => ({ ...p, strip: !p.strip }))}
-              title="Compact strip — also show the conditions as a horizontal strip above the canvas (handy on small projects with the panel collapsed)"
-              style={{ background: panelPrefs.strip ? "var(--paper-cream)" : "none", border: "1px solid var(--paper-cream)", color: panelPrefs.strip ? "var(--ink)" : "var(--paper-cream)", fontSize: 9.5, fontFamily: "var(--f-mono)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", padding: "2px 6px", lineHeight: 1.4 }}>strip</button>
-            <button onClick={onToggleCollapse} title="Collapse the panel (the ☰ button on the canvas edge brings it back)"
+              title={uiText("Compact strip — also show the conditions as a horizontal strip above the canvas (handy on small projects with the panel collapsed)")}
+              style={{ background: panelPrefs.strip ? "var(--paper-cream)" : "none", border: "1px solid var(--paper-cream)", color: panelPrefs.strip ? "var(--ink)" : "var(--paper-cream)", fontSize: 9.5, fontFamily: "var(--f-mono)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", padding: "2px 6px", lineHeight: 1.4 }}>{uiText("strip")}</button>
+            <button onClick={onToggleCollapse} title={uiText("Collapse the panel (the ☰ button on the canvas edge brings it back)")}
               style={{ background: "none", border: "none", color: "var(--paper-cream)", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>»</button>
           </span>
         </div>
@@ -1245,94 +1247,91 @@ function TakeoffsPanel({
         {/* view controls — search / natural sort / tag-family grouping.
             All VIEW-ONLY: the array order (hotkeys, payload) never changes. */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: "1px solid var(--ink-faint)", flexShrink: 0 }}>
-          <input name="condition-filter" value={condQuery} onChange={(e) => setCondQuery(e.target.value)} placeholder="filter conditions…"
+          <input name="condition-filter" value={condQuery} onChange={(e) => setCondQuery(e.target.value)} placeholder={uiText("filter conditions…")}
             style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-          {condQuery && <button onClick={() => setCondQuery("")} title="Clear the filter" style={btnClearX}>×</button>}
+          {condQuery && <button onClick={() => setCondQuery("")} title={uiText("Clear the filter")} style={btnClearX}>×</button>}
           <button onClick={() => onPanelPrefs((p) => ({ ...p, az: !p.az }))}
-            title="Natural sort by tag (CT-2 before CT-10) — a view; hotkeys 1–9 keep their original numbering"
+            title={uiText("Natural sort by tag (CT-2 before CT-10) — a view; hotkeys 1–9 keep their original numbering")}
             style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.az ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.az ? "var(--cobalt)" : "transparent", color: panelPrefs.az ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>A→Z</button>
           <button onClick={() => onPanelPrefs((p) => ({ ...p, group: !p.group }))}
-            title="Group by tag family (the text before the dash: CPT, LVT, CT…)"
-            style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.group ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.group ? "var(--cobalt)" : "transparent", color: panelPrefs.group ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>≡ grp</button>
+            title={uiText("Group by tag family (the text before the dash: CPT, LVT, CT…)")}
+            style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.group ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.group ? "var(--cobalt)" : "transparent", color: panelPrefs.group ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>{uiText("≡ grp")}</button>
         </div>
         {/* bulk actions — appear while a ⌘/⇧ multi-selection is live
             (liveChecked: the count never claims ids the list lost) */}
         {liveChecked.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", background: "var(--tint-select)", flexShrink: 0, flexWrap: "wrap", fontSize: 11 }}>
-            <strong style={{ color: "var(--cobalt)" }}>{liveChecked.length} selected</strong>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Set the waste % on every selected condition">
-              <span style={{ color: "var(--ink-muted)" }}>Waste</span>
-              <input name="bulk-waste" type="number" min="0" step="1" value={bulkWaste} onChange={(e) => setBulkWaste(e.target.value)} placeholder="%"
+            <strong style={{ color: "var(--cobalt)" }}>{uiText(liveChecked.length)} {uiText("selected")}</strong>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={uiText("Set the waste % on every selected condition")}>
+              <span style={{ color: "var(--ink-muted)" }}>{uiText("Waste")}</span>
+              <input name="bulk-waste" type="number" min="0" step="1" value={bulkWaste} onChange={(e) => setBulkWaste(e.target.value)} placeholder={uiText("%")}
                 onKeyDown={(e) => e.key === "Enter" && applyBulkWaste()}
                 style={{ width: 44, padding: "2px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 11 }} />
-              <button onClick={applyBulkWaste} title="Apply waste % to the selection" style={{ padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 }}>✓</button>
+              <button onClick={applyBulkWaste} title={uiText("Apply waste % to the selection")} style={{ padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 }}>✓</button>
             </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Set the line color on every selected condition">
-              {PALETTE.map((p) => <button key={p} title={p} onClick={() => onBulkColor(liveIds(), p)} style={{ width: 13, height: 13, borderRadius: 3, background: p, border: "1px solid var(--ink-faint)", cursor: "pointer", padding: 0 }} />)}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={uiText("Set the line color on every selected condition")}>
+              {PALETTE.map((p) => <button key={p} title={uiText(p)} onClick={() => onBulkColor(liveIds(), p)} style={{ width: 13, height: 13, borderRadius: 3, background: p, border: "1px solid var(--ink-faint)", cursor: "pointer", padding: 0 }} />)}
             </span>
-            <button onClick={bulkDelete} title="Delete every selected condition (and their takeoffs)"
-              style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Delete</button>
-            <button onClick={() => setCheckedConds(new Set())} title="Clear the selection"
+            <button onClick={bulkDelete} title={uiText("Delete every selected condition (and their takeoffs)")}
+              style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>{uiText("Delete")}</button>
+            <button onClick={() => setCheckedConds(new Set())} title={uiText("Clear the selection")}
               style={{ marginLeft: "auto", padding: "2px 6px", border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>✕</button>
           </div>
         )}
         <HiddenConditionsBar hidden={liveHidden} total={conditions.length} onShowAll={() => onToggleHidden(null)} />
         <div style={{ flex: 1, overflow: "auto" }}>
-          {conditions.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions yet — add one and start tracing.</div>}
+          {conditions.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>{uiText("No conditions yet — add one and start tracing.")}</div>}
           {condGroups.map((g) => (
             <React.Fragment key={g.name ?? "_all"}>
               {g.name != null && (
                 <div onClick={() => setClosedGroups((s) => { const n = new Set(s); if (n.has(g.name)) n.delete(g.name); else n.add(g.name); return n; })}
-                  title="Collapse / expand this tag family"
+                  title={uiText("Collapse / expand this tag family")}
                   style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper-cream)", cursor: "pointer", fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", userSelect: "none" }}>
-                  <span style={{ width: 10 }}>{closedGroups.has(g.name) ? "▸" : "▾"}</span>
-                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>{g.name}</span>
-                  <span>· {g.items.length}</span>
+                  <span style={{ width: 10 }}>{uiText(closedGroups.has(g.name) ? "▸" : "▾")}</span>
+                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>{uiText(g.name)}</span>
+                  <span>· {uiText(g.items.length)}</span>
                 </div>
               )}
               {/* groupVisibleItems: a collapsed group still renders its
                   ACTIVE row (see the shared rule above visibleCondOrder) */}
-              {groupVisibleItems(g).map(({ c }) => renderCondRow(c))}
+              {uiText(groupVisibleItems(g).map(({ c }) => renderCondRow(c)))}
             </React.Fragment>
           ))}
-          {searchMiss && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions match “{condQuery}”.</div>}
+          {searchMiss && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>{uiText("No conditions match “")}{uiText(condQuery)}”.</div>}
           <div style={{ padding: "6px 12px", borderTop: "1px solid var(--ink-faint)" }}>
-            <button onClick={onAddCondition} style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+            <button onClick={onAddCondition} style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>{uiText("+ condition")}</button>
           </div>
           <div style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 10.5 }}>
-            {keyText("Select a shape on the plan, then ⧉ Copy / ⎘ Paste (⌘C / ⌘V) — it lands on the sheet under your cursor.")}
-            <br />⌫ undo point · Esc cancel · scroll = zoom · pan mid-measure: press-and-drag (a click without dragging places the point).
-          </div>
+            {uiText(keyText(uiText("Select a shape on the plan, then ⧉ Copy / ⎘ Paste (⌘C / ⌘V) — it lands on the sheet under your cursor.")))}
+            <br />{uiText("⌫ undo point · Esc cancel · scroll = zoom · pan mid-measure: press-and-drag (a click without dragging places the point).")}</div>
         </div>
         </>}
         {/* Library tab — reusable condition templates, browser-wide */}
         {panelTab === "library" && (
           <div style={{ flex: 1, overflow: "auto" }}>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-              Reusable condition templates, shared across every plan in this browser. A fresh workspace seeds from this library (built-in flooring defaults when it's empty).
-            </div>
+              {uiText("Reusable condition templates, shared across every plan in this browser. A fresh workspace seeds from this library (built-in flooring defaults when it's empty).")}</div>
             <div style={{ padding: "6px 12px 10px" }}>
               <button onClick={onSaveTemplate} disabled={!aCond}
-                title="Snapshot the active condition (appearance, waste, H/T, materials) into the library"
+                title={uiText("Snapshot the active condition (appearance, waste, H/T, materials) into the library")}
                 style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: aCond ? "pointer" : "default", fontSize: 12, color: aCond ? "var(--ink)" : "var(--ink-faint)" }}>
-                + save {aCond?.finish_tag || "the active condition"} to the library
-              </button>
+                {uiText("+ save ")}{uiText(aCond?.finish_tag || "the active condition")} {uiText("to the library")}</button>
             </div>
-            {templates.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>No templates yet — make a condition the way you like it, then save it here.</div>}
+            {templates.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>{uiText("No templates yet — make a condition the way you like it, then save it here.")}</div>}
             {templates.map((t, idx) => (
               <div key={`${t.finish_tag}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                 <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={t.hatch || "solid"} line={t.color} fill={t.fill} /></span>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.finish_tag}</div>
+                  <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{uiText(t.finish_tag)}</div>
                   <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                    {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{t.rise_ft > 0 ? ` · ↑${dimInputStr(t.rise_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.drop_ft > 0 ? ` · ↓${dimInputStr(t.drop_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
+                    {uiText(t.waste_pct || 0)}{uiText("% waste")}{uiText(t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : "")}{uiText(t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : "")}{uiText(t.rise_ft > 0 ? ` · ↑${dimInputStr(t.rise_ft, units, "height")}${units === "metric" ? " m" : "′"}` : "")}{uiText(t.drop_ft > 0 ? ` · ↓${dimInputStr(t.drop_ft, units, "height")}${units === "metric" ? " m" : "′"}` : "")}{uiText(t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : "")}
                   </div>
                 </div>
-                <button onClick={() => { onApplyTemplate(t); setPanelTab("takeoffs"); }} title="Add a condition from this template to the takeoff"
-                  style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 0, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
-                <button onClick={() => onRenameTemplate(idx)} title="Rename this template"
+                <button onClick={() => { onApplyTemplate(t); setPanelTab("takeoffs"); }} title={uiText("Add a condition from this template to the takeoff")}
+                  style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 0, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>{uiText("Apply")}</button>
+                <button onClick={() => onRenameTemplate(idx)} title={uiText("Rename this template")}
                   style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                <button onClick={() => onDeleteTemplate(idx)} title="Remove this template from the library"
+                <button onClick={() => onDeleteTemplate(idx)} title={uiText("Remove this template from the library")}
                   style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
               </div>
             ))}
@@ -1345,14 +1344,13 @@ function TakeoffsPanel({
         {panelTab === "materials" && (
           <div style={{ flex: 1, overflow: "auto", fontSize: 11.5 }}>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-              Reusable materials, browser-wide. Attaching one to a condition copies its values and keeps a link — edits here only reach linked lines when you push them.
-            </div>
+              {uiText("Reusable materials, browser-wide. Attaching one to a condition copies its values and keeps a link — edits here only reach linked lines when you push them.")}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px 8px" }}>
-              <input name="material-library-filter" value={matLibQuery} onChange={(e) => setMatLibQuery(e.target.value)} placeholder="filter materials…"
+              <input name="material-library-filter" value={matLibQuery} onChange={(e) => setMatLibQuery(e.target.value)} placeholder={uiText("filter materials…")}
                 style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              {matLibQuery && <button onClick={() => setMatLibQuery("")} title="Clear the filter" style={btnClearX}>×</button>}
+              {matLibQuery && <button onClick={() => setMatLibQuery("")} title={uiText("Clear the filter")} style={btnClearX}>×</button>}
             </div>
-            {matLib.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>No library materials yet — add one below, or use “→ lib” on a condition's material line.</div>}
+            {matLib.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>{uiText("No library materials yet — add one below, or use “→ lib” on a condition's material line.")}</div>}
             {matLib.filter((lm) => !matQ || (lm.name || "").toLowerCase().includes(matQ)).map((lm) => {
               const n = linkedCountById[lm.id] || 0;
               return (
@@ -1362,41 +1360,40 @@ function TakeoffsPanel({
                         commit routes every transient value through libEntryPatch's rename
                         re-classification, where a select-all-retype walks the entry's kind
                         through arbitrary intermediate classifications */}
-                    <LibDraftInput name="library-material-name" value={lm.name} placeholder="Material (e.g. Adhesive)" width={150}
+                    <LibDraftInput name="library-material-name" value={uiText(lm.name)} placeholder={uiText("Material (e.g. Adhesive)")} width={150}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { name: t })} />
                     <span style={{ color: "var(--ink-muted)" }}>1</span>
-                    <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 54 }} />
-                    <span style={{ color: "var(--ink-muted)" }}>per</span>
-                    <LibDraftInput name="library-material-per" number value={lm.per || ""} placeholder="0" width={62}
+                    <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder={uiText("unit")} style={{ ...ip, width: 54 }} />
+                    <span style={{ color: "var(--ink-muted)" }}>{uiText("per")}</span>
+                    <LibDraftInput name="library-material-per" number value={lm.per || ""} placeholder={uiText("0")} width={62}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { per: Math.max(0, parseFloat(t) || 0) })} />
                     <select name="library-material-basis" value={lm.basis || "area"} onChange={(e) => onUpdateLibMaterial(lm.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
-                      <option value="area">floor SF</option>
-                      <option value="linear">linear LF</option>
-                      <option value="count">each</option>
-                      <option value="seam_lf" title="Figured seam length from the roll layout — 0 until the condition carries a roll setup">seam LF</option>
+                      <option value="area">{uiText("floor SF")}</option>
+                      <option value="linear">{uiText("linear LF")}</option>
+                      <option value="count">{uiText("each")}</option>
+                      <option value="seam_lf" title={uiText("Figured seam length from the roll layout — 0 until the condition carries a roll setup")}>{uiText("seam LF")}</option>
                     </select>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units">
-                      <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />round up
-                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title={uiText("Round up to whole units")}>
+                      <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />{uiText("round up")}</label>
                     <CoveragePresetSelect material={lm} onPick={(patch) => onUpdateLibMaterial(lm.id, patch)} />
-                    <LibDraftInput name="library-material-note" value={lm.note || ""} placeholder="note" width={120}
+                    <LibDraftInput name="library-material-note" value={lm.note || ""} placeholder={uiText("note")} width={120}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { note: t })} />
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-                    <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>{n ? `⛓ ${n} linked line${n === 1 ? "" : "s"}` : "not linked yet"}</span>
+                    <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>{uiText(n ? `⛓ ${n} linked line${n === 1 ? "" : "s"}` : "not linked yet")}</span>
                     <div style={{ flex: 1 }} />
                     {n > 0 && (
-                      <button onClick={() => onPushLibUpdate(lm.id)} title="Replace the values on every linked condition line with these library values (overrides included)"
-                        style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11 }}>update linked ({n})</button>
+                      <button onClick={() => onPushLibUpdate(lm.id)} title={uiText("Replace the values on every linked condition line with these library values (overrides included)")}
+                        style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11 }}>{uiText("update linked (")}{uiText(n)})</button>
                     )}
-                    <button onClick={() => onDeleteLibMaterial(lm.id)} title="Remove from the library — linked lines keep their values, only the link is removed"
+                    <button onClick={() => onDeleteLibMaterial(lm.id)} title={uiText("Remove from the library — linked lines keep their values, only the link is removed")}
                       style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
                   </div>
                 </div>
               );
             })}
             <div style={{ padding: "6px 12px", borderTop: matLib.length ? "1px solid var(--ink-faint)" : "none" }}>
-              <button onClick={onAddLibMaterial} style={btnAddFull}>+ add library material</button>
+              <button onClick={onAddLibMaterial} style={btnAddFull}>{uiText("+ add library material")}</button>
             </div>
           </div>
         )}
@@ -1410,18 +1407,17 @@ function TakeoffsPanel({
                 it's the degenerate single-column case. */}
             <details open style={{ borderBottom: "2px solid var(--ink-faint)" }}>
               <summary style={{ padding: "8px 12px 4px", cursor: "pointer", fontWeight: 600, fontSize: 11.5 }}>
-                Shape labels{shapeLabels.length ? ` (${shapeLabels.length})` : ""}
+                {uiText("Shape labels")}{uiText(shapeLabels.length ? ` (${shapeLabels.length})` : "")}
               </summary>
               <div style={{ padding: "0 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-                Phase / area labels (e.g. Phase 1, East Wing) for grouping the Report by shape.
-              </div>
+                {uiText("Phase / area labels (e.g. Phase 1, East Wing) for grouping the Report by shape.")}</div>
               <div style={{ padding: "2px 12px 10px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 {shapeLabels.map((v) => (
                   <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 3px 2px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11.5, color: "var(--ink)" }}>
-                    {v}
-                    <button onClick={() => onRenameLabel(v)} title="Rename this label — labeled shapes follow"
+                    {uiText(v)}
+                    <button onClick={() => onRenameLabel(v)} title={uiText("Rename this label — labeled shapes follow")}
                       style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                    <button onClick={() => onRemoveLabel(v)} title="Remove from the list — labeled shapes keep the value (shown ungrouped in the Report)"
+                    <button onClick={() => onRemoveLabel(v)} title={uiText("Remove from the list — labeled shapes keep the value (shown ungrouped in the Report)")}
                       style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
                   </span>
                 ))}
@@ -1429,24 +1425,23 @@ function TakeoffsPanel({
               </div>
             </details>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-              Custom columns (e.g. CSI Division) classify conditions for report grouping and exports. Columns and values apply to the whole project; assign values on a condition in the Takeoffs tab.
-            </div>
-            {conditionColumns.length === 0 && <div style={{ padding: "2px 12px 8px", color: "var(--ink-muted)" }}>Add a column, e.g. CSI Division.</div>}
+              {uiText("Custom columns (e.g. CSI Division) classify conditions for report grouping and exports. Columns and values apply to the whole project; assign values on a condition in the Takeoffs tab.")}</div>
+            {conditionColumns.length === 0 && <div style={{ padding: "2px 12px 8px", color: "var(--ink-muted)" }}>{uiText("Add a column, e.g. CSI Division.")}</div>}
             {conditionColumns.map((cc) => (
               <div key={cc.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                  <input name="column-name" value={cc.name} onChange={(e) => onRenameColumn(cc.id, e.target.value)} placeholder="Column name (e.g. CSI Division)"
+                  <input name="column-name" value={cc.name} onChange={(e) => onRenameColumn(cc.id, e.target.value)} placeholder={uiText("Column name (e.g. CSI Division)")}
                     style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, flex: 1, minWidth: 0 }} />
-                  <button onClick={() => onDeleteColumn(cc.id)} title="Delete this column (whole project)"
-                    style={{ flexShrink: 0, padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕ column</button>
+                  <button onClick={() => onDeleteColumn(cc.id)} title={uiText("Delete this column (whole project)")}
+                    style={{ flexShrink: 0, padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>{uiText("✕ column")}</button>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {cc.values.map((v) => (
                     <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 3px 2px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11.5, color: "var(--ink)" }}>
-                      {v}
-                      <button onClick={() => onRenameColumnValue(cc.id, v)} title="Rename this value — assigned conditions follow"
+                      {uiText(v)}
+                      <button onClick={() => onRenameColumnValue(cc.id, v)} title={uiText("Rename this value — assigned conditions follow")}
                         style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                      <button onClick={() => onRemoveColumnValue(cc.id, v)} title="Remove from the list — conditions keep the value, shown as (removed)"
+                      <button onClick={() => onRemoveColumnValue(cc.id, v)} title={uiText("Remove from the list — conditions keep the value, shown as (removed)")}
                         style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
                     </span>
                   ))}
@@ -1455,7 +1450,7 @@ function TakeoffsPanel({
               </div>
             ))}
             <div style={{ padding: "6px 12px", borderTop: conditionColumns.length ? "1px solid var(--ink-faint)" : "none" }}>
-              <button onClick={onAddColumn} style={btnAddFull}>+ add column</button>
+              <button onClick={onAddColumn} style={btnAddFull}>{uiText("+ add column")}</button>
             </div>
           </div>
         )}

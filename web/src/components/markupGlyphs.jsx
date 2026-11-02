@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // One markup's SVG ink — the render for every markup family (cloud, callout,
 // text note, dimension, arrow, highlight, bubble, image capture, vector stamp)
 // in ONE panel's local px frame. Shared byte-for-byte between the primary
@@ -48,7 +49,7 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
   if (premium) {
     const at = m.at || m.from || m.rect?.[0] || m.pts?.[0] || m.quads?.[0]?.[0];
     const linked = rfis.find((r) => r.id === m.rfi_id);
-    return <g key={m.id}>{premium}{m.rfi_id && at && <text x={at[0] * img.w} y={at[1] * img.h - 14 / z} fill="#1f3fc7" fontSize={12 / z} fontWeight="700">RFI {linked?.number || ''}</text>}</g>;
+    return <g key={m.id}>{uiText(premium)}{m.rfi_id && at && <text x={at[0] * img.w} y={at[1] * img.h - 14 / z} fill="#1f3fc7" fontSize={12 / z} fontWeight="700">{uiText("RFI ")}{uiText(linked?.number || '')}</text>}</g>;
   }
   // Colour precedence: an explicit per-markup colour always wins (the user
   // picked it), then the LINKED CONDITION's colour so an annotation reads as
@@ -69,7 +70,7 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
   const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
   const badgeCol = darkMode ? boostForDark("#1f3fc7") : "#1f3fc7";
   const badge = (bx, by) => (m.rfi_id ? (
-    <text x={bx} y={by} fill={badgeCol} fontSize={12 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{"⬢"}{linked && linked.number != null && linked.number !== "" ? " " + linked.number : ""}</text>
+    <text x={bx} y={by} fill={badgeCol} fontSize={12 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{uiText("⬢")}{uiText(linked && linked.number != null && linked.number !== "" ? " " + linked.number : "")}</text>
   ) : null);
   // revision-delta △n — a small numbered triangle at a cloud corner, clear of
   // the halo, the top-left RFI badge, and the centered note. Absent/zero m.rev
@@ -79,7 +80,7 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
   const revTri = (rx, ry) => (Number.isFinite(m.rev) && m.rev > 0 ? (
     <g style={{ pointerEvents: "none" }}>
       <path d={`M${rx},${ry - 9 / z} L${rx + 8 / z},${ry + 6 / z} L${rx - 8 / z},${ry + 6 / z} Z`} fill="#fff" stroke={base} strokeWidth={1.4 / z} />
-      <text x={rx} y={ry + 2.5 / z} fill={base} fontSize={9 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central">{m.rev}</text>
+      <text x={rx} y={ry + 2.5 / z} fill={base} fontSize={9 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central">{uiText(m.rev)}</text>
     </g>
   ) : null);
   // halo ring widths scale with weight so a heavy stroke never overruns them
@@ -109,8 +110,8 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
             <path d={strokePathD(ip)} fill="none" stroke="#1f3fc7" strokeOpacity={0.55} strokeWidth={sw + 4 / z} strokeLinecap="round" strokeLinejoin="round" />
           </>
         )}
-        {ink}
-        {badge(ip[0][0], ip[0][1] - 9 / z)}
+        {uiText(ink)}
+        {uiText(badge(ip[0][0], ip[0][1] - 9 / z))}
       </g>
     );
   }
@@ -121,10 +122,10 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
     const pad = (5 * w) / z;
     return (
       <g key={m.id}>
-        {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
+        {uiText(halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad))}
         <rect x={hx0} y={hy0} width={hx1 - hx0} height={hy1 - hy0} fill={mk} fillOpacity={0.18} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-        {m.text && <text x={(hx0 + hx1) / 2} y={(hy0 + hy1) / 2} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-        {badge(hx0, hy0 - pad - 9 / z)}
+        {m.text && <text x={(hx0 + hx1) / 2} y={(hy0 + hy1) / 2} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{uiText(m.text)}</text>}
+        {uiText(badge(hx0, hy0 - pad - 9 / z))}
       </g>
     );
   }
@@ -135,11 +136,11 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
     const bx1 = Math.max(c0[0], c1[0]) * img.w + pad, by1 = Math.max(c0[1], c1[1]) * img.h + pad;
     return (
       <g key={m.id}>
-        {halo(bx0, by0, bx1, by1)}
+        {uiText(halo(bx0, by0, bx1, by1))}
         <path d={cloudPath(c0[0] * img.w, c0[1] * img.h, c1[0] * img.w, c1[1] * img.h)} fill="none" stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-        {m.text && <text x={(c0[0] + c1[0]) / 2 * img.w} y={(c0[1] + c1[1]) / 2 * img.h} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-        {badge(bx0, by0 - 9 / z)}
-        {revTri(bx1, by0 - 9 / z)}
+        {m.text && <text x={(c0[0] + c1[0]) / 2 * img.w} y={(c0[1] + c1[1]) / 2 * img.h} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{uiText(m.text)}</text>}
+        {uiText(badge(bx0, by0 - 9 / z))}
+        {uiText(revTri(bx1, by0 - 9 / z))}
       </g>
     );
   }
@@ -154,17 +155,17 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
     const b = noteBox(AX, AY, L);
     return (
       <g key={m.id}>
-        {halo(b.x0 - 2 / z, b.y0 - 2 / z, b.x1 + 2 / z, b.y1 + 2 / z)}
+        {uiText(halo(b.x0 - 2 / z, b.y0 - 2 / z, b.x1 + 2 / z, b.y1 + 2 / z))}
         <line x1={tx * img.w} y1={ty * img.h} x2={AX} y2={AY} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
         {/* arrowhead at the target end — replaces the old vertex star */}
         <path d={arrowheadPath(AX, AY, tx * img.w, ty * img.h, 9 / z)} fill={mk} />
         {L.lines.length > 0 && <rect x={b.x0} y={b.y0} width={L.w} height={L.h} fill="rgba(255,255,255,.92)" stroke={mk} strokeWidth={(1 * w) / z} strokeDasharray={dash} />}
         {L.lines.length > 0 && (
           <text fill={noteInk} fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
-            {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{ln || "\u00a0"}</tspan>)}
+            {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{uiText(ln || "\u00a0")}</tspan>)}
           </text>
         )}
-        {badge(AX, b.y0 - 8 / z)}
+        {uiText(badge(AX, b.y0 - 8 / z))}
       </g>
     );
   }
@@ -176,12 +177,12 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
     const pad = (6 * w) / z;
     return (
       <g key={m.id}>
-        {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
+        {uiText(halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad))}
         <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} strokeLinecap="round" />
         {/* filled arrowhead at the `to` end */}
         <path d={arrowheadPath(fx, fy, tx, ty, 11 / z)} fill={mk} />
-        {m.text && <text x={midx} y={midy - inkPx(LABEL_PT, z) * 0.6} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-        {badge(hx0, hy0 - pad - 9 / z)}
+        {m.text && <text x={midx} y={midy - inkPx(LABEL_PT, z) * 0.6} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{uiText(m.text)}</text>}
+        {uiText(badge(hx0, hy0 - pad - 9 / z))}
       </g>
     );
   }
@@ -200,12 +201,12 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
     const pad = (6 * w) / z;
     return (
       <g key={m.id}>
-        {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
+        {uiText(halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad))}
         <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
         <line x1={fx - dnx * tick} y1={fy - dny * tick} x2={fx + dnx * tick} y2={fy + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
         <line x1={tx - dnx * tick} y1={ty - dny * tick} x2={tx + dnx * tick} y2={ty + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
-        {dimText && <text x={(fx + tx) / 2 + dnx * (inkPx(LABEL_PT, z) * 0.9)} y={(fy + ty) / 2 + dny * (inkPx(LABEL_PT, z) * 0.9)} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{dimText}</text>}
-        {badge(hx0, hy0 - pad - 9 / z)}
+        {dimText && <text x={(fx + tx) / 2 + dnx * (inkPx(LABEL_PT, z) * 0.9)} y={(fy + ty) / 2 + dny * (inkPx(LABEL_PT, z) * 0.9)} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{uiText(dimText)}</text>}
+        {uiText(badge(hx0, hy0 - pad - 9 / z))}
       </g>
     );
   }
@@ -215,10 +216,10 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
     const pad = (5 * w) / z;
     return (
       <g key={m.id}>
-        {halo(cx - rad - pad, cy - rad - pad, cx + rad + pad, cy + rad + pad)}
+        {uiText(halo(cx - rad - pad, cy - rad - pad, cx + rad + pad, cy + rad + pad))}
         <circle cx={cx} cy={cy} r={rad} fill={darkMode ? "rgba(12,15,20,.85)" : "rgba(255,255,255,.85)"} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-        {m.text && <text x={cx} y={cy} fill={labelInk} fontSize={Math.min(13, rad * z * 0.9) / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
-        {badge(cx + rad, cy - rad - 4 / z)}
+        {m.text && <text x={cx} y={cy} fill={labelInk} fontSize={Math.min(13, rad * z * 0.9) / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{uiText(m.text)}</text>}
+        {uiText(badge(cx + rad, cy - rad - 4 / z))}
       </g>
     );
   }
@@ -245,7 +246,7 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
       : "";
     return (
       <g key={m.id}>
-        {halo(x0, y0, x0 + bw, y0 + bh)}
+        {uiText(halo(x0, y0, x0 + bw, y0 + bh))}
         <image href={m.src} x={x0} y={y0} width={bw} height={bh} preserveAspectRatio="none" style={{ pointerEvents: "none" }} />
         {/* PERMANENT frame — a placed screenshot overlays its own source and is
             invisible without it; the halo is selection-only. White + slate double
@@ -268,11 +269,11 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
             <g style={{ pointerEvents: "none" }}>
               <rect x={capCx - capW / 2} y={capCy - capH / 2} width={capW} height={capH} rx={3 / z}
                 fill="rgba(255,247,237,.95)" stroke="#0e1a2e" strokeWidth={1 / z} />
-              <text x={capCx} y={capCy} fill="#0e1a2e" fontSize={10 / z} fontWeight="600" textAnchor="middle" dominantBaseline="central">{capText}</text>
+              <text x={capCx} y={capCy} fill="#0e1a2e" fontSize={10 / z} fontWeight="600" textAnchor="middle" dominantBaseline="central">{uiText(capText)}</text>
             </g>
           );
         })()}
-        {badge(x0, y0 - 9 / z)}
+        {uiText(badge(x0, y0 - 9 / z))}
       </g>
     );
   }
@@ -289,9 +290,9 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
     const fcol = fillOn ? (darkMode ? boostForDark(m.fill) : m.fill) : "none";
     return (
       <g key={m.id}>
-        {halo(x0, y0, x0 + bw, y0 + bh)}
+        {uiText(halo(x0, y0, x0 + bw, y0 + bh))}
         <path d={d} fill={fcol} fillOpacity={fillOn ? 0.9 : undefined} stroke={mk} strokeWidth={(1.6 * w) / z} strokeLinejoin="round" style={{ pointerEvents: "none" }} />
-        {badge(x0, y0 - 9 / z)}
+        {uiText(badge(x0, y0 - 9 / z))}
       </g>
     );
   }
@@ -303,14 +304,14 @@ export function renderMarkupGlyph(m0, { img, z, darkMode, condById, rfis, select
   const b = noteBox(AX, AY, L);
   return (
     <g key={m.id}>
-      {halo(b.x0 - 2 / z, b.y0 - 2 / z, b.x1 + 2 / z, b.y1 + 2 / z)}
+      {uiText(halo(b.x0 - 2 / z, b.y0 - 2 / z, b.x1 + 2 / z, b.y1 + 2 / z))}
       {L.lines.length > 0 && <rect x={b.x0} y={b.y0} width={L.w} height={L.h} fill="rgba(255,247,237,.92)" stroke={mk} strokeWidth={(1 * w) / z} strokeDasharray={dash} />}
       {L.lines.length > 0 && (
         <text fill={noteInk} fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
-          {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{ln || "\u00a0"}</tspan>)}
+          {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{uiText(ln || "\u00a0")}</tspan>)}
         </text>
       )}
-      {badge(AX, b.y0 - 8 / z)}
+      {uiText(badge(AX, b.y0 - 8 / z))}
     </g>
   );
 }

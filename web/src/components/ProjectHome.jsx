@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // ProjectHome — the signed-in `/` screen on team-configured builds.
 //
 // A project IS a direct child of the "Projects" Shared Drive root, so this is a
@@ -59,13 +60,13 @@ export default function ProjectHome() {
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 20, letterSpacing: "-0.02em" }}>
           open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span>
         </strong>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>Projects</strong>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>{uiText("Projects")}</strong>
         {/* Escape hatch sits WITH the title (top-left), matching PlanNavigator's
             back/up placement so the "get out of here" control is always in the
             same spot. client-side Link (not a plain anchor): a reload here would
             drop the in-memory Google token; App re-gates off the URL and keeps us
             signed in */}
-        <Link to="/" style={{ fontSize: 12, color: "var(--cobalt)" }}>use the local canvas</Link>
+        <Link to="/" style={{ fontSize: 12, color: "var(--cobalt)" }}>{uiText("use the local canvas")}</Link>
         <div style={{ flex: 1 }} />
         <AuthChip />
       </div>
@@ -73,40 +74,38 @@ export default function ProjectHome() {
       {/* recently opened — this browser only; hidden entirely when empty */}
       {recents.length > 0 && (
         <div>
-          <div style={sectionHead}>Recently opened</div>
+          <div style={sectionHead}>{uiText("Recently opened")}</div>
           {recents.map((r) => (
             // row and button both open — same action, the button is just an
             // explicit affordance mirroring the project rows below.
             <div key={r.id} onClick={() => open(r)} style={{ ...rowBase, cursor: "pointer" }}>
-              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</strong>
-              <button type="button" onClick={(e) => { e.stopPropagation(); open(r); }} style={openBtn}>Open</button>
+              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(r.name)}>{uiText(r.name)}</strong>
+              <button type="button" onClick={(e) => { e.stopPropagation(); open(r); }} style={openBtn}>{uiText("Open")}</button>
             </div>
           ))}
         </div>
       )}
 
       {/* the project list — flat: every folder here is one project */}
-      {recents.length > 0 && <div style={sectionHead}>All projects</div>}
+      {recents.length > 0 && <div style={sectionHead}>{uiText("All projects")}</div>}
 
       {/* folder listing */}
       <div style={{ flex: 1, overflow: "auto" }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>Reading projects…</div>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{uiText("Reading projects…")}</div>
         ) : err ? (
           <div style={{ padding: 40, textAlign: "center", fontSize: 13 }}>
-            <div style={{ color: "var(--c-danger)", marginBottom: 12 }}>Couldn't list the projects: {err}</div>
+            <div style={{ color: "var(--c-danger)", marginBottom: 12 }}>{uiText("Couldn't list the projects: ")}{uiText(err)}</div>
             {/* Retry must be a BUTTON: the click is a user gesture, so if the
                 token expired, the silent-refresh popup GIS may need to open
                 isn't popup-blocked — an auto-retry's would be. */}
             <button type="button" onClick={() => setAttempt((n) => n + 1)}
               style={{ padding: "7px 14px", border: "1px solid var(--ink)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
-              Retry
-            </button>
+              {uiText("Retry")}</button>
           </div>
         ) : folders.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>
-            No projects yet — create a folder in the Projects drive.
-          </div>
+            {uiText("No projects yet — create a folder in the Projects drive.")}</div>
         ) : (
           folders.map((f) => (
             // row and button both open the project — a project is exactly this
@@ -115,8 +114,8 @@ export default function ProjectHome() {
             // glyph: a drill triangle would misread as "expand," and this matches
             // the recents rows above.
             <div key={f.id} onClick={() => open(f)} style={{ ...rowBase, cursor: "pointer" }}>
-              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</strong>
-              <button type="button" onClick={(e) => { e.stopPropagation(); open(f); }} style={openBtn}>Open</button>
+              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(f.name)}>{uiText(f.name)}</strong>
+              <button type="button" onClick={(e) => { e.stopPropagation(); open(f); }} style={openBtn}>{uiText("Open")}</button>
             </div>
           ))
         )}

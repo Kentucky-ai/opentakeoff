@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Account chip — the two-deck toolbar's home for "who am I" (issue #61).
 // Renders NOTHING unless the user is signed in: no UI when cloud mode is off,
 // and no "Sign in" button when signed out (sign-in is initiated only from the
@@ -25,22 +26,22 @@ export default function AccountChip({ note, onOpenChange }) {
 
   return (
     <ToolMenu
-      title={`Account — ${user.email}`}
+      title={uiText(`Account — ${user.email}`)}
       onOpenChange={onOpenChange}
       faceStyle={{ padding: "4px 8px 4px 4px" }}
       menuStyle={{ minWidth: 224 }}
       face={
-        <span aria-label="Account" style={{
+        <span aria-label={uiText("Account")} style={{
           width: 20, height: 20, background: "var(--cobalt)", color: "var(--paper-bright)",
           fontFamily: "var(--f-mono)", fontSize: 9, fontWeight: 700,
           display: "inline-flex", alignItems: "center", justifyContent: "center",
-        }}>{initialsOf(user)}</span>
+        }}>{uiText(initialsOf(user))}</span>
       }
       items={[
-        { section: "Signed in" },
-        { note: <>{user.email}{note ? <><br />{note}</> : null}</> },
+        { section: uiText("Signed in") },
+        { note: <>{uiText(user.email)}{note ? <><br />{uiText(note)}</> : null}</> },
         "divider",
-        { id: "signout", label: "Sign out", danger: true, title: "Sign out", onSelect: () => signOut() },
+        { id: "signout", label: uiText("Sign out"), danger: true, title: uiText("Sign out"), onSelect: () => signOut() },
       ]}
     />
   );

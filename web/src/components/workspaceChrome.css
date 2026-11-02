@@ -637,3 +637,65 @@
 .workspace-calm [data-takeoffs-header] .calm-dock-handle {
   color:var(--paper-bright);
 }
+
+/* Russian labels need horizontal room at laptop widths. Keep language access visible. */
+.calm-header-actions { overflow-x:auto; scrollbar-width:thin; }
+.calm-header-actions > * { flex-shrink:0; }
+.ot-language-switcher { display:inline-flex; align-items:center; gap:var(--sp-1); flex-shrink:0; white-space:nowrap; font-size:var(--fs-s); }
+.ot-language-switcher > span { font-family:var(--f-mono); font-size:var(--fs-xs); color:var(--ink-muted); }
+.ot-language-switcher select { font:inherit; color:var(--ink); background:var(--paper-bright); border:1px solid var(--ink-faint); padding:var(--sp-1) var(--sp-2); min-height:var(--ctl-m); }
+
+/* A readable Russian tool rail; the English compact rail stays unchanged. */
+html[lang="ru"] body { --rail-w:112px; }
+html[lang="ru"] [data-tool-rail] { scrollbar-width:thin; }
+html[lang="ru"] [data-tool-rail] > span { font-size:10px!important; letter-spacing:0!important; }
+.ot-tool-name { font-family:var(--f-body); font-size:10px; font-weight:500; line-height:1.2; white-space:normal; text-align:center; max-width:100%; }
+.ot-rail-annotation { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; }
+html[lang="ru"] #workspace-condition { min-width:260px; max-width:360px; font-size:12px; }
+html[lang="ru"] .calm-context-pinned [data-tour="scale"] { white-space:nowrap; }
+html[lang="ru"] .calm-header-actions { flex-wrap:wrap; overflow:visible; }
+html[lang="ru"] .calm-header { align-items:flex-start; }
+html[lang="ru"] .calm-header .calm-project { display:none; }
+html[lang="ru"] .calm-header button { font-size:12px; padding-inline:var(--sp-2); }
+html[lang="ru"] .calm-context { flex-wrap:wrap; }
+html[lang="ru"] .calm-context-scroll { flex:1 1 600px; }
+html[lang="ru"] .calm-context-pinned { flex:0 0 auto; margin-left:auto; }
+html[lang="ru"] .calm-property-editor { flex-wrap:wrap; gap:var(--sp-2); }
+
+html[lang="ru"] .app-shell { --rail-w:112px; }
+html[lang="ru"] [data-tool-rail] .ot-tool-name { overflow-wrap:normal; word-break:normal; }
+html[lang="ru"] .calm-header-actions { justify-content:flex-start; flex:1 1 auto; min-width:0; } html[lang="ru"] .calm-header .calm-classic { margin-left:0; }
+html[lang="ru"] .report-toolbar { flex-wrap:wrap; gap:8px!important; flex-shrink:0; }
+html[lang="ru"] .report-toolbar > strong { white-space:nowrap; }
+html[lang="ru"] .report-toolbar > input { flex:0 1 220px; min-width:160px; }
+html[lang="ru"] .report-toolbar > button, html[lang="ru"] .report-toolbar > span { flex-shrink:0; }
+html[lang="ru"] .report-toolbar button { white-space:nowrap; letter-spacing:0; font-size:12px; }
+html[lang="ru"] .report-scroll { min-height:0; }
+
+/* Keep translated controls in the original groups and reserve the close corner. */
+.report-toolbar { position:relative; padding-right:116px!important; min-height:62px; flex-shrink:0; }
+.report-toolbar .report-close { position:absolute; right:18px; top:12px; margin:0; }
+.estimate-close { position:absolute; right:18px; top:16px; }
+.estimate-panel > div:first-child { position:relative; padding-right:58px!important; }
+html[lang="ru"] .report-toolbar { flex-wrap:nowrap; gap:6px!important; }
+html[lang="ru"] .report-toolbar > strong { font-size:14px!important; }
+html[lang="ru"] .report-toolbar > input { width:170px!important; min-width:100px; flex:0 1 170px; }
+html[lang="ru"] .report-toolbar button { font-size:11px; padding-inline:8px!important; letter-spacing:0!important; }
+html[lang="ru"] .report-toolbar label { font-size:11px!important; }
+html[lang="ru"] .calm-header-actions { flex-wrap:nowrap; overflow:visible; gap:6px; }
+html[lang="ru"] .calm-header { align-items:center; gap:8px; }
+html[lang="ru"] .calm-header button { font-size:11px; padding-inline:6px; gap:5px; }
+html[lang="ru"] .ot-language-switcher > span { display:none; }
+html[lang="ru"] .ot-language-switcher select { font-size:11px; padding:4px; min-height:30px; }
+html[lang="ru"] .calm-context { flex-wrap:nowrap; }
+html[lang="ru"] #workspace-condition { min-width:150px; width:190px; max-width:190px; }
+html[lang="ru"] .calm-context-scroll { flex:1 1 auto; min-width:0; }
+html[lang="ru"] .calm-context-pinned { flex:0 0 auto; }
+html[lang="ru"] .calm-property-editor { font-size:11px; gap:6px; }
+html[lang="ru"] .calm-property-editor > strong { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width:1450px) {
+ html[lang="ru"] .report-toolbar { flex-wrap:wrap; }
+ html[lang="ru"] .calm-header-actions { flex-wrap:wrap; }
+}
+html[lang="ru"] [data-takeoffs-header] > span { flex-wrap:wrap; min-width:0; } html[lang="ru"] [data-takeoffs-header] button { white-space:nowrap; font-size:11px!important; padding:3px 6px!important; }
+html[lang="ru"] .calm-header .calm-project { display:block; flex:1 1 140px; min-width:0; max-width:200px; } @media(max-width:1450px) { html[lang="ru"] .calm-header .calm-project { display:none; } }

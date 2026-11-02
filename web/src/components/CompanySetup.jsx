@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Company setup — who the firm is and how it prices, set once per device:
 // trade name, contact and logo (identity.js, shared with Project info through
 // CompanyIdentity.jsx), estimating defaults and proposal text (companySetup.js).
@@ -60,61 +61,60 @@ export default function CompanySetup({ onClose, onSaved }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: Z.modal, background: "var(--scrim)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 16px", overflow: "auto" }}>
       <div ref={dialogRef} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}
-        role="dialog" aria-modal="true" aria-label="Company setup" className="panel"
+        role="dialog" aria-modal="true" aria-label={uiText("Company setup")} className="panel"
         style={{ width: "min(640px, 100%)", background: "var(--paper-bright)", color: "var(--ink)", border: "1px solid var(--ink-faint)", padding: "20px 24px 22px", boxShadow: "var(--shadow-2)", fontFamily: "var(--f-body)", fontSize: 13, lineHeight: 1.6 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-          <strong style={{ fontFamily: "var(--f-display)", fontSize: 17, letterSpacing: "-0.02em" }}>Company setup</strong>
-          <button type="button" onClick={onClose} title="Close (Esc)" aria-label="Close"
+          <strong style={{ fontFamily: "var(--f-display)", fontSize: 17, letterSpacing: "-0.02em" }}>{uiText("Company setup")}</strong>
+          <button type="button" onClick={onClose} title={uiText("Close (Esc)")} aria-label={uiText("Close")}
             style={{ background: "none", border: "none", color: "var(--ink-soft)", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 4 }}>×</button>
         </div>
         <p style={{ margin: "4px 0 0", color: "var(--ink-muted)", fontSize: 12.5 }}>
-          Saved on this device as you type. Export profile carries it to another computer. Every project's estimate starts from these defaults.
-        </p>
+          {uiText("Saved on this device as you type. Export profile carries it to another computer. Every project's estimate starts from these defaults.")}</p>
 
-        <div style={{ ...section, borderTop: "none", marginTop: 10 }}>Company — on your proposals</div>
+        <div style={{ ...section, borderTop: "none", marginTop: 10 }}>{uiText("Company — on your proposals")}</div>
         <CompanyIdentityFields company={company} contact />
 
-        <div style={section}>Estimating defaults</div>
+        <div style={section}>{uiText("Estimating defaults")}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, margin: "8px 0" }}>
           {NUMBER_FIELDS.map(([k, label, unit, hint]) => (
             <label key={k} style={{ flex: "1 1 130px", minWidth: 0 }}>
-              <span className="field-label">{label}</span>
+              <span className="field-label">{uiText(label)}</span>
               <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                 <input name={`estimating-${k}`} type="number" inputMode="decimal" min={0} step={k === "valid_days" ? 1 : "any"}
                   value={draft[k]} onChange={onNumber(k)} className="field-input mono" style={{ width: "100%", minWidth: 0 }} />
-                <span style={{ color: "var(--ink-muted)", fontSize: 12 }}>{unit}</span>
+                <span style={{ color: "var(--ink-muted)", fontSize: 12 }}>{uiText(unit)}</span>
               </span>
-              {hint && <span style={{ display: "block", color: "var(--ink-muted)", fontSize: 11 }}>{hint}</span>}
+              {hint && <span style={{ display: "block", color: "var(--ink-muted)", fontSize: 11 }}>{uiText(hint)}</span>}
             </label>
           ))}
         </div>
-        <div role="radiogroup" aria-label="Profit is" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, margin: "4px 0 2px", fontSize: 12.5 }}>
-          <span className="field-label">Profit is</span>
+        <div role="radiogroup" aria-label={uiText("Profit is")} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, margin: "4px 0 2px", fontSize: 12.5 }}>
+          <span className="field-label">{uiText("Profit is")}</span>
           {[["markup", "a markup on cost"], ["margin", "a margin of the price"]].map(([id, label]) => (
             <label key={id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
               <input type="radio" name="profit-mode" value={id} checked={defaults.profit_mode === id} onChange={() => save({ profit_mode: id })} />
-              {label}
+              {uiText(label)}
             </label>
           ))}
         </div>
         <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 11.5 }}>
-          {margin
+          {uiText(margin
             ? `Price = cost ÷ (1 − ${defaults.profit_pct}%)${defaults.profit_pct >= 100 ? " — a margin must be under 100%." : defaults.profit_pct > 0 ? ` = cost × ${(1 / (1 - defaults.profit_pct / 100)).toFixed(3)}` : ""}`
-            : `Price = cost × (1 + ${defaults.profit_pct}%)`}
+            : `Price = cost × (1 + ${defaults.profit_pct}%)`)}
         </p>
 
-        <div style={section}>Proposal text</div>
+        <div style={section}>{uiText("Proposal text")}</div>
         {TEXT_AREAS.map(([k, label, placeholder]) => (
           <label key={k} style={{ display: "block", margin: "8px 0" }}>
-            <span className="field-label">{label}</span>
+            <span className="field-label">{uiText(label)}</span>
             <textarea name={`proposal-${k}`} value={defaults[k]} onChange={(e) => save({ [k]: e.target.value })} maxLength={TEXT_LIMIT}
-              rows={3} placeholder={placeholder} className="field-input" style={{ marginTop: 4, width: "100%", resize: "vertical" }} />
+              rows={3} placeholder={uiText(placeholder)} className="field-input" style={{ marginTop: 4, width: "100%", resize: "vertical" }} />
           </label>
         ))}
-        {saveFailed && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--c-danger)" }}>Couldn't save on this device</p>}
+        {saveFailed && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--c-danger)" }}>{uiText("Couldn't save on this device")}</p>}
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-          <button className="btn-primary" onClick={onClose}>Done</button>
+          <button className="btn-primary" onClick={onClose}>{uiText("Done")}</button>
         </div>
       </div>
     </div>

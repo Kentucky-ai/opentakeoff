@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Company identity — the trade-name profiles (lib/identity.js) as one hook plus
 // one field block, shared by Project info (ReportPanel) and Company setup so the
 // two dialogs can never drift. Profiles are per-device and save on every change.
@@ -68,62 +69,62 @@ export function CompanyIdentityFields({ company, contact = false }) {
     <>
       {/* trade-name picker: choose which identity prints on the report + marked-set */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0" }}>
-        <select name="trade-name" aria-label="Active trade name" value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
+        <select name="trade-name" aria-label={uiText("Active trade name")} value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
           className="field-input" style={{ flex: 1, minWidth: 0 }} disabled={!profs.profiles.length}>
-          {profs.profiles.length === 0 && <option value="">No trade name yet — add one</option>}
-          {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || "Untitled trade name"}</option>)}
+          {profs.profiles.length === 0 && <option value="">{uiText("No trade name yet — add one")}</option>}
+          {profs.profiles.map((p) => <option key={p.id} value={p.id}>{uiText(p.name || "Untitled trade name")}</option>)}
         </select>
-        <button onClick={addTradeName} className="btn-ghost" title="Add another trade name (e.g. a second brand)"
-          style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>+ Add</button>
+        <button onClick={addTradeName} className="btn-ghost" title={uiText("Add another trade name (e.g. a second brand)")}
+          style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>{uiText("+ Add")}</button>
         {profs.profiles.length > 1 && (
-          <button onClick={deleteActive} title="Delete the selected trade name"
-            style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Delete</button>
+          <button onClick={deleteActive} title={uiText("Delete the selected trade name")}
+            style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>{uiText("Delete")}</button>
         )}
       </div>
       <label style={row}>
-        <span className="field-label">Name</span>
+        <span className="field-label">{uiText("Name")}</span>
         <input name="company-name" autoComplete="organization" value={active.name || ""} onChange={(e) => editActive({ name: e.target.value })}
-          placeholder="Your trade name" className="field-input" style={{ marginTop: 4 }} />
+          placeholder={uiText("Your trade name")} className="field-input" style={{ marginTop: 4 }} />
       </label>
       <label style={row}>
-        <span className="field-label">Address</span>
+        <span className="field-label">{uiText("Address")}</span>
         <textarea name="company-address" autoComplete="street-address" value={active.address || ""} onChange={(e) => editActive({ address: e.target.value })}
-          rows={2} placeholder={"Street\nCity, ST"} className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
+          rows={2} placeholder={uiText("Street\nCity, ST")} className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
       </label>
       {contact && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <label style={{ ...row, flex: "1 1 140px" }}>
-            <span className="field-label">Phone</span>
+            <span className="field-label">{uiText("Phone")}</span>
             <input name="company-phone" type="tel" autoComplete="tel" value={active.phone || ""} onChange={(e) => editActive({ phone: e.target.value })}
               className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={{ ...row, flex: "1 1 180px" }}>
-            <span className="field-label">Email</span>
+            <span className="field-label">{uiText("Email")}</span>
             <input name="company-email" type="email" autoComplete="email" value={active.email || ""} onChange={(e) => editActive({ email: e.target.value })}
               className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={{ ...row, flex: "1 1 140px" }}>
-            <span className="field-label">License no.</span>
+            <span className="field-label">{uiText("License no.")}</span>
             <input name="company-license" autoComplete="off" value={active.license || ""} onChange={(e) => editActive({ license: e.target.value })}
               className="field-input" style={{ marginTop: 4 }} />
           </label>
         </div>
       )}
       <div style={row}>
-        <span className="field-label">Logo</span>
+        <span className="field-label">{uiText("Logo")}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
           <input name="company-logo" type="file" accept="image/*" onChange={onLogoFile} style={{ fontSize: 12, minWidth: 0 }} />
           {active.logo && (
             <>
-              <img src={active.logo} alt="Company logo" style={{ width: 120, height: "auto", flex: "none", border: "1px solid var(--ink-faint)", background: "var(--well)" }} />
+              <img src={active.logo} alt={uiText("Company logo")} style={{ width: 120, height: "auto", flex: "none", border: "1px solid var(--ink-faint)", background: "var(--well)" }} />
               <button onClick={removeLogo}
-                style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: 0, whiteSpace: "nowrap" }}>Remove logo</button>
+                style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: 0, whiteSpace: "nowrap" }}>{uiText("Remove logo")}</button>
             </>
           )}
         </div>
-        {logoErr && <p style={err}>{logoErr}</p>}
+        {logoErr && <p style={err}>{uiText(logoErr)}</p>}
       </div>
-      {saveFailed && <p style={err}>Couldn't save on this device</p>}
+      {saveFailed && <p style={err}>{uiText("Couldn't save on this device")}</p>}
     </>
   );
 }

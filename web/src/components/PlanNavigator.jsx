@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // PlanNavigator — the single, harmonized surface for choosing plans, merging the
 // former SheetGallery (working-set thumbnail grid) and DrivePicker (browse the
 // project's Drive folder) into ONE chrome with two modes: "plan" and "browse".
@@ -740,7 +741,7 @@ export default function PlanNavigator({
   // never through the level grouping/sort above, which would reorder them
   const shownGroups = search ? (search.hits.length ? [{ level: null, keys: search.hits.map((h) => h.key) }] : []) : groups;
   const assignLevel = () => {
-    const label = window.prompt('Level for the selected sheets (e.g. "L1", "Level 2", "Garage") — empty clears:', "");
+    const label = window.prompt(uiText('Level for the selected sheets (e.g. "L1", "Level 2", "Garage") — empty clears:'), "");
     if (label === null) return;
     onAssignLevel?.(sel, label.trim());
     setSel([]);
@@ -800,17 +801,16 @@ export default function PlanNavigator({
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)", flexWrap: "wrap" }}>
       {/* LEFT up-chain: back + title + (cloud) Projects crumb + (browse) breadcrumb */}
-      <button onClick={back} disabled={!canGoBack} title={mode === "browse" ? "Back" : "Back to the canvas (Esc)"}
+      <button onClick={back} disabled={!canGoBack} title={uiText(mode === "browse" ? "Back" : "Back to the canvas (Esc)")}
         style={{ ...ctrlBtn, padding: "6px 8px", opacity: canGoBack ? 1 : 0.35, cursor: canGoBack ? "pointer" : "default" }}>
         <Icon name="chevronLeft" size={14} />
       </button>
       <Icon name="sheets" size={18} />
-      <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>{title}</strong>
+      <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>{uiText(title)}</strong>
       {onBrowseProjects && (
-        <button onClick={onBrowseProjects} title="Back to your team's projects"
+        <button onClick={onBrowseProjects} title={uiText("Back to your team's projects")}
           style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 12, padding: "2px 4px" }}>
-          Projects
-        </button>
+          {uiText("Projects")}</button>
       )}
       {mode === "browse" ? (
         <div style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: "var(--f-mono)", fontSize: 12 }}>
@@ -819,61 +819,58 @@ export default function PlanNavigator({
               <span style={{ color: "var(--text-faint)" }}>/</span>
               <button onClick={() => jumpTo(i)} disabled={i === path.length - 1}
                 style={{ border: "none", background: "transparent", cursor: i === path.length - 1 ? "default" : "pointer", color: i === path.length - 1 ? "var(--ink)" : "var(--cobalt)", fontFamily: "var(--f-mono)", fontSize: 12, padding: "2px 2px", fontWeight: i === path.length - 1 ? 700 : 400 }}>
-                {c.name}
+                {uiText(c.name)}
               </button>
             </span>
           ))}
         </div>
       ) : (
-        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{subtitle}</span>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{uiText(subtitle)}</span>
       )}
 
       <div style={{ flex: 1 }} />
 
       {/* RIGHT: source toggle · browse filters · add plans · account */}
-      {onPremium && <button type="button" data-premium-trigger onClick={onPremium} style={{...ctrlBtn, color:"var(--cobalt)", borderColor:"var(--cobalt)"}}>Premium plans</button>}
+      {onPremium && <button type="button" data-premium-trigger onClick={onPremium} style={{...ctrlBtn, color:"var(--cobalt)", borderColor:"var(--cobalt)"}}>{uiText("Premium plans")}</button>}
       {browseEnabled && (
         <div style={{ display: "inline-flex", border: "1px solid var(--ink-faint)", borderRadius: 2, overflow: "hidden" }}>
-          <button onClick={() => setMode("plan")} style={{ ...ctrlBtn, border: "none", background: mode === "plan" ? "var(--ink)" : "transparent", color: mode === "plan" ? "var(--paper-bright)" : "var(--ink-muted)" }}>Plan set</button>
-          <button onClick={() => setMode("browse")} style={{ ...ctrlBtn, border: "none", background: mode === "browse" ? "var(--ink)" : "transparent", color: mode === "browse" ? "var(--paper-bright)" : "var(--ink-muted)" }}>Browse Drive</button>
+          <button onClick={() => setMode("plan")} style={{ ...ctrlBtn, border: "none", background: mode === "plan" ? "var(--ink)" : "transparent", color: mode === "plan" ? "var(--paper-bright)" : "var(--ink-muted)" }}>{uiText("Plan set")}</button>
+          <button onClick={() => setMode("browse")} style={{ ...ctrlBtn, border: "none", background: mode === "browse" ? "var(--ink)" : "transparent", color: mode === "browse" ? "var(--paper-bright)" : "var(--ink-muted)" }}>{uiText("Browse Drive")}</button>
         </div>
       )}
       {mode === "browse" && (
         <>
-          <input name="drive-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name…"
+          <input name="drive-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder={uiText("Filter by name…")}
             style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 12.5, minWidth: 140 }} />
-          <select name="drive-sort" value={sort} onChange={(e) => setSort(e.target.value)} title="Sort files"
+          <select name="drive-sort" value={sort} onChange={(e) => setSort(e.target.value)} title={uiText("Sort files")}
             style={{ padding: "6px 8px", border: "1px solid var(--ink-faint)", background: "transparent", fontSize: 12 }}>
-            <option value="name">Name</option>
-            <option value="size">Size</option>
-            <option value="date">Modified</option>
+            <option value="name">{uiText("Name")}</option>
+            <option value="size">{uiText("Size")}</option>
+            <option value="date">{uiText("Modified")}</option>
           </select>
         </>
       )}
       {mode === "plan" && sheets.length > 0 && (onCloseMany || onClearWorkspace) && (
         <button onClick={() => { setMSel([]); setMode("manage"); }}
-          title="Manage the plan set — remove several PDFs at once, or clear the whole workspace"
+          title={uiText("Manage the plan set — remove several PDFs at once, or clear the whole workspace")}
           style={ctrlBtn}>
-          <Icon name="sheets" size={13} />Manage
-        </button>
+          <Icon name="sheets" size={13} />{uiText("Manage")}</button>
       )}
       {mode === "plan" && onAddFiles && (
         <div style={{ position: "relative" }}>
           <button onClick={() => (browseEnabled ? setAddMenu((v) => !v) : fileRef.current?.click())}
-            title="Add plans — from your computer or Google Drive"
+            title={uiText("Add plans — from your computer or Google Drive")}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5 }}>
-            <Icon name="plus" size={13} />Add plans{browseEnabled && <Icon name="chevronDown" size={12} />}
+            <Icon name="plus" size={13} />{uiText("Add plans")}{browseEnabled && <Icon name="chevronDown" size={12} />}
           </button>
           {addMenu && browseEnabled && (
             <>
               <div onClick={() => setAddMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 1 }} />
               <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 2, minWidth: 210, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)" }}>
                 <button onClick={() => { setAddMenu(false); fileRef.current?.click(); }} style={{ ...ctrlBtn, width: "100%", border: "none", borderBottom: "1px solid var(--ink-faint)", justifyContent: "flex-start", padding: "10px 12px" }}>
-                  <Icon name="document" size={14} />From this computer
-                </button>
+                  <Icon name="document" size={14} />{uiText("From this computer")}</button>
                 <button onClick={() => { setAddMenu(false); setMode("browse"); }} style={{ ...ctrlBtn, width: "100%", border: "none", justifyContent: "flex-start", padding: "10px 12px" }}>
-                  <Icon name="cloud" size={14} />From Google Drive
-                </button>
+                  <Icon name="cloud" size={14} />{uiText("From Google Drive")}</button>
               </div>
             </>
           )}
@@ -885,12 +882,11 @@ export default function PlanNavigator({
       )}
       <AuthChip />
       {onCloseProject && (
-        <button onClick={onCloseProject} title="Close this project and return to the local canvas" style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Close project</button>
+        <button onClick={onCloseProject} title={uiText("Close this project and return to the local canvas")} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>{uiText("Close project")}</button>
       )}
       {canClose && (
-        <button onClick={onExit} title="Back to the canvas (Esc)" style={ctrlBtn}>
-          <Icon name="close" size={12} />Close
-        </button>
+        <button onClick={onExit} title={uiText("Back to the canvas (Esc)")} style={ctrlBtn}>
+          <Icon name="close" size={12} />{uiText("Close")}</button>
       )}
     </div>
   );
@@ -910,20 +906,20 @@ export default function PlanNavigator({
     <>
       <div style={{ flex: 1, overflow: "auto" }}>
         {bLoading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>Reading folder…</div>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{uiText("Reading folder…")}</div>
         ) : bErr ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--c-danger)", fontSize: 13 }}>Couldn't read the folder: {bErr}</div>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--c-danger)", fontSize: 13 }}>{uiText("Couldn't read the folder: ")}{uiText(bErr)}</div>
         ) : (folders.length === 0 && pdfs.length === 0) ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>
-            {needle ? "Nothing matches that filter." : "This folder has no PDFs or subfolders."}
+            {uiText(needle ? "Nothing matches that filter." : "This folder has no PDFs or subfolders.")}
           </div>
         ) : (
           <>
             {folders.map((f) => (
               <div key={f.id} onClick={() => drillInto(f)} style={{ ...rowBase, cursor: "pointer" }}>
                 <span style={{ fontSize: 15, width: 20, textAlign: "center", color: "var(--cobalt)" }}><Icon name="chevronRight" size={13} /></span>
-                <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1 }}>{f.name}</strong>
-                <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>folder</span>
+                <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1 }}>{uiText(f.name)}</strong>
+                <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{uiText("folder")}</span>
               </div>
             ))}
             {pdfs.map((f) => {
@@ -934,14 +930,14 @@ export default function PlanNavigator({
               const tagStyle = { fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.08em", minWidth: 72, textAlign: "right" };
               return (
                 <label key={f.id} style={{ ...rowBase, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}
-                  title={conflict ? "Another selected PDF already uses this name — a project can't have two sheets with the same name" : undefined}>
+                  title={uiText(conflict ? "Another selected PDF already uses this name — a project can't have two sheets with the same name" : undefined)}>
                   <input name="drive-file-pick" type="checkbox" checked={selPick || inSet} disabled={disabled} onChange={() => togglePick(f)}
                     style={{ width: 16, height: 16, cursor: disabled ? "default" : "pointer" }} />
-                  <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</span>
-                  <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 64, textAlign: "right" }}>{fmtSize(f.size)}</span>
-                  <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 84, textAlign: "right" }}>{fmtDate(f.modifiedTime)}</span>
-                  {inSet ? <span style={{ ...tagStyle, color: "var(--c-positive)" }}>added</span>
-                    : conflict ? <span style={{ ...tagStyle, color: "var(--c-warning)" }}>name in use</span>
+                  <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(f.name)}>{uiText(f.name)}</span>
+                  <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 64, textAlign: "right" }}>{uiText(fmtSize(f.size))}</span>
+                  <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 84, textAlign: "right" }}>{uiText(fmtDate(f.modifiedTime))}</span>
+                  {inSet ? <span style={{ ...tagStyle, color: "var(--c-positive)" }}>{uiText("added")}</span>
+                    : conflict ? <span style={{ ...tagStyle, color: "var(--c-warning)" }}>{uiText("name in use")}</span>
                     : <span style={{ minWidth: 72 }} />}
                 </label>
               );
@@ -951,15 +947,15 @@ export default function PlanNavigator({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink-muted)" }}>
-          {picked.length ? `${picked.length} selected to open` : "check the PDFs you want to open — nothing downloads until you add them"}
+          {uiText(picked.length ? `${picked.length} selected to open` : "check the PDFs you want to open — nothing downloads until you add them")}
         </span>
         <div style={{ flex: 1 }} />
         {picked.length > 0 && (
-          <button onClick={() => setPicked([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Clear</button>
+          <button onClick={() => setPicked([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>{uiText("Clear")}</button>
         )}
         <button onClick={addPicked} disabled={!picked.length || adding}
           style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", border: "1px solid var(--ink)", background: picked.length ? "var(--cobalt)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: picked.length && !adding ? "pointer" : "default", fontWeight: 700, fontSize: 13 }}>
-          <Icon name="plus" size={13} />{adding ? "Adding…" : `Add ${picked.length || ""} sheet${picked.length === 1 ? "" : "s"}`}
+          <Icon name="plus" size={13} />{uiText(adding ? "Adding…" : `Add ${picked.length || ""} sheet${picked.length === 1 ? "" : "s"}`)}
         </button>
       </div>
     </>
@@ -976,17 +972,17 @@ export default function PlanNavigator({
     const v = galleryReadView(planIndexRef.current.get(key), ocrAvail, ocr.status(key));
     if (v.kind === "hidden") return null;
     const btn = (label, onClick) => (
-      <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} style={{ ...ctrlBtn, padding: "3px 8px", fontSize: 11 }}>{label}</button>
+      <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} style={{ ...ctrlBtn, padding: "3px 8px", fontSize: 11 }}>{uiText(label)}</button>
     );
     return (
       <div data-gallery-read={key} data-state={v.kind} data-last-read={key === lastReadKey ? "" : undefined} onClick={(e) => e.stopPropagation()}
         style={{ padding: "0 10px 8px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", cursor: "default" }}>
-        {v.kind === "read" && <>{btn(v.what === "picture" ? "Read picture text" : "Read page text", () => readCard(key))}<span>{v.what === "picture" ? "text in a picture isn't searchable yet" : "little or no text layer"}</span>{v.note && <span style={{ color: "var(--c-danger)", flexBasis: "100%" }}>{v.note}</span>}</>}
-        {v.kind === "reading" && <><span className="pip" aria-hidden="true" /><span aria-live="polite">{v.text}</span>{btn("Cancel", () => ocr.cancel(key))}</>}
-        {v.kind === "stopping" && <span aria-live="polite">{v.text}</span>}
-        {v.kind === "unreadable" && <span aria-live="polite" style={{ color: "var(--c-danger)" }}>{v.text}</span>}
-        {v.kind === "unreachable" && <><span aria-live="polite" style={{ color: "var(--c-danger)" }}>{v.text}</span>{btn("Retry", retryProbe)}</>}
-        {v.kind === "done" && <><span aria-live="polite" style={{ color: "var(--c-warning)" }}>{v.text}</span>{v.readAgain && btn("Read again", () => readCard(key, true))}</>}
+        {v.kind === "read" && <>{uiText(btn(v.what === "picture" ? "Read picture text" : "Read page text", () => readCard(key)))}<span>{uiText(v.what === "picture" ? "text in a picture isn't searchable yet" : "little or no text layer")}</span>{v.note && <span style={{ color: "var(--c-danger)", flexBasis: "100%" }}>{uiText(v.note)}</span>}</>}
+        {v.kind === "reading" && <><span className="pip" aria-hidden="true" /><span aria-live="polite">{uiText(v.text)}</span>{uiText(btn("Cancel", () => ocr.cancel(key)))}</>}
+        {v.kind === "stopping" && <span aria-live="polite">{uiText(v.text)}</span>}
+        {v.kind === "unreadable" && <span aria-live="polite" style={{ color: "var(--c-danger)" }}>{uiText(v.text)}</span>}
+        {v.kind === "unreachable" && <><span aria-live="polite" style={{ color: "var(--c-danger)" }}>{uiText(v.text)}</span>{uiText(btn("Retry", retryProbe))}</>}
+        {v.kind === "done" && <><span aria-live="polite" style={{ color: "var(--c-warning)" }}>{uiText(v.text)}</span>{uiText(v.readAgain && btn("Read again", () => readCard(key, true)))}</>}
       </div>
     );
   };
@@ -995,16 +991,16 @@ export default function PlanNavigator({
   // ── PLAN body + footer ──────────────────────────────────────────────────
   const planBody = (
     <>
-      <div className="sheet-preview-controls"><label>Page previews</label>{["medium", "large"].map(size => <button type="button" key={size} aria-pressed={previewSize === size} onClick={() => setPreviewSize(size)}>{size === "large" ? "Large" : "Medium"}</button>)}<span style={{ color: "var(--ink-muted)", fontSize: "var(--fs-s)" }}>Preview to inspect · View to open · Select cards for tabs or stitching</span>
+      <div className="sheet-preview-controls"><label>{uiText("Page previews")}</label>{["medium", "large"].map(size => <button type="button" key={size} aria-pressed={previewSize === size} onClick={() => setPreviewSize(size)}>{uiText(size === "large" ? "Large" : "Medium")}</button>)}<span style={{ color: "var(--ink-muted)", fontSize: "var(--fs-s)" }}>{uiText("Preview to inspect · View to open · Select cards for tabs or stitching")}</span>
         {/* plan-set search (#471), right-aligned in this row: the browse filter's field styling */}
         {sheets.length > 0 && planIndexRef && (<>
           <span style={{ flex: 1 }} />
-          {countLine && <span aria-live="polite" style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{countLine}</span>}
-          {search && indexProg && <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>· Indexing {indexProg.done} / {indexProg.total}</span>}
-          {failLine && <span data-search-failed="" style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--c-danger)" }}>· {failLine} <button type="button" onClick={() => setWalkTick((t) => t + 1)} style={{ ...ctrlBtn, padding: "1px 6px", fontSize: 11 }}>Retry</button></span>}
+          {countLine && <span aria-live="polite" style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{uiText(countLine)}</span>}
+          {search && indexProg && <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{uiText("· Indexing ")}{uiText(indexProg.done)} / {uiText(indexProg.total)}</span>}
+          {failLine && <span data-search-failed="" style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--c-danger)" }}>· {uiText(failLine)} <button type="button" onClick={() => setWalkTick((t) => t + 1)} style={{ ...ctrlBtn, padding: "1px 6px", fontSize: 11 }}>{uiText("Retry")}</button></span>}
           <input name="plan-search" type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search sheet text…" aria-label="Search the text on every sheet"
-            title="Find sheets by the text on them — a finish tag, room number, sheet number or word (Esc clears)"
+            placeholder={uiText("Search sheet text…")} aria-label={uiText("Search the text on every sheet")}
+            title={uiText("Find sheets by the text on them — a finish tag, room number, sheet number or word (Esc clears)")}
             autoComplete="off" spellCheck={false}
             style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 12.5, minWidth: 180 }} />
         </>)}
@@ -1014,7 +1010,7 @@ export default function PlanNavigator({
         <div key={grp.level ?? "__all"} style={{ marginBottom: grp.level !== null ? 22 : 0 }}>
         {grp.level !== null && (
           <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-muted)", margin: "0 0 8px 2px" }}>
-            {grp.level || "Unassigned"} · {grp.keys.length}
+            {uiText(grp.level || "Unassigned")} · {uiText(grp.keys.length)}
           </div>
         )}
         <div className="sheet-preview-grid" data-size={previewSize}>
@@ -1029,38 +1025,38 @@ export default function PlanNavigator({
             return (
               <div key={key} data-sheetkey={key} ref={(el) => { if (el && !thumb) obsRef.current?.observe(el); }}
                 onClick={() => toggleSel(key)}
-                role="group" aria-label={`Sheet ${labelOf(key)}`}
+                role="group" aria-label={uiText(`Sheet ${labelOf(key)}`)}
                 style={{ border: isSel ? "1.5px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", position: "relative", boxShadow: isSel ? "var(--shadow-2)" : "var(--shadow-1)" }}>
-                <button type="button" aria-label={`Select ${labelOf(key)}`} aria-pressed={isSel} onClick={(e) => { e.stopPropagation(); toggleSel(key); }} style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", border: isSel ? "none" : "1.5px solid var(--ink-faint)", background: isSel ? "var(--cobalt)" : "var(--paper-bright)", color: "var(--paper-bright)", fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 700 }}>{isSel ? idx + 1 : ""}</button>
+                <button type="button" aria-label={uiText(`Select ${labelOf(key)}`)} aria-pressed={isSel} onClick={(e) => { e.stopPropagation(); toggleSel(key); }} style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", border: isSel ? "none" : "1.5px solid var(--ink-faint)", background: isSel ? "var(--cobalt)" : "var(--paper-bright)", color: "var(--paper-bright)", fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 700 }}>{uiText(isSel ? idx + 1 : "")}</button>
                 <div style={{ position: "absolute", top: 8, right: 8, zIndex: 2, display: "flex", gap: 6 }}>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setPreviewSheet(key); }} style={ctrlBtn}>Preview</button>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setPreviewSheet(key); }} style={ctrlBtn}>{uiText("Preview")}</button>
                   {isFirstPageOfPdf && onClosePdf && (
-                    <button onClick={(e) => { e.stopPropagation(); requestClose(parsed.file); }} title={cloudMode ? "Close this PDF — unload it from the plan set (it stays in Drive)" : "Close this PDF — remove it from the plan set (local plans aren't stored elsewhere)"}
+                    <button onClick={(e) => { e.stopPropagation(); requestClose(parsed.file); }} title={uiText(cloudMode ? "Close this PDF — unload it from the plan set (it stays in Drive)" : "Close this PDF — remove it from the plan set (local plans aren't stored elsewhere)")}
                       style={{ padding: "5px 8px", border: "none", background: "var(--paper-bright)", color: "var(--ink-muted)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 11, boxShadow: "var(--shadow-1)" }}>✕</button>
                   )}
-                  <button onClick={(e) => { e.stopPropagation(); onOpen([key], false); }} title="Open just this sheet"
-                    style={{ padding: "5px 12px", border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" }}>View</button>
+                  <button onClick={(e) => { e.stopPropagation(); onOpen([key], false); }} title={uiText("Open just this sheet")}
+                    style={{ padding: "5px 12px", border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" }}>{uiText("Open sheet")}</button>
                 </div>
                 <div data-preview-well style={{ height: 185, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--well)", borderBottom: "1px solid var(--ink-faint)", overflow: "hidden" }}>
                   {thumb
-                    ? <img src={thumb} alt={labelOf(key)} decoding="async" draggable={false} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                    ? <img src={thumb} alt={uiText(labelOf(key))} decoding="async" draggable={false} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                     : <div className="skeleton" style={{ width: "86%", height: "78%" }} />}
                 </div>
                 <div data-preview-caption style={{ padding: "8px 10px", display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <strong style={{ fontFamily: "var(--f-mono)", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={key}>{labelOf(key)}</strong>
-                  {levels[key] && <span title="Level" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "1px 5px" }}>{levels[key]}</span>}
+                  <strong style={{ fontFamily: "var(--f-mono)", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={uiText(key)}>{uiText(labelOf(key))}</strong>
+                  {levels[key] && <span title={uiText("Level")} style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "1px 5px" }}>{uiText(levels[key])}</span>}
                   {search?.chipsByKey[key]?.map((t) => (
-                    <span key={`m:${t}`} title="Matched text on this sheet" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", border: "1px solid var(--cobalt)", padding: "1px 5px", whiteSpace: "nowrap" }}>{t}</span>
+                    <span key={`m:${t}`} title={uiText("Matched text on this sheet")} style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", border: "1px solid var(--cobalt)", padding: "1px 5px", whiteSpace: "nowrap" }}>{uiText(t)}</span>
                   ))}
-                  {search?.ocrKeys.has(key) && <span title="Matched in text the on-device text reader (OCR) read from the page image, not the PDF's own text — check the sheet" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--c-warning)", textTransform: "uppercase", letterSpacing: "0.08em" }}>OCR</span>}
-                  {isOpenTab && <span title="Already open as a tab" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>open</span>}
-                  {cnt > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)" }}>{cnt}▦</span>}
+                  {search?.ocrKeys.has(key) && <span title={uiText("Matched in text the on-device text reader (OCR) read from the page image, not the PDF's own text — check the sheet")} style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--c-warning)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{uiText("OCR")}</span>}
+                  {isOpenTab && <span title={uiText("Already open as a tab")} style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{uiText("Open tab")}</span>}
+                  {cnt > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)" }}>{uiText(cnt)}▦</span>}
                   <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", color: scales[key] ? (scaleUnconfirmed[key] === false ? "var(--c-warning)" : "var(--c-positive)") : detectedScales[key] ? "var(--c-warning)" : "var(--c-danger)" }}
-                    title={scales[key] && scaleUnconfirmed[key] === false ? "Scale set by an agent — no person has confirmed it. Open the sheet and confirm from the scale menu." : undefined}>
-                    {scales[key] ? (scaleUnconfirmed[key] === false ? "scale ⚠ confirm" : "scale ✓") : detectedScales[key] ? `plan: ${detectedScales[key].label}` : "no scale"}
+                    title={uiText(scales[key] && scaleUnconfirmed[key] === false ? "Scale set by an agent — no person has confirmed it. Open the sheet and confirm from the scale menu." : undefined)}>
+                    {uiText(scales[key] ? (scaleUnconfirmed[key] === false ? "scale ⚠ confirm" : "scale ✓") : detectedScales[key] ? `plan: ${detectedScales[key].label}` : "no scale")}
                   </span>
                 </div>
-                {readRow(key)}
+                {uiText(readRow(key))}
               </div>
             );
           })}
@@ -1069,46 +1065,44 @@ export default function PlanNavigator({
         ))}
         {search && !search.hits.length && allKeys.length > 0 && (
           <div style={{ padding: 48, textAlign: "center", color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.7 }}>
-            <div style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>No sheet matches “{query.trim()}”</div>
-            {indexProg
+            <div style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>{uiText("No sheet matches “")}{uiText(query.trim())}”</div>
+            {uiText(indexProg
               ? `Still reading sheet text — ${indexProg.done} of ${indexProg.total} checked.`
-              : "Search reads each sheet's own text: finish tags, room and sheet numbers, and words of three letters or more."}
+              : "Search reads each sheet's own text: finish tags, room and sheet numbers, and words of three letters or more.")}
           </div>
         )}
         {unread && (
           <div data-unread-line style={{ padding: "14px 2px 0", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink-muted)", textAlign: search.hits.length ? "left" : "center" }}>
-            {unread}
-            {ocrAvail === "error" && <> <button type="button" onClick={retryProbe} style={{ ...ctrlBtn, padding: "1px 6px", fontSize: 11 }}>Retry</button></>}
+            {uiText(unread)}
+            {ocrAvail === "error" && <> <button type="button" onClick={retryProbe} style={{ ...ctrlBtn, padding: "1px 6px", fontSize: 11 }}>{uiText("Retry")}</button></>}
           </div>
         )}
         {!allKeys.length && (
           <div style={{ padding: 48, textAlign: "center", color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.7 }}>
             {!sheets.length ? (
               <div style={{ maxWidth: 560, margin: "0 auto" }}>
-                <ScanStar size={64} reach={2.2} title="OpenTakeoff scan star" style={{ display: "block", margin: "0 auto 22px", color: "var(--cobalt)" }} />
-                <div style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--cobalt)", marginBottom: 6 }}>People &amp; agents · one engine</div>
-                <div style={{ fontFamily: "var(--f-display)", fontSize: 18, color: "var(--ink)", lineHeight: 1.32, marginBottom: 5 }}>Measure a plan by hand — or point an AI&nbsp;agent at the same engine.</div>
-                <div style={{ fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.55, marginBottom: 20 }}>Every measurement keeps its scale and how it was made — a person, one click, or an agent.</div>
+                <ScanStar size={64} reach={2.2} title={uiText("OpenTakeoff scan star")} style={{ display: "block", margin: "0 auto 22px", color: "var(--cobalt)" }} />
+                <div style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--cobalt)", marginBottom: 6 }}>{uiText("People & agents · one engine")}</div>
+                <div style={{ fontFamily: "var(--f-display)", fontSize: 18, color: "var(--ink)", lineHeight: 1.32, marginBottom: 5 }}>{uiText("Measure a plan by hand — or point an AI agent at the same engine.")}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.55, marginBottom: 20 }}>{uiText("Every measurement keeps its scale and how it was made — a person, one click, or an agent.")}</div>
                 <button onClick={() => fileRef.current?.click()}
                   style={{ display: "block", width: "100%", margin: "24px auto 0", padding: "44px 24px", border: "2px dashed var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", color: "var(--ink-muted)", fontFamily: "var(--f-body)", fontSize: 13.5, lineHeight: 1.7 }}>
-                  <div style={{ fontFamily: "var(--f-display)", fontSize: 20, color: "var(--ink)", marginBottom: 8 }}>Open your plans</div>
-                  Drag a PDF, an image, or a whole .zip plan set here — or click to choose. Nothing leaves your browser.
-                </button>
+                  <div style={{ fontFamily: "var(--f-display)", fontSize: 20, color: "var(--ink)", marginBottom: 8 }}>{uiText("Open your plans")}</div>
+                  {uiText("Drag a PDF, an image, or a whole .zip plan set here — or click to choose. Nothing leaves your browser.")}</button>
                 {isGoogleConfigured() && (!user || projectHomeFolderId()) && (
                   <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6 }}>
                     {!user ? (
                       <>
                         <button type="button" onClick={handleDriveSignIn} disabled={driveBusy}
-                          title="Sign in with your team Google account to open projects stored in Drive"
+                          title={uiText("Sign in with your team Google account to open projects stored in Drive")}
                           style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: driveBusy ? "default" : "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
-                          {driveBusy ? "Signing in…" : "or sign in with Google Drive"}
+                          {uiText(driveBusy ? "Signing in…" : "or sign in with Google Drive")}
                         </button>
-                        {driveErr ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>Sign-in failed: {driveErr}</div> : null}
+                        {driveErr ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>{uiText("Sign-in failed: ")}{uiText(driveErr)}</div> : null}
                       </>
                     ) : (
                       <Link to="/projects" style={{ color: "var(--cobalt)", fontSize: 12, textDecoration: "underline" }}>
-                        browse your Google Drive projects
-                      </Link>
+                        {uiText("browse your Google Drive projects")}</Link>
                     )}
                   </div>
                 )}
@@ -1117,20 +1111,18 @@ export default function PlanNavigator({
                     {!m365Active ? (
                       <>
                         <button type="button" onClick={doLinkM365}
-                          title="Sign in with your work account and sync this workspace through the configured document library. Experimental (issue #315) — tokens stay in this browser."
+                          title={uiText("Sign in with your work account and sync this workspace through the configured document library. Experimental (issue #315) — tokens stay in this browser.")}
                           style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
-                          or sync through your Microsoft 365 library (experimental)
-                        </button>
-                        {m365Err ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>365 sign-in failed: {m365Err}</div> : null}
+                          {uiText("or sync through your Microsoft 365 library (experimental)")}</button>
+                        {m365Err ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>{uiText("365 sign-in failed: ")}{uiText(m365Err)}</div> : null}
                       </>
                     ) : (
                       <span style={{ color: "var(--ink-muted)" }}>
-                        syncing through your <strong style={{ color: "var(--ink)" }}>Microsoft 365 library</strong>
-                        {" · "}
+                        {uiText("syncing through your ")}<strong style={{ color: "var(--ink)" }}>{uiText("Microsoft 365 library")}</strong>
+                        {uiText(" · ")}
                         <button type="button" onClick={doStopM365}
                           style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
-                          stop
-                        </button>
+                          {uiText("stop")}</button>
                       </span>
                     )}
                   </div>
@@ -1139,24 +1131,22 @@ export default function PlanNavigator({
                   <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6 }}>
                     {!folderLink ? (
                       <button type="button" onClick={doLinkFolder}
-                        title="Pick a folder your team already syncs (a network share, a synced document library) — the takeoff syncs through it as one JSON file. No account, no credentials; the folder's own sync client does the transport."
+                        title={uiText("Pick a folder your team already syncs (a network share, a synced document library) — the takeoff syncs through it as one JSON file. No account, no credentials; the folder's own sync client does the transport.")}
                         style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
-                        or sync this workspace through a shared folder
-                      </button>
+                        {uiText("or sync this workspace through a shared folder")}</button>
                     ) : (
                       <span style={{ color: "var(--ink-muted)" }}>
-                        syncing through folder <strong style={{ color: "var(--ink)" }}>“{folderLink.name}”</strong>
-                        {" · "}
+                        {uiText("syncing through folder ")}<strong style={{ color: "var(--ink)" }}>“{uiText(folderLink.name)}”</strong>
+                        {uiText(" · ")}
                         <button type="button" onClick={doForgetFolder}
                           style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
-                          stop
-                        </button>
+                          {uiText("stop")}</button>
                       </span>
                     )}
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px auto 16px", color: "var(--text-faint)", fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-                  <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
+                  <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />{uiText("new here?")}<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>
                 {onStartTour && (
                   <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px 18px", marginBottom: 14, textAlign: "left" }}>
@@ -1164,59 +1154,53 @@ export default function PlanNavigator({
                         still under reduced motion (the poster shows; controls play it) */}
                     <video src={`${demoBase}demo/first-takeoff.mp4`} poster={`${demoBase}demo/first-takeoff-poster.jpg`}
                       autoPlay={!reducedMotion} controls={reducedMotion} muted loop playsInline preload="metadata"
-                      aria-label="A recorded run of the guided first takeoff: open the sample plan, set its scale, arm Area, trace a patient room, open the Report"
+                      aria-label={uiText("A recorded run of the guided first takeoff: open the sample plan, set its scale, arm Area, trace a patient room, open the Report")}
                       onClick={reducedMotion ? undefined : onStartTour}
                       style={{ width: 220, aspectRatio: "960 / 618", border: "1px solid var(--ink-faint)", background: "var(--paper-shadow)", cursor: reducedMotion ? "default" : "pointer", display: "block" }} />
                     <div style={{ maxWidth: 250 }}>
-                      <button onClick={onStartTour} title="Open the sample plan and do one real takeoff, step by step — about two minutes"
+                      <button onClick={onStartTour} title={uiText("Open the sample plan and do one real takeoff, step by step — about two minutes")}
                         style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
-                        <Icon name="takeoff" size={16} />Guided first takeoff
-                      </button>
+                        <Icon name="takeoff" size={16} />{uiText("Guided first takeoff")}</button>
                       <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 8, lineHeight: 1.5 }}>
-                        Two minutes, five steps, on a real plan. You do each step; it checks it off.
-                      </div>
+                        {uiText("Two minutes, five steps, on a real plan. You do each step; it checks it off.")}</div>
                     </div>
                   </div>
                 )}
-                <button onClick={loadSample} disabled={sampleBusy} title="Open a real floor finish plan and try a takeoff"
+                <button onClick={loadSample} disabled={sampleBusy} title={uiText("Open a real floor finish plan and try a takeoff")}
                   style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: onStartTour ? "9px 16px" : "13px 22px", border: "1px solid var(--ink)", background: onStartTour ? "transparent" : "var(--cobalt)", color: onStartTour ? "var(--ink)" : "var(--paper-bright)", cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1, fontWeight: 700, fontSize: onStartTour ? 13 : 14, fontFamily: "var(--f-body)" }}>
-                  <Icon name="takeoff" size={16} />{sampleBusy ? "Loading sample…" : onStartTour ? "Just open the sample plan" : "Load sample plan"}
+                  <Icon name="takeoff" size={16} />{uiText(sampleBusy ? "Loading sample…" : onStartTour ? "Just open the sample plan" : "Load sample plan")}
                 </button>
                 <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 11, lineHeight: 1.6 }}>
-                  A real medical-center <strong style={{ color: "var(--ink)" }}>floor finish plan</strong> — its scale is read off the sheet;
-                  pick a finish and trace a flooring takeoff in seconds.
-                </div>
+                  {uiText("A real medical-center ")}<strong style={{ color: "var(--ink)" }}>{uiText("floor finish plan")}</strong> {uiText("— its scale is read off the sheet; pick a finish and trace a flooring takeoff in seconds.")}</div>
                 {onConnect && (
                   <div style={{ marginTop: 14, fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)" }}>
-                    Working with Claude, Codex or Cursor?{" "}
+                    {uiText("Working with Claude, Codex or Cursor?")}{uiText(" ")}
                     <button type="button" onClick={onConnect}
                       style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12.5, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
-                      <ScanStar size={11} />Connect your AI
-                    </button>
+                      <ScanStar size={11} />{uiText("Connect your AI")}</button>
                   </div>
                 )}
                 <div style={{ marginTop: 30, fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--text-faint)" }}>
-                  AGPL-3.0 open source · an open project by{" "}
-                  <a href="https://kentucky-ai.com" target="_blank" rel="noopener" style={{ color: "var(--ink-muted)" }}>Kentucky&nbsp;AI</a>
+                  {uiText("AGPL-3.0 open source · an open project by")}{uiText(" ")}
+                  <a href="https://kentucky-ai.com" target="_blank" rel="noopener" style={{ color: "var(--ink-muted)" }}>{uiText("Kentucky AI")}</a>
                 </div>
               </div>
             ) : enumerated ? (
               <>
-                <div style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>Couldn't read those PDFs</div>
-                None of the opened files would render — try opening them again.
-              </>
+                <div style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>{uiText("Couldn't read those PDFs")}</div>
+                {uiText("None of the opened files would render — try opening them again.")}</>
             ) : "Reading the plan set…"}
           </div>
         )}
       </div>
       {stitches.length > 0 && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "9px 18px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Stitched surfaces</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{uiText("Stitched surfaces")}</span>
           {stitches.map((st) => (
             <span key={st.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--ink-faint)", padding: "4px 8px", fontSize: 12 }}>
-              <button onClick={() => onOpenStitch && onOpenStitch(st.id)} title={`Open ${st.name} — ${st.members.length} sheets as one working surface`}
-                style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontWeight: 600, fontSize: 12, padding: 0 }}>{st.name}</button>
-              <button onClick={() => onDeleteStitch && onDeleteStitch(st.id)} title="Delete this stitch (refused while takeoffs live on it)"
+              <button onClick={() => onOpenStitch && onOpenStitch(st.id)} title={uiText(`Open ${st.name} — ${st.members.length} sheets as one working surface`)}
+                style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontWeight: 600, fontSize: 12, padding: 0 }}>{uiText(st.name)}</button>
+              <button onClick={() => onDeleteStitch && onDeleteStitch(st.id)} title={uiText("Delete this stitch (refused while takeoffs live on it)")}
                 style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
             </span>
           ))}
@@ -1224,30 +1208,27 @@ export default function PlanNavigator({
       )}
       {sheets.length > 0 && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{sel.length ? `${sel.length} selected` : "select sheets, or hover a card and hit View"}</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{uiText(sel.length ? `${sel.length} selected` : "select sheets, or hover a card and hit View")}</span>
           <div style={{ flex: 1 }} />
           {sel.length > 0 && (
             <>
-              <button onClick={assignLevel} title="Group the selected sheets under a floor/level — the gallery sorts by it and tabs carry the label"
-                style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Assign level…</button>
-              <button onClick={() => setSel([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Clear</button>
+              <button onClick={assignLevel} title={uiText("Group the selected sheets under a floor/level — the gallery sorts by it and tabs carry the label")}
+                style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>{uiText("Assign level…")}</button>
+              <button onClick={() => setSel([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>{uiText("Clear")}</button>
             </>
           )}
           <button disabled={!sel.length} onClick={() => onOpen(sel, false)}
             style={{ padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: "var(--ink)", cursor: sel.length ? "pointer" : "default", opacity: sel.length ? 1 : 0.4, fontWeight: 700, fontSize: 12.5 }}>
-            Open {sel.length || ""} as tabs
-          </button>
+            {uiText("Open ")}{uiText(sel.length || "")} {uiText("as tabs")}</button>
           <button disabled={sel.length < 2 || sel.length > MAX_GROUP} onClick={() => onOpen(sel, true)}
-            title={sel.length > MAX_GROUP ? `Side-by-side maxes at ${MAX_GROUP} — open as tabs instead` : "One pan/zoom moves the whole row"}
+            title={uiText(sel.length > MAX_GROUP ? `Side-by-side maxes at ${MAX_GROUP} — open as tabs instead` : "One pan/zoom moves the whole row")}
             style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "none", background: sel.length >= 2 && sel.length <= MAX_GROUP ? "var(--cobalt)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: sel.length >= 2 && sel.length <= MAX_GROUP ? "pointer" : "default", fontWeight: 700, fontSize: 12.5 }}>
-            <Icon name="sideBySide" size={14} />Open {sel.length >= 2 ? sel.length : ""} side-by-side
-          </button>
+            <Icon name="sideBySide" size={14} />{uiText("Open ")}{uiText(sel.length >= 2 ? sel.length : "")} {uiText("side-by-side")}</button>
           {onStitch && (
             <button disabled={sel.length < 2 || sel.length > MAX_GROUP} onClick={() => onStitch(sel)}
-              title={sel.length > MAX_GROUP ? `A stitch maxes at ${MAX_GROUP} sheets` : "Stitch — join a floor split at a match line into ONE working surface: the sheets butt edge-to-edge (no gap), you align the match line with two clicks, then a room crossing it traces as one shape"}
+              title={uiText(sel.length > MAX_GROUP ? `A stitch maxes at ${MAX_GROUP} sheets` : "Stitch — join a floor split at a match line into ONE working surface: the sheets butt edge-to-edge (no gap), you align the match line with two clicks, then a room crossing it traces as one shape")}
               style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: sel.length >= 2 && sel.length <= MAX_GROUP ? "var(--ink)" : "var(--ink-faint)", cursor: sel.length >= 2 && sel.length <= MAX_GROUP ? "pointer" : "default", fontWeight: 700, fontSize: 12.5 }}>
-              <Icon name="calibrate" size={14} />Stitch {sel.length >= 2 ? sel.length : ""} into one surface
-            </button>
+              <Icon name="calibrate" size={14} />{uiText("Stitch ")}{uiText(sel.length >= 2 ? sel.length : "")} {uiText("into one surface")}</button>
           )}
         </div>
       )}
@@ -1277,7 +1258,7 @@ export default function PlanNavigator({
       <div style={{ flex: 1, overflow: "auto" }}>
         <label style={{ ...rowBase, cursor: "pointer", background: "var(--well)" }}>
           <input name="manage-all" type="checkbox" checked={mAll} onChange={() => setMSel(mAll ? [] : sheets.map((s) => s.name))} style={{ width: 16, height: 16, cursor: "pointer" }} />
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{mAll ? "Clear selection" : "Select all"}</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{uiText(mAll ? "Clear selection" : "Select all")}</span>
         </label>
         {sheets.map((s) => {
           const pg = pageOf(s.name);
@@ -1286,59 +1267,56 @@ export default function PlanNavigator({
           return (
             <label key={s.name} style={{ ...rowBase, cursor: "pointer" }}>
               <input name="manage-pick" type="checkbox" checked={mSel.includes(s.name)} onChange={() => mToggle(s.name)} style={{ width: 16, height: 16, cursor: "pointer" }} />
-              <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.name}>{s.name}</span>
-              {tabsOpen > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{tabsOpen} open</span>}
-              <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 74, textAlign: "right" }}>{pg !== undefined ? `${pg || "?"} sheet${pg === 1 ? "" : "s"}` : "…"}</span>
-              <span title={cnt ? "This PDF carries takeoffs — they persist in the project and restore if you re-add the same file" : undefined}
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(s.name)}>{uiText(s.name)}</span>
+              {tabsOpen > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{uiText(tabsOpen)} open</span>}
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 74, textAlign: "right" }}>{uiText(pg !== undefined ? `${pg || "?"} sheet${pg === 1 ? "" : "s"}` : "…")}</span>
+              <span title={uiText(cnt ? "This PDF carries takeoffs — they persist in the project and restore if you re-add the same file" : undefined)}
                 style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: cnt ? "var(--c-warning)" : "var(--text-faint)", minWidth: 88, textAlign: "right" }}>
-                {cnt ? `${cnt} takeoff${cnt === 1 ? "" : "s"}` : "no takeoffs"}
+                {uiText(cnt ? `${cnt} takeoff${cnt === 1 ? "" : "s"}` : "no takeoffs")}
               </span>
             </label>
           );
         })}
         {!sheets.length && (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>The workspace is empty — nothing stored.</div>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{uiText("The workspace is empty — nothing stored.")}</div>
         )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink-muted)" }}>
-          {working ? "Working…" : mSel.length ? `${mSel.length} PDF${mSel.length === 1 ? "" : "s"} selected${mSelShapes ? ` · ${mSelShapes} takeoff${mSelShapes === 1 ? "" : "s"} on them` : ""}` : "check the PDFs to remove — removing never deletes takeoff data"}
+          {uiText(working ? "Working…" : mSel.length ? `${mSel.length} PDF${mSel.length === 1 ? "" : "s"} selected${mSelShapes ? ` · ${mSelShapes} takeoff${mSelShapes === 1 ? "" : "s"} on them` : ""}` : "check the PDFs to remove — removing never deletes takeoff data")}
         </span>
         <div style={{ flex: 1 }} />
         {m365Cfg && m365Active && (
-          <span title="Annotations sync through the configured Microsoft 365 document library (experimental — issue #315)"
+          <span title={uiText("Annotations sync through the configured Microsoft 365 document library (experimental — issue #315)")}
             style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>
-            ⇄ 365 library{" "}
-            <button onClick={doStopM365} title="Stop syncing through the 365 library — local work stays in this browser"
+            {uiText("⇄ 365 library")}{uiText(" ")}
+            <button onClick={doStopM365} title={uiText("Stop syncing through the 365 library — local work stays in this browser")}
               style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 11, textDecoration: "underline", fontFamily: "var(--f-mono)" }}>
-              stop
-            </button>
+              {uiText("stop")}</button>
           </span>
         )}
         {folderUiOn && (folderLink ? (
-          <span title={folderCopies.length ? `The folder's sync client forked the annotations file — someone should reconcile these by hand:\n${folderCopies.join("\n")}` : `Annotations sync through “${folderLink.name}” — the folder's own sync client replicates them`}
+          <span title={uiText(folderCopies.length ? `The folder's sync client forked the annotations file — someone should reconcile these by hand:\n${folderCopies.join("\n")}` : `Annotations sync through “${folderLink.name}” — the folder's own sync client replicates them`)}
             style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: folderCopies.length ? "var(--c-warning)" : "var(--ink-muted)" }}>
-            ⇄ “{folderLink.name}”{folderCopies.length ? ` · ${folderCopies.length} conflict cop${folderCopies.length === 1 ? "y" : "ies"}` : ""}
-            {" "}
-            <button onClick={doForgetFolder} title="Stop syncing through this folder — local work stays in this browser"
+            ⇄ “{uiText(folderLink.name)}”{uiText(folderCopies.length ? ` · ${folderCopies.length} conflict cop${folderCopies.length === 1 ? "y" : "ies"}` : "")}
+            {uiText(" ")}
+            <button onClick={doForgetFolder} title={uiText("Stop syncing through this folder — local work stays in this browser")}
               style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 11, textDecoration: "underline", fontFamily: "var(--f-mono)" }}>
-              stop
-            </button>
+              {uiText("stop")}</button>
           </span>
         ) : (
           <button onClick={doLinkFolder} disabled={working}
-            title="Pick a folder your team already syncs — the takeoff syncs through it as one JSON file, no credentials involved"
-            style={{ ...ctrlBtn, opacity: working ? 0.5 : 1 }}>Sync through a folder…</button>
+            title={uiText("Pick a folder your team already syncs — the takeoff syncs through it as one JSON file, no credentials involved")}
+            style={{ ...ctrlBtn, opacity: working ? 0.5 : 1 }}>{uiText("Sync through a folder…")}</button>
         ))}
         {onClearWorkspace && (
           <button onClick={() => setConfirmClear(true)} disabled={working}
-            title="Remove every stored PDF and reset the takeoff — a snapshot of a non-empty takeoff is saved first (Revisions restores it)"
-            style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", color: "var(--c-danger)", opacity: working ? 0.5 : 1 }}>Clear workspace…</button>
+            title={uiText("Remove every stored PDF and reset the takeoff — a snapshot of a non-empty takeoff is saved first (Revisions restores it)")}
+            style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", color: "var(--c-danger)", opacity: working ? 0.5 : 1 }}>{uiText("Clear workspace…")}</button>
         )}
         <button onClick={() => setConfirmBulk(true)} disabled={!mSel.length || working}
           style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", border: "1px solid var(--ink)", background: mSel.length && !working ? "var(--ink)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: mSel.length && !working ? "pointer" : "default", fontWeight: 700, fontSize: 13 }}>
-          Remove {mSel.length || ""} selected
-        </button>
+          {uiText("Remove ")}{uiText(mSel.length || "")} {uiText("selected")}</button>
       </div>
     </>
   );
@@ -1346,18 +1324,18 @@ export default function PlanNavigator({
   const bulkDialog = confirmBulk && (
     <div onClick={() => setConfirmBulk(false)} style={{ position: "absolute", inset: 0, zIndex: 5, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 460, maxWidth: "100%", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)", padding: "18px 20px" }}>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)" }}>Remove {mSel.length} PDF{mSel.length === 1 ? "" : "s"} from the plan set?</strong>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)" }}>{uiText("Remove ")}{uiText(mSel.length)} {uiText("PDF")}{uiText(mSel.length === 1 ? "" : "s")} {uiText("from the plan set?")}</strong>
         <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.6, margin: "10px 0 4px" }}>
-          {cloudMode
+          {uiText(cloudMode
             ? "They stop loading in this plan set — the files stay in your Drive project and re-add any time from Browse Drive."
-            : "Their stored bytes are removed from this browser. Local plans aren't stored anywhere else, so you'd re-open the files to get them back."}
+            : "Their stored bytes are removed from this browser. Local plans aren't stored anywhere else, so you'd re-open the files to get them back.")}
           {mSelShapes > 0 && (
-            <><br /><span style={{ color: "var(--c-warning)" }}>{mSelShapes} takeoff{mSelShapes === 1 ? "" : "s"} live on these PDFs — they're preserved in the project and restore if you re-add the same files.</span></>
+            <><br /><span style={{ color: "var(--c-warning)" }}>{uiText(mSelShapes)} takeoff{uiText(mSelShapes === 1 ? "" : "s")} {uiText("live on these PDFs — they're preserved in the project and restore if you re-add the same files.")}</span></>
           )}
         </p>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-          <button onClick={() => setConfirmBulk(false)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Cancel</button>
-          <button onClick={doBulkRemove} style={{ ...ctrlBtn, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", fontWeight: 700 }}>Remove {mSel.length}</button>
+          <button onClick={() => setConfirmBulk(false)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>{uiText("Cancel")}</button>
+          <button onClick={doBulkRemove} style={{ ...ctrlBtn, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", fontWeight: 700 }}>{uiText("Remove ")}{uiText(mSel.length)}</button>
         </div>
       </div>
     </div>
@@ -1366,14 +1344,12 @@ export default function PlanNavigator({
   const clearDialog = confirmClear && (
     <div onClick={() => setConfirmClear(false)} style={{ position: "absolute", inset: 0, zIndex: 5, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 460, maxWidth: "100%", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)", padding: "18px 20px" }}>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--c-danger)" }}>Clear the whole workspace?</strong>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--c-danger)" }}>{uiText("Clear the whole workspace?")}</strong>
         <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.6, margin: "10px 0 4px" }}>
-          Every stored PDF ({sheets.length}) is removed and the takeoff resets to empty — a clean start without touching browser storage by hand.
-          <br /><span style={{ color: "var(--ink)" }}>A non-empty takeoff is snapshotted first</span> — Revisions → restore brings it back (you'd re-open the same PDFs to see its shapes). The PDFs themselves aren't stored anywhere else.
-        </p>
+          {uiText("Every stored PDF (")}{uiText(sheets.length)}{uiText(") is removed and the takeoff resets to empty — a clean start without touching browser storage by hand.")}<br /><span style={{ color: "var(--ink)" }}>{uiText("A non-empty takeoff is snapshotted first")}</span> {uiText("— Revisions → restore brings it back (you'd re-open the same PDFs to see its shapes). The PDFs themselves aren't stored anywhere else.")}</p>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-          <button onClick={() => setConfirmClear(false)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Cancel</button>
-          <button onClick={doClear} style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", background: "var(--c-danger)", color: "var(--paper-bright)", fontWeight: 700 }}>Clear workspace</button>
+          <button onClick={() => setConfirmClear(false)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>{uiText("Cancel")}</button>
+          <button onClick={doClear} style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", background: "var(--c-danger)", color: "var(--paper-bright)", fontWeight: 700 }}>{uiText("Clear workspace")}</button>
         </div>
       </div>
     </div>
@@ -1383,24 +1359,24 @@ export default function PlanNavigator({
   const confirmDialog = confirmClose && (
     <div onClick={() => setConfirmClose(null)} style={{ position: "absolute", inset: 0, zIndex: 5, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 440, maxWidth: "100%", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)", padding: "18px 20px" }}>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)" }}>Close “{confirmClose.file}”?</strong>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)" }}>{uiText("Close “")}{uiText(confirmClose.file)}”?</strong>
         <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.6, margin: "10px 0 4px" }}>
-          {cloudMode
+          {uiText(cloudMode
             ? "Closing removes it from this plan set so it stops loading — the file stays in your Drive project and you can re-add it any time from Browse Drive."
-            : "This removes the PDF from the plan set. Local plans aren't stored anywhere else, so you'll have to re-open the file to get it back."}
+            : "This removes the PDF from the plan set. Local plans aren't stored anywhere else, so you'll have to re-open the file to get it back.")}
           {confirmClose.shapeCount > 0 && (
-            <><br /><span style={{ color: "var(--c-warning)" }}>This PDF has {confirmClose.shapeCount} takeoff{confirmClose.shapeCount === 1 ? "" : "s"} — they're preserved and restore if you re-add the same file.</span></>
+            <><br /><span style={{ color: "var(--c-warning)" }}>{uiText("This PDF has ")}{uiText(confirmClose.shapeCount)} takeoff{uiText(confirmClose.shapeCount === 1 ? "" : "s")} {uiText("— they're preserved and restore if you re-add the same file.")}</span></>
           )}
         </p>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16, flexWrap: "wrap" }}>
-          <button onClick={() => setConfirmClose(null)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Cancel</button>
+          <button onClick={() => setConfirmClose(null)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>{uiText("Cancel")}</button>
           {cloudMode && onRemoveFromProject && (
-            <button onClick={doRemove} title="Permanently delete the PDF from the Drive project"
-              style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", color: "var(--c-danger)" }}>Delete from Drive</button>
+            <button onClick={doRemove} title={uiText("Permanently delete the PDF from the Drive project")}
+              style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", color: "var(--c-danger)" }}>{uiText("Delete from Drive")}</button>
           )}
           <button onClick={doClose}
             style={{ ...ctrlBtn, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", fontWeight: 700 }}>
-            {cloudMode ? "Close (keep in Drive)" : "Remove"}
+            {uiText(cloudMode ? "Close (keep in Drive)" : "Remove")}
           </button>
         </div>
       </div>
@@ -1415,12 +1391,12 @@ export default function PlanNavigator({
       style={canClose
         ? { position: "relative", width: "min(1100px, 92vw)", height: "85vh", display: "flex", flexDirection: "column", background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", overflow: "hidden" }
         : { position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: "var(--paper-cream)" }}>
-      {header}
-      {mode === "browse" ? browseBody : mode === "manage" ? manageBody : planBody}
+      {uiText(header)}
+      {uiText(mode === "browse" ? browseBody : mode === "manage" ? manageBody : planBody)}
       {previewSheet && <SheetPreview sheet={previewSheet} label={labelOf(previewSheet)} withDoc={withDoc} onClose={closePreview} onOpen={(key) => { setPreviewSheet(null); onOpen([key], false); }} />}
-      {confirmDialog}
-      {bulkDialog}
-      {clearDialog}
+      {uiText(confirmDialog)}
+      {uiText(bulkDialog)}
+      {uiText(clearDialog)}
     </div>
   );
 
@@ -1431,9 +1407,9 @@ export default function PlanNavigator({
     // mode-aware back(), which would climb a folder level instead of closing).
     return (
       <div onClick={onExit} style={{ position: "absolute", inset: 0, zIndex: 45, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        {inner}
+        {uiText(inner)}
       </div>
     );
   }
-  return <div style={{ position: "absolute", inset: 0, zIndex: 40, display: "flex", flexDirection: "column" }}>{inner}</div>;
+  return <div style={{ position: "absolute", inset: 0, zIndex: 40, display: "flex", flexDirection: "column" }}>{uiText(inner)}</div>;
 }

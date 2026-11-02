@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Read-only second surface (split screen, Task 3). Owns its OWN display
 // transform (a local tfRef, NOT the primary pane's tfRef) and its OWN
 // wheel/drag pan-zoom scoped to its element — panning/zooming this pane never
@@ -219,7 +220,7 @@ export default function ReferencePane({
       <ReferenceTabBar refSet={refSet} activeKey={activeKey} tabLabel={tabLabel} onSelect={onSelectRef} onRemove={onRemoveRef} />
       <div style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
         {!refKey ? (
-          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--ink-soft,#888)" }}>Drop a sheet here</div>
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--ink-soft,#888)" }}>{uiText("Drop a sheet here")}</div>
         ) : (
           <div ref={viewportRef} onPointerDown={onPointerDown}
             style={{ position: "absolute", inset: 0, overflow: "hidden", touchAction: "none", background: "var(--paper, #f4f1ea)" }}>
@@ -258,11 +259,11 @@ export default function ReferencePane({
                   <defs>
                     {conditions.map((c) => <HatchPattern key={patId(c, "ref-")} id={patId(c, "ref-")} type={c.hatch || "solid"} line={c.color} fill={c.fill} dark={darkMode} />)}
                   </defs>
-                  {shapes.map((s) => renderShapeGlyph(s, {
+                  {uiText(shapes.map((s) => renderShapeGlyph(s, {
                     dn: (vn) => vn.map(([x, y]) => [x * panelImg.w, y * panelImg.h]),
                     cond: condById[s.condition_id], sel: false, z: scale, darkMode,
                     patId: (c) => patId(c, "ref-"),
-                  }))}
+                  })))}
                   {/* Read-only markup mirror — the SAME renderer the primary's markup
                       layer calls (markupGlyphs.jsx), so clouds, callouts, text notes,
                       dimensions, arrows, highlights, bubbles, captured images and vector
@@ -275,10 +276,10 @@ export default function ReferencePane({
                       or drag here still pans the pane — markups are never interactive.
                       `markups` arrives already scoped to this refKey and paint-ordered
                       (TakeoffCanvas's `refMarkups`, via lib/markupPaint). */}
-                  {markups.map((m) => renderMarkupGlyph(m, {
+                  {uiText(markups.map((m) => renderMarkupGlyph(m, {
                     img: panelImg, z: scale, darkMode, condById, rfis, noteQtyLabels, sheetBaseLabel,
                     selected: false, premiumInk: readOnlyPremiumInk,
-                  }))}
+                  })))}
                 </svg>
               )}
             </div>
@@ -314,11 +315,11 @@ function ReferenceTabBar({ refSet, activeKey, tabLabel, onSelect, onRemove }) {
         const on = k === activeKey;
         return (
           <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "2px 5px 1px 7px", maxWidth: 140 }}>
-            <button type="button" onClick={() => onSelect?.(k)} title={k}
+            <button type="button" onClick={() => onSelect?.(k)} title={uiText(k)}
               style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 10.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 105, padding: 0 }}>
-              {tabLabel(k)}
+              {uiText(tabLabel(k))}
             </button>
-            <button type="button" onClick={() => onRemove?.(k)} title={refSet.length > 1 ? "Remove from reference" : "Remove — closes the split"}
+            <button type="button" onClick={() => onRemove?.(k)} title={uiText(refSet.length > 1 ? "Remove from reference" : "Remove — closes the split")}
               style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}>
               <Icon name="close" size={9} />
             </button>

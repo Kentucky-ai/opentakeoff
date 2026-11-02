@@ -15,10 +15,10 @@ const rate = (v) => (v === null || v === undefined ? "" : v);
 
 /**
  * @param {{ est: ReturnType<typeof import("./estimate.js").priceEstimate>,
- *   projectName?: string, companyName?: string, clientName?: string, date?: string }} args
+ *   projectName?: string, companyName?: string, clientName?: string, date?: string, localize?: (value: any) => any, language?: string }} args
  * @returns {Array<{name: string, rows: any[][]}>}
  */
-export function estimateWorkbook({ est, projectName = "", companyName = "", clientName = "", date = "" }) {
+export function estimateWorkbook({ est, projectName = "", companyName = "", clientName = "", date = "", localize = (v) => v, language = "en" }) {
   const head = [
     ["Estimate", projectName || "Untitled project"],
     ...(companyName ? [["Prepared by", companyName]] : []),
@@ -44,6 +44,7 @@ export function estimateWorkbook({ est, projectName = "", companyName = "", clie
     ["Base bid", est.total],
   ];
   if (!est.complete) summary.push([], [`Not fully priced: ${est.unpriced.length} condition${est.unpriced.length === 1 ? "" : "s"} count at $0 for what is missing (see the Unpriced tab).`]);
+  if (language === 'ru' && !est.complete) summary[summary.length - 1] = [`Не все цены заданы. Позиций без полной стоимости: ${est.unpriced.length}. Неуказанные цены учитываются как нулевые; см. лист «Не заданные цены».`];
   for (const w of est.warnings) summary.push([w]);
 
   const materials = [["Finish", "Material", "Qty", "Unit", "$/unit", "Cost $", "Status"]];
@@ -57,13 +58,13 @@ export function estimateWorkbook({ est, projectName = "", companyName = "", clie
   ];
   if (!est.complete) {
     const unpriced = [["Finish", "Status", "Missing"]];
-    for (const u of est.unpriced) unpriced.push([u.finish_tag, STATUS[u.status], u.missing.join("; ")]);
+    for (const u of est.unpriced) unpriced.push([u.finish_tag, STATUS[u.status], u.missing.map(v => v.startsWith('material row: ') ? localize('Supporting material') + ': ' + localize(v.slice(14)) : localize(v)).join('; ')]);
     sheets.push({ name: "Unpriced", rows: [...head, ...unpriced, ...foot] });
   }
-  return sheets;
+  return sheets.map(sheet => ({...sheet, name: localize(sheet.name), ...(language === 'ru' ? {columnWidths: [44,26,16,24,24,20,24,24,20,30,24]} : {}), rows: sheet.rows.map(row => row.map(v => typeof v === 'string' ? localize(v) : v))}));
 }
 
-export function estimateFileName(projectName) {
+export function estimateFileName(projectName, language = "en") {
   const base = String(projectName || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() || "OpenTakeoff";
-  return `${base} - estimate.xlsx`;
+  return `${base} - ${language === "ru" ? "смета" : "estimate"}.xlsx`;
 }

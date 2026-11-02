@@ -62,13 +62,13 @@ export function allocate(total, weights) {
   return parts.map((p) => p / 100);
 }
 
-const fmtDate = (d) => d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+const fmtDate = (d, locale) => d.toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
 
 /**
- * @param {{ est: any, conditions: any[], company?: any, clientInfo?: any, projectName?: string,
+ * @param {{ est: any, conditions: any[], company?: any, clientInfo?: any, projectName?: string, locale?: string,
  *   proposal?: any, today?: Date }} args
  */
-export function buildBidProposal({ est, conditions = [], company = {}, clientInfo = {}, projectName = "", proposal = null, today = new Date() }) {
+export function buildBidProposal({ est, conditions = [], company = {}, clientInfo = {}, projectName = "", proposal = null, today = new Date(), locale = "en-US" }) {
   const p = sanitizeBidProposal(proposal);
   const byId = new Map(conditions.map((c) => [c.id, c]));
   const sell = allocate(est.total, est.lines.map((l) => l.total));
@@ -81,8 +81,8 @@ export function buildBidProposal({ est, conditions = [], company = {}, clientInf
     },
     client: { name: str(clientInfo.client_name), address: str(clientInfo.client_address), reference: str(clientInfo.reference) },
     project: str(projectName),
-    date: fmtDate(today),
-    valid_until: fmtDate(valid),
+    date: fmtDate(today, locale),
+    valid_until: fmtDate(valid, locale),
     itemized: p.itemized,
     scope: est.lines.map((l, i) => ({
       tag: l.finish_tag, description: scopeDescription(byId.get(l.id)),
