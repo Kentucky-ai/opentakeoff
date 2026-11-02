@@ -57,5 +57,3 @@ web/public/models/
 
 # Standalone public OCR fixture benchmark build
 web/dist-ocr-codes/
-
-/test/
