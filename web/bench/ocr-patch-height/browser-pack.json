@@ -1,0 +1,718 @@
+{
+ "engine": "chromium wasm",
+ "fixture_tiles": [
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:2",
+   "fixture": "test/fixtures/ocr-seams/demo-sheet2-real.json",
+   "tiles": 6,
+   "tileMs": 0,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 2,
+     "heights": [
+      229,
+      96
+     ],
+     "lengths": [
+      3486,
+      3310
+     ],
+     "lines": 630,
+     "clipped": 0,
+     "recall": "38/41",
+     "ms": 2395,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 408,
+     "patches": 2,
+     "heights": [
+      229,
+      96
+     ],
+     "lengths": [
+      3486,
+      3310
+     ],
+     "lines": 630,
+     "clipped": 0,
+     "recall": "38/41",
+     "ms": 2333,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 800,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lengths": [
+      3486
+     ],
+     "lines": 635,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 3164,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 1600,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lengths": [
+      3486
+     ],
+     "lines": 635,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 3164,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 2400,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lengths": [
+      3486
+     ],
+     "lines": 635,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 3164,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 4000,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lengths": [
+      3486
+     ],
+     "lines": 635,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 3164,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    }
+   ]
+  }
+ ],
+ "fresh_tiles": [
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:1",
+   "tiles": 6,
+   "tileMs": 38380,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 1,
+     "heights": [
+      110
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 493,
+     "clipped": 1,
+     "recall": "7/7",
+     "ms": 416,
+     "missed": []
+    },
+    {
+     "cap": 408,
+     "patches": 1,
+     "heights": [
+      110
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 493,
+     "clipped": 1,
+     "recall": "7/7",
+     "ms": 414,
+     "missed": []
+    },
+    {
+     "cap": 800,
+     "patches": 1,
+     "heights": [
+      110
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 493,
+     "clipped": 1,
+     "recall": "7/7",
+     "ms": 414,
+     "missed": []
+    },
+    {
+     "cap": 1600,
+     "patches": 1,
+     "heights": [
+      110
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 493,
+     "clipped": 1,
+     "recall": "7/7",
+     "ms": 414,
+     "missed": []
+    },
+    {
+     "cap": 2400,
+     "patches": 1,
+     "heights": [
+      110
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 493,
+     "clipped": 1,
+     "recall": "7/7",
+     "ms": 414,
+     "missed": []
+    },
+    {
+     "cap": 4000,
+     "patches": 1,
+     "heights": [
+      110
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 493,
+     "clipped": 1,
+     "recall": "7/7",
+     "ms": 414,
+     "missed": []
+    }
+   ]
+  },
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:2",
+   "tiles": 6,
+   "tileMs": 39753,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 1,
+     "heights": [
+      611
+     ],
+     "lengths": [
+      740
+     ],
+     "lines": 696,
+     "clipped": 0,
+     "recall": "37/41",
+     "ms": 809,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "CPT-1/VCT-1",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 408,
+     "patches": 1,
+     "heights": [
+      611
+     ],
+     "lengths": [
+      740
+     ],
+     "lines": 696,
+     "clipped": 0,
+     "recall": "37/41",
+     "ms": 792,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "CPT-1/VCT-1",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 800,
+     "patches": 1,
+     "heights": [
+      611
+     ],
+     "lengths": [
+      740
+     ],
+     "lines": 696,
+     "clipped": 0,
+     "recall": "37/41",
+     "ms": 792,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "CPT-1/VCT-1",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 1600,
+     "patches": 1,
+     "heights": [
+      611
+     ],
+     "lengths": [
+      740
+     ],
+     "lines": 696,
+     "clipped": 0,
+     "recall": "37/41",
+     "ms": 792,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "CPT-1/VCT-1",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 2400,
+     "patches": 1,
+     "heights": [
+      611
+     ],
+     "lengths": [
+      740
+     ],
+     "lines": 696,
+     "clipped": 0,
+     "recall": "37/41",
+     "ms": 792,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "CPT-1/VCT-1",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 4000,
+     "patches": 1,
+     "heights": [
+      611
+     ],
+     "lengths": [
+      740
+     ],
+     "lines": 696,
+     "clipped": 0,
+     "recall": "37/41",
+     "ms": 792,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "CPT-1/VCT-1",
+      "VCT-1",
+      "ACT-1"
+     ]
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-dublin-bldg9a-finish-plan-A601.pdf:1",
+   "tiles": 6,
+   "tileMs": 31649,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 3,
+     "heights": [
+      319,
+      119,
+      38
+     ],
+     "lengths": [
+      2098,
+      838,
+      3085
+     ],
+     "lines": 458,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 599,
+     "missed": []
+    },
+    {
+     "cap": 408,
+     "patches": 3,
+     "heights": [
+      319,
+      119,
+      38
+     ],
+     "lengths": [
+      2098,
+      838,
+      3085
+     ],
+     "lines": 458,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 577,
+     "missed": []
+    },
+    {
+     "cap": 800,
+     "patches": 3,
+     "heights": [
+      319,
+      119,
+      38
+     ],
+     "lengths": [
+      2098,
+      838,
+      3085
+     ],
+     "lines": 458,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 577,
+     "missed": []
+    },
+    {
+     "cap": 1600,
+     "patches": 3,
+     "heights": [
+      319,
+      119,
+      38
+     ],
+     "lengths": [
+      2098,
+      838,
+      3085
+     ],
+     "lines": 458,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 577,
+     "missed": []
+    },
+    {
+     "cap": 2400,
+     "patches": 3,
+     "heights": [
+      319,
+      119,
+      38
+     ],
+     "lengths": [
+      2098,
+      838,
+      3085
+     ],
+     "lines": 458,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 577,
+     "missed": []
+    },
+    {
+     "cap": 4000,
+     "patches": 3,
+     "heights": [
+      319,
+      119,
+      38
+     ],
+     "lengths": [
+      2098,
+      838,
+      3085
+     ],
+     "lines": 458,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 577,
+     "missed": []
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-shreveport-fisher-house-site-utility-C300.pdf:1",
+   "tiles": 6,
+   "tileMs": 50359,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 528,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 2134,
+     "missed": []
+    },
+    {
+     "cap": 408,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 528,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 2130,
+     "missed": []
+    },
+    {
+     "cap": 800,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 528,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 2130,
+     "missed": []
+    },
+    {
+     "cap": 1600,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 528,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 2130,
+     "missed": []
+    },
+    {
+     "cap": 2400,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 528,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 2130,
+     "missed": []
+    },
+    {
+     "cap": 4000,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 528,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 2130,
+     "missed": []
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/mcp-workflow-bench/plan-set/porterville/porterville-adu-a1-101.pdf:1",
+   "tiles": 6,
+   "tileMs": 51800,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 4,
+     "heights": [
+      3008,
+      368,
+      251,
+      103
+     ],
+     "lengths": [
+      3361,
+      4094,
+      912,
+      2435
+     ],
+     "lines": 601,
+     "clipped": 2,
+     "recall": "88/90",
+     "ms": 24834,
+     "missed": [
+      "201",
+      "201"
+     ]
+    },
+    {
+     "cap": 408,
+     "patches": 4,
+     "heights": [
+      3008,
+      368,
+      251,
+      103
+     ],
+     "lengths": [
+      3361,
+      4094,
+      912,
+      2435
+     ],
+     "lines": 601,
+     "clipped": 2,
+     "recall": "88/90",
+     "ms": 26094,
+     "missed": [
+      "201",
+      "201"
+     ]
+    },
+    {
+     "cap": 800,
+     "patches": 4,
+     "heights": [
+      3008,
+      368,
+      251,
+      103
+     ],
+     "lengths": [
+      3361,
+      4094,
+      912,
+      2435
+     ],
+     "lines": 601,
+     "clipped": 2,
+     "recall": "88/90",
+     "ms": 26094,
+     "missed": [
+      "201",
+      "201"
+     ]
+    },
+    {
+     "cap": 1600,
+     "patches": 4,
+     "heights": [
+      3008,
+      368,
+      251,
+      103
+     ],
+     "lengths": [
+      3361,
+      4094,
+      912,
+      2435
+     ],
+     "lines": 601,
+     "clipped": 2,
+     "recall": "88/90",
+     "ms": 26094,
+     "missed": [
+      "201",
+      "201"
+     ]
+    },
+    {
+     "cap": 2400,
+     "patches": 3,
+     "heights": [
+      3008,
+      1774,
+      103
+     ],
+     "lengths": [
+      3361,
+      4094,
+      2435
+     ],
+     "lines": 601,
+     "clipped": 2,
+     "recall": "88/90",
+     "ms": 30136,
+     "missed": [
+      "201",
+      "201"
+     ]
+    },
+    {
+     "cap": 4000,
+     "patches": 3,
+     "heights": [
+      3316,
+      251,
+      103
+     ],
+     "lengths": [
+      4093,
+      912,
+      2435
+     ],
+     "lines": 599,
+     "clipped": 2,
+     "recall": "88/90",
+     "ms": 23919,
+     "missed": [
+      "201",
+      "201"
+     ]
+    }
+   ]
+  }
+ ]
+}
