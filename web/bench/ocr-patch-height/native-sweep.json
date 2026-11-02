@@ -1,0 +1,3454 @@
+{
+ "engine": "native ORT",
+ "own_length": [
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:1",
+   "width": 6048,
+   "height": 4320,
+   "tiles": 6,
+   "patches": 1,
+   "ownHeights": [
+    125
+   ],
+   "straddlers": 0,
+   "rows": []
+  },
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:2",
+   "width": 6048,
+   "height": 4320,
+   "tiles": 6,
+   "patches": 2,
+   "ownHeights": [
+    610,
+    84
+   ],
+   "straddlers": 4,
+   "rows": [
+    {
+     "key": "PATCH FINISHES THIS AREA TO MATCH EXISTING AS NECESSARY",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 106
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 26
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 61
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 64
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 73
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 96
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 120
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 156
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 222
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 293
+      }
+     }
+    },
+    {
+     "key": "PATCH FINISHES THIS AREA TO MATCH EXISTING AS NECESSARY.",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 105
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 32
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 72
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 69
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 72
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 83
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 123
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 141
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 192
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 250
+      }
+     }
+    },
+    {
+     "key": "SEE FINISH PLAN FOR ADDITIONAL INFORMATION",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 107
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 40
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 83
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 93
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 102
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 153
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 156
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 261
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 207
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 254
+      }
+     }
+    },
+    {
+     "key": "SEE FINISH PLAN FOR ADDITIONAL INFORMATION",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 106
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 29
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 40
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 41
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 49
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 88
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 168
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 190
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 199
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 257
+      }
+     }
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-dublin-bldg9a-finish-plan-A601.pdf:1",
+   "width": 6048,
+   "height": 4320,
+   "tiles": 6,
+   "patches": 3,
+   "ownHeights": [
+    316,
+    115,
+    38
+   ],
+   "straddlers": 2,
+   "rows": [
+    {
+     "key": "PHASE I - ROOM FINISH SCHEDULE",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 316,
+      "read": 1,
+      "ms": 81
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 44
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 87
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 141
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 137
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 218
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 475
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 690
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 969
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 1276
+      }
+     }
+    },
+    {
+     "key": "FINISH PLAN LEGEND",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 115,
+      "read": 1,
+      "ms": 25
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 24
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 27
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 32
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 50
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 67
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 117
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 164
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 242
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 344
+      }
+     }
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-shreveport-fisher-house-site-utility-C300.pdf:1",
+   "width": 6048,
+   "height": 4320,
+   "tiles": 6,
+   "patches": 1,
+   "ownHeights": [
+    383
+   ],
+   "straddlers": 10,
+   "rows": [
+    {
+     "key": "THE UNDERGROUND UTILITIES SHOWN HAVE BEEN LOCATED",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 250
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 104
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 136
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 180
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 281
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 302
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 356
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 412
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 486
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 870
+      }
+     }
+    },
+    {
+     "key": "FROM FIELD SURVEY INFORMATION AND EXISTING DRAWINGS.",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 235
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 107
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 157
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 195
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 253
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 301
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 348
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 397
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 475
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 853
+      }
+     }
+    },
+    {
+     "key": "THE SURVEYOR MAKES NO GUARANTEE THAT THE UNDER-",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 244
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 168
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 197
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 245
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 313
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 305
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 434
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 424
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 498
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 894
+      }
+     }
+    },
+    {
+     "key": "GROUND UTILITIES SHOWN COMPRISE ALL SUCH UTILITIES",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 271
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 158
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 232
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 254
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 277
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 305
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 394
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 458
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 502
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 879
+      }
+     }
+    },
+    {
+     "key": "IN THE AREA, EITHER IN SERVICE OR ABANDONED. THE",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 239
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 157
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 225
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 240
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 259
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 291
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 371
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 439
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 481
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 864
+      }
+     }
+    },
+    {
+     "key": "SURVEYOR FURTHER DOES NOT WARRANT THAT THE UNDER-",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 238
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 158
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 230
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 252
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 250
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 272
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 387
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 443
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 483
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 864
+      }
+     }
+    },
+    {
+     "key": "GROUND UTILITIES SHOWN ARE IN EXACT LOCATION INDICATED",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 238
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 166
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 208
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 233
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 289
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 276
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 370
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 448
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 507
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 864
+      }
+     }
+    },
+    {
+     "key": "ALTHOUGH THE SURVEYOR DOES CERTIFY THAT THEY ARE LOCATED",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 240
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 176
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 172
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 346
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 266
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 293
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 376
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 435
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 609
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 871
+      }
+     }
+    },
+    {
+     "key": "AS ACCURATELY AS POSSIBLE FROM INFORMATION AVAILABLE.",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 234
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 115
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 164
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 199
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 274
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 285
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 346
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 392
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 477
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 850
+      }
+     }
+    },
+    {
+     "key": "THE SURVEYOR HAS NOT PHYSICALLY LOCATED THE UNDER-",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 231
+     },
+     "heights": {
+      "128": {
+       "actual": 128,
+       "read": 1,
+       "ms": 95
+      },
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 132
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 194
+      },
+      "600": {
+       "actual": 600,
+       "read": 1,
+       "ms": 259
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 296
+      },
+      "1200": {
+       "actual": 1200,
+       "read": 1,
+       "ms": 377
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 460
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 510
+      },
+      "4000": {
+       "actual": 4000,
+       "read": 1,
+       "ms": 892
+      }
+     }
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/mcp-workflow-bench/plan-set/roseburg/va-roseburg-a03a.pdf:1",
+   "width": 6048,
+   "height": 4320,
+   "tiles": 6,
+   "patches": 4,
+   "ownHeights": [
+    333,
+    209,
+    449,
+    24
+   ],
+   "straddlers": 0,
+   "rows": []
+  }
+ ],
+ "full_cap_length": [
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:2",
+   "patches": 2,
+   "ownHeights": [
+    610,
+    84
+   ],
+   "straddlers": 4,
+   "rows": [
+    {
+     "key": "PATCH FINISHES THIS AREA TO MATCH EXISTING AS NECESSARY",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 130
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 275
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 427
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 575
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1304
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1823
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 308
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 376
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 666
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1236
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1817
+      }
+     }
+    },
+    {
+     "key": "PATCH FINISHES THIS AREA TO MATCH EXISTING AS NECESSARY.",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 133
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 331
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 468
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 599
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1210
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1841
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 247
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 468
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 734
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1409
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1969
+      }
+     }
+    },
+    {
+     "key": "SEE FINISH PLAN FOR ADDITIONAL INFORMATION",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 138
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 329
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 425
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 856
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1250
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2067
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 271
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 446
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 931
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1437
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2048
+      }
+     }
+    },
+    {
+     "key": "SEE FINISH PLAN FOR ADDITIONAL INFORMATION",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 610,
+      "read": 1,
+      "ms": 138
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 420
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 457
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 900
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1373
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1874
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 284
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 339
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 726
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1344
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1987
+      }
+     }
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-dublin-bldg9a-finish-plan-A601.pdf:1",
+   "patches": 3,
+   "ownHeights": [
+    316,
+    115,
+    38
+   ],
+   "straddlers": 2,
+   "rows": [
+    {
+     "key": "PHASE I - ROOM FINISH SCHEDULE",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 316,
+      "read": 1,
+      "ms": 96
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 127
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 225
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 462
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1248
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1537
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 214
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 215
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 512
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1388
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1496
+      }
+     }
+    },
+    {
+     "key": "FINISH PLAN LEGEND",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 115,
+      "read": 1,
+      "ms": 32
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 217
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 196
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 349
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 670
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1036
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 128
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 191
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 317
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 572
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 819
+      }
+     }
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-shreveport-fisher-house-site-utility-C300.pdf:1",
+   "patches": 1,
+   "ownHeights": [
+    383
+   ],
+   "straddlers": 10,
+   "rows": [
+    {
+     "key": "THE UNDERGROUND UTILITIES SHOWN HAVE BEEN LOCATED",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 275
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 329
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 536
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 990
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1540
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1691
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 498
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 716
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 970
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1468
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1626
+      }
+     }
+    },
+    {
+     "key": "FROM FIELD SURVEY INFORMATION AND EXISTING DRAWINGS.",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 276
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 399
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 602
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1015
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1400
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1578
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 506
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 796
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 935
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1375
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1755
+      }
+     }
+    },
+    {
+     "key": "THE SURVEYOR MAKES NO GUARANTEE THAT THE UNDER-",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 275
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 529
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 670
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1008
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1561
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1645
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 498
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 793
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 884
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1391
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1722
+      }
+     }
+    },
+    {
+     "key": "GROUND UTILITIES SHOWN COMPRISE ALL SUCH UTILITIES",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 257
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 569
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 757
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 968
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1440
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1629
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 562
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 729
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 922
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1386
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1592
+      }
+     }
+    },
+    {
+     "key": "IN THE AREA, EITHER IN SERVICE OR ABANDONED. THE",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 273
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 530
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 779
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 934
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1357
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1657
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 559
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 708
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 905
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1401
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1537
+      }
+     }
+    },
+    {
+     "key": "SURVEYOR FURTHER DOES NOT WARRANT THAT THE UNDER-",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 256
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 583
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 801
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 924
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1409
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1568
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 677
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 678
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 921
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1369
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1624
+      }
+     }
+    },
+    {
+     "key": "GROUND UTILITIES SHOWN ARE IN EXACT LOCATION INDICATED",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 279
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 554
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 796
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 896
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1325
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1618
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 616
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 647
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 951
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1308
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1576
+      }
+     }
+    },
+    {
+     "key": "ALTHOUGH THE SURVEYOR DOES CERTIFY THAT THEY ARE LOCATED",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 251
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 669
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 708
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1159
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1465
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2003
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 622
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 575
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 924
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1314
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1592
+      }
+     }
+    },
+    {
+     "key": "AS ACCURATELY AS POSSIBLE FROM INFORMATION AVAILABLE.",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 256
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 619
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 774
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1022
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1413
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1669
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 474
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 635
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1024
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1457
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1753
+      }
+     }
+    },
+    {
+     "key": "THE SURVEYOR HAS NOT PHYSICALLY LOCATED THE UNDER-",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 383,
+      "read": 1,
+      "ms": 279
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 497
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 871
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 980
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1449
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1718
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 520
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 545
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 938
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1273
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1676
+      }
+     }
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/mcp-workflow-bench/plan-set/porterville/porterville-adu-a1-101.pdf:1",
+   "patches": 6,
+   "ownHeights": [
+    1343,
+    102,
+    988,
+    257,
+    43,
+    103
+   ],
+   "straddlers": 23,
+   "rows": [
+    {
+     "key": "30\" WIDE FREE STANDING ELECTRIC RANGE OVEN. VENT TO EXTERIOR.",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 715
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 378
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 467
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 833
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1804
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2259
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 403
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 532
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 949
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1654
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2365
+      }
+     }
+    },
+    {
+     "key": "REFRIGERATOR LOCATION. PROVIDE 37\" SPACE WITH ROUGH PLUMBING FOR",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 750
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 639
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 791
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 994
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1865
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2421
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 440
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 694
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1199
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1786
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2411
+      }
+     }
+    },
+    {
+     "key": "WATER CLOSET. REFER TO WATER EFFICIENCY REQUIREMENTS ON",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 745
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 353
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 638
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1303
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2149
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 3004
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 384
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 630
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1187
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2062
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2813
+      }
+     }
+    },
+    {
+     "key": "32\" x 60\" x 72\" TUB AND SHOWER COMBINATION. MODEL BY BUILDER. WATER",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 849
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 439
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 721
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1324
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2283
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 3125
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 449
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 781
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1261
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2244
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 3181
+      }
+     }
+    },
+    {
+     "key": "RESISTENT FINISH TO EXTEND TO 72\" ABOVE FLOOR. SHOWER DOOR IF",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 695
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 414
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 587
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1389
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2460
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2829
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 559
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 689
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1055
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1751
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 3010
+      }
+     }
+    },
+    {
+     "key": "CONTRACTOR TO VERIFY EXACT ROUGH OPENING SIZES PRIOR TO",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 102,
+      "read": 1,
+      "ms": 152
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 362
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 545
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 955
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1585
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2251
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 432
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 727
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1070
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1524
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2002
+      }
+     }
+    },
+    {
+     "key": "EGRESS WINDOWS SHALL HAVE A CLEAR OPENING WITH A MAX. SILL HEIGHT",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 1046
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 412
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 747
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1073
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1999
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 3126
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 493
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 648
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1012
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1809
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2286
+      }
+     }
+    },
+    {
+     "key": "OF 44\" AFF, MIN NET CLEAR OPENING FOR EMERGENCY ESCAPE SHALL BE",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 1055
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 495
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 699
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 936
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1854
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2617
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 509
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 752
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1362
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1730
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2262
+      }
+     }
+    },
+    {
+     "key": "5.7 S.F. EXCEPTION: MIN 5 S.F. AT GROUND FLOOR, MINIMUM NET CLEAR",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 1107
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 466
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 854
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1007
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1497
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2407
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 384
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 510
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 932
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1482
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2017
+      }
+     }
+    },
+    {
+     "key": "IN A HIGH FIRE SEVERITY / WUI AREA, ALL WINDOWS TO BE WUI COMPLIANT",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 957
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 350
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 519
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1085
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1422
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2282
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 372
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 450
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 935
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1568
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1845
+      }
+     }
+    },
+    {
+     "key": "SAFET GLAZING / TEMPERED GLASS REQUIRED AT ALL OPERABLE DOORS,",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 1050
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 439
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 486
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 900
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1368
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2248
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 284
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 429
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 959
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1646
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1946
+      }
+     }
+    },
+    {
+     "key": "WITHIN TUB/SHOWER ENCLOSURES, WITHIN 24\" OF TUB/SHOWER, wITHIN",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 1032
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 314
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 444
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 850
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1341
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2070
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 225
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 415
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 801
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1392
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1971
+      }
+     }
+    },
+    {
+     "key": "STACKED WASHER/DRYER MACHINE LOCATION. PROVIDE WASTE AND WATER",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 707
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 573
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 722
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1043
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1799
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2536
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 590
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 703
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1242
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2471
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2315
+      }
+     }
+    },
+    {
+     "key": "REQUIRED EGRESS WINDOW. REFER TO GENERAL NOTE #7 FOR ADDITIONAL",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 977
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 214
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 306
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 633
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1468
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1982
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 212
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 322
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 530
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1077
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1761
+      }
+     }
+    },
+    {
+     "key": "HAZARDOUS LOCATION. WINDOW INCLUDES BOTH PANES TEMPERED",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 988,
+      "read": 1,
+      "ms": 1086
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 262
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 420
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 659
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1719
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2158
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 321
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 374
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 652
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1280
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1999
+      }
+     }
+    },
+    {
+     "key": "(CAL RANCH PORCH)",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 257,
+      "read": 1,
+      "ms": 41
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 138
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 207
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 452
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 854
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1379
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 123
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 157
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 427
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 826
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 1260
+      }
+     }
+    },
+    {
+     "key": "IN RECESSED WALL BOX. PROVIDE DRYER VENT. VENT TO OUTSIDE AIR",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 746
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 481
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 732
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1096
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1834
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2413
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 575
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 608
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1205
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1923
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2642
+      }
+     }
+    },
+    {
+     "key": "THROUGH EXTERIOR WALL. DRYER VENT 4\" MIN DIAMETER TO EXTERIOR",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 794
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 468
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 653
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1128
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1859
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2561
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 517
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 651
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1368
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2011
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2604
+      }
+     }
+    },
+    {
+     "key": "WITH SCREENED AND ONE DIRECTIONAL VENT GATE. MAX LENGTH TO NOT",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 735
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 471
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 705
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1316
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2645
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2813
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 650
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 724
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1478
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2395
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2640
+      }
+     }
+    },
+    {
+     "key": "EXCEED 14' WITH A MAX OF 2 90-DEGREE BENDS. TERMINATION SHALL BE 3'",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 736
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 467
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 593
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1080
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1862
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2782
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 478
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 612
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1170
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1932
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2631
+      }
+     }
+    },
+    {
+     "key": "SINGLE COMPARTMENT UNDER-MOUNT KITCHEN SINK W/ GARBAGE",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 735
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 355
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 739
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1505
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1959
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2790
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 369
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 733
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1231
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2358
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2668
+      }
+     }
+    },
+    {
+     "key": "DISPOSAL. REFER TO WATER EFFICIENCY REQUIREMENTS ON CALGREEN",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 826
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 333
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 629
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1433
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1999
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2855
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 350
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 670
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1210
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2267
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2651
+      }
+     }
+    },
+    {
+     "key": "LAVATORY SINK. REFER TO WATER EFFICIENCY REQUIREMENTS ON",
+     "runs": 1,
+     "axis": "h",
+     "own": {
+      "h": 1343,
+      "read": 1,
+      "ms": 704
+     },
+     "heights": {
+      "256": {
+       "actual": 256,
+       "read": 1,
+       "ms": 278
+      },
+      "408": {
+       "actual": 408,
+       "read": 1,
+       "ms": 579
+      },
+      "800": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1395
+      },
+      "1600": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 1975
+      },
+      "2400": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 2924
+      },
+      "256@q": {
+       "actual": 256,
+       "read": 1,
+       "ms": 542
+      },
+      "408@q": {
+       "actual": 408,
+       "read": 1,
+       "ms": 742
+      },
+      "800@q": {
+       "actual": 800,
+       "read": 1,
+       "ms": 1165
+      },
+      "1600@q": {
+       "actual": 1600,
+       "read": 1,
+       "ms": 2375
+      },
+      "2400@q": {
+       "actual": 2400,
+       "read": 1,
+       "ms": 3048
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

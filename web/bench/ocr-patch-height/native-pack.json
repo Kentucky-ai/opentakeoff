@@ -1,0 +1,771 @@
+{
+ "engine": "native ORT",
+ "fixture_tiles": [
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:2",
+   "fixture": "test/fixtures/ocr-seams/demo-sheet2-real.json",
+   "tiles": 6,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 2,
+     "heights": [
+      229,
+      96
+     ],
+     "lines": 630,
+     "clipped": 0,
+     "recall": "38/41",
+     "ms": 442,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 256,
+     "patches": 2,
+     "heights": [
+      229,
+      96
+     ],
+     "lines": 630,
+     "clipped": 0,
+     "recall": "38/41",
+     "ms": 420,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 408,
+     "patches": 2,
+     "heights": [
+      229,
+      96
+     ],
+     "lines": 630,
+     "clipped": 0,
+     "recall": "38/41",
+     "ms": 420,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 600,
+     "patches": 2,
+     "heights": [
+      229,
+      96
+     ],
+     "lines": 630,
+     "clipped": 0,
+     "recall": "38/41",
+     "ms": 420,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 800,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lines": 634,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 600,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 1200,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lines": 634,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 600,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 1600,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lines": 634,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 600,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 2400,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lines": 634,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 600,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 4000,
+     "patches": 1,
+     "heights": [
+      612
+     ],
+     "lines": 634,
+     "clipped": 0,
+     "recall": "39/41",
+     "ms": 600,
+     "missed": [
+      "VCT-1",
+      "ACT-1"
+     ]
+    }
+   ]
+  }
+ ],
+ "fresh_tiles": [
+  {
+   "sheet": "../evals/mcp-workflow-bench/plan-set/porterville/porterville-adu-a1-101.pdf:1",
+   "tiles": 6,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 6,
+     "heights": [
+      1343,
+      102,
+      988,
+      257,
+      43,
+      103
+     ],
+     "lengths": [
+      1136,
+      3358,
+      4094,
+      914,
+      2395,
+      2435
+     ],
+     "lines": 605,
+     "clipped": 3,
+     "recall": "75/78",
+     "ms": 1867,
+     "missed": [
+      "CONTRACTOR TO VERIFY EXACT ROUGH OPENING SIZES PRIOR TO",
+      "IN A HIGH FIRE SEVERITY / WUI AREA, ALL WINDOWS TO BE WUI COMPLIANT",
+      "SINGLE COMPARTMENT UNDER-MOUNT KITCHEN SINK W/ GARBAGE"
+     ]
+    },
+    {
+     "cap": 408,
+     "patches": 6,
+     "heights": [
+      1343,
+      102,
+      988,
+      257,
+      103,
+      43
+     ],
+     "lengths": [
+      1136,
+      3358,
+      4094,
+      914,
+      2435,
+      2395
+     ],
+     "lines": 605,
+     "clipped": 3,
+     "recall": "75/78",
+     "ms": 1765,
+     "missed": [
+      "CONTRACTOR TO VERIFY EXACT ROUGH OPENING SIZES PRIOR TO",
+      "IN A HIGH FIRE SEVERITY / WUI AREA, ALL WINDOWS TO BE WUI COMPLIANT",
+      "SINGLE COMPARTMENT UNDER-MOUNT KITCHEN SINK W/ GARBAGE"
+     ]
+    },
+    {
+     "cap": 800,
+     "patches": 6,
+     "heights": [
+      1343,
+      102,
+      988,
+      257,
+      103,
+      43
+     ],
+     "lengths": [
+      1136,
+      3358,
+      4094,
+      914,
+      2435,
+      2395
+     ],
+     "lines": 605,
+     "clipped": 3,
+     "recall": "75/78",
+     "ms": 1765,
+     "missed": [
+      "CONTRACTOR TO VERIFY EXACT ROUGH OPENING SIZES PRIOR TO",
+      "IN A HIGH FIRE SEVERITY / WUI AREA, ALL WINDOWS TO BE WUI COMPLIANT",
+      "SINGLE COMPARTMENT UNDER-MOUNT KITCHEN SINK W/ GARBAGE"
+     ]
+    },
+    {
+     "cap": 1600,
+     "patches": 5,
+     "heights": [
+      1343,
+      1186,
+      257,
+      103,
+      43
+     ],
+     "lengths": [
+      1136,
+      4094,
+      914,
+      2435,
+      2395
+     ],
+     "lines": 606,
+     "clipped": 3,
+     "recall": "77/78",
+     "ms": 1864,
+     "missed": [
+      "SINGLE COMPARTMENT UNDER-MOUNT KITCHEN SINK W/ GARBAGE"
+     ]
+    },
+    {
+     "cap": 2400,
+     "patches": 3,
+     "heights": [
+      2232,
+      2397,
+      2187
+     ],
+     "lengths": [
+      3358,
+      4094,
+      4094
+     ],
+     "lines": 605,
+     "clipped": 3,
+     "recall": "77/78",
+     "ms": 4798,
+     "missed": [
+      "SINGLE COMPARTMENT UNDER-MOUNT KITCHEN SINK W/ GARBAGE"
+     ]
+    },
+    {
+     "cap": 4000,
+     "patches": 3,
+     "heights": [
+      3316,
+      257,
+      2187
+     ],
+     "lengths": [
+      4094,
+      914,
+      4094
+     ],
+     "lines": 605,
+     "clipped": 3,
+     "recall": "78/78",
+     "ms": 4557,
+     "missed": []
+    }
+   ]
+  },
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:1",
+   "tiles": 6,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 1,
+     "heights": [
+      125
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 497,
+     "clipped": 1,
+     "recall": "6/7",
+     "ms": 109,
+     "missed": [
+      "133"
+     ]
+    },
+    {
+     "cap": 408,
+     "patches": 1,
+     "heights": [
+      125
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 497,
+     "clipped": 1,
+     "recall": "6/7",
+     "ms": 88,
+     "missed": [
+      "133"
+     ]
+    },
+    {
+     "cap": 800,
+     "patches": 1,
+     "heights": [
+      125
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 497,
+     "clipped": 1,
+     "recall": "6/7",
+     "ms": 88,
+     "missed": [
+      "133"
+     ]
+    },
+    {
+     "cap": 1600,
+     "patches": 1,
+     "heights": [
+      125
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 497,
+     "clipped": 1,
+     "recall": "6/7",
+     "ms": 88,
+     "missed": [
+      "133"
+     ]
+    },
+    {
+     "cap": 2400,
+     "patches": 1,
+     "heights": [
+      125
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 497,
+     "clipped": 1,
+     "recall": "6/7",
+     "ms": 88,
+     "missed": [
+      "133"
+     ]
+    },
+    {
+     "cap": 4000,
+     "patches": 1,
+     "heights": [
+      125
+     ],
+     "lengths": [
+      4094
+     ],
+     "lines": 497,
+     "clipped": 1,
+     "recall": "6/7",
+     "ms": 88,
+     "missed": [
+      "133"
+     ]
+    }
+   ]
+  },
+  {
+   "sheet": "public/demo/sample-finish-plan.pdf:2",
+   "tiles": 6,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 2,
+     "heights": [
+      610,
+      84
+     ],
+     "lengths": [
+      740,
+      3078
+     ],
+     "lines": 693,
+     "clipped": 1,
+     "recall": "38/41",
+     "ms": 192,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 408,
+     "patches": 2,
+     "heights": [
+      610,
+      84
+     ],
+     "lengths": [
+      740,
+      3078
+     ],
+     "lines": 693,
+     "clipped": 1,
+     "recall": "38/41",
+     "ms": 179,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 800,
+     "patches": 2,
+     "heights": [
+      610,
+      84
+     ],
+     "lengths": [
+      740,
+      3078
+     ],
+     "lines": 693,
+     "clipped": 1,
+     "recall": "38/41",
+     "ms": 179,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 1600,
+     "patches": 2,
+     "heights": [
+      610,
+      84
+     ],
+     "lengths": [
+      740,
+      3078
+     ],
+     "lines": 693,
+     "clipped": 1,
+     "recall": "38/41",
+     "ms": 179,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 2400,
+     "patches": 2,
+     "heights": [
+      610,
+      84
+     ],
+     "lengths": [
+      740,
+      3078
+     ],
+     "lines": 693,
+     "clipped": 1,
+     "recall": "38/41",
+     "ms": 179,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    },
+    {
+     "cap": 4000,
+     "patches": 2,
+     "heights": [
+      610,
+      84
+     ],
+     "lengths": [
+      740,
+      3078
+     ],
+     "lines": 693,
+     "clipped": 1,
+     "recall": "38/41",
+     "ms": 179,
+     "missed": [
+      "CONFERENCE/BREAK ROOM",
+      "VCT-1",
+      "ACT-1"
+     ]
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-dublin-bldg9a-finish-plan-A601.pdf:1",
+   "tiles": 6,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 3,
+     "heights": [
+      316,
+      115,
+      38
+     ],
+     "lengths": [
+      2093,
+      833,
+      3084
+     ],
+     "lines": 460,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 145,
+     "missed": []
+    },
+    {
+     "cap": 408,
+     "patches": 3,
+     "heights": [
+      316,
+      115,
+      38
+     ],
+     "lengths": [
+      2093,
+      833,
+      3084
+     ],
+     "lines": 460,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 151,
+     "missed": []
+    },
+    {
+     "cap": 800,
+     "patches": 3,
+     "heights": [
+      316,
+      115,
+      38
+     ],
+     "lengths": [
+      2093,
+      833,
+      3084
+     ],
+     "lines": 460,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 151,
+     "missed": []
+    },
+    {
+     "cap": 1600,
+     "patches": 3,
+     "heights": [
+      316,
+      115,
+      38
+     ],
+     "lengths": [
+      2093,
+      833,
+      3084
+     ],
+     "lines": 460,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 151,
+     "missed": []
+    },
+    {
+     "cap": 2400,
+     "patches": 3,
+     "heights": [
+      316,
+      115,
+      38
+     ],
+     "lengths": [
+      2093,
+      833,
+      3084
+     ],
+     "lines": 460,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 151,
+     "missed": []
+    },
+    {
+     "cap": 4000,
+     "patches": 3,
+     "heights": [
+      316,
+      115,
+      38
+     ],
+     "lengths": [
+      2093,
+      833,
+      3084
+     ],
+     "lines": 460,
+     "clipped": 2,
+     "recall": "13/13",
+     "ms": 151,
+     "missed": []
+    }
+   ]
+  },
+  {
+   "sheet": "../evals/four-asks-2026-09-02/sheets/va-shreveport-fisher-house-site-utility-C300.pdf:1",
+   "tiles": 6,
+   "arms": [
+    {
+     "cap": "main",
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 533,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 290,
+     "missed": []
+    },
+    {
+     "cap": 408,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 533,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 244,
+     "missed": []
+    },
+    {
+     "cap": 800,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 533,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 244,
+     "missed": []
+    },
+    {
+     "cap": 1600,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 533,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 244,
+     "missed": []
+    },
+    {
+     "cap": 2400,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 533,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 244,
+     "missed": []
+    },
+    {
+     "cap": 4000,
+     "patches": 1,
+     "heights": [
+      383
+     ],
+     "lengths": [
+      1084
+     ],
+     "lines": 533,
+     "clipped": 0,
+     "recall": "27/27",
+     "ms": 244,
+     "missed": []
+    }
+   ]
+  }
+ ]
+}
