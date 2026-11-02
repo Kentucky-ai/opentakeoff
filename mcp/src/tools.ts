@@ -698,22 +698,26 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("find_text", (a) => session.findText(a.sheet, a.q, { region: a.region, limit: a.limit })));
 
   server.registerTool("rotate_page", {
-    description: `Rotate a sheet's page in the PDF (90, 180, or 270 degrees clockwise) before measuring. Transforms all existing takeoff shapes, markups, and calibrations on that sheet to remain locked to the drawing. ${COORDS}`,
+    description: `Rotate a sheet's page in the PDF (90, 180, or 270 degrees clockwise) before measuring. Transforms all existing takeoff shapes, markups, and calibrations on that sheet to remain locked to the drawing. Output file path is optional (default: "<file>_rotated.pdf"); pass overwrite:true to allow replacing an existing file. ${COORDS}`,
     inputSchema: {
       sheet: z.string().describe('Sheet key ("plan.pdf", "plan.pdf#2") or sheet number ("A-101")'),
       angle: z.union([z.literal(90), z.literal(180), z.literal(270)]).describe("Clockwise rotation angle in degrees: 90, 180, or 270"),
+      output_path: z.string().optional().describe('Destination file path (default: "<file>_rotated.pdf")'),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
     },
     outputSchema: rotatePageOutput,
-  }, run("rotate_page", ({ sheet, angle }) => session.rotatePage(sheet, angle)));
+  }, run("rotate_page", ({ sheet, angle, output_path, overwrite }) => session.rotatePage(sheet, angle, output_path, overwrite)));
 
   server.registerTool("reorder_pages", {
-    description: `Reorder pages in a loaded PDF document. Remaps all takeoff sheet keys so measurements and annotations follow their pages. ${COORDS}`,
+    description: `Reorder pages in a loaded PDF document. Remaps all takeoff sheet keys so measurements and annotations follow their pages. Output file path is optional (default: "<file>_reordered.pdf"); pass overwrite:true to allow replacing an existing file. ${COORDS}`,
     inputSchema: {
       file: z.string().describe('The loaded PDF file name (e.g. "plan.pdf")'),
       order: z.array(z.number().int().min(1)).describe("1-based new page order, e.g. [2, 1, 3] to swap pages 1 and 2"),
+      output_path: z.string().optional().describe('Destination file path (default: "<file>_reordered.pdf")'),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
     },
     outputSchema: reorderPagesOutput,
-  }, run("reorder_pages", ({ file, order }) => session.reorderPages(file, order)));
+  }, run("reorder_pages", ({ file, order, output_path, overwrite }) => session.reorderPages(file, order, output_path, overwrite)));
 
   server.registerTool("extract_pages", {
     description: `Extract a subset of pages from a loaded PDF into a new PDF file on disk. Carries all takeoff shapes and annotations on those pages into the new document (mapped to pages 1..N). ${COORDS}`,

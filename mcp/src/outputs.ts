@@ -1214,6 +1214,7 @@ export const exportProposalOutput = {
 export const rotatePageOutput = {
   sheet: z.string(),
   angle: z.number().int(),
+  output_file: z.string().optional(),
   width_px: z.number(),
   height_px: z.number(),
   shapes_transformed: z.number().int(),
@@ -1224,6 +1225,7 @@ export const rotatePageOutput = {
 export const reorderPagesOutput = {
   file: z.string(),
   order: z.array(z.number().int()),
+  output_file: z.string().optional(),
   sheets: z.array(z.string()),
   shapes_remapped: z.number().int(),
   note: z.string(),
@@ -1232,6 +1234,7 @@ export const reorderPagesOutput = {
 export const extractPagesOutput = {
   source_file: z.string(),
   output_file: z.string(),
+  takeoff_file: z.string().optional(),
   extracted_pages: z.array(z.number().int()),
   page_count: z.number().int(),
   shapes_carried: z.number().int(),
@@ -1241,6 +1244,7 @@ export const extractPagesOutput = {
 export const mergeDocumentsOutput = {
   merged_files: z.array(z.string()),
   output_file: z.string(),
+  takeoff_file: z.string().optional(),
   total_pages: z.number().int(),
   shapes_remapped: z.number().int(),
   note: z.string(),

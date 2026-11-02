@@ -75,20 +75,33 @@ test("MCP page tools: rotate_page, reorder_pages, extract_pages, merge_documents
   const extractRes = await session.extractPages(base, [2], extractPath, true);
   assert.equal(extractRes.page_count, 1);
   assert.equal(extractRes.shapes_carried, 1);
+  assert.ok(extractRes.takeoff_file, "must create companion takeoff file");
 
   const extractBytes = await readFile(extractPath);
   assert.ok(extractBytes.length > 0);
+  const extractTakeoffBytes = await readFile(extractRes.takeoff_file);
+  const parsedCarried = JSON.parse(extractTakeoffBytes.toString("utf8"));
+  assert.equal(parsedCarried.shapes.length, 1);
+  assert.equal(parsedCarried.shapes[0].sheet_id, path.basename(extractPath));
 
   // 4. merge_documents: merge testPdf and extractPath into a combined document
   const mergePath = path.join(tmpDir, `test-merge-${Date.now()}.pdf`);
   const mergeRes = await session.mergeDocuments([testPdf, extractPath], mergePath, true);
   assert.equal(mergeRes.total_pages, 3); // 2 pages from testPdf + 1 page from extractPath
+  assert.ok(mergeRes.takeoff_file, "must create companion takeoff file");
 
   const mergeBytes = await readFile(mergePath);
   assert.ok(mergeBytes.length > 0);
+  const mergeTakeoffBytes = await readFile(mergeRes.takeoff_file);
+  const parsedMerged = JSON.parse(mergeTakeoffBytes.toString("utf8"));
+  assert.ok(parsedMerged.shapes.length >= 1);
 
   // Clean up temp files
   await unlink(testPdf).catch(() => {});
   await unlink(extractPath).catch(() => {});
+  await unlink(extractRes.takeoff_file).catch(() => {});
   await unlink(mergePath).catch(() => {});
+  await unlink(mergeRes.takeoff_file).catch(() => {});
+  if (rotRes.output_file) await unlink(rotRes.output_file).catch(() => {});
+  if (reorderRes.output_file) await unlink(reorderRes.output_file).catch(() => {});
 });
