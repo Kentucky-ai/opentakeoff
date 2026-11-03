@@ -122,8 +122,14 @@ export function localizeCsv(text) {
   }
   if (cell || row.length) { row.push(cell.replace(/\r$/, "")); rows.push(row); }
   const encode = (value) => {
-    const localized = localizeText(value);
-    return /[,"\r\n]/.test(localized) ? '"' + localized.replace(/"/g, '""') + '"' : localized;
+    const localized = /^-?\d+\.\d+$/.test(value) ? value.replace(".", ",") : localizeText(value);
+    return /[;"\r\n]/.test(localized) ? '"' + localized.replace(/"/g, '""') + '"' : localized;
   };
-  return (text.startsWith("\uFEFF") ? "\uFEFF" : "") + rows.map((cells) => cells.map(encode).join(",")).join("\r\n");
+  return "\uFEFF" + rows.map((cells) => cells.map(encode).join(";")).join("\r\n");
+}
+
+export function formatEstimateMoney(value, lang = language) {
+  return new Intl.NumberFormat(lang === "ru" ? "ru-RU" : "en-US", {
+    style: "currency", currency: lang === "ru" ? "RUB" : "USD",
+  }).format(Number(value) || 0);
 }

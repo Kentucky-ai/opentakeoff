@@ -1,4 +1,4 @@
-import { getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
+import { formatEstimateMoney as money, getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
 // Estimate — price the takeoff by hand: a unit and material / labor $ per unit
 // on each condition, $ per package on its supporting materials, then the
 // project's markups. Every number comes from lib/estimate.js (the same engine
@@ -24,7 +24,6 @@ import MaterialUnitSelector, { useMaterialUnit } from './MaterialUnitSelector.js
 import { estimateForDisplay, pricingDisplay } from '../lib/estimatePresentation.js';
 import { liquidFactor } from '../lib/materialUnits.js';
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-const money = (v) => `$${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const qty = (v) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const STATUS_LABEL = { partial: "PARTLY PRICED", unpriced: "UNPRICED" };
 const MARKUPS = [["overhead_pct", "Overhead"], ["profit_pct", "Profit"], ["tax_pct", "Sales tax"]];

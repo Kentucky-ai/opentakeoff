@@ -1,4 +1,4 @@
-import { getLanguage, localizeText as uiText, finishLabel } from './i18n/core.js';
+import { formatEstimateMoney as money, getLanguage, localizeText as uiText, finishLabel } from './i18n/core.js';
 import { pricingDisplay } from './estimatePresentation.js';
 // Bid proposal → PDF (letter, pdf-lib, lazy-loaded like the marked set).
 // Lays out what lib/bidProposal.js decided — letterhead, prepared-for, scope,
@@ -13,7 +13,6 @@ const PAGE = [612, 792];
 const M = 54;                       // margin
 const RIGHT = PAGE[0] - M;
 const BOTTOM = M + 24;              // above the watermark footer
-const money = (v) => `$${(Number(v) || 0).toLocaleString(getLanguage() === "ru" ? "ru-RU" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const qty = (v) => (Number(v) || 0).toLocaleString(getLanguage() === "ru" ? "ru-RU" : "en-US", { maximumFractionDigits: 2 });
 
 // Greedy word wrap at a width; a single word longer than the line is hard-split.
