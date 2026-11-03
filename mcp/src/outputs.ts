@@ -1369,3 +1369,28 @@ export const mergeDocumentsOutput = {
   shapes_remapped: z.number().int(),
   note: z.string(),
 };
+
+export const compareSheetsOutput = {
+  sheet_a: z.string(),
+  sheet_b: z.string(),
+  diff_method: z.enum(["vector", "raster"]),
+  alignment: z.object({
+    dx: z.number(),
+    dy: z.number(),
+    confidence: z.number(),
+    method: z.string(),
+  }),
+  changed_regions: z.array(z.object({
+    id: z.string(),
+    type: z.enum(["added", "removed", "modified"]),
+    bounds: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+    hull: z.array(z.tuple([z.number(), z.number()])),
+    segment_count: z.number(),
+  })),
+  flagged_shape_ids: z.array(z.string()).describe("IDs of existing takeoff shapes on sheet_a that touch changed ink and require re-review"),
+  stats: z.object({
+    unchanged_segments: z.number().int(),
+    removed_segments: z.number().int(),
+    added_segments: z.number().int(),
+  }),
+};
