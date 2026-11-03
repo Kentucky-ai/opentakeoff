@@ -8,7 +8,6 @@
 // the numbers to build it against (issue #184 item 4). Room-level PRECISION —
 // "is this proposal a real room?" — is deliberately absent: it needs a full
 // room census, which is human truth we don't have (item 2).
-import { createRequire } from "module";
 import { readFileSync, readdirSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -23,8 +22,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const jitter = argv.includes("--jitter");
 const only = argv.filter((a) => !a.startsWith("--"));
-const req = createRequire(import.meta.url);
-const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
+const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
 const files = readdirSync(join(here, "corpus"))
   .filter((f) => f.endsWith(".json"))

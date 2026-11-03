@@ -1183,6 +1183,12 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 ### Drawing
 
+The following key is available only in a build with One-Click enabled (see §6):
+
+| Key | Tool |
+|---|---|
+| `O` | One-Click Area |
+
 | Key / action | Effect |
 |---|---|
 | Click (release without moving) | Place a point |
