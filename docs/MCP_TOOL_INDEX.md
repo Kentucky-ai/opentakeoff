@@ -6,12 +6,13 @@ Refresh with `npm run check:tool-count --prefix mcp -- --write`; CI fails on sta
 For the operating workflow, read [the agent guide](AGENT_GUIDE.md) and [geometry workflow](GEOMETRY_WORKFLOW.md).
 For behavior and optional arguments, use the [tool reference](../mcp/README.md#tools) and the discovered input schema.
 
-Default build: **58 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
+Default build: **59 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
 
 | Tool | Stage | Availability | Required arguments |
 |---|---|---|---|
 | `annotate` | revise | Default | `sheet`, `type` |
 | `apply_rules` | handoff | Default | None |
+| `compare_sheets` | revise | Default | `sheet_a`, `sheet_b` |
 | `count_marks` | measure | Default | None |
 | `create_rfi` | revise | Default | `title`, `question`, `sheet` |
 | `cut_out` | measure | Default | `parent_shape_id`, `verts` |

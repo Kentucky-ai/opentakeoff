@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError } from "../lib/store.js";
 import { diffTakeoffs, diffToCsv, revSheetLabel } from "../lib/revisions.js";
+import RevisionOverlay from "./RevisionOverlay.jsx";
 import { downloadText } from "../lib/totals.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
 
@@ -31,6 +32,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
   const [payloads, setPayloads] = useState({});    // id -> revision payload
   const [confirmId, setConfirmId] = useState("");  // two-step delete/restore: "del:<id>" | "restore:<id>"
   const [showUnchanged, setShowUnchanged] = useState(false);
+  const [activeTab, setActiveTab] = useState("quantities");
 
   // snapshot metadata → the panel's row shape (label/ts → name/created_at);
   // listSnapshots already sorts newest-first and scopes to this project
@@ -209,6 +211,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
               <label style={{ fontSize: 12, color: "var(--ink-muted)", display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
                 <input type="checkbox" checked={showUnchanged} onChange={(e) => setShowUnchanged(e.target.checked)} name="show-unchanged" />show unchanged
               </label>
+              <button className="btn-ghost" onClick={() => setActiveTab("overlay")} title="Show what moved on the drawing: removed ink in red, added in blue"><Icon name="revisions" size={13} />Visual drawing overlay</button>
               <button className="btn-ghost" onClick={exportCsv} disabled={!diff}><Icon name="document" size={13} />Export compare CSV</button>
             </div>
 
@@ -324,6 +327,20 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
           </div>
         )}
       </div>
+
+      {activeTab === "overlay" && (
+        <RevisionOverlay
+          fileName={current?.sheets?.[0]?.name || "sample-finish-plan.pdf"}
+          pageNumber={1}
+          shapes={current?.shapes || []}
+          onApplyCarriedShapes={(newShapes) => {
+            if (onRestore) {
+              onRestore({ ...current, shapes: newShapes });
+            }
+          }}
+          onClose={() => setActiveTab("quantities")}
+        />
+      )}
     </div>
   );
 }
