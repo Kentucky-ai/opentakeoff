@@ -72,7 +72,7 @@ export default function BidProposalDialog({ est, conditions, projectName, client
             style={{ background: "none", border: "none", color: "var(--ink-soft)", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 4 }}>×</button>
         </div>
         <p style={{ margin: "4px 0 0", color: "var(--ink-muted)", fontSize: 12.5 }}>
-          {uiText("From ")}{company.name ? <strong>{uiText(company.name)}</strong> : uiText("your company")}
+          {uiText("From ")}{company.name ? <strong>{company.name}</strong> : uiText("your company")}
           {onOpenCompanySetup && <> · <button onClick={onOpenCompanySetup} style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", padding: 0, fontSize: 12.5 }}>{uiText(company.name ? "Company setup…" : "Add your company in Company setup…")}</button></>}
         </p>
 

@@ -8,6 +8,12 @@ function readLanguage() {
 }
 let language = readLanguage();
 export const getLanguage = () => language;
+export function rfiStatusLabel(id, lang = language) {
+  const names = lang === "ru"
+    ? { open: "Открыт", answered: "Получен ответ", closed: "Закрыт", void: "Аннулирован" }
+    : { open: "Open", answered: "Answered", closed: "Closed", void: "Void" };
+  return names[id] || names.open;
+}
 export function measurementCount(count, lang = language) {
   if (lang !== "ru") return `${count} shapes`;
   const n = Math.abs(count), ten = n % 10, hundred = n % 100;
@@ -74,11 +80,11 @@ const cache = new Map();
 
 // Runs at the React presentation boundary. React nodes, arrays, numbers and
 // unknown project strings pass through unchanged; no DOM rewriting occurs.
-export function localizeText(value) {
-  if (language !== "ru" || typeof value !== "string" || !value) return value;
+export function localizeText(value, lang = language) {
+  if (lang !== "ru" || typeof value !== "string" || !value) return value;
   if (cache.has(value)) return cache.get(value);
   const key = value.trim().replace(/\s+/g, " ");
-  let translated = Object.hasOwn(ru, key) ? ru[key] : finishLabel(key);
+  let translated = Object.hasOwn(ru, key) ? ru[key] : finishLabel(key, lang);
   if (translated === key) {
     for (const pattern of patterns) {
       if (!key.startsWith(pattern.prefix)) continue;
@@ -87,7 +93,7 @@ export function localizeText(value) {
       const args = Object.fromEntries(pattern.fields.map((field, i) => [field, match[i + 1]]));
       translated = pattern.value.replace(/\{(\d+)\}/g, (_m, field) => {
         const arg = args[field] ?? "";
-        return Object.hasOwn(ru, arg) ? ru[arg] : finishLabel(arg);
+        return Object.hasOwn(ru, arg) ? ru[arg] : finishLabel(arg, lang);
       });
       break;
     }

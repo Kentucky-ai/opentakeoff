@@ -328,7 +328,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     saveColPrefs(next);
   };
 
-  const baseName = (projectName || "takeoff").replace(/[^\w.-]+/g, "_");
+  const baseName = (projectName || "takeoff").replace(/[^\p{L}\p{N}_.-]+/gu, "_");
   const exportCsv = () => downloadText(`${baseName}.csv`, localizeCsv(totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx, byLabelExport.length ? byLabelExport : null, brand.brandName, units)), "text/csv");
   const exportJson = () => downloadText(`${baseName}.json`,
     JSON.stringify(reportJson({ projectName, rows: sourceRows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport, displayUnits: units, rollGoods: rollReportRows(rollByCond, rows), proposedConditionEdits: proposedEditRows }), null, 2),
@@ -390,7 +390,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     // notes cell below). Custom and labor columns stay nowrap.
     if (col.custom || col.spec || col.labor) {
       const cell = col.spec ? { ...td, textAlign: "left", whiteSpace: "normal", maxWidth: 240 } : { ...td, textAlign: "left" };
-      return <td key={col.key} style={cell}>{uiText(v || "—")}</td>;
+      return <td key={col.key} style={cell}>{v || "—"}</td>;
     }
     switch (col.key) {
       case "finish":
@@ -652,7 +652,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             the top of every printed page (screen hides it) — a fixed footer would
             overlap the last row of intermediate pages */}
         <table className="report-flow"><thead><tr><td>
-          {uiText(projectName || "Untitled project")} — {uiText(DISCLAIMER)}
+          {projectName || uiText("Untitled project")} — {uiText(DISCLAIMER)}
           {/* the OpenTakeoff line on every printed page, in every branding mode */}
           <span style={{ float: "right" }}>{uiText(OT_WATERMARK)}</span>
         </td></tr></thead><tbody><tr><td>
@@ -671,8 +671,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   {company.logo && <img src={company.logo} alt={uiText("")} style={{ maxHeight: 46, maxWidth: 170, objectFit: "contain", display: "block" }} />}
                   {(company.name || company.address) && (
                     <div style={{ minWidth: 0 }}>
-                      {company.name && <div style={{ fontFamily: "var(--f-display)", fontWeight: 700, fontSize: 12.5, lineHeight: 1.15 }}>{uiText(company.name)}</div>}
-                      {company.address && <div style={{ fontSize: 11, color: "var(--ink-muted)", whiteSpace: "pre-line", lineHeight: 1.35 }}>{uiText(company.address)}</div>}
+                      {company.name && <div style={{ fontFamily: "var(--f-display)", fontWeight: 700, fontSize: 12.5, lineHeight: 1.15 }}>{company.name}</div>}
+                      {company.address && <div style={{ fontSize: 11, color: "var(--ink-muted)", whiteSpace: "pre-line", lineHeight: 1.35 }}>{company.address}</div>}
                     </div>
                   )}
                 </>
@@ -684,7 +684,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           </div>
 
           {/* project title */}
-          <div style={{ fontFamily: "var(--f-display)", fontSize: 25, fontWeight: 700, letterSpacing: "0.005em", textTransform: "uppercase", lineHeight: 0.98, margin: "11px 0 9px" }}>{uiText(projectName || "Untitled project")}</div>
+          <div style={{ fontFamily: "var(--f-display)", fontSize: 25, fontWeight: 700, letterSpacing: "0.005em", textTransform: "uppercase", lineHeight: 0.98, margin: "11px 0 9px" }}>{projectName || uiText("Untitled project")}</div>
 
           {/* title-block fact grid */}
           {(() => {
@@ -699,7 +699,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 {cells.map(([k, v], i) => (
                   <div key={k} style={{ padding: "7px 11px", borderRight: i < cells.length - 1 ? "1px solid var(--ink-faint)" : "none", minWidth: 0 }}>
                     <div style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-muted)", marginBottom: 2 }}>{uiText(k)}</div>
-                    <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, fontWeight: 500, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(v || "—")}</div>
+                    <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, fontWeight: 500, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v || "—"}</div>
                   </div>
                 ))}
               </div>
@@ -708,7 +708,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           {/* client address rides below the grid (multi-line; capped so a pasted
               40-line address can't eat the page) */}
           {hasClient && clientInfo.client_address && (
-            <div style={{ fontSize: 11, color: "var(--ink-muted)", whiteSpace: "pre-line", lineHeight: 1.4, marginBottom: 12 }}>{uiText(clientInfo.client_address.split("\n").slice(0, 4).join("\n"))}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-muted)", whiteSpace: "pre-line", lineHeight: 1.4, marginBottom: 12 }}>{clientInfo.client_address.split("\n").slice(0, 4).join("\n")}</div>
           )}
 
           {/* meta footer: scale provenance · attribution · disclaimer */}
@@ -1039,7 +1039,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose, onO
                     style={{ padding: "4px 10px", fontSize: 12, cursor: "pointer",
                       border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`,
                       background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--paper-bright)" : "var(--ink)" }}>
-                    {uiText(p.name || "Untitled trade name")}
+                    {p.name || uiText("Untitled trade name")}
                   </button>
                 );
               })}

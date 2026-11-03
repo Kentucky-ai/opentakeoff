@@ -1420,5 +1420,14 @@ labels, scale-order and scale-ratio behavior, and CSV data preservation.
 Terminology follows the construction context and quantity-sheet wording used
 in [Smeta.RU](https://help.smeta.ru/7/) and
 [GRAND-Smeta](https://help.grandsmeta.ru/). This is interface localization, not
-implementation of Russian estimating standards or currency conversion.Translated report and estimate toolbars keep their close action pinned to the top-right corner. The report liquid-unit selector stays beside the materials table. Dense condition palettes retain source tags with localized descriptions in tooltips.
+implementation of Russian estimating standards or currency conversion.
+
+Translated report and estimate toolbars keep their close action pinned to the top-right corner. The report liquid-unit selector stays beside the materials table. Dense condition palettes retain source tags with localized descriptions in tooltips.
 A scale calibrated from a known dimension displays its numerical ratio (for example 1:78) in metric mode, or real feet per paper inch in imperial mode. The label uses the baseline PDF rendering scale and is independent of screen zoom; it does not change calibration or quantities.
+
+Marked-set PDFs in Russian mode also embed the bundled Cyrillic fonts for project
+names, company details, annotations and the RFI schedule. Legends continue onto
+additional pages when needed; the last condition is not discarded. Customer
+project/company/client values and annotation text remain literal even when they
+match an English command such as `Report` or `Work`. Proposal page numbers are
+localized; the OpenTakeoff attribution remains on every PDF page.

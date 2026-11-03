@@ -20,7 +20,7 @@ const rate = (v) => (v === null || v === undefined ? "" : v);
  */
 export function estimateWorkbook({ est, projectName = "", companyName = "", clientName = "", date = "", localize = (v) => v, language = "en" }) {
   const head = [
-    ["Estimate", projectName || "Untitled project"],
+    ["Estimate", projectName || localize("Untitled project")],
     ...(companyName ? [["Prepared by", companyName]] : []),
     ...(clientName ? [["Prepared for", clientName]] : []),
     ...(date ? [["Date", date]] : []),
@@ -61,7 +61,7 @@ export function estimateWorkbook({ est, projectName = "", companyName = "", clie
     for (const u of est.unpriced) unpriced.push([u.finish_tag, STATUS[u.status], u.missing.map(v => v.startsWith('material row: ') ? localize('Supporting material') + ': ' + localize(v.slice(14)) : localize(v)).join('; ')]);
     sheets.push({ name: "Unpriced", rows: [...head, ...unpriced, ...foot] });
   }
-  return sheets.map(sheet => ({...sheet, name: localize(sheet.name), ...(language === 'ru' ? {columnWidths: [44,26,16,24,24,20,24,24,20,30,24]} : {}), rows: sheet.rows.map(row => row.map(v => typeof v === 'string' ? localize(v) : v))}));
+  return sheets.map(sheet => ({...sheet, name: localize(sheet.name), ...(language === 'ru' ? {columnWidths: [44,26,16,24,24,20,24,24,20,30,24]} : {}), rows: sheet.rows.map((row, rowIndex) => row.map((v, colIndex) => typeof v === 'string' && !(rowIndex < head.length && colIndex > 0) ? localize(v) : v))}));
 }
 
 export function estimateFileName(projectName, language = "en") {

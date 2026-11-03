@@ -16,7 +16,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
   return <>
     <header className="calm-header">
       <strong className="calm-brand"><ScanStar size={15} reach={1.6} working={running} />open<span>takeoff</span></strong>
-      <div className="calm-project" title={uiText(title)}><span>{uiText(title || tr("Untitled workspace"))}</span><small>{tr("Premium workspace")}</small></div>
+      <div className="calm-project" title={title}><span>{title || tr("Untitled workspace")}</span><small>{tr("Premium workspace")}</small></div>
       <div className="calm-header-actions">
 
         <button type="button" onClick={onOpen} title={tr("Open plans")}><Icon name="plus" size={16} /><span>{tr("Open")}</span></button>

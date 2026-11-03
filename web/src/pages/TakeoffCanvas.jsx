@@ -10362,7 +10362,7 @@ export default function TakeoffCanvas() {
           menus open position:fixed off the trigger rect (ToolMenu) so this
           overflow cannot clip them. */}
       {!focusMode && workspaceLayout && <WorkspaceChrome
-        title={uiText(projectName || active)} onOpen={() => fileInputRef.current?.click()}
+        title={projectName || active} onOpen={() => fileInputRef.current?.click()}
         onNavigate={() => setWorkspaceNavigationOpen((v) => !v)} navigationOpen={workspaceNavigationOpen}
         onTakeoffs={toggleTakeoffs} takeoffsOpen={takeoffsOpen} onWork={() => setAgentOpen((v) => !v)} workOpen={agentOpen} workButtonRef={workButtonRef}
         pending={shapes.filter((shape) => shape.origin?.reviewed === false).length} running={agentRunning}
@@ -10768,7 +10768,7 @@ export default function TakeoffCanvas() {
         <div style={{ padding: "8px 14px", background: "var(--paper-bright)", borderBottom: "1px solid var(--hairline-warm)", fontSize: 14 }}>
           {calib.length < 2 ? <span>{uiText("Custom scale: click two points along a known dimension (")}{uiText(calib.length)}{uiText("/2). Tip: use the longest dimension. (Or just pick a standard scale above.)")}</span> : (
             <span>{uiText("Real length:")}{uiText(" ")}
-              <input name="calibration-length" type="number" value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder={uiText(units === "metric" ? "meters" : "feet")} autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {uiText(units === "metric" ? tr("m") : tr("ft"))}
+              <input name="calibration-length" type="number" step="any" inputMode="decimal" aria-label={tr("Real length:")} value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder={uiText(units === "metric" ? "meters" : "feet")} autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {uiText(units === "metric" ? tr("m") : tr("ft"))}
               <button onClick={applyCalibration} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>{uiText("Apply")}</button>
               <button onClick={() => setCalib([])} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>{uiText("Reset")}</button>
             </span>

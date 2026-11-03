@@ -130,7 +130,7 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <Icon name="document" size={18} />
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 16 }}>{uiText("Estimate")}</strong>
-        <span style={{ color: "var(--ink-muted)", fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(projectName || "Untitled project")}</span>
+        <span style={{ color: "var(--ink-muted)", fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{projectName || uiText("Untitled project")}</span>
         <div style={{ flex: 1 }} />
         {MARKUPS.map(([k, label]) => (
           <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, whiteSpace: "nowrap" }}>

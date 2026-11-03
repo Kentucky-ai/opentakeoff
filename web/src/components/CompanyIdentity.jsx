@@ -72,7 +72,7 @@ export function CompanyIdentityFields({ company, contact = false }) {
         <select name="trade-name" aria-label={uiText("Active trade name")} value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
           className="field-input" style={{ flex: 1, minWidth: 0 }} disabled={!profs.profiles.length}>
           {profs.profiles.length === 0 && <option value="">{uiText("No trade name yet — add one")}</option>}
-          {profs.profiles.map((p) => <option key={p.id} value={p.id}>{uiText(p.name || "Untitled trade name")}</option>)}
+          {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || uiText("Untitled trade name")}</option>)}
         </select>
         <button onClick={addTradeName} className="btn-ghost" title={uiText("Add another trade name (e.g. a second brand)")}
           style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>{uiText("+ Add")}</button>

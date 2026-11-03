@@ -1,4 +1,4 @@
-import { localizeText as uiText } from "../lib/i18n/core.js";
+import { localizeText as uiText, rfiStatusLabel } from "../lib/i18n/core.js";
 // RfiPanel — the RFI register (Request For Information). A docked, project-global
 // panel (unlike the sheet-scoped markup panel): every RFI with number, subject,
 // status chip, and linked-markup count; filter by status; edit every field;
@@ -54,7 +54,7 @@ export default function RfiPanel({ docked = false, rfis: rfisIn = [], markups = 
 
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", padding: "8px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
         {uiText(chip("all", `All ${rfis.length}`))}
-        {uiText(RFI_STATUSES.map((s) => chip(s.id, `${s.label} ${rfis.filter((r) => rfiStatus(r.status).id === s.id).length}`)))}
+        {RFI_STATUSES.map((s) => chip(s.id, `${rfiStatusLabel(s.id)} ${rfis.filter((r) => rfiStatus(r.status).id === s.id).length}`))}
       </div>
 
       {rfis.length === 0 && (
@@ -79,7 +79,7 @@ export default function RfiPanel({ docked = false, rfis: rfisIn = [], markups = 
           <div key={r.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
               <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: "var(--cobalt)" }}>{uiText(String(r.number ?? ""))}</span>
-              <span style={{ padding: "1px 7px", background: st.color, color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{uiText(st.label)}</span>
+              <span style={{ padding: "1px 7px", background: st.color, color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{rfiStatusLabel(st.id)}</span>
               {agent && (
                 <span title={uiText(pending ? "Raised by an agent over MCP — pending until you accept it" : "Raised by an agent over MCP — accepted")}
                   style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 6px", border: "1px dashed var(--ink-muted)", color: "var(--ink-muted)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
@@ -107,7 +107,7 @@ export default function RfiPanel({ docked = false, rfis: rfisIn = [], markups = 
               <div style={{ flex: 1 }}>
                 <label style={lbl}>{uiText("Status")}</label>
                 <select name="rfi-status" value={st.id} onChange={(e) => up(r, { status: e.target.value })} style={field}>
-                  {RFI_STATUSES.map((s) => <option key={s.id} value={s.id}>{uiText(s.label)}</option>)}
+                  {RFI_STATUSES.map((s) => <option key={s.id} value={s.id}>{rfiStatusLabel(s.id)}</option>)}
                 </select>
               </div>
               <div style={{ flex: 1 }}>
