@@ -786,6 +786,8 @@ Nothing is pre-filled. Every field saves as you type, stays in this browser, and
 
 An empty box means *not entered*, never $0. Type 0 for scope you aren't charging for. Until every line is priced, a banner names what's missing, the row says **PARTLY PRICED** or **UNPRICED**, and the total reads **Base bid — priced so far**.
 
+A linear condition with a thickness (a border) measures one run and gets two lines, its border SF and its LF. The line you don't buy by is marked **OPTIONAL**. That is the LF when the SF is the first line, or the SF when you price by LF. Leave it empty and its cost stays in the first line's price: it isn't missing, it doesn't block the base bid, and an itemized proposal prints it as *Included*. Price it only when it's bought or installed separately.
+
 **Excel** downloads `<project> - estimate.xlsx`: **Estimate** (every line, then material, labor, tax, overhead, profit and the base bid), **Materials** (each assembly item's packages, prices and costs) and, when anything is missing, **Unpriced**. Rates you didn't enter stay empty cells. Every tab ends with *Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com* and prints it as the page footer. You can't turn it off.
 
 Prices are saved with the project. Condition templates never carry them, so every new job starts unpriced.
