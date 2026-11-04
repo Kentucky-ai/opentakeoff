@@ -187,3 +187,123 @@ test("export_takeoff's wire schema accepts the estimate records (the reply is va
   const parsed = z.object(exportTakeoffOutput).strict().safeParse(s.exportPayload());
   assert.equal(parsed.success, true, parsed.success ? "" : JSON.stringify(parsed.error.issues.slice(0, 3)));
 });
+
+// ── every line is priceable (one line per quantity kind, web/src/lib/estimate.js) ──
+// CPT-1: a 100 SF room + a 50 LF plain run + two floor boxes, all under one condition
+async function multiKind() {
+  const s = await measured();
+  s.measureLine(KEY, [[0, 500], [500, 500]], { condition: "CPT-1" });
+  s.placeCount(KEY, [[600, 600], [700, 600]], { condition: "CPT-1" });
+  return s;
+}
+
+test("set_pricing line prices a condition's LF and EA lines; estimate_summary lists every line with its unit, quantities, rates and missing", async () => {
+  const s = await multiKind();
+  const main = s.setPricing("CPT-1", { material: 2, labor: 1, materials: [{ name: "Adhesive", price: 30 }] });
+  assert.equal(main.line!.unit, "SF");
+  assert.deepEqual(main.lines.map((l: any) => [l.unit, l.main, l.status]), [["SF", true, "priced"], ["LF", false, "unpriced"], ["EA", false, "unpriced"]]);
+  assert.match(main.note ?? "", /LF \(material, labor\); EA \(material, labor\).*line "LF"/);
+  const lf = s.setPricing("CPT-1", { line: "LF", material: 1.5, labor: 0.75 });
+  assert.deepEqual(lf.pricing, { material: 2, labor: 1, by_unit: { LF: { material: 1.5, labor: 0.75 } } });
+  assert.deepEqual([lf.line!.unit, lf.line!.material_qty, lf.line!.labor_qty, lf.line!.material_cost, lf.line!.labor_cost, lf.line!.status], ["LF", 55, 50, 82.5, 37.5, "priced"]);
+  s.setPricing("CPT-1", { line: "EA", material: 40 });
+  let sum = s.estimateSummary();
+  const cpt = sum.lines.filter((l: any) => l.finish_tag === "CPT-1");
+  assert.deepEqual(cpt.map((l: any) => [l.unit, l.material_qty, l.labor_qty, l.material_rate, l.labor_rate, l.status, l.missing]), [
+    ["SF", 110, 100, 2, 1, "priced", []],
+    ["LF", 55, 50, 1.5, 0.75, "priced", []],
+    ["EA", 2, 2, 40, null, "partial", ["labor"]],
+  ]);
+  assert.deepEqual(sum.unpriced.filter((u: any) => u.finish_tag === "CPT-1").map((u: any) => [u.unit, u.missing]), [["EA", ["labor"]]]);
+  s.setPricing("CPT-1", { line: "EA", labor: 25 });
+  s.setPricing("RB-1", { material: 1, labor: 1 });
+  sum = s.estimateSummary();
+  assert.equal(sum.complete, true);
+  // 110×2 + 100×1 + 2 pails×30 + 82.5 + 37.5 + 2×40 + 2×25 + RB-1 (50 LF, no waste, at $1 + $1)
+  assert.equal(sum.total, 220 + 100 + 60 + 82.5 + 37.5 + 80 + 50 + 50 + 50);
+  // null clears a by_unit rate back to not entered; undo restores the nested rates verbatim
+  s.setPricing("CPT-1", { line: "LF", material: null, labor: null });
+  assert.deepEqual(s.conditions.find((c) => c.finish_tag === "CPT-1")!.pricing!.by_unit, { EA: { material: 40, labor: 25 } });
+  s.undoLast(1);
+  assert.deepEqual(s.conditions.find((c) => c.finish_tag === "CPT-1")!.pricing!.by_unit, { LF: { material: 1.5, labor: 0.75 }, EA: { material: 40, labor: 25 } });
+});
+
+test("set_pricing keeps old calls unchanged: unit still picks the main line's unit, line naming the main unit is the main line", async () => {
+  const s = await multiKind();
+  const r = s.setPricing("CPT-1", { unit: "LF", material: 1 });
+  assert.deepEqual(r.pricing, { unit: "LF", material: 1 });
+  assert.deepEqual(r.lines.map((l: any) => l.unit), ["LF", "SF", "EA"]);
+  assert.equal(r.line!.unit, "LF");
+  const same = s.setPricing("CPT-1", { line: "LF", labor: 2 });
+  assert.deepEqual(same.pricing, { unit: "LF", material: 1, labor: 2 });   // line = the main unit → the main line, no by_unit
+  // the second area line prices in SF
+  const sf = s.setPricing("CPT-1", { line: "SF", material: 3 });
+  assert.deepEqual(sf.pricing.by_unit, { SF: { material: 3 } });
+  assert.throws(() => s.setPricing("CPT-1", { line: "SY", material: 3 }), /second area line prices in SF/);
+  s.setPricing("CPT-1", { unit: "SF" });
+  assert.throws(() => s.setPricing("CPT-1", { line: "SY", material: 3 }), /area line is its main line, priced in SF/);
+  assert.throws(() => s.setPricing("CPT-1", { line: "LF" }), /Nothing to change.*line only says WHICH line/);
+  // a kind the condition doesn't carry yet: saved, and the reply says so
+  const none = s.setPricing("RB-1", { line: "EA", material: 5 });
+  assert.equal(none.line, null);
+  assert.match(none.note ?? "", /no count quantity yet/);
+});
+
+// A bordered linear condition, as the canvas writes it (thickness → border SF on
+// each run): before multi-line estimates it priced as one SF line.
+async function bordered() {
+  const s = await measured();
+  s.measureLine(KEY, [[0, 700], [1200, 700]], { condition: "BR-1" });   // 120 LF
+  const c = s.conditions.find((x) => x.finish_tag === "BR-1")! as any;
+  c.thickness_in = 4;
+  for (const sh of s.shapes.filter((x: any) => x.condition_id === c.id) as any[]) sh.computed.area_sf = +(sh.computed.perimeter_lf * 4 / 12).toFixed(2);
+  return s;
+}
+
+test("a bordered linear condition priced on its SF reads fully priced; its derived LF line is optional, not missing", async () => {
+  const s = await bordered();
+  s.setPricing("CPT-1", { material: 2, labor: 1, materials: [{ name: "Adhesive", price: 30 }] });
+  s.setPricing("RB-1", { material: 1, labor: 1 });
+  const r = s.setPricing("BR-1", { material: 5, labor: 3 });
+  assert.equal(r.note, undefined);   // nothing else on BR-1 needs a price
+  const sum = s.estimateSummary();
+  const br = sum.lines.filter((l: any) => l.finish_tag === "BR-1");
+  assert.deepEqual(br.map((l: any) => [l.unit, l.main, l.optional, l.labor_qty, l.status, l.missing, l.total]), [
+    ["SF", true, false, 40, "priced", [], 320],   // 40 SF × $5 + 40 × $3 (no waste on BR-1)
+    ["LF", false, true, 120, "optional", [], 0],
+  ]);
+  assert.equal(sum.complete, true);
+  assert.deepEqual(sum.unpriced, []);
+  assert.match(sum.note, /Every measured line is priced\. 1 optional line \(BR-1 LF\)/);
+  const { z } = await import("zod");
+  const { estimateSummaryOutput, setPricingOutput } = await import("../src/outputs.ts");
+  assert.equal(z.object(estimateSummaryOutput).safeParse(sum).success, true);
+  assert.equal(z.object(setPricingOutput).safeParse(r).success, true);
+
+  // the workbook has no Unpriced tab; the proposal prints the LF row "Included", not $0.00
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-estimate-"));
+  const x = await exportEstimateFile(s, { path: path.join(dir, "b - estimate.xlsx"), project_name: "B" });
+  assert.deepEqual([x.tabs, x.complete], [["Estimate", "Materials"], true]);
+  s.setEstimateSettings({ proposal: { itemized: true } });
+  const out = path.join(dir, "b.pdf");
+  const p = await exportProposalFile(s, { path: out, project_name: "B", company: { name: "Sample Flooring Co" } });
+  assert.equal(p.complete, true);
+  const pdf = await PDFDocument.load(await readFile(out), { updateMetadata: false });
+  let text = "";
+  for (const ref of (pdf.getPages()[0] as any).node.Contents().asArray()) {
+    const st: any = pdf.context.lookup(ref), f = st.dict.lookup(PDFName.of("Filter"));
+    text += Buffer.from(String(f) === "/FlateDecode" ? inflateSync(st.contents) : st.contents).toString("latin1");
+  }
+  assert.ok(text.includes(hex("Included")));
+
+  // pricing the optional line is still possible, and rides export_takeoff → import_takeoff
+  s.setPricing("BR-1", { line: "LF", labor: 0.5 });
+  assert.equal(s.estimateSummary().total, sum.total + 60);
+  const file = path.join(dir, "takeoff.json");
+  await writeFile(file, JSON.stringify(s.exportPayload()));
+  const fresh = new Session();
+  await fresh.loadPlan(PLAN);
+  await importTakeoff(fresh, file);
+  assert.deepEqual(fresh.conditions.find((c) => c.finish_tag === "BR-1")!.pricing, { material: 5, labor: 3, by_unit: { LF: { labor: 0.5 } } });
+  assert.equal(fresh.estimateSummary().total, s.estimateSummary().total);
+});

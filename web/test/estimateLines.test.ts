@@ -154,3 +154,66 @@ test("templates never carry an item's material or labor price", () => {
   const c = instantiateTemplate({ finish_tag: "X-1", materials: [{ name: "Plate", per: 1, price: 4, labor_price: 10 }] });
   assert.equal("price" in c.materials[0] || "labor_price" in c.materials[0], false);
 });
+
+// A bordered linear condition (thickness → border SF derived from the LF). Before
+// multi-line estimates it priced as ONE line; its derived second line is optional,
+// so an old project priced on its SF still reads fully priced, to the cent.
+// BR-1: 120 LF of 4" border = 40 SF, 10% waste
+const brd = (pricing: any) => [{ id: "br", finish_tag: "BR-1", thickness_in: 4, waste_pct: 10, ...(pricing ? { pricing } : {}) }];
+const brdShapes = [lin("br", 80, 26.67), lin("br", 40, 13.33)];
+
+test("an old saved bordered linear condition priced on its SF reads fully priced exactly as before", () => {
+  const est = price(brd({ material: 5, labor: 3 }), brdShapes);
+  assert.deepEqual(est.lines.map((l: any) => [l.unit, l.main, l.optional, l.status, l.missing, l.total]), [
+    ["SF", true, false, "priced", [], 340],      // 44 SF ordered × $5 + 40 SF installed × $3 — the pre-#597 single line
+    ["LF", false, true, "optional", [], 0],      // shown, priceable, never missing
+  ]);
+  assert.equal(est.complete, true);
+  assert.deepEqual(est.unpriced, []);
+  assert.equal(est.total, 340);
+  // Excel: no Unpriced tab, the LF row says what it is
+  const sheets = estimateWorkbook({ est });
+  assert.deepEqual(sheets.map((s: any) => s.name), ["Estimate", "Materials"]);
+  assert.deepEqual(sheets[0].rows.filter((r: any[]) => r[0] === "BR-1").map((r: any[]) => [r[1], r[2], r[4], r[7]]), [["priced", "SF", 5, 3], ["optional (in main line)", "LF", "", ""]]);
+  assert.ok(sheets[0].rows.some((r: any[]) => r[0] === "Base bid" && r[1] === 340));
+  // proposal: base bid unchanged, nothing unpriced, the LF scope row is "Included", not $0.00
+  const p = buildBidProposal({ est, conditions: brd(null), proposal: { itemized: true }, today: new Date(2026, 10, 4) });
+  assert.equal(p.complete, true);
+  assert.deepEqual(p.unpriced, []);
+  assert.deepEqual(p.scope.map((s: any) => [s.unit, s.qty, s.price, s.included ?? false]), [["SF", 40, 340, false], ["LF", 120, 0, true]]);
+});
+
+test("the optional LF line still prices when the estimator prices it; one rate alone is not partial", () => {
+  const est = price(brd({ material: 5, labor: 3, by_unit: { LF: { labor: 0.5 } } }), brdShapes);
+  assert.deepEqual(est.lines.map((l: any) => [l.unit, l.status, l.missing, l.labor_cost, l.total]), [["SF", "priced", [], 120, 340], ["LF", "priced", [], 60, 60]]);
+  assert.equal(est.complete, true);
+  assert.equal(est.total, 400);
+  const p = buildBidProposal({ est, conditions: brd(null), proposal: { itemized: true } });
+  assert.equal(p.scope[1].included, undefined);
+});
+
+test("the SF (border) line stays required; the LF main line of a bordered run makes the SF line the optional one", () => {
+  // nothing priced: the SF line is missing, the LF line is not
+  const none = price(brd(null), brdShapes);
+  assert.deepEqual(none.unpriced.map((u: any) => [u.unit, u.status, u.missing]), [["SF", "unpriced", ["material", "labor"]]]);
+  assert.equal(none.complete, false);
+  // priced by the LF (the other unit the old single line could be bought in)
+  const byLf = price(brd({ unit: "LF", material: 2, labor: 1 }), brdShapes);
+  assert.deepEqual(byLf.lines.map((l: any) => [l.unit, l.main, l.status, l.total]), [["LF", true, "priced", 384], ["SF", false, "optional", 0]]);   // 132 × $2 + 120 × $1
+  assert.equal(byLf.complete, true);
+});
+
+test("only a derived line is optional: room SF or plain runs on the row keep every line required", () => {
+  // a room + a bordered run: the LF is all border (optional), the SF carries the room (required)
+  const mixed = price([{ id: "m", finish_tag: "CPT-2", thickness_in: 6, pricing: { unit: "LF", material: 1, labor: 1 } }], [area("m", 500), lin("m", 100, 50)]);
+  assert.deepEqual(mixed.lines.map((l: any) => [l.unit, l.optional, l.status]), [["LF", false, "priced"], ["SF", false, "unpriced"]]);
+  const mixedSf = price([{ id: "m", finish_tag: "CPT-2", thickness_in: 6, pricing: { material: 1, labor: 1 } }], [area("m", 500), lin("m", 100, 50)]);
+  assert.deepEqual(mixedSf.lines.map((l: any) => [l.unit, l.optional, l.status]), [["SF", false, "priced"], ["LF", true, "optional"]]);
+  assert.equal(mixedSf.complete, true);
+  // no thickness: a plain run's LF is its own scope, required (the CPT-1 case above)
+  const plain = price(cpt({ material: 2, labor: 1 }), cptShapes);
+  assert.deepEqual(plain.lines.map((l: any) => [l.unit, l.optional]), [["SF", false], ["LF", false], ["EA", false]]);
+  // EA is never derived
+  const withBox = price(brd({ material: 5, labor: 3 }), [...brdShapes, cnt("br")]);
+  assert.deepEqual(withBox.lines.map((l: any) => [l.unit, l.status]), [["SF", "priced"], ["LF", "optional"], ["EA", "unpriced"]]);
+});

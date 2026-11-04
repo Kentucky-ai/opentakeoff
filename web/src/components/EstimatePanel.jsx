@@ -194,6 +194,10 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
                             {expanded ? "▾" : "▸"} {l.materials.length} item{l.materials.length === 1 ? "" : "s"}
                           </button>
                         )}
+                        {l.status === "optional" && (
+                          <span title={`Optional: this bordered run's ${l.unit} is carried in the ${lineLabel(est, est.lines.find((o) => o.id === l.id && o.main) || l)} price. Price it here only if it is bought or installed separately.`}
+                            style={{ marginLeft: 8, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "0 4px" }}>OPTIONAL</span>
+                        )}
                         {STATUS_LABEL[l.status] && (
                           <span title={`Missing: ${l.missing.join(", ")}`} style={{ marginLeft: 8, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", color: "var(--c-danger)", border: "1px solid var(--c-danger)", padding: "0 4px" }}>{STATUS_LABEL[l.status]}</span>
                         )}
