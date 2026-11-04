@@ -6,9 +6,11 @@
 // store.js metaGet/metaPut, the tests hand it a Map).
 //
 // A turn is one user message and everything the agent did about it:
-//   { id, goal, ts, status, text, steps, staged, rejected, error }
+//   { id, goal, ts, status, text, steps, staged, rejected, error, live? }
 //   status: "running" | "done" | "error" | "stopped" | "capped"
-//   text:   the assistant's answer (its last reply text)
+//   text:   the assistant's answer (its last reply text) — while a reply is
+//           streaming, the text received so far
+//   live:   the streaming reply's raw text so far (never persisted)
 //   steps:  [{ kind: "tool", name, label, status: "running"|"done"|"failed"|"stopped", detail }
 //            | { kind: "say", text }]   — the "show every step" list
 //   staged: proposals this turn put at the Accept / Reject gate
@@ -20,7 +22,17 @@ export const CHAT_SCHEMA = 1;
 export const MAX_TURNS = 50;          // persisted per project; oldest drop first
 export const MAX_STEPS = 80;          // per turn
 export const MAX_TEXT = 20000;        // chars of answer text kept per turn
-export const HISTORY_TURNS = 8;       // prior turns re-sent to the model as context
+export const HISTORY_TURNS = 8;       // prior turns re-sent to the model as context (the default)
+export const HISTORY_TURNS_MAX = 20;  // the "Conversation memory" setting's ceiling
+
+/** Any stored / typed value → a whole number of earlier turns in 0..20.
+ *  Blank, missing or unreadable → the default (8); 0 is a real choice. */
+export function clampHistoryTurns(v) {
+  if (v === "" || v == null) return HISTORY_TURNS;
+  const n = typeof v === "number" ? v : Number(String(v).trim());
+  if (!Number.isFinite(n)) return HISTORY_TURNS;
+  return Math.min(HISTORY_TURNS_MAX, Math.max(0, Math.round(n)));
+}
 const DETAIL_MAX = 160;
 
 const clip = (s, n) => {
@@ -97,17 +109,27 @@ const settleSteps = (steps, to) => steps.map((s) => (s.kind === "tool" && s.stat
 /** agentLoop event → next turn (pure; the input turn is never mutated). */
 export function foldEvent(turn, ev) {
   if (!turn || !ev || typeof ev !== "object") return turn;
+  if (ev.type === "text_delta") {
+    // a streamed piece of the current reply: the answer grows in place. Steps
+    // are untouched (no copy); the reply's own "text" event closes it.
+    const d = typeof ev.text === "string" ? ev.text : "";
+    if (!d) return turn;
+    const live = clip(`${turn.live || ""}${d}`, MAX_TEXT);
+    const shown = live.replace(/^\s+/, "");
+    return { ...turn, live, text: shown ? shown : turn.text };
+  }
   const t = { ...turn, steps: turn.steps.slice() };
+  if ("live" in t) delete t.live;   // any other event ends the reply that was streaming
   switch (ev.type) {
     case "text": {
       const text = clip(String(ev.text || "").trim(), MAX_TEXT);
-      if (!text) return turn;
+      if (!text) return t;
       t.text = text;
       if (t.steps.length < MAX_STEPS) t.steps.push({ kind: "say", text: clip(text, 600) });
       return t;
     }
     case "tool_start": {
-      if (t.steps.length >= MAX_STEPS) return turn;
+      if (t.steps.length >= MAX_STEPS) return t;
       t.steps.push({ kind: "tool", name: String(ev.name || ""), label: toolLabel(ev.name, ev.args), status: "running", detail: "" });
       return t;
     }
@@ -156,6 +178,43 @@ export function foldEvent(turn, ev) {
   }
 }
 
+/** Coalesce streamed text deltas so the chat re-renders a few times a second,
+ *  not once per token. apply(id, ev): a text_delta is buffered per turn and
+ *  handed to commit({[id]: text}) on the next schedule tick; any other event
+ *  first commits that turn's buffered text, then itself, IN ORDER (commit
+ *  receives a list of [id, event] pairs). schedule/cancel are injectable
+ *  (default setTimeout, ~20 fps) so the tests drive the clock.
+ * @param {(pairs: Array<[string, any]>) => void} commit
+ * @param {{ schedule?: (fn: () => void) => any, cancel?: (handle: any) => void }} [opts] */
+export function createDeltaBatcher(commit, { schedule = (fn) => setTimeout(fn, 50), cancel = (h) => clearTimeout(h) } = {}) {
+  const pending = new Map();
+  let handle = null;
+  const drain = (onlyId) => {
+    const out = [];
+    for (const [id, text] of [...pending]) {
+      if (onlyId !== undefined && id !== onlyId) continue;
+      out.push([id, { type: "text_delta", text }]);
+      pending.delete(id);
+    }
+    return out;
+  };
+  const tick = () => { handle = null; const out = drain(); if (out.length) commit(out); };
+  return {
+    apply(id, ev) {
+      if (ev && ev.type === "text_delta") {
+        if (typeof ev.text !== "string" || !ev.text) return;
+        pending.set(id, (pending.get(id) || "") + ev.text);
+        if (handle == null) handle = schedule(tick);
+        return;
+      }
+      commit([...drain(id), [id, ev]]);
+    },
+    /** Commit everything buffered now (a run ending, the hook unmounting). */
+    flush() { if (handle != null) { cancel(handle); handle = null; } const out = drain(); if (out.length) commit(out); },
+    pendingText: (id) => pending.get(id) || "",
+  };
+}
+
 /** Fold a whole event list (the tests' and a replay's entry point). */
 export function foldEvents(turn, events) {
   return (events || []).reduce(foldEvent, turn);
@@ -177,15 +236,24 @@ export function stagedNote(turn) {
 }
 
 // ── model context ────────────────────────────────────────────────────────────
+/** The AI settings disclosure's words for the Conversation memory setting. */
+export function memoryPhrase(n) {
+  const k = clampHistoryTurns(n);
+  if (k === 0) return "no earlier messages (Conversation memory is off)";
+  return `up to the last ${k} earlier ${k === 1 ? "question and answer" : "questions and answers"} in this project's chat (never their tool results)`;
+}
+
 /** Prior turns → plain user/assistant messages for the next run, strictly
  *  alternating and starting with "user" (both protocols want that). Only
  *  turns with an answer to show ride along; tool traffic never does. */
 export function historyMessages(turns, maxTurns = HISTORY_TURNS) {
   const out = [];
+  const keep = clampHistoryTurns(maxTurns);
+  if (keep === 0) return out;   // memory off: each message stands alone
   // a turn with no answer (refused before it ran, transport error) carries
   // nothing the model can build on — it stays out
   const usable = (turns || []).filter((t) => t && t.status !== "running" && t.goal && t.text);
-  for (const t of usable.slice(-maxTurns)) {
+  for (const t of usable.slice(-keep)) {
     const reply = t.status === "done" ? t.text : `${t.text}\n\n[This run ended early: ${t.status === "stopped" ? "stopped by the estimator" : t.error || t.status}.]`;
     const tail = t.staged > 0 ? `\n\n[${plural(t.staged, "proposal")} staged for the estimator's review.]` : "";
     out.push({ role: "user", content: t.goal }, { role: "assistant", content: `${reply}${tail}` });

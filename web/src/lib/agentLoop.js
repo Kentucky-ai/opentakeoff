@@ -13,6 +13,12 @@ import { oneClickEnabled } from "./gate.js";
 //     carry tool_calls, results go back as role:"tool" messages (+ a follow-up
 //     user message for image results, which the tool role can't carry).
 //
+// Streaming: each request asks the endpoint to stream (ai.js falls back to a
+// plain request where it can't). Answer text goes out as it is written —
+// onEvent {type:"text_delta", text} per piece — and the reply's whole text
+// still follows as {type:"text"} once it's complete. Tool calls are only
+// executed once the reply has fully arrived; Stop (signal) aborts mid-stream.
+//
 // Failure contract: NOTHING here throws to the caller. A transport error, a
 // malformed model reply, an abort, or the iteration cap all surface as an
 // onEvent + a terminal {status: "error" | "aborted" | "max_iterations"} —
@@ -157,10 +163,11 @@ export function priorMessages(history) {
  *   signal?: AbortSignal,
  *   maxIterations?: number,
  *   fetchFn?: typeof fetch,
+ *   stream?: boolean,
  * }} opts
  * @returns {Promise<{ status: "done" | "aborted" | "error" | "max_iterations", text?: string, message?: string, iterations: number }>}
  */
-export async function runAgentLoop({ cfg, goal, history, tools, execute, onEvent, signal, maxIterations = MAX_AGENT_ITERATIONS, fetchFn }) {
+export async function runAgentLoop({ cfg, goal, history, tools, execute, onEvent, signal, maxIterations = MAX_AGENT_ITERATIONS, fetchFn, stream = true }) {
   const provider = cfg?.provider === "anthropic" ? "anthropic" : "openai";
   const emit = (ev) => { try { onEvent?.(ev); } catch { /* a status listener must never kill the run */ } };
   const providerTools = toProviderTools(provider, tools);
@@ -173,7 +180,10 @@ export async function runAgentLoop({ cfg, goal, history, tools, execute, onEvent
     if (signal?.aborted) return aborted();
     let json;
     try {
-      json = await chatWithTools({ cfg, system, messages, tools: providerTools, signal, fetchFn });
+      json = await chatWithTools({
+        cfg, system, messages, tools: providerTools, signal, fetchFn, stream,
+        onTextDelta: (text) => { if (!signal?.aborted) emit({ type: "text_delta", text }); },
+      });
     } catch (e) {
       if (signal?.aborted || e?.name === "AbortError") return aborted();
       const message = String((e && e.message) || e);

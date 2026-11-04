@@ -1,10 +1,13 @@
 // The chat window's state: one project's conversation turns, persisted in the
 // local meta store (IndexedDB, key agent_chat:<project>) and folded from the
 // agent loop's events by lib/agentChat. The canvas owns the run; this owns
-// the record of it.
+// the record of it. Streamed text deltas are coalesced (createDeltaBatcher) so
+// a fast model re-renders the chat ~20 times a second, not once per token.
+// The record stays in this browser: it is not part of the project file, an
+// export, or Drive sync.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { metaGet, metaPut } from "./store.js";
-import { foldEvent, loadChat, MAX_TURNS, newTurn, saveChat, settleTurn } from "./agentChat.js";
+import { createDeltaBatcher, foldEvent, loadChat, MAX_TURNS, newTurn, saveChat, settleTurn } from "./agentChat.js";
 
 const META = { get: metaGet, put: metaPut };
 const SAVE_DEBOUNCE_MS = 400;
@@ -15,6 +18,17 @@ export function useAgentChat(projectId) {
   turnsRef.current = turns;
   const loadedRef = useRef(false);
   const dirtyRef = useRef(false);
+  const batcherRef = useRef(/** @type {ReturnType<typeof createDeltaBatcher> | null} */ (null));
+  if (!batcherRef.current) {
+    batcherRef.current = createDeltaBatcher((pairs) => {
+      setTurns((ts) => ts.map((t) => {
+        let next = t;
+        for (const [id, ev] of pairs) if (id === t.id) next = foldEvent(next, ev);
+        return next;
+      }));
+    });
+  }
+  useEffect(() => () => batcherRef.current?.flush(), []);
 
   useEffect(() => {
     let live = true;
@@ -45,12 +59,11 @@ export function useAgentChat(projectId) {
     setTurns((ts) => [...ts, t].slice(-MAX_TURNS));
     return t.id;
   }, []);
-  /** Fold one agent-loop event into its turn. */
-  const apply = useCallback((id, ev) => {
-    setTurns((ts) => ts.map((t) => (t.id === id ? foldEvent(t, ev) : t)));
-  }, []);
+  /** Fold one agent-loop event into its turn (text deltas batched, order kept). */
+  const apply = useCallback((id, ev) => { batcherRef.current?.apply(id, ev); }, []);
   /** The run is over: anything still marked running becomes stopped. */
   const settle = useCallback((id) => {
+    batcherRef.current?.flush();
     setTurns((ts) => ts.map((t) => (t.id === id ? settleTurn(t) : t)));
   }, []);
   const clear = useCallback(() => setTurns([]), []);
