@@ -751,6 +751,8 @@ export default function TakeoffCanvas() {
   const workspacePrefs = useWorkspaceLayout();
   const workspaceLayout = workspacePrefs.enabled;
   const workspaceArrangement = workspacePrefs.layout;
+  // the tool dock floating at the canvas foot (Premium's position; default since 2026-11)
+  const dockBottom = workspaceLayout && workspaceArrangement.tools === "bottom";
   const [workspaceNavigationOpen, setWorkspaceNavigationOpen] = useState(false);
   const [workspaceControlsOpen, setWorkspaceControlsOpen] = useState(false);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
@@ -1169,6 +1171,7 @@ export default function TakeoffCanvas() {
   const aimSeqRef = useRef(0);         // bumps with every lastPtrRef write — the deixis freshness clock (no second tracker, just a tick on the existing one)
   const voiceAimMarkRef = useRef(0);   // aim is LIVE for deixis only while aimSeq > this; re-marked at utterance begin (Command box focus / every run) and on canvas-leave + tab-hide, so a parked-off-canvas or refocus ghost seed can never place a trace
   const pendingClickRef = useRef(null); // deferred draw click {p,cx,cy} — drag >5px converts to a pan
+  const rectDragRef = useRef(false);    // Rectangle by drag (Premium tool feel): the press is corner 1, the release corner 2
   const hoverRef = useRef(null);        // hover tooltip div (DOM-direct like the crosshair)
   const insGhostRef = useRef(null);     // edge-insert ghost "+" badge (DOM-direct like the hover readout)
   const hoverIdRef = useRef("");        // shape id currently described by the tooltip
@@ -4896,7 +4899,12 @@ export default function TakeoffCanvas() {
     // a held draw-click that moves becomes a pan (point placement waits for up)
     if (pendingClickRef.current && !panRef.current) {
       const pc = pendingClickRef.current;
-      if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5) {
+      if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5 && (tool === "rect" || tool === "deduct-rect") && poly.length === 0) {
+        // a held Rectangle press that moves draws the box (corner 1 now, corner 2 on release)
+        pendingClickRef.current = null;
+        rectDragRef.current = true;
+        performClick(pc.p, e);
+      } else if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5) {
         promoteStage();
         panRef.current = { sx: pc.cx, sy: pc.cy, ox: tfRef.current.x, oy: tfRef.current.y };
         pendingClickRef.current = null;
@@ -5035,6 +5043,13 @@ export default function TakeoffCanvas() {
         addMarkup({ type: "highlight", pts, color: hlStyle.color,
                     w: (hlStyle.size / tfRef.current.scale) / tp.img.w, tip: hlStyle.tip }, tp.key);
       }
+      return;
+    }
+    if (rectDragRef.current) {
+      rectDragRef.current = false;
+      const q = (snapOn && snapRef.current) ? snapRef.current : toImage(e.clientX, e.clientY);
+      if (tool === "rect" || tool === "deduct-rect") performClick(q, e);
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ }
       return;
     }
     if (pendingClickRef.current) {
@@ -8985,7 +9000,9 @@ export default function TakeoffCanvas() {
       </button>
     );
   };
-  const railLabel = (text) => (
+  const railLabel = (text) => dockBottom
+    ? (text === "SEL" ? null : <span key={`sep-${text}`} aria-hidden="true" style={{ width: 1, height: 22, background: "var(--ink-faint)", margin: "0 var(--sp-1)", flexShrink: 0 }} />)
+    : (
     <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "var(--ink-muted)", userSelect: "none", margin: "var(--sp-2) 0 2px" }}>{text}</span>
   );
 
@@ -9932,14 +9949,32 @@ export default function TakeoffCanvas() {
               so the composed click never reaches these buttons); right/middle/
               Space presses still bubble so a pan can start on top, and dblclick
               is stopped so rapid clicks can't finishShape() */}
-          <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
-            style={{ position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title="Fit sheet to view" style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>fit</button>
-            <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)"}
-              style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${darkMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: darkMode ? "var(--cobalt)" : "var(--paper-bright)", color: darkMode ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>
-              {darkMode ? "☀" : "☾"}</button>
-            <button onClick={() => toggleFocusMode()} title={focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)"}
-              style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${focusMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: focusMode ? "var(--cobalt)" : "var(--paper-bright)", color: focusMode ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>⛶</button>
+          <div data-view-controls onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
+            style={dockBottom
+              ? { position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 2, padding: 4, border: "1px solid var(--ink-faint)", borderRadius: 10, background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", zIndex: 24 }
+              : { position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+            {(() => {
+              // Premium's view group: zoom in / out about the canvas centre, fit, focus, and the
+              // open source's sheet invert. The wheel and pinch still zoom toward the cursor.
+              const face = (on) => dockBottom
+                ? { width: 32, height: 32, borderRadius: 7, border: "1px solid transparent", background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }
+                : { width: 34, height: 34, borderRadius: 0, border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`, background: on ? "var(--cobalt)" : "var(--paper-bright)", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 };
+              const zoomStep = (f) => {
+                const el = containerRef.current;
+                if (!el) return;
+                promoteStage();                                    // same opening as a wheel gesture
+                gestureUntilRef.current = performance.now() + GESTURE_MS;
+                const r = el.getBoundingClientRect();
+                zoomAround(r.width / 2, r.height / 2, f);           // about the visible canvas centre
+              };
+              return (<>
+                {dockBottom && <button onClick={() => zoomStep(1.25)} title="Zoom in" aria-label="Zoom in" style={face(false)}><Icon name="zoomIn" size={16} /></button>}
+                {dockBottom && <button onClick={() => zoomStep(0.8)} title="Zoom out" aria-label="Zoom out" style={face(false)}><Icon name="zoomOut" size={16} /></button>}
+                <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title="Fit sheet to view" aria-label="Fit sheet to view" style={face(false)}>{dockBottom ? <Icon name="fit" size={16} /> : "fit"}</button>
+                <button onClick={() => toggleFocusMode()} title={focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)"} aria-label="Focus mode" aria-pressed={focusMode} style={face(focusMode)}>{dockBottom ? <Icon name="focus" size={16} /> : "⛶"}</button>
+                <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)"} aria-label="Invert sheet" aria-pressed={darkMode} style={face(darkMode)}>{dockBottom ? <Icon name="invert" size={16} /> : (darkMode ? "☀" : "☾")}</button>
+              </>);
+            })()}
           </div>
 
           {/* Read page text (#471) and Read picture text (#489) — beside the
@@ -9972,7 +10007,7 @@ export default function TakeoffCanvas() {
             transient commitMsg text lives in the status bar now); Dismiss/
             Cancel are always one click — a rule is never applied silently. */}
         {(ruleOffer || ruleStage) && (
-        <div ref={ruleBannerRef} style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
+        <div ref={ruleBannerRef} style={{ position: "absolute", left: "50%", bottom: dockBottom ? 70 : 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
         {(ruleOffer || ruleStage) && (
           <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
             {ruleOffer ? (<>
@@ -10793,8 +10828,12 @@ export default function TakeoffCanvas() {
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
-       <nav data-tool-rail data-dock-side={workspaceLayout ? workspaceArrangement.tools : undefined} role="toolbar" aria-label="Tools" style={{ order: workspaceLayout ? workspaceArrangement.tools === "right" ? 30 : -30 : undefined, width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
-         {workspaceDockHandle("tools", "Tools")}
+       <nav data-tool-rail data-dock-side={workspaceLayout ? workspaceArrangement.tools : undefined} role="toolbar" aria-label="Tools"
+         onPointerDown={dockBottom ? (e) => e.stopPropagation() : undefined}
+         style={dockBottom
+           ? { position: "absolute", left: 0, right: 0, bottom: 14, marginInline: "auto", width: "max-content", zIndex: 25, display: "flex", flexDirection: "row", alignItems: "center", gap: 2, padding: "4px 6px", border: "1px solid var(--ink-faint)", borderRadius: 10, background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", maxWidth: "calc(100% - 28px)", overflowX: "auto", overflowY: "visible" }
+           : { order: workspaceLayout ? workspaceArrangement.tools === "right" ? 30 : -30 : undefined, width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+         {!dockBottom && workspaceDockHandle("tools", "Tools")}
          {railLabel("SEL")}
          {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
          {railLabel("MEAS")}
@@ -10807,7 +10846,7 @@ export default function TakeoffCanvas() {
              title="Create annotation — cloud, callout, text, highlight, or dimension"
              active={MARKUP_IDS.includes(tool)}
              onOpenChange={onMenuDepth}
-             flyout="right"
+             flyout={dockBottom ? "up" : "right"}
              face={<Icon name="markup" size={17} />}
              items={[
                { section: "Markup — notes on the plan, never measured" },
@@ -10817,7 +10856,7 @@ export default function TakeoffCanvas() {
            {/* highlighter style popover — fixed beside the rail while armed
                (fixed, not absolute: the rail's scroll box would clip it) */}
            {tool === "highlighter" && (
-             <div style={{ position: "fixed", left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+             <div style={{ position: dockBottom ? "absolute" : "fixed", ...(dockBottom ? { left: 0, bottom: "calc(100% + 10px)" } : { left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200 }), zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
                <div style={{ display: "flex", gap: 6 }} title="Ink">
                  {HL_INKS.map((c) => (
                    <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
@@ -10851,6 +10890,9 @@ export default function TakeoffCanvas() {
          {railTile("textcopy", "copyText", "Copy text — click two corners around a note or schedule; its text goes on your clipboard", null, armCopyText)}
          {railLabel("CAL")}
          {railTile("calibrate", "calibrate", "Calibrate — click two points of a known dimension", null)}
+         {dockBottom && railLabel("HIST")}
+         {dockBottom && railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false })}
+         {dockBottom && railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false })}
        </nav>
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the

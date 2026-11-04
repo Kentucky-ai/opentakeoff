@@ -58,6 +58,9 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
       const estH = Math.min(items.length, 8) * 40 + 12;
       if (flyout === "right") {
         setFlyAt({ left: r.right + 6, top: Math.max(8, Math.min(r.top, window.innerHeight - estH - 8)) });
+      } else if (flyout === "up") {
+        // a bottom dock: the menu opens above its trigger
+        setFlyAt({ left: Math.max(8, Math.min(r.left, window.innerWidth - menuW - 8)), bottom: window.innerHeight - r.top + 6, maxH: Math.max(120, r.top - 16) });
       } else {
         const top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - estH - 8));
         const maxH = window.innerHeight - top - 8;
@@ -90,7 +93,7 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
         <div style={{
           ...(flyAt
             ? {
-              position: "fixed", top: flyAt.top,
+              position: "fixed", ...(flyAt.bottom != null ? { bottom: flyAt.bottom } : { top: flyAt.top }),
               ...(flyAt.right != null ? { right: flyAt.right, left: "auto" } : { left: flyAt.left }),
               ...(flyAt.maxH != null ? { maxHeight: flyAt.maxH, overflowY: "auto" } : {}),
             }
