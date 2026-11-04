@@ -9,7 +9,7 @@
 //
 // Styling: styles/agentChat.css (imported by the canvas so this file stays
 // renderable in Node tests).
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { ScanStar } from "../brand/marks.jsx";
 import ChatMarkdown from "./ChatMarkdown.jsx";
@@ -69,7 +69,9 @@ function Steps({ turn }) {
   );
 }
 
-function ChatTurn({ turn }) {
+// memo: a streaming reply replaces only its own turn object, so the turns
+// above it don't re-render (or re-parse their markdown) on every token
+const ChatTurn = memo(function ChatTurn({ turn }) {
   const running = turn.status === "running";
   const note = stagedNote(turn);
   return (
@@ -85,7 +87,7 @@ function ChatTurn({ turn }) {
       </div>
     </div>
   );
-}
+});
 
 function ConnectState({ onOpenSettings, onOpenConnect, compact = false }) {
   return (

@@ -7740,8 +7740,9 @@ export default function TakeoffCanvas() {
 
   // ── the run ────────────────────────────────────────────────────────────────
   // One chat message = one agent-loop run. Earlier turns ride along as plain
-  // text context (lib/agentChat historyMessages); the loop's events fold into
-  // the message's turn (steps, answer, staged count) for the chat window.
+  // text context (lib/agentChat historyMessages, as many as the Conversation
+  // memory setting allows); the loop's events — streamed text deltas
+  // included — fold into the message's turn (steps, answer, staged count).
   async function runAgent(goal) {
     if (agentRunning) return;
     if (!isAiConfigured()) { setShowAiSettings(true); return; }
@@ -7750,12 +7751,13 @@ export default function TakeoffCanvas() {
     const ctl = new AbortController();
     agentAbortRef.current = ctl;
     setAgentRunning(true);
-    const history = historyMessages(agentChat.turnsRef.current);
+    const cfg = aiConfig();
+    const history = historyMessages(agentChat.turnsRef.current, cfg.historyTurns);   // "Conversation memory" (AI settings)
     const turnId = agentChat.begin(goal);
     const ctx = buildAgentCtx();
     try {
       await runAgentLoop({
-        cfg: aiConfig(), goal: withViewContext(goal, { sheetKey, sheetLabel: sheetKey ? tabLabel(sheetKey) : "" }), history, tools: agentToolDefs(),
+        cfg, goal: withViewContext(goal, { sheetKey, sheetLabel: sheetKey ? tabLabel(sheetKey) : "" }), history, tools: agentToolDefs(),
         execute: (name, args) => executeAgentTool(ctx, name, args),
         onEvent: (ev) => agentChat.apply(turnId, ev),
         signal: ctl.signal,
