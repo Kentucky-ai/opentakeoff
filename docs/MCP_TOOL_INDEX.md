@@ -6,7 +6,7 @@ Refresh with `npm run check:tool-count --prefix mcp -- --write`; CI fails on sta
 For the operating workflow, read [the agent guide](AGENT_GUIDE.md) and [geometry workflow](GEOMETRY_WORKFLOW.md).
 For behavior and optional arguments, use the [tool reference](../mcp/README.md#tools) and the discovered input schema.
 
-Default build: **58 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
+Default build: **62 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
 
 | Tool | Stage | Availability | Required arguments |
 |---|---|---|---|
@@ -33,6 +33,7 @@ Default build: **58 tools**. Coordinates, where present, are full-sheet image pi
 | `export_proposal` | handoff | Default | None |
 | `export_report` | handoff | Default | None |
 | `export_takeoff` | handoff | Default | None |
+| `extract_pages` | setup | Default | `file`, `pages` |
 | `find_schedule` | setup | Default | `kind` |
 | `find_text` | setup | Default | `sheet`, `q` |
 | `get_sheet_vectors` | setup | Default | `sheet` |
@@ -46,14 +47,17 @@ Default build: **58 tools**. Coordinates, where present, are full-sheet image pi
 | `measure_line` | measure | Default | `sheet`, `pts` |
 | `measure_polygon` | measure | Default | `sheet`, `verts` |
 | `measure_surface` | measure | Default | `sheet`, `pts`, `condition` |
+| `merge_documents` | setup | Default | `files`, `output_path` |
 | `one_click` | measure | One-Click gate lifted | `sheet`, `x`, `y` |
 | `place_count` | measure | Default | `sheet`, `points`, `condition` |
 | `propose_condition_edit` | revise | Default | `condition`, `rationale` |
 | `propose_takeoff` | measure | Default | `label`, `rationale` |
 | `read_sheet_text` | setup | Default | `sheet` |
+| `reorder_pages` | setup | Default | `file`, `order` |
 | `resolve_rfi` | revise | Default | `rfi_id`, `answer` |
 | `resolve_tag` | setup | Default | `tag` |
 | `revise_proposal` | revise | Default | `proposal_id`, `shapes` |
+| `rotate_page` | setup | Default | `sheet`, `angle` |
 | `scope_duplicates` | revise | Default | None |
 | `scope_merge` | revise | Default | `shape_a`, `shape_b` |
 | `set_estimate_settings` | revise | Default | None |
