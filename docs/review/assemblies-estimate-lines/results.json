@@ -1,0 +1,274 @@
+{
+  "base": "http://localhost:5191/",
+  "passed": 21,
+  "total": 21,
+  "checks": [
+    {
+      "name": "CPT-1 carries SF, LF and 2 EA on the scaled sample",
+      "ok": true,
+      "detail": {
+        "total_sf": 983.17,
+        "lf": 48.21,
+        "ea": 2,
+        "roles": [
+          "floor_area",
+          "linear",
+          "count",
+          "count"
+        ]
+      }
+    },
+    {
+      "name": "Estimate shows a CPT-1 line per quantity kind (SF, LF, EA)",
+      "ok": true,
+      "detail": [
+        "SF",
+        "LF",
+        "EA"
+      ]
+    },
+    {
+      "name": "unpriced lines are named in the banner",
+      "ok": true
+    },
+    {
+      "name": "prices saved: main line on pricing, LF / EA under by_unit",
+      "ok": true,
+      "detail": {
+        "unit": "SY",
+        "material": 30,
+        "labor": 6,
+        "by_unit": {
+          "LF": {
+            "material": 2,
+            "labor": 1.5
+          },
+          "EA": {
+            "material": 40,
+            "labor": 25
+          }
+        }
+      }
+    },
+    {
+      "name": "each CPT-1 line costs what the engine says, on the saved project",
+      "ok": true,
+      "detail": [
+        [
+          "SY",
+          114.7,
+          109.24,
+          4168.44
+        ],
+        [
+          "LF",
+          50.62,
+          48.21,
+          173.56
+        ],
+        [
+          "EA",
+          2,
+          2,
+          130
+        ]
+      ]
+    },
+    {
+      "name": "LF material on lf_net (waste), labor on measured LF",
+      "ok": true,
+      "detail": {
+        "id": "cnd-a8d1ef8e-bb90-433a-ba1e-b61a79c8caad",
+        "key": "cnd-a8d1ef8e-bb90-433a-ba1e-b61a79c8caad:LF",
+        "finish_tag": "CPT-1",
+        "unit": "LF",
+        "main": false,
+        "material_qty": 50.62,
+        "labor_qty": 48.21,
+        "material_rate": 2,
+        "labor_rate": 1.5,
+        "material_cost": 101.24,
+        "labor_cost": 72.32,
+        "materials": [],
+        "materials_cost": 0,
+        "materials_labor_cost": 0,
+        "total": 173.56,
+        "status": "priced",
+        "missing": []
+      }
+    },
+    {
+      "name": "EA: 2 × $40 material + 2 × $25 labor = $130",
+      "ok": true,
+      "detail": {
+        "id": "cnd-a8d1ef8e-bb90-433a-ba1e-b61a79c8caad",
+        "key": "cnd-a8d1ef8e-bb90-433a-ba1e-b61a79c8caad:EA",
+        "finish_tag": "CPT-1",
+        "unit": "EA",
+        "main": false,
+        "material_qty": 2,
+        "labor_qty": 2,
+        "material_rate": 40,
+        "labor_rate": 25,
+        "material_cost": 80,
+        "labor_cost": 50,
+        "materials": [],
+        "materials_cost": 0,
+        "materials_labor_cost": 0,
+        "total": 130,
+        "status": "priced",
+        "missing": []
+      }
+    },
+    {
+      "name": "panel base bid equals the engine",
+      "ok": true,
+      "detail": {
+        "total": 4472,
+        "complete": true
+      }
+    },
+    {
+      "name": "Excel Estimate tab has three CPT-1 rows",
+      "ok": true
+    },
+    {
+      "name": "every Excel tab carries the watermark cell and print footer",
+      "ok": true,
+      "detail": [
+        "xl/worksheets/sheet1.xml",
+        "xl/worksheets/sheet2.xml"
+      ]
+    },
+    {
+      "name": "proposal: every page has the diagonal and the footer line",
+      "ok": true,
+      "detail": 1
+    },
+    {
+      "name": "proposal scope prints the SY, LF and EA quantities",
+      "ok": true
+    },
+    {
+      "name": "the new item saved with rule each, per 2, count basis, 5% waste",
+      "ok": true,
+      "detail": {
+        "id": "mat-c613a30e-85c5-4a16-96c2-62ccf198834c",
+        "name": "Floor box plate",
+        "per": 2,
+        "basis": "count",
+        "unit": "ea",
+        "round": true,
+        "rule": "each",
+        "waste_pct": 5
+      }
+    },
+    {
+      "name": "its order qty: 2 per EA × 2 EA × 1.05 = 4.2 → 5 whole",
+      "ok": true,
+      "detail": [
+        {
+          "name": "Adhesive",
+          "unit": "gal",
+          "per": 250,
+          "basis": "area",
+          "round": true,
+          "note": "",
+          "basis_qty": 983.17,
+          "qty": 4
+        },
+        {
+          "name": "Floor box plate",
+          "unit": "ea",
+          "per": 2,
+          "basis": "count",
+          "round": true,
+          "note": "",
+          "basis_qty": 2,
+          "qty": 5,
+          "rule": "each",
+          "waste_pct": 5
+        }
+      ]
+    },
+    {
+      "name": "assembly library holds the recipe, never a price",
+      "ok": true,
+      "detail": [
+        {
+          "id": "asm-7c755d38-3756-47de-8cd8-15f635c6d3bb",
+          "name": "Carpet + floor boxes",
+          "items": [
+            {
+              "name": "Adhesive",
+              "unit": "gal",
+              "per": 250,
+              "basis": "area",
+              "round": true,
+              "note": "",
+              "kind": "adhesive"
+            },
+            {
+              "name": "Floor box plate",
+              "unit": "ea",
+              "per": 2,
+              "basis": "count",
+              "round": true,
+              "note": "",
+              "rule": "each",
+              "waste_pct": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "applied to LVT-1: plate added, its existing Adhesive skipped, no price carried",
+      "ok": true,
+      "detail": {
+        "names": [
+          "Adhesive",
+          "Floor box plate"
+        ],
+        "applied": "Applied “Carpet + floor boxes”: 1 item added, Adhesive already on LVT-1. Price them in Estimate."
+      }
+    },
+    {
+      "name": "CPT-1 item list on the main line includes the plate, missing its price",
+      "ok": true,
+      "detail": [
+        "material row: Floor box plate"
+      ]
+    },
+    {
+      "name": "total reads \"priced so far\" while the plate is unpriced",
+      "ok": true
+    },
+    {
+      "name": "plate: material 5 × $4 = $20 on the order qty, labor 4 × $10 = $40 on the measured qty",
+      "ok": true,
+      "detail": {
+        "name": "Floor box plate",
+        "unit": "ea",
+        "qty": 5,
+        "price": 4,
+        "cost": 20,
+        "labor_qty": 4,
+        "labor_rate": 10,
+        "labor_cost": 40,
+        "waste_pct": 5,
+        "priced": true
+      }
+    },
+    {
+      "name": "panel base bid equals the engine after item prices",
+      "ok": true,
+      "detail": 4532
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

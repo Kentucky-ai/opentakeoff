@@ -176,6 +176,8 @@ export async function buildBidProposalPdf(model) {
   sigRow("Date");
 
   // ── every page: page n of N + the OpenTakeoff watermark ──────────────────
+  // Unconditional: no model field, branding mode or company setting reaches
+  // this loop, so a proposal can't be written without the watermark.
   const pages = doc.getPages();
   pages.forEach((pg, i) => {
     if (pages.length > 1) pg.drawText(`Page ${i + 1} of ${pages.length}`, { x: M, y: 18, size: 7.5, font, color: muted });

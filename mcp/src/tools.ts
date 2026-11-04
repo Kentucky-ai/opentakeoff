@@ -409,7 +409,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("set_estimate_settings", (a) => session.setEstimateSettings(a)));
 
   server.registerTool("estimate_summary", {
-    description: `The priced estimate — the canvas Estimate panel as data: one line per measured condition (unit, order and measured quantities, rates, material / labor / supply cost, status priced | partial | unpriced with what is missing), then material, labor, sales tax, cost, overhead, profit and the base bid. complete is false while anything is unentered: the total then counts the missing pieces at $0 and is "priced so far", and unpriced lists every hole — report it to the estimator, never fill it. Read-only.`,
+    description: `The priced estimate — the canvas Estimate panel as data: one line per quantity kind each measured condition carries — its area, LF and EA are separate lines (unit, order and measured quantities, rates, material / labor / supply cost, status priced | partial | unpriced with what is missing; set_pricing prices the main line, the first one per condition, and the others stay unpriced until the estimator prices them in the app), then material, labor, sales tax, cost, overhead, profit and the base bid. complete is false while anything is unentered: the total then counts the missing pieces at $0 and is "priced so far", and unpriced lists every hole — report it to the estimator, never fill it. Read-only.`,
     inputSchema: {},
     outputSchema: estimateSummaryOutput,
   }, run("estimate_summary", () => session.estimateSummary()));
