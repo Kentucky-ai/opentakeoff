@@ -24,8 +24,9 @@ export default function AiSettings({ onClose }) {
             (most local runtimes speak the OpenAI style and need no key).
           </p>
           <p style={{ margin: "0 0 10px", color: "var(--c-positive)", fontWeight: 600 }}>
-            What's sent, and only while an agent run you started is going: your goal, the prompts, and
-            what the agent's tools return. That includes sheet names (which include the PDF file name),
+            What's sent, and only while an agent run you started is going: your message, the earlier
+            messages in this project's chat (the questions and answers, never their tool results), the
+            prompts, the sheet you're looking at, and what the agent's tools return. That includes sheet names (which include the PDF file name),
             each sheet's size and scale status, the text and schedule rows it reads, and images of the
             sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes
             your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This

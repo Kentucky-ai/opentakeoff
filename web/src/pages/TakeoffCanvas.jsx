@@ -173,7 +173,10 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // registry of deterministic tools (lib/agentTools); this file provides the
 // CAPABILITIES those tools close over and the review gate their proposals
 // pass through. AiSettings is the config surface for the ai.js seam.
-import AgentPanel from "../components/AgentPanel.jsx";
+import AgentChat from "../components/AgentChat.jsx";
+import "../styles/agentChat.css";
+import { useAgentChat } from "../lib/useAgentChat.js";
+import { historyMessages, notReadyMessage, withViewContext } from "../lib/agentChat.js";
 import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
 import { openPremiumPricing } from "../lib/premiumPlans.js";
@@ -768,7 +771,7 @@ export default function TakeoffCanvas() {
   const [rollEdit, setRollEdit] = useState(false);        // cut-edit mode — cuts take pointer events (slide / resize / double-click reset)
   const [rollPanelOpen, setRollPanelOpen] = useState(false); // docked Roll panel (diagram + reorder)
   const rollDragRef = useRef(null);                       // live cut-drag gesture; commit is ONE rollcut command on release
-  const [agentLog, setAgentLog] = useState([]);           // streaming run status [{kind, text}]
+  const agentChat = useAgentChat(projectIdFromUrl());    // the Agent tab's conversation, persisted per project (lib/useAgentChat)
   const [agentRunning, setAgentRunning] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false); // BYO-key config modal (ai.js seam)
   const agentAbortRef = useRef(null);                     // live AbortController while a run is in flight
@@ -7736,38 +7739,29 @@ export default function TakeoffCanvas() {
   const rejectAllAgentProposals = () => setAgentProposals([]);
 
   // ── the run ────────────────────────────────────────────────────────────────
-  const trimJson = (v, n) => { let s; try { s = JSON.stringify(v); } catch { s = String(v); } return s && s.length > n ? `${s.slice(0, n)}…` : s || ""; };
-  function appendAgentLog(ev) {
-    const entry =
-      ev.type === "text" ? { kind: "text", text: ev.text }
-      : ev.type === "tool_start" ? { kind: "tool", text: `→ ${ev.name} ${trimJson(ev.args, 120)}` }
-      : ev.type === "tool_end" ? (ev.result?.error
-          ? { kind: "error", text: `✗ ${ev.name}: ${ev.result.error}` }
-          : { kind: "status", text: `✓ ${ev.name} ${trimJson({ ...ev.result, image_data_url: undefined, items: Array.isArray(ev.result?.items) ? `${ev.result.items.length} items` : undefined }, 160)}` })
-      : ev.type === "error" ? { kind: "error", text: `Error: ${ev.message}` }
-      : ev.type === "aborted" ? { kind: "status", text: "Stopped." }
-      : ev.type === "max_iterations" ? { kind: "status", text: `Stopped at the ${ev.limit}-step cap — review what's staged.` }
-      : ev.type === "done" ? { kind: "status", text: "Done — review the dashed proposals." }
-      : null;
-    if (entry) setAgentLog((l) => [...l.slice(-199), entry]);
-  }
+  // One chat message = one agent-loop run. Earlier turns ride along as plain
+  // text context (lib/agentChat historyMessages); the loop's events fold into
+  // the message's turn (steps, answer, staged count) for the chat window.
   async function runAgent(goal) {
     if (agentRunning) return;
     if (!isAiConfigured()) { setShowAiSettings(true); return; }
-    if (agentStateRef.current.status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    const notReady = notReadyMessage(agentStateRef.current.status);
+    if (notReady) { agentChat.apply(agentChat.begin(goal), { type: "error", message: notReady }); return; }
     const ctl = new AbortController();
     agentAbortRef.current = ctl;
     setAgentRunning(true);
-    setAgentLog([{ kind: "status", text: `Goal: ${goal}` }]);
+    const history = historyMessages(agentChat.turnsRef.current);
+    const turnId = agentChat.begin(goal);
     const ctx = buildAgentCtx();
     try {
       await runAgentLoop({
-        cfg: aiConfig(), goal, tools: agentToolDefs(),
+        cfg: aiConfig(), goal: withViewContext(goal, { sheetKey, sheetLabel: sheetKey ? tabLabel(sheetKey) : "" }), history, tools: agentToolDefs(),
         execute: (name, args) => executeAgentTool(ctx, name, args),
-        onEvent: appendAgentLog,
+        onEvent: (ev) => agentChat.apply(turnId, ev),
         signal: ctl.signal,
       });
     } finally {
+      agentChat.settle(turnId);
       setAgentRunning(false);
       agentAbortRef.current = null;
     }
@@ -11267,9 +11261,10 @@ export default function TakeoffCanvas() {
              refSet={refSet} activeKey={rawRefKey} tabLabel={tabLabel} onSelectRef={selectRefTab} onRemoveRef={removeRefTab} onDropSheet={dropOntoReference} />
          ) : null}
        />
-        {/* Agent panel — DOCKED right-rail sibling (reflows the canvas like the
-            Takeoffs panel). Honest empty state until the BYO-AI seam is
-            configured; otherwise the goal box, the streaming run log, and the
+        {/* Work and review panel — DOCKED right-rail sibling (reflows the canvas
+            like the Takeoffs panel). Its Agent tab is the chat window
+            (components/AgentChat): a connect state until the BYO-AI seam is
+            configured; otherwise the conversation, every tool step, and the
             per-proposal accept/reject desk. */}
           <WorkspacePanel dockSide={workspaceLayout ? workspaceArrangement.work : undefined} width={workspaceLayout ? workspaceArrangement.workWidth : undefined} dockHandle={workspaceDockHandle("work", "Work")} open={agentOpen} shapes={shapes} conditions={condById} selectedId={selectedId}
             sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
@@ -11277,24 +11272,24 @@ export default function TakeoffCanvas() {
             proposalCount={agentProposals.length} onLocate={locateWork}
             onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
             onClose={() => { setAgentOpen(false); workButtonRef.current?.focus(); }} onReport={() => setShowReport(true)}>
-          <AgentPanel
-            embedded
+          <AgentChat
             configured={isAiConfigured()}
+            modelLabel={aiConfig().model}
             running={agentRunning}
-            log={agentLog}
+            turns={agentChat.turns}
             proposals={agentProposals}
             condById={condById}
             sheetLabel={(k) => tabLabel(k)}
-            units={units}
             fmtArea={(sf) => fa(sf)}
-            onRun={runAgent}
+            onSend={runAgent}
             onStop={stopAgent}
             onAccept={acceptAgentProposal}
             onReject={rejectAgentProposal}
             onAcceptAll={acceptAllVisibleAgentProposals}
             onRejectAll={rejectAllAgentProposals}
             onOpenSettings={() => setShowAiSettings(true)}
-            onClose={() => setAgentOpen(false)}
+            onOpenConnect={() => setConnectOpen(true)}
+            onClear={agentChat.clear}
           />
           </WorkspacePanel>
 
