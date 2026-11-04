@@ -1,5 +1,5 @@
 // Usage (from this folder): node mock.mjs & then
-//   SAMPLE_PDF="$PWD/../../../../web/public/demo/sample-finish-plan.pdf" APP_URL=http://localhost:5181/ node drive.mjs <out-dir> scenario.mjs
+//   SAMPLE_PDF="$(cd ../../../../web/public/demo && pwd)/sample-finish-plan.pdf" APP_URL=http://localhost:5181/ node drive.mjs <out-dir> scenario.mjs   (absolute path, no "..": Chrome will not read it otherwise)
 // Throwaway headless Chrome over CDP (own profile; never the user's browser).
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -30,7 +30,7 @@ try {
   console.log("buttons:", (await ev("[...document.querySelectorAll('button,a')].map(b=>b.textContent.trim()).filter(Boolean).slice(0,40).join(' | ')")));
   const step = process.argv[3] || "explore";
   if (step !== "explore") {
-    const mod = await import(`${process.cwd()}/${step}`);
+    const mod = await import(step.startsWith("/") ? step : `${process.cwd()}/${step}`);
     await mod.default({ ev, send, shot, sleep, clickText, waitFor, logs });
   }
   console.log("logs:", logs.slice(0, 20).join("\n"));
