@@ -173,7 +173,7 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // CAPABILITIES those tools close over and the review gate their proposals
 // pass through. AiSettings is the config surface for the ai.js seam.
 import AgentPanel from "../components/AgentPanel.jsx";
-import { ScanStar } from "../brand/marks.jsx";
+import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
 import { openPremiumPricing } from "../lib/premiumPlans.js";
 import "../styles/premiumWorkspace.css";
@@ -10375,7 +10375,7 @@ export default function TakeoffCanvas() {
             and nothing important is ever past the right edge. paddingTop 16
             keeps the cluster captions (top:-13) inside the scroll box. */}
         <div data-topbar-scroll style={{ display: "flex", gap: 7, alignItems: "center", flex: "1 1 0", minWidth: 0, padding: "16px 0 0", overflowX: "auto", overflowY: "hidden", scrollbarWidth: "thin", overscrollBehaviorX: "contain" }}>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em", whiteSpace: "nowrap" }}><ScanStar size={13} reach={1.6} working={agentRunning} style={{ color: "var(--cobalt)", margin: "-2px 6px 0 0" }} />open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
+        <strong style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap" }} title="OpenTakeoff"><OtLockup size={15} />{agentRunning && <ScanStar size={13} reach={1.6} working style={{ color: "var(--cobalt)", marginLeft: 8 }} title="The agent is working" />}</strong>
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
           <Icon name="plus" size={14} />Open</button>
