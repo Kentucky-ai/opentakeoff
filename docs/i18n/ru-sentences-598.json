@@ -1,730 +1,2619 @@
 {
-  "note": "Translation handoff for PR #598. Source locations refer to the reviewed PR head. Each record replaces one listed composition. Slots take display-ready values, including units where indicated. Controls, links and formatting remain separate UI elements. Engineering wires these templates after rebase. For conditional text use a full alternative, never English plural suffixes.",
+  "schema_version": 2,
+  "source_commit": "cc6f8891de647675bbfbf67f691bfd0144d18873",
+  "status": "translation handoff; engineering integration pending",
+  "note": "84 reviewed source locations. A location may contain several independent UI elements. Translate each message in its stated role. Bindings name the actual source value and provide a rendered example. en is the proposed whole English key, not a verbatim extract. source and source_excerpt retain the original composition. ReactNode links and kbd/code styling require rich interpolation. No English grammar suffix is a content slot.",
   "sentences": [
     {
+      "id": 1,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10010,
+      "context": "Предложение применить правило вычета внутренних областей ко всем помещениям с той же маркой отделки.",
       "source": "`Make this a rule for all ` + `rooms? Excludes enclosed regions under ` + `SF`",
-      "ru": "Применить это правило ко всем помещениям с маркой {0}? Замкнутые области площадью менее {1} {2} будут исключены.",
-      "slots": [
-        "0",
-        "1",
-        "2"
-      ]
+      "source_excerpt": "<span>{uiText(\"Make this a rule for all \")}<b>{uiText(ruleOffer.tag)}</b> {uiText(\"rooms? Excludes enclosed regions under \")}<b>{uiText(ruleOffer.seed.max_area_sf)} {uiText(\"SF\")}</b>.</span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Apply this rule to all {0} rooms? Deduct enclosed regions smaller than {1} sq ft.",
+          "ru": "Применить правило ко всем помещениям с маркой {0}? Замкнутые области площадью менее {1} кв. фут будут вычтены.",
+          "bindings": {
+            "0": {
+              "expression": "ruleOffer.tag",
+              "example": "CPT-1"
+            },
+            "1": {
+              "expression": "ruleOffer.seed.max_area_sf",
+              "example": "4"
+            }
+          },
+          "example_ru": "Применить правило ко всем помещениям с маркой CPT-1? Замкнутые области площадью менее 4 кв. фут будут вычтены."
+        }
+      ],
+      "notes": "В исходном коде порог всегда задан в SF. Не подставлять м² без пересчёта значения. Это вычет из площади, а не исключение помещений из списка."
     },
     {
+      "id": 2,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10018,
+      "context": "Результат предварительного применения правила. Вычеты ещё не приняты.",
       "source": "`matching region` + `staged as dashed deducts — `",
-      "ru": "Подготовлено областей для вычета: {0}. Они показаны пунктиром. Правило — {1}.",
-      "slots": [
-        "0",
-        "1"
+      "source_excerpt": "<span><b>{uiText(ruleStage.candidates.length)}</b> {uiText(\"matching region\")}{uiText(ruleStage.candidates.length === 1 ? \"\" : \"s\")} {uiText(\"staged as dashed deducts — \")}{uiText(ruleStage.rule.label)}.</span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Regions staged as dashed deductions: {0}. Rule: {1}.",
+          "ru": "Подготовлено областей для вычета: {0}. Вычеты показаны пунктиром. Правило «{1}».",
+          "bindings": {
+            "0": {
+              "expression": "ruleStage.candidates.length",
+              "example": "3"
+            },
+            "1": {
+              "expression": "ruleStage.rule.label",
+              "example": "Вычет колонн"
+            }
+          },
+          "example_ru": "Подготовлено областей для вычета: 3. Вычеты показаны пунктиром. Правило «Вычет колонн»."
+        }
       ]
     },
     {
+      "id": 3,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10106,
+      "context": "Сообщение при построении площади стен без высоты вида работ.",
       "source": "`Set a height for ` + `— H in the condition editor`",
-      "ru": "Задайте высоту для {0} в поле H свойств вида работ.",
-      "slots": [
-        "0"
+      "source_excerpt": ") : <div style={{ fontSize: 12.5, color: \"var(--c-danger)\" }}>{uiText(\"Set a height for \")}{uiText(aCond?.finish_tag || \"this condition\")} {uiText(\"— H in the condition editor\")}</div>;",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Set the height for {0} in the condition editor’s H field.",
+          "ru": "Задайте высоту для {0} в поле H свойств вида работ.",
+          "bindings": {
+            "0": {
+              "expression": "aCond?.finish_tag || localized fallback for this condition",
+              "example": "RB-1"
+            }
+          },
+          "example_ru": "Задайте высоту для RB-1 в поле H свойств вида работ."
+        }
       ]
     },
     {
+      "id": 4,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10217,
+      "context": "Справочная площадь вертикальных поверхностей в плавающем окне итогов. Число уже содержит единицу площади.",
       "source": "`Display only — floor-area perimeters × this condition's height (not committed)` + `vert (perim × H)`",
-      "ru": "{0} — площадь стен по периметру пола × высота. Справочное значение, в измерениях не сохраняется.",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "{vertTotal > 0 && <div style={{ fontSize: 11.5, color: \"var(--ink-muted)\", marginTop: 2 }} title={uiText(\"Display only — floor-area perimeters × this condition's height (not committed)\")}>{uiText(fa(vertTotal))} {uiText(\"vert (perim × H)\")}</div>}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Reference wall area: {0}",
+          "ru": "Площадь стен (справочно): {0}",
+          "bindings": {
+            "0": {
+              "expression": "fa(vertTotal)",
+              "example": "36 м²"
+            }
+          },
+          "example_ru": "Площадь стен (справочно): 36 м²"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Reference only: floor-outline perimeter × condition height. Not saved as a wall measurement.",
+          "ru": "Справочная площадь = периметр контура пола × высота вида работ. Отдельным измерением площади стен не сохраняется.",
+          "bindings": {},
+          "example_ru": "Справочная площадь = периметр контура пола × высота вида работ. Отдельным измерением площади стен не сохраняется."
+        }
+      ],
+      "notes": "Не умножать площадь на высоту. Разделить подпись числа и title. fa() форматирует уже рассчитанную площадь."
     },
     {
+      "id": 5,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10231,
+      "context": "Состав длины выбранного линейного измерения. fl() включает единицу длины.",
       "source": "`plan + ` + `vert`",
-      "ru": "= {0} в плане + {1} по вертикали",
-      "slots": [
-        "0",
-        "1"
+      "source_excerpt": "? <span style={{ color: \"var(--ink-muted)\" }}> = {uiText(fl(r.plan))} {uiText(\"plan + \")}{uiText(fl(r.vert))} {uiText(\"vert\")}</span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "= {0} in plan + {1} vertically",
+          "ru": "= {0} в плане + {1} по вертикали",
+          "bindings": {
+            "0": {
+              "expression": "fl(r.plan)",
+              "example": "5 м"
+            },
+            "1": {
+              "expression": "fl(r.vert)",
+              "example": "2 м"
+            }
+          },
+          "example_ru": "= 5 м в плане + 2 м по вертикали"
+        }
       ]
     },
     {
+      "id": 6,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10239,
+      "context": "Нижняя строка плавающего окна. visibleShapes — количество фигур на видимых листах.",
       "source": "`shapes on ` + `· zoom `",
-      "ru": "Измерений: {0}, листов: {1}, увеличение: {2}%.",
-      "slots": [
-        "0",
-        "1",
-        "2"
+      "source_excerpt": "<div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{uiText(visibleShapes.length)} {uiText(\"shapes on \")}{uiText(groupKeys.length > 1 ? `${groupKeys.length} sheets` : \"sheet\")} {uiText(\"· zoom \")}{uiText((tf.scale * 100).toFixed(0))}%</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Shapes: {0} · sheets: {1} · zoom: {2}%",
+          "ru": "Фигур: {0} · листов: {1} · увеличение: {2}%",
+          "bindings": {
+            "0": {
+              "expression": "visibleShapes.length",
+              "example": "5"
+            },
+            "1": {
+              "expression": "groupKeys.length",
+              "example": "2"
+            },
+            "2": {
+              "expression": "(tf.scale * 100).toFixed(0)",
+              "example": "88"
+            }
+          },
+          "example_ru": "Фигур: 5 · листов: 2 · увеличение: 88%"
+        }
       ]
     },
     {
+      "id": 7,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10770,
+      "context": "Подпись поля фактической длины при калибровке по двум точкам.",
       "source": "`Real length:` + ` `",
-      "ru": "Фактическая длина ({0})",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "<span>{uiText(\"Real length:\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Real length",
+          "ru": "Фактическая длина",
+          "bindings": {},
+          "example_ru": "Фактическая длина"
+        }
+      ],
+      "notes": "Поле calibration-length и единица справа от него остаются отдельными элементами. Не вставлять единицу в подпись повторно."
     },
     {
+      "id": 8,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10786,
+      "context": "Ошибка проверки размера. Точки попали на разные листы.",
       "source": "`Check on one sheet — those two clicks landed on different sheets. ` + `Reset`",
-      "ru": "Обе точки должны находиться на одном листе. Нажмите «Сбросить» и укажите их заново.",
-      "slots": []
+      "source_excerpt": "<span style={{ color: \"var(--c-danger)\" }}>{uiText(\"Check on one sheet — those two clicks landed on different sheets. \")}<button onClick={() => { setCheck([]); setCheckStated(\"\"); }} style={{ marginLeft: 6, padding: \"5px 10px\", borderRadius: 0, border: \"1px solid var(--ink-faint)\", background: \"transparent\", cursor: \"pointer\" }}>{uiText(\"Reset\")}</button></span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Both points must be on the same sheet. Reset and select them again.",
+          "ru": "Обе точки должны находиться на одном листе. Сбросьте выбор и укажите их заново.",
+          "bindings": {},
+          "example_ru": "Обе точки должны находиться на одном листе. Сбросьте выбор и укажите их заново."
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Reset",
+          "ru": "Сбросить",
+          "bindings": {},
+          "example_ru": "Сбросить"
+        }
+      ]
     },
     {
+      "id": 9,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10788,
+      "context": "Проверка размера до задания масштаба.",
       "source": "`No scale set for ` + `— pick a standard scale or calibrate first, then check it here.`",
-      "ru": "Для листа {0} масштаб не задан. Сначала выберите стандартный масштаб или задайте его по известному размеру, затем проверьте здесь.",
-      "slots": [
-        "0"
+      "source_excerpt": "<span style={{ color: \"var(--c-danger)\" }}>{uiText(\"No scale set for \")}{uiText(labelFor(checkPanel))} {uiText(\"— pick a standard scale or calibrate first, then check it here.\")}</span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "No scale is set for {0}. Choose a standard scale or calibrate first, then check the dimension here.",
+          "ru": "Для листа {0} масштаб не задан. Выберите стандартный масштаб или задайте его по известному размеру, затем проверьте размер здесь.",
+          "bindings": {
+            "0": {
+              "expression": "labelFor(checkPanel)",
+              "example": "AF101"
+            }
+          },
+          "example_ru": "Для листа AF101 масштаб не задан. Выберите стандартный масштаб или задайте его по известному размеру, затем проверьте размер здесь."
+        }
       ]
     },
     {
+      "id": 10,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10790,
+      "context": "Обе точки для проверки размера совпали.",
       "source": "`Those two clicks landed on the same point — click the two ` + `ends` + `of a printed dimension.`",
-      "ru": "Обе точки совпали. Укажите два конца размерной линии на чертеже.",
-      "slots": []
+      "source_excerpt": "<span style={{ color: \"var(--c-danger)\" }}>{uiText(\"Those two clicks landed on the same point — click the two \")}<b>{uiText(\"ends\")}</b> {uiText(\"of a printed dimension.\")}</span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Both clicks landed on the same point. Select the two ends of a printed dimension.",
+          "ru": "Обе точки совпали. Укажите два конца размерной линии на чертеже.",
+          "bindings": {},
+          "example_ru": "Обе точки совпали. Укажите два конца размерной линии на чертеже."
+        }
+      ]
     },
     {
+      "id": 11,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10793,
+      "context": "Результат измерения и отдельное поле для размера, указанного на чертеже.",
       "source": "`measures ` + `at ` + `· drawing says` + ` `",
-      "ru": "Измерено {0} при масштабе {1}. Размер на чертеже ({2})",
-      "slots": [
-        "0",
-        "1",
-        "2"
-      ]
+      "source_excerpt": "{uiText(\"measures \")}<b style={{ fontFamily: \"var(--f-mono)\" }}>{uiText(fmtCheckLen(checkFeet, units))}</b> {uiText(\"at \")}{uiText(stdValue || \"custom scale\")} {uiText(\"· drawing says\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Measured {0} at scale {1}.",
+          "ru": "Измерено {0} при масштабе {1}.",
+          "bindings": {
+            "0": {
+              "expression": "fmtCheckLen(checkFeet, units)",
+              "example": "3 м"
+            },
+            "1": {
+              "expression": "stdValue || localized custom scale",
+              "example": "1:100"
+            }
+          },
+          "example_ru": "Измерено 3 м при масштабе 1:100."
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Dimension on drawing",
+          "ru": "Размер на чертеже",
+          "bindings": {},
+          "example_ru": "Размер на чертеже"
+        }
+      ],
+      "notes": "Поле check-stated-length и единица справа остаются отдельными. В число {0} не добавлять единицу второй раз."
     },
     {
+      "id": 12,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10917,
+      "context": "Инструкция на старой панели пометок.",
       "source": "`Open ` + `Create annotation` + `in the drawing toolbar to choose a cloud, highlight, callout, text note, or dimension, then click the plan to annotate it. ` + `🖼 Image` + `marquees a region (two clicks) — or use ` + `Upload image…` + `in Captures below.`",
-      "ru": "На панели построения откройте «Создать пометку», выберите облако, выделение, выноску, текст или размер, затем укажите место на чертеже. Кнопка «Изображение» позволяет выделить область двумя щелчками. Также можно нажать «Загрузить изображение…» в разделе «Снимки» ниже.",
-      "slots": []
+      "source_excerpt": "{uiText(\"Open \")}<b>{uiText(\"Create annotation\")}</b> {uiText(\"in the drawing toolbar to choose a cloud, highlight, callout, text note, or dimension, then click the plan to annotate it. \")}<b>{uiText(\"🖼 Image\")}</b> {uiText(\"marquees a region (two clicks) — or use \")}<b>{uiText(\"Upload image…\")}</b> {uiText(\"in Captures below.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Open Create annotation in the drawing toolbar, choose a cloud, highlight, callout, text note or dimension, then click the plan. Image captures a region with two clicks. You can also use Upload image in Captures below.",
+          "ru": "На панели построения откройте «Создать пометку», выберите облако, выделение, выноску, текст или размер и укажите место на чертеже. Кнопка «Изображение» создаёт снимок области по двум точкам. Также можно нажать «Загрузить изображение…» в разделе «Снимки» ниже.",
+          "bindings": {},
+          "example_ru": "На панели построения откройте «Создать пометку», выберите облако, выделение, выноску, текст или размер и укажите место на чертеже. Кнопка «Изображение» создаёт снимок области по двум точкам. Также можно нажать «Загрузить изображение…» в разделе «Снимки» ниже."
+        }
+      ]
     },
     {
+      "id": 13,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10920,
+      "context": "Пустой список пометок на одном листе или на группе листов.",
       "source": "`No markups ` + `yet.` + `Images now live in ` + `Captures` + `below.`",
-      "ru": "На выбранных листах пока нет пометок. Изображения находятся в разделе «Снимки» ниже.",
-      "slots": []
+      "source_excerpt": "{uiText(\"No markups \")}{uiText(groupKeys.length > 1 ? \"on these sheets\" : \"on this sheet\")} {uiText(\"yet.\")}<div style={{ marginTop: 4, fontSize: 11 }}>{uiText(\"Images now live in \")}<b>{uiText(\"Captures\")}</b> {uiText(\"below.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "groupKeys.length === 1",
+          "en": "No markups on this sheet yet.",
+          "ru": "На этом листе пока нет пометок.",
+          "bindings": {},
+          "example_ru": "На этом листе пока нет пометок."
+        },
+        {
+          "role": "text",
+          "when": "groupKeys.length > 1",
+          "en": "No markups on these sheets yet.",
+          "ru": "На этих листах пока нет пометок.",
+          "bindings": {},
+          "example_ru": "На этих листах пока нет пометок."
+        },
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Images are in Captures below.",
+          "ru": "Изображения находятся в разделе «Снимки» ниже.",
+          "bindings": {},
+          "example_ru": "Изображения находятся в разделе «Снимки» ниже."
+        }
+      ]
     },
     {
+      "id": 14,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 10955,
+      "context": "Кнопка автоматического цвета пометки.",
       "source": "`Auto (linkage color)` + `auto`",
-      "ru": "Авто — использовать цвет связанного вида работ",
-      "slots": []
+      "source_excerpt": "<button title={uiText(\"Auto (linkage color)\")} onClick={() => updateMarkup(m.id, { color: \"\" })} style={{ width: 26, height: 15, borderRadius: 4, background: \"var(--paper-bright)\", border: !m.color ? \"2px solid var(--ink)\" : \"1px solid var(--ink-faint)\", cursor: \"pointer\", fontSize: 8.5, lineHeight: \"11px\", color: \"var(--ink-muted)\" }}>{uiText(\"auto\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "auto",
+          "ru": "авто",
+          "bindings": {},
+          "example_ru": "авто"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Auto (linkage color)",
+          "ru": "Авто — цвет связанного вида работ",
+          "bindings": {},
+          "example_ru": "Авто — цвет связанного вида работ"
+        }
+      ]
     },
     {
+      "id": 15,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 11494,
+      "context": "Предупреждение поиска символов, когда выделено слишком мало сегментов.",
       "source": "`The seed is only ` + `segment(s) — likely a FRAGMENT, and fragments match everywhere (every square corner reads as one). Marquee the whole symbol.`",
-      "ru": "В образце всего {0} сегментов. Вероятно, выделен лишь фрагмент символа. Такие фрагменты встречаются повсюду — например, любой прямой угол даст совпадение. Выделите символ целиком.",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"The seed is only \")}{uiText(sweep.seed.segments)} {uiText(\"segment(s) — likely a FRAGMENT, and fragments match everywhere (every square corner reads as one). Marquee the whole symbol.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "The sample contains only {0} segments. It may be a fragment, which can match unrelated linework such as any square corner. Select the whole symbol.",
+          "ru": "Сегментов в образце: {0}. Возможно, выделен лишь фрагмент символа. Такой фрагмент может совпасть с посторонними линиями, например с любым прямым углом. Выделите символ целиком.",
+          "bindings": {
+            "0": {
+              "expression": "sweep.seed.segments",
+              "example": "2"
+            }
+          },
+          "example_ru": "Сегментов в образце: 2. Возможно, выделен лишь фрагмент символа. Такой фрагмент может совпасть с посторонними линиями, например с любым прямым углом. Выделите символ целиком."
+        }
       ]
     },
     {
+      "id": 16,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 11501,
+      "context": "Счётчик совпадений, которые будут сохранены, и необязательная строка с маркой.",
       "source": "`of ` + `matched will commit`",
-      "ru": "Будут сохранены совпадения: {0} из {1}. {2}",
-      "slots": [
-        "0",
-        "1",
-        "2"
-      ]
+      "source_excerpt": "<div><b style={{ fontFamily: \"var(--f-display)\", fontSize: \"var(--fs-xl)\" }}>{uiText(matchN)}</b> {uiText(\"of \")}{uiText(sweep.matches.length)} {uiText(\"matched will commit\")}{mLine && tagGroups.length <= 1 ? <span style={{ color: \"var(--ink-soft)\" }}> — {uiText(mLine)}</span> : null}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Matches to save: {0} of {1}",
+          "ru": "Будет сохранено совпадений: {0} из {1}",
+          "bindings": {
+            "0": {
+              "expression": "matchN",
+              "example": "7"
+            },
+            "1": {
+              "expression": "sweep.matches.length",
+              "example": "9"
+            }
+          },
+          "example_ru": "Будет сохранено совпадений: 7 из 9"
+        }
+      ],
+      "notes": "mLine — дополнительная строка данных, показывается отдельно при mLine && tagGroups.length <= 1. Не делать её обязательным параметром предложения."
     },
     {
+      "id": 17,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 11522,
+      "context": "Число неоднозначных совпадений и состояние их проверки.",
       "source": "`question(s)` + `— ↵ accept · X dismiss · → next` + `— all answered`",
-      "ru": "Вопросов: {0}. ↵ — принять, X — отклонить, → — следующий.",
-      "slots": [
-        "0"
+      "source_excerpt": "<div><b style={{ fontFamily: \"var(--f-display)\", fontSize: \"var(--fs-xl)\", color: openQ ? \"var(--c-warning)\" : \"var(--ink)\" }}>{uiText(sweep.questions.length)}</b> {uiText(\"question(s)\")}{openQ ? <span style={{ color: \"var(--ink-soft)\" }}> {uiText(\"— ↵ accept · X dismiss · → next\")}</span> : <span style={{ color: \"var(--ink-soft)\" }}> {uiText(\"— all answered\")}</span>}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "openQ > 0",
+          "en": "Questions: {0}. Enter accepts, X dismisses, right arrow goes next.",
+          "ru": "Вопросов: {0}. ↵ — принять · X — отклонить · → — следующий.",
+          "bindings": {
+            "0": {
+              "expression": "sweep.questions.length",
+              "example": "3"
+            }
+          },
+          "example_ru": "Вопросов: 3. ↵ — принять · X — отклонить · → — следующий."
+        },
+        {
+          "role": "text",
+          "when": "openQ === 0 && sweep.questions.length > 0",
+          "en": "Questions: {0}. All answered.",
+          "ru": "Вопросов: {0}. На все даны ответы.",
+          "bindings": {
+            "0": {
+              "expression": "sweep.questions.length",
+              "example": "3"
+            }
+          },
+          "example_ru": "Вопросов: 3. На все даны ответы."
+        },
+        {
+          "role": "text",
+          "when": "sweep.questions.length === 0",
+          "en": "No questions.",
+          "ru": "Вопросов нет.",
+          "bindings": {},
+          "example_ru": "Вопросов нет."
+        }
       ]
     },
     {
+      "id": 18,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 11536,
+      "context": "Флажок включения образца в подсчёт символов.",
       "source": "`Count the seed` + `— drawing says `",
-      "ru": "Учесть образец с маркой {0}, указанной на чертеже",
-      "slots": [
-        "0"
+      "source_excerpt": "<span>{uiText(\"Count the seed\")}{seedTag ? <span> {uiText(\"— drawing says \")}<b style={{ fontFamily: \"var(--f-mono)\" }}>{uiText(seedTag)}</b></span> : null}</span>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "seedTag is nonempty",
+          "en": "Count the sample — drawing tag: {0}",
+          "ru": "Учесть образец — марка на чертеже: {0}",
+          "bindings": {
+            "0": {
+              "expression": "seedTag",
+              "example": "E-1"
+            }
+          },
+          "example_ru": "Учесть образец — марка на чертеже: E-1"
+        },
+        {
+          "role": "label",
+          "when": "seedTag is empty",
+          "en": "Count the sample",
+          "ru": "Учесть образец",
+          "bindings": {},
+          "example_ru": "Учесть образец"
+        }
       ]
     },
     {
+      "id": 19,
       "file": "web/src/pages/TakeoffCanvas.jsx",
       "line": 11541,
+      "context": "Кнопка сохранения найденных символов в активный вид работ.",
       "source": "`Commit ` + `as `",
-      "ru": "Сохранить {0} в виде работ {1}",
-      "slots": [
-        "0",
-        "1"
-      ]
+      "source_excerpt": "{uiText(\"Commit \")}{uiText(commitN)} {uiText(\"as \")}{uiText(condById[activeCond]?.finish_tag || \"…\")}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Save {0} instances under {1}",
+          "ru": "Сохранить {0} шт. в {1}",
+          "bindings": {
+            "0": {
+              "expression": "commitN",
+              "example": "8"
+            },
+            "1": {
+              "expression": "condById[activeCond]?.finish_tag || \"…\"",
+              "example": "E-1"
+            }
+          },
+          "example_ru": "Сохранить 8 шт. в E-1"
+        }
+      ],
+      "notes": "Число включает образец, если включён флажок, отмеченные совпадения и принятые ответы."
     },
     {
+      "id": 20,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1121,
+      "context": "Статус синхронизации рядом с отдельной кнопкой остановки.",
       "source": "`syncing through your ` + `Microsoft 365 library`",
-      "ru": "Синхронизация через вашу библиотеку Microsoft 365",
-      "slots": []
+      "source_excerpt": "{uiText(\"syncing through your \")}<strong style={{ color: \"var(--ink)\" }}>{uiText(\"Microsoft 365 library\")}</strong>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Syncing through your Microsoft 365 library",
+          "ru": "Синхронизация через вашу библиотеку Microsoft 365",
+          "bindings": {},
+          "example_ru": "Синхронизация через вашу библиотеку Microsoft 365"
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "stop",
+          "ru": "отключить",
+          "bindings": {},
+          "example_ru": "отключить"
+        }
+      ]
     },
     {
+      "id": 21,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1174,
+      "context": "Описание демонстрационного PDF на начальном экране.",
       "source": "`A real medical-center ` + `floor finish plan` + `— its scale is read off the sheet; pick a finish and trace a flooring takeoff in seconds.`",
-      "ru": "Настоящий план отделки полов медицинского центра. Масштаб определяется по листу. Выберите покрытие и обведите помещение, чтобы рассчитать объём работ.",
-      "slots": []
+      "source_excerpt": "{uiText(\"A real medical-center \")}<strong style={{ color: \"var(--ink)\" }}>{uiText(\"floor finish plan\")}</strong> {uiText(\"— its scale is read off the sheet; pick a finish and trace a flooring takeoff in seconds.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "A real medical-center floor finish plan. Its scale is read from the sheet. Choose a finish and trace a flooring takeoff in seconds.",
+          "ru": "Настоящий план отделки полов медицинского центра. Масштаб определяется по листу. Выберите покрытие и обведите помещение, чтобы рассчитать объём работ.",
+          "bindings": {},
+          "example_ru": "Настоящий план отделки полов медицинского центра. Масштаб определяется по листу. Выберите покрытие и обведите помещение, чтобы рассчитать объём работ."
+        }
+      ]
     },
     {
+      "id": 22,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1177,
+      "context": "Вопрос и соседняя кнопка подключения агента.",
       "source": "`Working with Claude, Codex or Cursor?` + ` `",
-      "ru": "Работаете с Claude, Codex или Cursor? Подключите ИИ-агента.",
-      "slots": []
+      "source_excerpt": "{uiText(\"Working with Claude, Codex or Cursor?\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Working with Claude, Codex or Cursor?",
+          "ru": "Работаете с Claude, Codex или Cursor?",
+          "bindings": {},
+          "example_ru": "Работаете с Claude, Codex или Cursor?"
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Connect your AI",
+          "ru": "Подключить ИИ-агента",
+          "bindings": {},
+          "example_ru": "Подключить ИИ-агента"
+        }
+      ]
     },
     {
+      "id": 23,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1184,
+      "context": "Лицензия и ссылка на автора на начальном экране.",
       "source": "`AGPL-3.0 open source · an open project by` + ` `",
-      "ru": "Открытый проект Kentucky AI под лицензией AGPL-3.0",
-      "slots": []
+      "source_excerpt": "{uiText(\"AGPL-3.0 open source · an open project by\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "AGPL-3.0 open source · an open project by {0}",
+          "ru": "Открытый проект {0} под лицензией AGPL-3.0",
+          "bindings": {
+            "0": {
+              "expression": "link to https://kentucky-ai.com, label Kentucky AI",
+              "example": "Kentucky AI"
+            }
+          },
+          "example_ru": "Открытый проект Kentucky AI под лицензией AGPL-3.0"
+        }
+      ],
+      "notes": "Слот {0} — ссылка ReactNode. Сохранить href, target и rel."
     },
     {
+      "id": 24,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1222,
+      "context": "Кнопка открытия выбранных листов отдельными вкладками.",
       "source": "`Open ` + `as tabs`",
-      "ru": "Открыть выбранные листы во вкладках ({0})",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"Open \")}{uiText(sel.length || \"\")} {uiText(\"as tabs\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "sel.length > 0",
+          "en": "Open as tabs ({0})",
+          "ru": "Открыть во вкладках ({0})",
+          "bindings": {
+            "0": {
+              "expression": "sel.length",
+              "example": "3"
+            }
+          },
+          "example_ru": "Открыть во вкладках (3)"
+        },
+        {
+          "role": "label",
+          "when": "sel.length === 0 (disabled)",
+          "en": "Open as tabs",
+          "ru": "Открыть во вкладках",
+          "bindings": {},
+          "example_ru": "Открыть во вкладках"
+        }
       ]
     },
     {
+      "id": 25,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1226,
+      "context": "Кнопка одновременного просмотра листов рядом, с общим панорамированием.",
       "source": "`Open ` + `side-by-side`",
-      "ru": "Открыть выбранные листы рядом ({0})",
-      "slots": [
-        "0"
+      "source_excerpt": "<Icon name=\"sideBySide\" size={14} />{uiText(\"Open \")}{uiText(sel.length >= 2 ? sel.length : \"\")} {uiText(\"side-by-side\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "sel.length >= 2",
+          "en": "Open side-by-side ({0})",
+          "ru": "Открыть рядом ({0})",
+          "bindings": {
+            "0": {
+              "expression": "sel.length",
+              "example": "2"
+            }
+          },
+          "example_ru": "Открыть рядом (2)"
+        },
+        {
+          "role": "label",
+          "when": "sel.length < 2 (disabled)",
+          "en": "Open side-by-side",
+          "ru": "Открыть рядом",
+          "bindings": {},
+          "example_ru": "Открыть рядом"
+        }
       ]
     },
     {
+      "id": 26,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1231,
+      "context": "Кнопка сшивки выбранных листов в одну поверхность.",
       "source": "`Stitch ` + `into one surface`",
-      "ru": "Сшить выбранные листы в одну рабочую поверхность ({0})",
-      "slots": [
-        "0"
+      "source_excerpt": "<Icon name=\"calibrate\" size={14} />{uiText(\"Stitch \")}{uiText(sel.length >= 2 ? sel.length : \"\")} {uiText(\"into one surface\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "sel.length >= 2",
+          "en": "Stitch into one surface ({0})",
+          "ru": "Сшить листы ({0})",
+          "bindings": {
+            "0": {
+              "expression": "sel.length",
+              "example": "2"
+            }
+          },
+          "example_ru": "Сшить листы (2)"
+        },
+        {
+          "role": "label",
+          "when": "sel.length < 2 (disabled)",
+          "en": "Stitch into one surface",
+          "ru": "Сшить листы",
+          "bindings": {},
+          "example_ru": "Сшить листы"
+        }
       ]
     },
     {
+      "id": 27,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1292,
+      "context": "Компактный индикатор синхронизации и кнопка отключения.",
       "source": "`⇄ 365 library` + ` `",
-      "ru": "Синхронизация с библиотекой Microsoft 365. Отключение синхронизации сохранит локальную работу в этом браузере.",
-      "slots": []
+      "source_excerpt": "{uiText(\"⇄ 365 library\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "⇄ 365 library",
+          "ru": "⇄ Библиотека 365",
+          "bindings": {},
+          "example_ru": "⇄ Библиотека 365"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Annotations sync through the configured Microsoft 365 document library (experimental — issue #315)",
+          "ru": "Пометки синхронизируются через настроенную библиотеку Microsoft 365. Экспериментальная функция, задача #315.",
+          "bindings": {},
+          "example_ru": "Пометки синхронизируются через настроенную библиотеку Microsoft 365. Экспериментальная функция, задача #315."
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "stop",
+          "ru": "отключить",
+          "bindings": {},
+          "example_ru": "отключить"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Stop syncing through the 365 library — local work stays in this browser",
+          "ru": "Отключить синхронизацию с библиотекой Microsoft 365. Локальная работа сохранится в этом браузере.",
+          "bindings": {},
+          "example_ru": "Отключить синхронизацию с библиотекой Microsoft 365. Локальная работа сохранится в этом браузере."
+        }
+      ]
     },
     {
+      "id": 28,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1319,
+      "context": "Кнопка удаления выбранных PDF в режиме управления комплектом.",
       "source": "`Remove ` + `selected`",
-      "ru": "Удалить выбранные файлы ({0})",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"Remove \")}{uiText(mSel.length || \"\")} {uiText(\"selected\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "mSel.length > 0",
+          "en": "Remove selected ({0})",
+          "ru": "Удалить выбранные ({0})",
+          "bindings": {
+            "0": {
+              "expression": "mSel.length",
+              "example": "2"
+            }
+          },
+          "example_ru": "Удалить выбранные (2)"
+        },
+        {
+          "role": "label",
+          "when": "mSel.length === 0 (disabled)",
+          "en": "Remove selected",
+          "ru": "Удалить выбранные",
+          "bindings": {},
+          "example_ru": "Удалить выбранные"
+        }
       ]
     },
     {
+      "id": 29,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1327,
+      "context": "Заголовок подтверждения массового удаления PDF. Значение — количество, а не имя файла.",
       "source": "`Remove ` + `PDF` + `from the plan set?`",
-      "ru": "Удалить PDF из комплекта чертежей: {0}?",
-      "slots": [
-        "0"
+      "source_excerpt": "<strong style={{ fontFamily: \"var(--f-display)\", fontSize: 15, color: \"var(--ink)\" }}>{uiText(\"Remove \")}{uiText(mSel.length)} {uiText(\"PDF\")}{uiText(mSel.length === 1 ? \"\" : \"s\")} {uiText(\"from the plan set?\")}</strong>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Remove PDF files from the plan set: {0}?",
+          "ru": "Удалить PDF-файлы из комплекта чертежей ({0})?",
+          "bindings": {
+            "0": {
+              "expression": "mSel.length",
+              "example": "2"
+            }
+          },
+          "example_ru": "Удалить PDF-файлы из комплекта чертежей (2)?"
+        }
       ]
     },
     {
+      "id": 30,
       "file": "web/src/components/PlanNavigator.jsx",
       "line": 1368,
+      "context": "Предупреждение об измерениях при закрытии одного PDF.",
       "source": "`This PDF has ` + `— they're preserved and restore if you re-add the same file.`",
-      "ru": "В PDF есть измерения: {0}. Они сохранятся в проекте и восстановятся при повторном добавлении этого файла.",
-      "slots": [
-        "0"
+      "source_excerpt": "<><br /><span style={{ color: \"var(--c-warning)\" }}>{uiText(\"This PDF has \")}{uiText(confirmClose.shapeCount)} takeoff{uiText(confirmClose.shapeCount === 1 ? \"\" : \"s\")} {uiText(\"— they're preserved and restore if you re-add the same file.\")}</span></>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Measurements in this PDF: {0}. They stay in the project and restore if you re-add the same file.",
+          "ru": "Измерений в этом PDF: {0}. Они сохранятся в проекте и восстановятся при повторном добавлении того же файла.",
+          "bindings": {
+            "0": {
+              "expression": "confirmClose.shapeCount",
+              "example": "5"
+            }
+          },
+          "example_ru": "Измерений в этом PDF: 5. Они сохранятся в проекте и восстановятся при повторном добавлении того же файла."
+        }
       ]
     },
     {
+      "id": 31,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 58,
+      "context": "Первый шаг установки MCP-пакета в Claude Desktop.",
       "source": "`1. Download ` + `opentakeoff-mcp.mcpb` + `— the link always points at the newest release.`",
-      "ru": "1. Скачайте {0}. Ссылка всегда ведёт на последнюю версию.",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "<P>{uiText(\"1. Download \")}<A href={MCPB_URL}>{uiText(\"opentakeoff-mcp.mcpb\")}</A> {uiText(\"— the link always points at the newest release.\")}</P>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "1. Download {0}. This link always points to the newest release.",
+          "ru": "1. Скачайте {0}. Ссылка всегда ведёт на последнюю версию.",
+          "bindings": {
+            "0": {
+              "expression": "download link MCPB_URL, label opentakeoff-mcp.mcpb",
+              "example": "opentakeoff-mcp.mcpb"
+            }
+          },
+          "example_ru": "1. Скачайте opentakeoff-mcp.mcpb. Ссылка всегда ведёт на последнюю версию."
+        }
+      ],
+      "notes": "Слот {0} — действующая ссылка, не обычный текст."
     },
     {
+      "id": 32,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 88,
+      "context": "Пути к общему и проектному файлам конфигурации MCP в Cursor.",
       "source": "`Any app that runs local (“stdio”) MCP servers takes the same entry. In Cursor it goes in ` + `(every project) or ` + `(one project):`",
-      "ru": "В приложениях с поддержкой локальных MCP-серверов (stdio) используется одна и та же запись. Для Cursor добавьте её в {0} для всех проектов или в {1} для одного проекта.",
-      "slots": [
-        "0",
-        "1"
+      "source_excerpt": "<P>{uiText(\"Any app that runs local (“stdio”) MCP servers takes the same entry. In Cursor it goes in \")}<code>{\"~/.cursor/mcp.json\"}</code> {uiText(\"(every project) or \")}<code>{\".cursor/mcp.json\"}</code> {uiText(\"(one project):\")}</P>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Apps running local (stdio) MCP servers use the same configuration. In Cursor put it in {0} for every project, or {1} for one project.",
+          "ru": "Приложения с поддержкой локальных MCP-серверов (stdio) используют ту же конфигурацию. В Cursor добавьте её в {0} для всех проектов или в {1} для одного проекта.",
+          "bindings": {
+            "0": {
+              "expression": "code literal ~/.cursor/mcp.json",
+              "example": "~/.cursor/mcp.json"
+            },
+            "1": {
+              "expression": "code literal .cursor/mcp.json",
+              "example": ".cursor/mcp.json"
+            }
+          },
+          "example_ru": "Приложения с поддержкой локальных MCP-серверов (stdio) используют ту же конфигурацию. В Cursor добавьте её в ~/.cursor/mcp.json для всех проектов или в .cursor/mcp.json для одного проекта."
+        }
       ]
     },
     {
+      "id": 33,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 146,
+      "context": "Требование к версии Node на вкладках подключения, где cur.node=true.",
       "source": "`Needs ` + `Node 20+` + `— check with `",
-      "ru": "Требуется Node 20 или новее. Проверить версию можно командой {0}.",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "{cur.node ? <>{uiText(\"Needs \")}<A href={NODE_URL}>{uiText(\"Node 20+\")}</A> {uiText(\"— check with \")}<code>{\"node -v\"}</code></> : cur.needs}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Requires {0}. Check with {1}.",
+          "ru": "Требуется {0}. Проверить версию можно командой {1}.",
+          "bindings": {
+            "0": {
+              "expression": "link NODE_URL with label Node 20+",
+              "example": "Node 20+"
+            },
+            "1": {
+              "expression": "code literal node -v",
+              "example": "node -v"
+            }
+          },
+          "example_ru": "Требуется Node 20+. Проверить версию можно командой node -v."
+        }
+      ],
+      "notes": "Сохранить ссылку на Node и оформление команды как кода."
     },
     {
+      "id": 34,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 155,
+      "context": "Ссылка скачивания образца чертежа.",
       "source": "`Download the sample plan` + ` `",
-      "ru": "Скачать образец чертежа",
-      "slots": []
+      "source_excerpt": "<a href={samplePlanUrl()} download={SAMPLE_PLAN_NAME} style={{ color: \"var(--cobalt)\", fontWeight: 700 }}>{uiText(\"Download the sample plan\")}</a>{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Download the sample plan",
+          "ru": "Скачать образец чертежа",
+          "bindings": {},
+          "example_ru": "Скачать образец чертежа"
+        }
+      ]
     },
     {
+      "id": 35,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 156,
+      "context": "Пояснение после ссылки на образец.",
       "source": "`— the same VA finish plan the canvas demo opens.` + ` `",
-      "ru": "Это тот же план отделки медицинского центра VA, который открывается в демонстрационном проекте.",
-      "slots": []
+      "source_excerpt": "{uiText(\"— the same VA finish plan the canvas demo opens.\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "This is the same VA floor finish plan used in the canvas demo.",
+          "ru": "Это тот же план отделки медицинского центра VA, который используется в демонстрационном проекте.",
+          "bindings": {},
+          "example_ru": "Это тот же план отделки медицинского центра VA, который используется в демонстрационном проекте."
+        }
+      ]
     },
     {
+      "id": 36,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 158,
+      "context": "Инструкция Claude Desktop перед примером запроса. Альтернативная ветвь — терминальный агент.",
       "source": "`Then ask Claude, with the file's full path (on a Mac: right-click it in Finder, hold Option, ` + `Copy … as Pathname`",
-      "ru": "Затем обратитесь к Claude и укажите полный путь к файлу. На Mac щёлкните файл правой кнопкой в Finder, удерживая Option, и выберите «Копировать … как путь».",
-      "slots": []
+      "source_excerpt": "? <>{uiText(\"Then ask Claude, with the file's full path (on a Mac: right-click it in Finder, hold Option, \")}<em>{uiText(\"Copy … as Pathname\")}</em>):</>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "desktop === true",
+          "en": "Then ask Claude using the file’s full path. On Mac, right-click the file in Finder, hold Option, and choose Copy as Pathname.",
+          "ru": "Затем обратитесь к Claude и укажите полный путь к файлу. На Mac щёлкните файл правой кнопкой в Finder, удерживайте Option и выберите «Копировать … как путь».",
+          "bindings": {},
+          "example_ru": "Затем обратитесь к Claude и укажите полный путь к файлу. На Mac щёлкните файл правой кнопкой в Finder, удерживайте Option и выберите «Копировать … как путь»."
+        },
+        {
+          "role": "text",
+          "when": "desktop === false",
+          "en": "Start your agent in the folder containing the downloaded file, then ask:",
+          "ru": "Запустите агента в папке со скачанным файлом и введите запрос ниже.",
+          "bindings": {},
+          "example_ru": "Запустите агента в папке со скачанным файлом и введите запрос ниже."
+        }
+      ]
     },
     {
+      "id": 37,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 162,
+      "context": "Ожидаемый ответ агента по конкретному демонстрационному PDF.",
       "source": "`You should hear back about two sheets: ` + `AF101` + `at ` + `, and ` + `AF600` + `(the finish schedule) with no scale found. From there, ask it to set the scale and take off a room.`",
-      "ru": "В ответе должны быть два листа — AF101 с масштабом {0} и AF600 с ведомостью отделки, для которого масштаб не найден. Затем попросите агента задать масштаб и обмерить помещение.",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "<P>{uiText(\"You should hear back about two sheets: \")}<strong>{uiText(\"AF101\")}</strong> {uiText(\"at \")}<strong>1/8″ = 1′-0″</strong>{uiText(\", and \")}<strong>{uiText(\"AF600\")}</strong> {uiText(\"(the finish schedule) with no scale found. From there, ask it to set the scale and take off a room.\")}</P>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Expect two sheets: AF101 at 1/8″ = 1′-0″, and AF600 (the finish schedule) with no scale found. Then ask the agent to set the scale and measure a room.",
+          "ru": "В ответе должны быть два листа — AF101 с масштабом 1/8″ = 1′-0″ и AF600 с ведомостью отделки, для которого масштаб не найден. Затем попросите агента задать масштаб и обмерить помещение.",
+          "bindings": {},
+          "example_ru": "В ответе должны быть два листа — AF101 с масштабом 1/8″ = 1′-0″ и AF600 с ведомостью отделки, для которого масштаб не найден. Затем попросите агента задать масштаб и обмерить помещение."
+        }
+      ],
+      "notes": "Масштаб — константа конкретного образца, а не текущий пользовательский масштаб. Сохранить его значение."
     },
     {
+      "id": 38,
       "file": "web/src/components/ConnectAI.jsx",
       "line": 167,
+      "context": "Две ссылки на инструкции подключения и работу агента.",
       "source": "`Step by step with troubleshooting: ` + `the connect guide` + `. How an agent runs a full takeoff: ` + `the agent manual`",
-      "ru": "Порядок подключения и устранение неполадок описаны в руководстве по подключению. Полный процесс подсчёта объёмов описан в руководстве для агента.",
-      "slots": []
+      "source_excerpt": "{uiText(\"Step by step with troubleshooting: \")}<A href={CONNECT_URL}>{uiText(\"the connect guide\")}</A>{uiText(\". How an agent runs a full takeoff: \")}<A href={AGENT_GUIDE_URL}>{uiText(\"the agent manual\")}</A>.",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Setup and troubleshooting: {0}. How an agent runs a full takeoff: {1}.",
+          "ru": "Подключение и устранение неполадок описаны в {0}. Полный процесс подсчёта объёмов описан в {1}.",
+          "bindings": {
+            "0": {
+              "expression": "link CONNECT_URL with inflected label",
+              "example": "руководстве по подключению"
+            },
+            "1": {
+              "expression": "link AGENT_GUIDE_URL with inflected label",
+              "example": "руководстве для агента"
+            }
+          },
+          "example_ru": "Подключение и устранение неполадок описаны в руководстве по подключению. Полный процесс подсчёта объёмов описан в руководстве для агента."
+        }
+      ]
     },
     {
+      "id": 39,
       "file": "web/src/components/ReportPanel.jsx",
       "line": 570,
+      "context": "Пояснение импорта темы оформления ведомости.",
       "source": "`Import a design-token file (e.g. a Claude Design ` + `) to reskin this report — palette and fonts only. Your company identity stays where it is.`",
-      "ru": "Импортируйте файл дизайн-токенов, например {0} из Claude Design, чтобы изменить палитру и шрифты ведомости. Реквизиты организации сохранятся.",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"Import a design-token file (e.g. a Claude Design \")}<code>{\"tokens.json\"}</code>{uiText(\") to reskin this report — palette and fonts only. Your company identity stays where it is.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Import a design-token file, such as Claude Design’s {0}, to change this report’s colors and fonts. Your company identity is kept.",
+          "ru": "Импортируйте файл параметров оформления, например {0} из Claude Design, чтобы изменить цвета и шрифты ведомости. Реквизиты организации сохранятся.",
+          "bindings": {
+            "0": {
+              "expression": "code literal tokens.json",
+              "example": "tokens.json"
+            }
+          },
+          "example_ru": "Импортируйте файл параметров оформления, например tokens.json из Claude Design, чтобы изменить цвета и шрифты ведомости. Реквизиты организации сохранятся."
+        }
       ]
     },
     {
+      "id": 40,
       "file": "web/src/components/ReportPanel.jsx",
       "line": 819,
+      "context": "Пояснение расчёта объёмов с запасом под основной таблицей ведомости.",
       "source": "`w/Waste` + `= measured quantity × waste %. Waste is set per condition in the canvas. Wall ` + `comes from Surface-Area traces (run × height); Border ` + `from Linear runs with a thickness.`",
-      "ru": "Объём с запасом = измеренный объём × (1 + запас / 100). Запас задаётся для каждого вида работ. Площадь стен ({0}) рассчитывается как длина × высота, площадь полос ({0}) — как длина × ширина.",
-      "slots": [
-        "0",
-        "0"
-      ]
+      "source_excerpt": "<strong>{uiText(AU)} {uiText(\"w/Waste\")}</strong> {uiText(\"= measured quantity × waste %. Waste is set per condition in the canvas. Wall \")}{uiText(AU)} {uiText(\"comes from Surface-Area traces (run × height); Border \")}{uiText(AU)} {uiText(\"from Linear runs with a thickness.\")}{M ? uiText(' Coverage rates use metric units in Excel and CSV.') : ''}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Quantity including waste = measured quantity × (1 + waste / 100). Waste is set per condition. Wall area = run × height; border area = run × width.",
+          "ru": "Объём с запасом = измеренный объём × (1 + запас / 100). Запас задаётся для каждого вида работ. Площадь стен = длина × высота. Площадь полос = длина × ширина.",
+          "bindings": {},
+          "example_ru": "Объём с запасом = измеренный объём × (1 + запас / 100). Запас задаётся для каждого вида работ. Площадь стен = длина × высота. Площадь полос = длина × ширина."
+        },
+        {
+          "role": "text",
+          "when": "M === true",
+          "en": "Coverage rates use metric units in Excel and CSV.",
+          "ru": "В Excel и CSV нормы расхода указываются в метрических единицах.",
+          "bindings": {},
+          "example_ru": "В Excel и CSV нормы расхода указываются в метрических единицах."
+        }
+      ],
+      "notes": "Формула сверена с totals.js. Единицы уже указаны в заголовках таблицы. Не вставлять повторяющийся слот AU."
     },
     {
+      "id": 41,
       "file": "web/src/components/ReportPanel.jsx",
       "line": 821,
+      "context": "Справочное пояснение, если включена графа периметра.",
       "source": "`Perim ` + `(ref) sums floor-trace perimeters — includes door openings and shared walls; reference only, never totaled or waste-adjusted.`",
-      "ru": "Периметр ({0}, справочно) — сумма периметров контуров пола с дверными проёмами и общими стенами. Он приводится для справки, в итоговый объём и расчёт запаса не входит.",
-      "slots": [
-        "0"
+      "source_excerpt": "<> {uiText(\"Perim \")}{uiText(LU)} {uiText(\"(ref) sums floor-trace perimeters — includes door openings and shared walls; reference only, never totaled or waste-adjusted.\")}</>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Perimeter ({0}, reference) sums floor-outline perimeters, including door openings and shared walls. It is not added to the quantity total and no waste is applied.",
+          "ru": "Периметр ({0}, справочно) — сумма периметров контуров пола с дверными проёмами и общими стенами. Он не входит в итоговый объём и не увеличивается на запас.",
+          "bindings": {
+            "0": {
+              "expression": "localized LU",
+              "example": "м"
+            }
+          },
+          "example_ru": "Периметр (м, справочно) — сумма периметров контуров пола с дверными проёмами и общими стенами. Он не входит в итоговый объём и не увеличивается на запас."
+        }
       ]
     },
     {
+      "id": 42,
       "file": "web/src/components/ReportPanel.jsx",
       "line": 929,
+      "context": "Подпись перед списком материалов, разбитым по видам работ.",
       "source": "`By finish:` + ` `",
-      "ru": "По видам работ — {0}",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "<strong>{uiText(\"By finish:\")}</strong>{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "By finish",
+          "ru": "По видам работ",
+          "bindings": {},
+          "example_ru": "По видам работ"
+        }
+      ],
+      "notes": "Список rows.map остаётся отдельным списком. Не превращать все строки материалов в один параметр текста."
     },
     {
+      "id": 43,
       "file": "web/src/components/ReportPanel.jsx",
       "line": 1105,
+      "context": "Вводный абзац перед перечнем данных для открытой модели.",
       "source": "`Help grow a shared, flooring-tuned open model. We send only the ` + `derived takeoff`",
-      "ru": "Помогите развивать открытую модель для напольных покрытий. Мы передаём только производные данные подсчёта объёмов.",
-      "slots": []
+      "source_excerpt": "<p style={{ marginTop: 0 }}>{uiText(\"Help grow a shared, flooring-tuned open model. We send only the \")}<strong>{uiText(\"derived takeoff\")}</strong>:</p>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Help develop an open model for flooring takeoffs. Only derived takeoff data is sent; the list follows.",
+          "ru": "Помогите развивать открытую модель для подсчёта объёмов напольных покрытий. Передаются только данные, полученные при подсчёте. Их состав указан ниже.",
+          "bindings": {},
+          "example_ru": "Помогите развивать открытую модель для подсчёта объёмов напольных покрытий. Передаются только данные, полученные при подсчёте. Их состав указан ниже."
+        }
+      ],
+      "notes": "Сохранить следующий список и отдельный абзац с тем, что никогда не отправляется."
     },
     {
+      "id": 44,
       "file": "web/src/components/ReportPanel.jsx",
       "line": 1115,
+      "context": "Техническое сообщение об отсутствии адреса отправки данных.",
       "source": "`This build has no contribution endpoint configured, so nothing can be sent. (Set ` + `at build time, or` + `in your browser.)`",
-      "ru": "В этой сборке адрес для отправки данных не настроен. Для настройки задайте {0} при сборке или {1} в браузере.",
-      "slots": [
-        "0",
-        "1"
+      "source_excerpt": "{uiText(\"This build has no contribution endpoint configured, so nothing can be sent. (Set \")}<code>{\"VITE_CONTRIBUTE_ENDPOINT\"}</code> {uiText(\"at build time, or\")}<code> {\"localStorage.opentakeoff_contribute_endpoint\"}</code> {uiText(\"in your browser.)\")}</p>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "No contribution endpoint is configured, so data cannot be sent. Set {0} at build time or {1} in your browser.",
+          "ru": "Адрес для отправки данных не настроен. Отправка недоступна. Задайте {0} при сборке или {1} в браузере.",
+          "bindings": {
+            "0": {
+              "expression": "code literal VITE_CONTRIBUTE_ENDPOINT",
+              "example": "VITE_CONTRIBUTE_ENDPOINT"
+            },
+            "1": {
+              "expression": "code literal localStorage.opentakeoff_contribute_endpoint",
+              "example": "localStorage.opentakeoff_contribute_endpoint"
+            }
+          },
+          "example_ru": "Адрес для отправки данных не настроен. Отправка недоступна. Задайте VITE_CONTRIBUTE_ENDPOINT при сборке или localStorage.opentakeoff_contribute_endpoint в браузере."
+        }
       ]
     },
     {
+      "id": 45,
       "file": "web/src/components/TakeoffsPanel.jsx",
       "line": 612,
+      "context": "Поле предельной длины рулона. Единица уже показана соседним контролом.",
       "source": "`Max usable length of one physical roll — 0 = continuous (cut off one roll). When set, cuts pack across rolls and the diagram marks the roll breaks.` + `max`",
-      "ru": "Макс. длина рулона ({0}). Ноль означает отсутствие ограничения — раскрой из одного рулона. При заданной длине отрезы распределяются по рулонам, а границы рулонов отмечаются на схеме.",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "<span style={{ color: \"var(--ink-muted)\" }} title={uiText(\"Max usable length of one physical roll — 0 = continuous (cut off one roll). When set, cuts pack across rolls and the diagram marks the roll breaks.\")}>{uiText(\"max\")}</span>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "max",
+          "ru": "макс.",
+          "bindings": {},
+          "example_ru": "макс."
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Maximum usable roll length. Zero means continuous cutting from one roll. If set, cuts are packed into rolls and roll breaks are marked.",
+          "ru": "Максимальная полезная длина рулона. Ноль — без ограничения длины, раскрой из одного рулона. Если длина задана, отрезы распределяются по рулонам, а на схеме отмечаются границы рулонов.",
+          "bindings": {},
+          "example_ru": "Максимальная полезная длина рулона. Ноль — без ограничения длины, раскрой из одного рулона. Если длина задана, отрезы распределяются по рулонам, а на схеме отмечаются границы рулонов."
+        }
+      ],
+      "notes": "У этой подписи нет динамического значения в тексте и нет параметра единицы. Не добавлять новый обязательный слот."
     },
     {
+      "id": 46,
       "file": "web/src/components/TakeoffsPanel.jsx",
       "line": 703,
+      "context": "Пояснение перед выбором двух покрытий для расчёта переходов.",
       "source": "`Derive onto ` + `— where these two meet.`",
-      "ru": "Рассчитать переходный профиль на стыке двух покрытий и отнести его к виду работ {0}.",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "{uiText(\"Derive onto \")}<b style={{ color: \"var(--ink)\" }}>{uiText(c.finish_tag)}</b> {uiText(\"— where these two meet.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Derive transitions where the two finishes meet, under {0}.",
+          "ru": "Рассчитать переходы на стыке двух покрытий и отнести их к виду работ {0}.",
+          "bindings": {
+            "0": {
+              "expression": "c.finish_tag",
+              "example": "TR-1"
+            }
+          },
+          "example_ru": "Рассчитать переходы на стыке двух покрытий и отнести их к виду работ TR-1."
+        }
+      ],
+      "notes": "Речь об участках стыка, не обязательно об одном профиле. Стена между помещениями означает, что порог требуется измерить отдельно."
     },
     {
+      "id": 47,
       "file": "web/src/components/TakeoffsPanel.jsx",
       "line": 735,
+      "context": "Справочная строка перехода через перегородку. Длина не включается в измеренные переходы.",
       "source": "`LF across ` + `″ of wall`",
-      "ru": "Длина вдоль стены: {0} пог. фут. Ширина разделяющей стены: {1} дюйм.",
-      "slots": [
-        "0",
-        "1"
-      ]
+      "source_excerpt": "{uiText(w.length_lf)} {uiText(\"LF across \")}{uiText(w.gap_in)}{uiText(\"″ of wall\")}<span style={{ color: \"var(--ink-muted)\" }}> — {uiText(w.between.join(\" / \"))}</span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "{0} linear ft along a partition {1} in thick — {2}",
+          "ru": "Общая граница помещений: {0} пог. фут. Толщина перегородки: {1}″. Покрытия: {2}.",
+          "bindings": {
+            "0": {
+              "expression": "w.length_lf",
+              "example": "12"
+            },
+            "1": {
+              "expression": "w.gap_in",
+              "example": "6"
+            },
+            "2": {
+              "expression": "w.between.join(\" / \")",
+              "example": "CPT-1 / LVT-1"
+            }
+          },
+          "example_ru": "Общая граница помещений: 12 пог. фут. Толщина перегородки: 6″. Покрытия: CPT-1 / LVT-1."
+        }
+      ],
+      "notes": "gap_in — толщина разделяющей перегородки, не ширина дверного проёма и не длина установленного порога. Здесь исходные единицы LF/in."
     },
     {
+      "id": 48,
       "file": "web/src/components/TakeoffsPanel.jsx",
       "line": 811,
+      "context": "Статус скрытых видов работ на плане.",
       "source": "`of ` + `hidden on the plan — totals unchanged`",
-      "ru": "Скрыто видов работ на чертеже: {0} из {1}. Итоговые объёмы сохраняются.",
-      "slots": [
-        "0",
-        "1"
+      "source_excerpt": "<span style={{ flex: 1, minWidth: 0 }}>{uiText(hidden)} {uiText(\"of \")}{uiText(total)} {uiText(\"hidden on the plan — totals unchanged\")}</span>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Conditions hidden on the plan: {0} of {1}. Totals are unchanged.",
+          "ru": "Скрыто видов работ на чертеже: {0} из {1}. Итоговые объёмы сохраняются.",
+          "bindings": {
+            "0": {
+              "expression": "hidden",
+              "example": "2"
+            },
+            "1": {
+              "expression": "total",
+              "example": "9"
+            }
+          },
+          "example_ru": "Скрыто видов работ на чертеже: 2 из 9. Итоговые объёмы сохраняются."
+        }
       ]
     },
     {
+      "id": 49,
       "file": "web/src/components/TakeoffsPanel.jsx",
       "line": 1318,
+      "context": "Кнопка сохранения активного вида работ как шаблона.",
       "source": "`+ save ` + `to the library`",
-      "ru": "Сохранить {0} в библиотеку",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"+ save \")}{uiText(aCond?.finish_tag || \"the active condition\")} {uiText(\"to the library\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Save {0} to the library",
+          "ru": "Сохранить {0} в библиотеку",
+          "bindings": {
+            "0": {
+              "expression": "aCond?.finish_tag || localized active condition fallback",
+              "example": "CPT-1"
+            }
+          },
+          "example_ru": "Сохранить CPT-1 в библиотеку"
+        }
       ]
     },
     {
+      "id": 50,
       "file": "web/src/components/TakeoffsPanel.jsx",
       "line": 1374,
+      "context": "Пункт базы расчёта расхода вспомогательного материала по длине швов.",
       "source": "`Figured seam length from the roll layout — 0 until the condition carries a roll setup` + `seam LF`",
-      "ru": "Длина швов ({0}) рассчитывается по раскладке рулонного материала. Пока параметры рулона не заданы, значение равно нулю.",
-      "slots": [
-        "0"
+      "source_excerpt": "<option value=\"seam_lf\" title={uiText(\"Figured seam length from the roll layout — 0 until the condition carries a roll setup\")}>{uiText(\"seam LF\")}</option>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "seam LF",
+          "ru": "швы, пог. фут",
+          "bindings": {},
+          "example_ru": "швы, пог. фут"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Seam length is calculated from the roll layout. Zero until a roll setup exists for this condition.",
+          "ru": "Длина швов рассчитывается по раскладке рулонного материала. Пока для вида работ не заданы параметры рулона, значение равно нулю.",
+          "bindings": {},
+          "example_ru": "Длина швов рассчитывается по раскладке рулонного материала. Пока для вида работ не заданы параметры рулона, значение равно нулю."
+        }
       ]
     },
     {
+      "id": 51,
       "file": "web/src/components/AnnotationWorkbench.jsx",
       "line": 266,
+      "context": "Поле толщины линии пометки. Подпись, доступное имя и пункты списка — разные тексты.",
       "source": "`Weight` + `Annotation line weight` + `pt`",
-      "ru": "Толщина линии пометки ({0} пт)",
-      "slots": [
-        "0"
+      "source_excerpt": "<label>{uiText(\"Weight\")}<select aria-label={uiText(\"Annotation line weight\")} value={shownStyle.stroke_pt} onChange={e=>setStyle({stroke_pt:+e.target.value})}>{[.5,1,1.5,2,3,4,6].map(v=><option key={v} value={v}>{uiText(v)} {uiText(\"pt\")}</option>)}</select></label>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Weight",
+          "ru": "Толщина",
+          "bindings": {},
+          "example_ru": "Толщина"
+        },
+        {
+          "role": "accessible-label",
+          "when": "always",
+          "en": "Annotation line weight",
+          "ru": "Толщина линии пометки",
+          "bindings": {},
+          "example_ru": "Толщина линии пометки"
+        },
+        {
+          "role": "option",
+          "when": "always",
+          "en": "{0} pt",
+          "ru": "{0} пт",
+          "bindings": {
+            "0": {
+              "expression": "v in [.5, 1, 1.5, 2, 3, 4, 6], localized",
+              "example": "1,5"
+            }
+          },
+          "example_ru": "1,5 пт"
+        }
       ]
     },
     {
+      "id": 52,
       "file": "web/src/components/AnnotationWorkbench.jsx",
       "line": 269,
+      "context": "Параметры маркера. Слайдер opacity хранит дробь от 0,1 до 0,75, процент в исходном UI не выводится.",
       "source": "`Width` + `Marker width` + `pt` + `Opacity` + `Highlight opacity`",
-      "ru": "Ширина маркера ({0} пт), непрозрачность ({1}%)",
-      "slots": [
-        "0",
-        "1"
-      ]
+      "source_excerpt": "{(mode==='highlighter'||selectedRows.some(m=>m.type==='highlight'))&&<><div className=\"annotation-segments\">{['freehand','straight','text'].map(v=><button key={v} aria-pressed={shownStyle.mode===v} onClick={()=>{clear();setStyle({mode:v});}}>{uiText(v)}</button>)}</div><label>{uiText(\"Width\")}<select aria-label={uiText(\"Marker width\")} value={shownStyle.width_pt} onChange={e=>setStyle({width_pt:+e.target.value})}>{[4,6,10,16,24,40].map(v=><option key={v} value={v}>{uiText(v)} {uiText(\"pt\")}</option>)}</select></label><label>{uiText(\"Opacity\")}<input aria-label={uiText(\"Highlight opacity\")} type=\"range\" min=\".1\" max=\".75\" step=\".05\" value={shownStyle.opacity} onChange={e=>setStyle({opacity:+e.target.value})}/></label></>}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Width",
+          "ru": "Ширина",
+          "bindings": {},
+          "example_ru": "Ширина"
+        },
+        {
+          "role": "accessible-label",
+          "when": "always",
+          "en": "Marker width",
+          "ru": "Ширина маркера",
+          "bindings": {},
+          "example_ru": "Ширина маркера"
+        },
+        {
+          "role": "option",
+          "when": "always",
+          "en": "{0} pt",
+          "ru": "{0} пт",
+          "bindings": {
+            "0": {
+              "expression": "v in [4, 6, 10, 16, 24, 40]",
+              "example": "10"
+            }
+          },
+          "example_ru": "10 пт"
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Opacity",
+          "ru": "Непрозрачность",
+          "bindings": {},
+          "example_ru": "Непрозрачность"
+        },
+        {
+          "role": "accessible-label",
+          "when": "always",
+          "en": "Highlight opacity",
+          "ru": "Непрозрачность выделения",
+          "bindings": {},
+          "example_ru": "Непрозрачность выделения"
+        }
+      ],
+      "notes": "Не подставлять opacity=0.35 как 0,35% и не добавлять счётчик процентов без отдельного решения по интерфейсу."
     },
     {
+      "id": 53,
       "file": "web/src/components/AnnotationWorkbench.jsx",
       "line": 270,
+      "context": "Поле размера текста пометки.",
       "source": "`Text` + `Note text size` + `pt`",
-      "ru": "Размер текста ({0} пт)",
-      "slots": [
-        "0"
+      "source_excerpt": "{(mode==='callout'||mode==='cloud'||selectedRows.some(m=>['cloud','callout','text'].includes(m.type)))&&<label>{uiText(\"Text\")}<select aria-label={uiText(\"Note text size\")} value={shownStyle.font_pt} onChange={e=>setStyle({font_pt:+e.target.value})}>{[6,8,10,12,16,20,24].map(v=><option key={v} value={v}>{uiText(v)} {uiText(\"pt\")}</option>)}</select></label>}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Text",
+          "ru": "Текст",
+          "bindings": {},
+          "example_ru": "Текст"
+        },
+        {
+          "role": "accessible-label",
+          "when": "always",
+          "en": "Note text size",
+          "ru": "Размер текста пометки",
+          "bindings": {},
+          "example_ru": "Размер текста пометки"
+        },
+        {
+          "role": "option",
+          "when": "always",
+          "en": "{0} pt",
+          "ru": "{0} пт",
+          "bindings": {
+            "0": {
+              "expression": "v in [6, 8, 10, 12, 16, 20, 24]",
+              "example": "12"
+            }
+          },
+          "example_ru": "12 пт"
+        }
       ]
     },
     {
+      "id": 54,
       "file": "web/src/components/AnnotationWorkbench.jsx",
       "line": 277,
+      "context": "Сводка выделенных совпадений при создании пометок по образцу.",
       "source": "`of ` + `selected` + `Check the list or click numbered results on the sheet.` + `Select matches` + `Clear selection`",
-      "ru": "Выбрано совпадений: {0} из {1}. Отметьте их в списке или нажмите пронумерованные результаты на листе.",
-      "slots": [
-        "0",
-        "1"
-      ]
+      "source_excerpt": "<div className=\"annotation-review-heading\"><strong>{uiText(review.rows.filter(r=>r.checked).length)} {uiText(\"of \")}{uiText(review.rows.length)} {uiText(\"selected\")}</strong><span>{uiText(\"Check the list or click numbered results on the sheet.\")}</span>{review.warning&&<span role=\"status\">{uiText(review.warning)}</span>}<button onClick={()=>setReview(r=>({...r,rows:r.rows.map(v=>({...v,checked:!v.held}))}))}>{uiText(\"Select matches\")}</button><button onClick={()=>setReview(r=>({...r,rows:r.rows.map(v=>({...v,checked:false}))}))}>{uiText(\"Clear selection\")}</button></div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Selected: {0} of {1}",
+          "ru": "Выбрано: {0} из {1}",
+          "bindings": {
+            "0": {
+              "expression": "review.rows.filter(r => r.checked).length",
+              "example": "7"
+            },
+            "1": {
+              "expression": "review.rows.length",
+              "example": "9"
+            }
+          },
+          "example_ru": "Выбрано: 7 из 9"
+        },
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Check the list or click numbered results on the sheet.",
+          "ru": "Отметьте совпадения в списке или нажмите пронумерованные результаты на листе.",
+          "bindings": {},
+          "example_ru": "Отметьте совпадения в списке или нажмите пронумерованные результаты на листе."
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Select matches",
+          "ru": "Выбрать совпадения",
+          "bindings": {},
+          "example_ru": "Выбрать совпадения"
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Clear selection",
+          "ru": "Снять выделение",
+          "bindings": {},
+          "example_ru": "Снять выделение"
+        }
+      ],
+      "notes": "review.warning — самостоятельное сообщение. Не включать его в параметр счётчика."
     },
     {
+      "id": 55,
       "file": "web/src/components/ImportSchedulePanel.jsx",
       "line": 241,
+      "context": "Индикатор категории, выведенной из описания строки ведомости.",
       "source": "`Category guessed from the row's own words — no printed heading names one` + `from description`",
-      "ru": "Категория определена по описанию строки — отдельного заголовка категории в ведомости нет.",
-      "slots": []
+      "source_excerpt": "<span id={guessId} title={uiText(\"Category guessed from the row's own words — no printed heading names one\")} style={{ ...lbl, color: \"var(--c-warning)\", flex: \"0 0 auto\", cursor: \"help\", ...right }}>{uiText(\"from description\")}</span>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "from description",
+          "ru": "по описанию",
+          "bindings": {},
+          "example_ru": "по описанию"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Category inferred from the row description, with no printed category heading.",
+          "ru": "Категория определена по описанию строки. Отдельного заголовка категории в ведомости нет.",
+          "bindings": {},
+          "example_ru": "Категория определена по описанию строки. Отдельного заголовка категории в ведомости нет."
+        }
+      ]
     },
     {
+      "id": 56,
       "file": "web/src/components/ImportSchedulePanel.jsx",
       "line": 250,
+      "context": "Код, распознанный до автоматической правки. Инструкция дополнительно озвучивается скринридером.",
       "source": "`read as ` + `— check the code against the schedule.`",
-      "ru": "Распознано как {0}. Сверьте код с ведомостью.",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"read as \")}<span style={{ fontFamily: \"var(--f-mono)\", fontSize: 12.5 }}>{uiText(r.read_as)}</span><span style={S.visuallyHidden}> {uiText(\"— check the code against the schedule.\")}</span>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Read as {0}",
+          "ru": "Распознано как {0}",
+          "bindings": {
+            "0": {
+              "expression": "r.read_as",
+              "example": "CPT-I"
+            }
+          },
+          "example_ru": "Распознано как CPT-I"
+        },
+        {
+          "role": "screen-reader",
+          "when": "always",
+          "en": "Check the code against the schedule.",
+          "ru": "Сверьте код с ведомостью.",
+          "bindings": {},
+          "example_ru": "Сверьте код с ведомостью."
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Repaired from {0}; check the code against the schedule.",
+          "ru": "Исправлено из {0}. Сверьте код с ведомостью.",
+          "bindings": {
+            "0": {
+              "expression": "r.read_as",
+              "example": "CPT-I"
+            }
+          },
+          "example_ru": "Исправлено из CPT-I. Сверьте код с ведомостью."
+        }
       ]
     },
     {
+      "id": 57,
       "file": "web/src/components/ImportSchedulePanel.jsx",
       "line": 328,
+      "context": "Кнопка импорта выбранных видов работ из ведомости.",
       "source": "`Create ` + `condition`",
-      "ru": "Создать видов работ: {0}",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"Create \")}{uiText(count)} {uiText(\"condition\")}{uiText(count === 1 ? \"\" : \"s\")}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Create conditions ({0})",
+          "ru": "Создать виды работ ({0})",
+          "bindings": {
+            "0": {
+              "expression": "count",
+              "example": "3"
+            }
+          },
+          "example_ru": "Создать виды работ (3)"
+        }
+      ],
+      "notes": "Число в скобках не требует склонения слова «вид». При count=0 кнопка отключена."
+    },
+    {
+      "id": 58,
+      "file": "web/src/components/LayerPanel.jsx",
+      "line": 62,
+      "context": "Кнопка назначения слоя непроходимой границей для заливки.",
+      "source": "`Wall — treat this layer's ink as hard boundary (a fill stops at it)` + `wall`",
+      "source_excerpt": "title={uiText(\"Wall — treat this layer's ink as hard boundary (a fill stops at it)\")}>{uiText(\"wall\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "wall",
+          "ru": "стена",
+          "bindings": {},
+          "example_ru": "стена"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Wall — treat this layer’s ink as a hard fill boundary.",
+          "ru": "Стена — линии слоя ограничивают заливку.",
+          "bindings": {},
+          "example_ru": "Стена — линии слоя ограничивают заливку."
+        }
       ]
     },
     {
-      "file": "web/src/components/LayerPanel.jsx",
-      "line": 62,
-      "source": "`Wall — treat this layer's ink as hard boundary (a fill stops at it)` + `wall`",
-      "ru": "Стена — линии слоя ограничивают заливку.",
-      "slots": []
-    },
-    {
+      "id": 59,
       "file": "web/src/components/LayerPanel.jsx",
       "line": 64,
+      "context": "Кнопка игнорирования слоя алгоритмом заливки.",
       "source": "`Off — ignore this layer's ink entirely (a fill passes through it)` + `off`",
-      "ru": "Выкл. — линии слоя не ограничивают заливку.",
-      "slots": []
+      "source_excerpt": "title={uiText(\"Off — ignore this layer's ink entirely (a fill passes through it)\")}>{uiText(\"off\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "off",
+          "ru": "выкл.",
+          "bindings": {},
+          "example_ru": "выкл."
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Off — ignore this layer’s ink for filling.",
+          "ru": "Выкл. — заливка не учитывает линии этого слоя.",
+          "bindings": {},
+          "example_ru": "Выкл. — заливка не учитывает линии этого слоя."
+        }
+      ]
     },
     {
+      "id": 60,
       "file": "web/src/components/LayerPanel.jsx",
       "line": 84,
+      "context": "Пояснение влияния назначения слоёв на автоматическое выделение помещений.",
       "source": "`What the drawing states each ink is — feeds One-Click and room detection on these sheets. ` + `Wall` + `stops a fill, ` + `Off` + `is passed through, ` + `Auto` + `follows the stated role. The sheet itself draws unchanged.`",
-      "ru": "Назначение линий в чертеже используется для заливки одним щелчком и распознавания помещений. В режиме «Стена» заливка останавливается на линиях слоя, в режиме «Выкл.» проходит сквозь них, а в режиме «Авто» учитывает назначение слоя в чертеже. Внешний вид листа сохраняется.",
-      "slots": []
+      "source_excerpt": "{uiText(\"What the drawing states each ink is — feeds One-Click and room detection on these sheets. \")}<b>{uiText(\"Wall\")}</b> {uiText(\"stops a fill, \")}<b>{uiText(\"Off\")}</b> {uiText(\"is passed through, \")}<b>{uiText(\"Auto\")}</b> {uiText(\"follows the stated role. The sheet itself draws unchanged.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Layer roles feed One-Click and room detection. Wall stops the fill, Off lets it pass, and Auto follows the stated role. Sheet appearance is unchanged.",
+          "ru": "Назначение слоёв используется для заливки одним щелчком и распознавания помещений. В режиме «Стена» линии слоя ограничивают заливку. В режиме «Выкл.» заливка их не учитывает. В режиме «Авто» учитывается назначение слоя в чертеже. Внешний вид листа сохраняется.",
+          "bindings": {},
+          "example_ru": "Назначение слоёв используется для заливки одним щелчком и распознавания помещений. В режиме «Стена» линии слоя ограничивают заливку. В режиме «Выкл.» заливка их не учитывает. В режиме «Авто» учитывается назначение слоя в чертеже. Внешний вид листа сохраняется."
+        }
+      ]
     },
     {
+      "id": 61,
       "file": "web/src/components/RevisionsPanel.jsx",
       "line": 176,
+      "context": "Кнопка сравнения сохранённой редакции с текущими измерениями.",
       "source": "`Diff this revision against the live takeoff` + `Compare with current` + ` `",
-      "ru": "Сравнить эту редакцию с текущими измерениями",
-      "slots": []
+      "source_excerpt": "title={uiText(\"Diff this revision against the live takeoff\")}>{uiText(\"Compare with current\")}</button>{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Compare with current",
+          "ru": "Сравнить с текущими",
+          "bindings": {},
+          "example_ru": "Сравнить с текущими"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Diff this revision against the live takeoff",
+          "ru": "Сравнить эту редакцию с текущими измерениями",
+          "bindings": {},
+          "example_ru": "Сравнить эту редакцию с текущими измерениями"
+        }
+      ]
     },
     {
+      "id": 62,
       "file": "web/src/components/RevisionsPanel.jsx",
       "line": 223,
+      "context": "Сводка изменения площади к закупке при сравнении редакций.",
       "source": "`ordered ` + ` `",
-      "ru": "К закупке ({0}): {1} → {2}. Изменение: {3}.",
-      "slots": [
-        "0",
-        "1",
-        "2",
-        "3"
-      ]
+      "source_excerpt": "{uiText(\"ordered \")}{uiText(AU)} {uiText(num(av(diff.totals.a.total_sf_net)))} → <strong>{uiText(num(av(diff.totals.b.total_sf_net)))}</strong>{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Ordered area ({0}): {1} → {2} ({3})",
+          "ru": "Площадь к закупке ({0}): {1} → {2} ({3})",
+          "bindings": {
+            "0": {
+              "expression": "localized AU",
+              "example": "м²"
+            },
+            "1": {
+              "expression": "num(av(diff.totals.a.total_sf_net))",
+              "example": "25"
+            },
+            "2": {
+              "expression": "num(av(diff.totals.b.total_sf_net))",
+              "example": "30"
+            },
+            "3": {
+              "expression": "delta(diff.totals.deltas.total_sf_net, false, av)",
+              "example": "+5"
+            }
+          },
+          "example_ru": "Площадь к закупке (м²): 25 → 30 (+5)"
+        }
+      ],
+      "notes": "Заголовок nameOf(baseId) → nameOf(compareId) остаётся отдельно. Значение — total_sf_net после пересчёта в выбранные единицы площади."
     },
     {
+      "id": 63,
       "file": "web/src/components/RevisionsPanel.jsx",
       "line": 224,
+      "context": "Счётчик изменившихся видов работ рядом со сводкой площадей.",
       "source": "`condition` + `moved`",
-      "ru": "Изменено видов работ: {0}.",
-      "slots": [
-        "0"
+      "source_excerpt": "({uiText(delta(diff.totals.deltas.total_sf_net, false, av))}) · {uiText(diff.changed)} {uiText(\"condition\")}{uiText(diff.changed === 1 ? \"\" : \"s\")} {uiText(\"moved\")}</p>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Conditions changed: {0}",
+          "ru": "Изменено видов работ: {0}",
+          "bindings": {
+            "0": {
+              "expression": "diff.changed",
+              "example": "2"
+            }
+          },
+          "example_ru": "Изменено видов работ: 2"
+        }
       ]
     },
     {
+      "id": 64,
       "file": "web/src/components/RollPanel.jsx",
       "line": 118,
+      "context": "Переключатель показа раскроя на чертеже.",
       "source": "`Draw the figured cuts over the plan` + `cuts`",
-      "ru": "Показать расчётный раскрой на чертеже",
-      "slots": []
+      "source_excerpt": "<button onClick={() => onShow(!show)} title={uiText(\"Draw the figured cuts over the plan\")} style={ctl(show)}>{uiText(\"cuts\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "cuts",
+          "ru": "раскрой",
+          "bindings": {},
+          "example_ru": "раскрой"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Draw the figured cuts over the plan",
+          "ru": "Показать расчётный раскрой на чертеже",
+          "bindings": {},
+          "example_ru": "Показать расчётный раскрой на чертеже"
+        }
+      ]
     },
     {
+      "id": 65,
       "file": "web/src/components/RollPanel.jsx",
       "line": 119,
+      "context": "Переключатель режима ручной правки раскроя.",
       "source": "`Edit cuts on the plan — drag a cut along its lane, pull its ends to resize; double-click resets a cut to the figured layout` + `edit`",
-      "ru": "Редактировать раскрой на чертеже — перетаскивайте отрезы вдоль полос и меняйте длину за концы. Двойной щелчок возвращает расчётную раскладку.",
-      "slots": []
+      "source_excerpt": "<button onClick={() => onEdit(!edit)} title={uiText(\"Edit cuts on the plan — drag a cut along its lane, pull its ends to resize; double-click resets a cut to the figured layout\")} style={ctl(edit)}>{uiText(\"edit\")}</button>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "edit",
+          "ru": "правка",
+          "bindings": {},
+          "example_ru": "правка"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Drag cuts along their lanes and drag their ends to resize. Double-click restores the figured layout.",
+          "ru": "Перетаскивайте отрезы вдоль полос и меняйте длину за концы. Двойной щелчок возвращает расчётную раскладку.",
+          "bindings": {},
+          "example_ru": "Перетаскивайте отрезы вдоль полос и меняйте длину за концы. Двойной щелчок возвращает расчётную раскладку."
+        }
+      ]
     },
     {
+      "id": 66,
       "file": "web/src/components/RollPanel.jsx",
       "line": 137,
+      "context": "Сводка раскроя. Длина уже отформатирована в футах/дюймах, площадь к закупке имеет отдельную единицу.",
       "source": "`order ` + `cut`",
-      "ru": "К закупке: {0}. Количество: {1} {2}. Отрезов: {3}. {4}",
-      "slots": [
-        "0",
-        "1",
-        "2",
-        "3",
-        "4"
-      ]
+      "source_excerpt": "{uiText(\"order \")}{uiText(ftIn(ri.orderFt))} · {uiText(Math.round(ri.qty * 100) / 100)} {uiText(ri.unit.toUpperCase())} · {uiText(ri.cutCount)} {uiText(\"cut\")}{uiText(ri.cutCount === 1 ? \"\" : \"s\")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Order: {0} · {1} {2} · cuts: {3}",
+          "ru": "К закупке: {0} · {1} {2} · отрезов: {3}",
+          "bindings": {
+            "0": {
+              "expression": "ftIn(ri.orderFt)",
+              "example": "40′ 6″"
+            },
+            "1": {
+              "expression": "Math.round(ri.qty * 100) / 100, localized",
+              "example": "54"
+            },
+            "2": {
+              "expression": "localized ri.unit.toUpperCase()",
+              "example": "кв. ярд"
+            },
+            "3": {
+              "expression": "ri.cutCount",
+              "example": "5"
+            }
+          },
+          "example_ru": "К закупке: 40′ 6″ · 54 кв. ярд · отрезов: 5"
+        },
+        {
+          "role": "text",
+          "when": "ri.config.rollLengthFt > 0",
+          "en": "Rolls: {0}, length each: {1}",
+          "ru": "Рулонов: {0}, длина каждого: {1}",
+          "bindings": {
+            "0": {
+              "expression": "ri.rollCount",
+              "example": "2"
+            },
+            "1": {
+              "expression": "ftIn(ri.config.rollLengthFt)",
+              "example": "30′ 0″"
+            }
+          },
+          "example_ru": "Рулонов: 2, длина каждого: 30′ 0″"
+        }
+      ],
+      "notes": "Последняя строка отсутствует при rollLengthFt=0. Не вкладывать готовое предложение в слот {4}."
     },
     {
+      "id": 67,
       "file": "web/src/components/WorkspaceLayout.jsx",
       "line": 76,
+      "context": "Слайдер ширины панели измерений и проверки.",
       "source": "`Work panel width ` + `Work panel width` + `px`",
-      "ru": "Ширина панели работы и проверки ({0} пикс.)",
-      "slots": [
-        "0"
+      "source_excerpt": "<label>{uiText(\"Work panel width \")}<input aria-label={uiText(\"Work panel width\")} type=\"range\" min=\"300\" max=\"480\" step=\"20\" value={layout.workWidth} onChange={(e) => update({ workWidth: Number(e.target.value) })} /><output>{uiText(layout.workWidth)}{uiText(\"px\")}</output></label>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Work panel width",
+          "ru": "Ширина панели измерений",
+          "bindings": {},
+          "example_ru": "Ширина панели измерений"
+        },
+        {
+          "role": "readout",
+          "when": "always",
+          "en": "{0} px",
+          "ru": "{0} пикс.",
+          "bindings": {
+            "0": {
+              "expression": "layout.workWidth",
+              "example": "360"
+            }
+          },
+          "example_ru": "360 пикс."
+        }
       ]
     },
     {
+      "id": 68,
       "file": "web/src/components/WorkspaceLayout.jsx",
       "line": 77,
+      "context": "Слайдер ширины панели листов.",
       "source": "`Sheets panel width ` + `Sheets panel width` + `px`",
-      "ru": "Ширина панели листов ({0} пикс.)",
-      "slots": [
-        "0"
+      "source_excerpt": "<label>{uiText(\"Sheets panel width \")}<input aria-label={uiText(\"Sheets panel width\")} type=\"range\" min=\"220\" max=\"340\" step=\"20\" value={layout.sheetWidth} onChange={(e) => update({ sheetWidth: Number(e.target.value) })} /><output>{uiText(layout.sheetWidth)}{uiText(\"px\")}</output></label>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Sheets panel width",
+          "ru": "Ширина панели листов",
+          "bindings": {},
+          "example_ru": "Ширина панели листов"
+        },
+        {
+          "role": "readout",
+          "when": "always",
+          "en": "{0} px",
+          "ru": "{0} пикс.",
+          "bindings": {
+            "0": {
+              "expression": "layout.sheetWidth",
+              "example": "280"
+            }
+          },
+          "example_ru": "280 пикс."
+        }
       ]
     },
     {
+      "id": 69,
       "file": "web/src/components/WorkspaceLayout.jsx",
       "line": 80,
+      "context": "Форма сохранения расположения панелей. Это несколько контролов, а не предложение с именем.",
       "source": "`Saved arrangements` + `Arrangement name` + `e.g. My estimating desk` + `Save current`",
-      "ru": "Сохранить текущее расположение панелей под именем {0}",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "<section><h3>{uiText(\"Saved arrangements\")}</h3><form onSubmit={(e) => { e.preventDefault(); prefs.save(name); setMessage(`Saved “${name.trim()}”.`); setName(\"\"); }}><input aria-label={uiText(\"Arrangement name\")} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder={uiText(\"e.g. My estimating desk\")} /><button disabled={!name.trim()}>{uiText(\"Save current\")}</button></form>",
+      "messages": [
+        {
+          "role": "heading",
+          "when": "always",
+          "en": "Saved arrangements",
+          "ru": "Сохранённые расположения",
+          "bindings": {},
+          "example_ru": "Сохранённые расположения"
+        },
+        {
+          "role": "accessible-label",
+          "when": "always",
+          "en": "Arrangement name",
+          "ru": "Название расположения",
+          "bindings": {},
+          "example_ru": "Название расположения"
+        },
+        {
+          "role": "placeholder",
+          "when": "always",
+          "en": "e.g. My estimating desk",
+          "ru": "Например, Рабочее место сметчика",
+          "bindings": {},
+          "example_ru": "Например, Рабочее место сметчика"
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Save current",
+          "ru": "Сохранить текущее",
+          "bindings": {},
+          "example_ru": "Сохранить текущее"
+        }
+      ],
+      "notes": "Имя вводится в input и передаётся в prefs.save(name). Не вставлять его в подпись кнопки."
     },
     {
+      "id": 70,
       "file": "web/src/components/WorkspacePanel.jsx",
       "line": 63,
+      "context": "Кнопка дозагрузки следующих 50 строк в списке измерений.",
       "source": "`Show more · ` + `remaining`",
-      "ru": "Показать ещё. Осталось: {0}.",
-      "slots": [
-        "0"
+      "source_excerpt": "{rows.length > limit && <button type=\"button\" className=\"workspace-more\" onClick={() => setLimit((n) => n + 50)}>{uiText(\"Show more · \")}{uiText(rows.length - limit)} {uiText(\"remaining\")}</button>}",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Show more · remaining: {0}",
+          "ru": "Показать ещё · осталось: {0}",
+          "bindings": {
+            "0": {
+              "expression": "rows.length - limit",
+              "example": "75"
+            }
+          },
+          "example_ru": "Показать ещё · осталось: 75"
+        }
       ]
     },
     {
+      "id": 71,
       "file": "web/src/components/WorkspacePanel.jsx",
       "line": 72,
+      "context": "Геометрия выбранного измерения. Число holes — количество внутренних контуров, а не вершин в них.",
       "source": "`Geometry` + `vertices · ` + `holes`",
-      "ru": "Геометрия — вершин: {0}, внутренних вырезов: {1}.",
-      "slots": [
-        "0",
-        "1"
+      "source_excerpt": "<div><dt>{uiText(\"Geometry\")}</dt><dd>{uiText(selected.verts_norm?.length || 0)} {uiText(\"vertices · \")}{uiText(selected.verts_norm_holes?.length || 0)} {uiText(\"holes\")}</dd></div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Vertices: {0} · interior contours: {1}",
+          "ru": "Вершин: {0} · внутренних контуров: {1}",
+          "bindings": {
+            "0": {
+              "expression": "selected.verts_norm?.length || 0",
+              "example": "6"
+            },
+            "1": {
+              "expression": "selected.verts_norm_holes?.length || 0",
+              "example": "2"
+            }
+          },
+          "example_ru": "Вершин: 6 · внутренних контуров: 2"
+        }
       ]
     },
     {
+      "id": 72,
       "file": "web/src/components/WorkspacePanel.jsx",
       "line": 79,
+      "context": "Счётчик после фильтрации и отдельная кнопка открытия ведомости.",
       "source": "`of ` + `measurements` + `Open report →`",
-      "ru": "Показано измерений: {0} из {1}. Открыть ведомость.",
-      "slots": [
-        "0",
-        "1"
-      ]
+      "source_excerpt": "<footer className=\"workspace-footer\"><span>{uiText(rows.length)} {uiText(\"of \")}{uiText(shapes.length)} {uiText(\"measurements\")}</span><button type=\"button\" onClick={onReport}>{uiText(\"Open report →\")}</button></footer>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Measurements matching filter: {0} of {1}",
+          "ru": "Измерений по фильтру: {0} из {1}",
+          "bindings": {
+            "0": {
+              "expression": "rows.length",
+              "example": "75"
+            },
+            "1": {
+              "expression": "shapes.length",
+              "example": "100"
+            }
+          },
+          "example_ru": "Измерений по фильтру: 75 из 100"
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Open report →",
+          "ru": "Открыть ведомость →",
+          "bindings": {},
+          "example_ru": "Открыть ведомость →"
+        }
+      ],
+      "notes": "rows.length включает все отфильтрованные строки, хотя rows.slice(0, limit) может выводить только первые 50. «Показано» здесь неверно."
     },
     {
+      "id": 73,
       "file": "web/src/components/AiSettings.jsx",
       "line": 23,
+      "context": "Объяснение выбора модели для агента в настройках ИИ.",
       "source": "`The in-canvas takeoff agent runs on a vision model ` + `you` + `provide. Point it at an OpenAI-style or Anthropic-style endpoint: a hosted API, or a local runtime on your own machine (most local runtimes speak the OpenAI style and need no key).`",
-      "ru": "Агент обмеров использует модель с компьютерным зрением, которую подключаете вы. Укажите адрес API с поддержкой формата OpenAI или Anthropic — облачного сервиса либо локальной среды на вашем компьютере. Большинство локальных сред поддерживают формат OpenAI и работают без ключа.",
-      "slots": []
+      "source_excerpt": "{uiText(\"The in-canvas takeoff agent runs on a vision model \")}<strong>{uiText(\"you\")}</strong> {uiText(\"provide. Point it at an OpenAI-style or Anthropic-style endpoint: a hosted API, or a local runtime on your own machine (most local runtimes speak the OpenAI style and need no key).\")}</p>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "The in-canvas takeoff agent uses a vision model you provide. Use an OpenAI-compatible or Anthropic-compatible endpoint, hosted or local. Most local runtimes support the OpenAI format without a key.",
+          "ru": "Агент подсчёта объёмов использует модель с компьютерным зрением, которую подключаете вы. Укажите адрес API, совместимого с OpenAI или Anthropic. Это может быть облачный сервис или локальная среда на вашем компьютере. Большинство локальных сред поддерживают формат OpenAI и работают без ключа.",
+          "bindings": {},
+          "example_ru": "Агент подсчёта объёмов использует модель с компьютерным зрением, которую подключаете вы. Укажите адрес API, совместимого с OpenAI или Anthropic. Это может быть облачный сервис или локальная среда на вашем компьютере. Большинство локальных сред поддерживают формат OpenAI и работают без ключа."
+        }
+      ]
     },
     {
+      "id": 74,
       "file": "web/src/components/AiSettings.jsx",
       "line": 49,
+      "context": "Условия хранения ключа и доступа к API. Сохранены все исходные утверждения.",
       "source": "`The key is stored ` + `in this browser` + `(localStorage) — anyone with access to this browser profile can read it, so use a key you can revoke. Leave everything blank and the AI features stay out of your way entirely. The endpoint must allow requests from a browser (CORS); local runtimes generally allow localhost.`",
-      "ru": "Ключ хранится в этом браузере (localStorage). Его может прочитать любой, у кого есть доступ к профилю браузера, поэтому используйте ключ, который можно отозвать. Если поля пусты, функции ИИ отключены. Адрес API должен разрешать запросы из браузера (CORS). Локальные среды обычно разрешают запросы с localhost.",
-      "slots": []
+      "source_excerpt": "{uiText(\"The key is stored \")}<strong>{uiText(\"in this browser\")}</strong> {uiText(\"(localStorage) — anyone with access to this browser profile can read it, so use a key you can revoke. Leave everything blank and the AI features stay out of your way entirely. The endpoint must allow requests from a browser (CORS); local runtimes generally allow localhost.\")}</p>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "The key is stored in this browser (localStorage). Anyone with access to this browser profile can read it, so use a revocable key. Leave the fields blank to disable AI features. The endpoint must permit browser requests (CORS); local runtimes generally allow localhost.",
+          "ru": "Ключ хранится в этом браузере (localStorage). Его может прочитать любой, у кого есть доступ к этому профилю браузера, поэтому используйте ключ, который можно отозвать. Оставьте поля пустыми, чтобы отключить функции ИИ. Сервер API должен разрешать запросы из браузера (CORS). Локальные среды обычно разрешают запросы с localhost.",
+          "bindings": {},
+          "example_ru": "Ключ хранится в этом браузере (localStorage). Его может прочитать любой, у кого есть доступ к этому профилю браузера, поэтому используйте ключ, который можно отозвать. Оставьте поля пустыми, чтобы отключить функции ИИ. Сервер API должен разрешать запросы из браузера (CORS). Локальные среды обычно разрешают запросы с localhost."
+        }
+      ]
     },
     {
+      "id": 75,
       "file": "web/src/components/BidProposalDialog.jsx",
       "line": 75,
+      "context": "Организация-исполнитель в диалоге коммерческого предложения.",
       "source": "`From ` + `your company`",
-      "ru": "Исполнитель — {0}",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "{uiText(\"From \")}{company.name ? <strong>{company.name}</strong> : uiText(\"your company\")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "company.name is nonempty",
+          "en": "From {0}",
+          "ru": "Исполнитель — {0}",
+          "bindings": {
+            "0": {
+              "expression": "company.name",
+              "example": "ООО «Монтаж»"
+            }
+          },
+          "example_ru": "Исполнитель — ООО «Монтаж»"
+        },
+        {
+          "role": "text",
+          "when": "company.name is empty",
+          "en": "From your company",
+          "ru": "Исполнитель — ваша организация",
+          "bindings": {},
+          "example_ru": "Исполнитель — ваша организация"
+        }
+      ],
+      "notes": "Соседняя кнопка настроек организации остаётся отдельной. company.name — пользовательские данные, не пропускать через переводчик."
     },
     {
+      "id": 76,
       "file": "web/src/components/BidProposalDialog.jsx",
       "line": 81,
+      "context": "Предупреждение о неполных расценках в коммерческом предложении.",
       "source": "`The estimate isn't fully priced.` + `The base bid counts ` + `at $0 for what is missing. You can still download.`",
-      "ru": "В смете заданы не все цены. Для позиций {0} неуказанные цены учтены как нулевые. Предложение можно скачать.",
-      "slots": [
-        "0"
-      ]
+      "source_excerpt": "<strong>{uiText(\"The estimate isn't fully priced.\")}</strong> {uiText(\"The base bid counts \")}{uiText(est.unpriced.map((u) => u.finish_tag).join(\", \"))} {uiText(\"at $0 for what is missing. You can still download.\")}</div>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Not all prices are set. Missing prices for {0} count as zero in the base bid. You can still download the proposal.",
+          "ru": "В смете заданы не все цены. Для позиций {0} неуказанные цены учтены как нулевые. Предложение можно скачать.",
+          "bindings": {
+            "0": {
+              "expression": "est.unpriced.map(u => u.finish_tag).join(\", \")",
+              "example": "CPT-1, LVT-1"
+            }
+          },
+          "example_ru": "В смете заданы не все цены. Для позиций CPT-1, LVT-1 неуказанные цены учтены как нулевые. Предложение можно скачать."
+        }
+      ],
+      "notes": "Ноль — числовое значение без обозначения валюты. Список марок не склоняется."
     },
     {
+      "id": 77,
       "file": "web/src/components/OcrDownloadNotice.jsx",
       "line": 64,
+      "context": "Первый абзац уведомления перед загрузкой моделей OCR.",
       "source": "`Reading text from an image needs two recognition models, a character list and their runtime:` + ` `",
-      "ru": "Для распознавания текста на изображении нужны две модели, список символов и среда выполнения.",
-      "slots": []
+      "source_excerpt": "{uiText(\"Reading text from an image needs two recognition models, a character list and their runtime:\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Reading text from an image needs two recognition models, a character list and their runtime.",
+          "ru": "Для распознавания текста на изображении нужны две модели, список символов и среда выполнения.",
+          "bindings": {},
+          "example_ru": "Для распознавания текста на изображении нужны две модели, список символов и среда выполнения."
+        }
+      ]
     },
     {
+      "id": 78,
       "file": "web/src/components/OcrDownloadNotice.jsx",
       "line": 65,
+      "context": "Размер однократной загрузки OCR. formatMB() уже содержит единицу размера.",
       "source": "`up to ` + `, downloaded once from this site and kept in your browser.`",
-      "ru": "Объём загрузки — до {0}. Файлы скачиваются с этого сайта один раз и сохраняются в браузере.",
-      "slots": [
-        "0"
+      "source_excerpt": "<span style={S.monoReadout}>{uiText(\"up to \")}{uiText(formatMB(downloadBytes))}</span>{uiText(\", downloaded once from this site and kept in your browser.\")}</p>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Download size: up to {0}. Files download once from this site and stay in your browser.",
+          "ru": "Объём загрузки — до {0}. Файлы скачиваются с этого сайта один раз и сохраняются в браузере.",
+          "bindings": {
+            "0": {
+              "expression": "formatMB(downloadBytes)",
+              "example": "18 МБ"
+            }
+          },
+          "example_ru": "Объём загрузки — до 18 МБ. Файлы скачиваются с этого сайта один раз и сохраняются в браузере."
+        }
       ]
     },
     {
+      "id": 79,
       "file": "web/src/components/FirstTakeoffTour.jsx",
       "line": 94,
+      "context": "Завершение обучающего обмера. Клавиша ? остаётся оформленной как kbd.",
       "source": "`Same loop for every finish: pick a condition, trace, read the Report. Press ` + `any time for the shortcuts. Next, hand the same engine to an AI agent.`",
-      "ru": "Для каждого покрытия повторяйте те же действия — выберите вид работ, обведите контур и откройте ведомость. Клавиша ? показывает сочетания клавиш. Затем можно поручить подсчёт ИИ-агенту.",
-      "slots": []
+      "source_excerpt": "{uiText(\"Same loop for every finish: pick a condition, trace, read the Report. Press \")}<kbd>?</kbd> {uiText(\"any time for the shortcuts. Next, hand the same engine to an AI agent.\")}</p>",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "For every finish: select a condition, trace, then open Report. Press {0} for shortcuts at any time. Next you can give the same engine to an AI agent.",
+          "ru": "Для каждого покрытия повторяйте те же действия — выберите вид работ, обведите контур и откройте ведомость. Клавиша {0} показывает сочетания клавиш. Затем можно поручить подсчёт ИИ-агенту.",
+          "bindings": {
+            "0": {
+              "expression": "kbd literal ?",
+              "example": "?"
+            }
+          },
+          "example_ru": "Для каждого покрытия повторяйте те же действия — выберите вид работ, обведите контур и откройте ведомость. Клавиша ? показывает сочетания клавиш. Затем можно поручить подсчёт ИИ-агенту."
+        }
+      ]
     },
     {
+      "id": 80,
       "file": "web/src/components/ReferencePins.jsx",
       "line": 69,
+      "context": "Нижняя строка закреплённого фрагмента. Кнопка перехода и указатель изменения размера независимы.",
       "source": "`Open the source sheet and highlight the captured region` + `Source: ` + `Resize ↘`",
-      "ru": "Источник — {0}. Открыть исходный лист и подсветить область снимка.",
-      "slots": [
-        "0"
+      "source_excerpt": "<footer><button type=\"button\" disabled={!pin.src_sheet_id || !pin.src_rect} onClick={() => onSource(pin)} title={uiText(\"Open the source sheet and highlight the captured region\")}>{uiText(\"Source: \")}{uiText(pin.src_label || pin.src_sheet_id || \"Image\")}</button><span>{uiText(\"Resize ↘\")}</span></footer>",
+      "messages": [
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Source: {0}",
+          "ru": "Источник: {0}",
+          "bindings": {
+            "0": {
+              "expression": "pin.src_label || pin.src_sheet_id || localized Image fallback",
+              "example": "AF101"
+            }
+          },
+          "example_ru": "Источник: AF101"
+        },
+        {
+          "role": "tooltip",
+          "when": "always",
+          "en": "Open the source sheet and highlight the captured region",
+          "ru": "Открыть исходный лист и подсветить область снимка",
+          "bindings": {},
+          "example_ru": "Открыть исходный лист и подсветить область снимка"
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Resize ↘",
+          "ru": "Изменить размер ↘",
+          "bindings": {},
+          "example_ru": "Изменить размер ↘"
+        }
       ]
     },
     {
+      "id": 81,
       "file": "web/src/components/RfiPanel.jsx",
       "line": 62,
+      "context": "Пустой журнал запросов проектировщику.",
       "source": "`No RFIs yet — select a cloud, callout, or note in the markup panel and press ` + `Raise RFI`",
-      "ru": "Запросов пока нет. Выберите облако, выноску или примечание на панели пометок и нажмите «Создать запрос».",
-      "slots": []
-    },
-    {
-      "file": "web/src/components/SheetTree.jsx",
-      "line": 121,
-      "source": "`file` + `fully numbered yet; open ` + `to read ` + `sheet numbers. ` + `Search all sheet text`",
-      "ru": "Ещё не прочитаны номера листов в файлах: {0}. Откройте их для чтения номеров или нажмите «Поиск по тексту всех листов».",
-      "slots": [
-        "0"
+      "source_excerpt": "{uiText(\"No RFIs yet — select a cloud, callout, or note in the markup panel and press \")}<b>{uiText(\"Raise RFI\")}</b>.",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "No RFIs yet. Select a cloud, callout or note in Markups and press Raise RFI.",
+          "ru": "Запросов пока нет. Выберите облако, выноску или примечание на панели пометок и нажмите «Создать запрос».",
+          "bindings": {},
+          "example_ru": "Запросов пока нет. Выберите облако, выноску или примечание на панели пометок и нажмите «Создать запрос»."
+        }
       ]
     },
     {
-      "file": "web/src/components/StampPanel.jsx",
-      "line": 116,
-      "source": "`Click ` + `Place` + `on a stamp, then click the plan. Placed stamps are normal, editable markups.`",
-      "ru": "Нажмите «Разместить» у нужного штампа, затем укажите место на чертеже. Размещённые штампы можно редактировать как обычные пометки.",
-      "slots": []
+      "id": 82,
+      "file": "web/src/components/SheetTree.jsx",
+      "line": 121,
+      "context": "Примечание в дереве листов при поиске, если номера листов в части PDF ещё не прочитаны.",
+      "source": "`file` + `fully numbered yet; open ` + `to read ` + `sheet numbers. ` + `Search all sheet text`",
+      "source_excerpt": "{query.trim() && unread > 0 && <p className=\"calm-tree-note\">{uiText(unread)} {uiText(\"file\")}{uiText(unread === 1 ? \" isn't\" : \"s aren't\")} {uiText(\"fully numbered yet; open \")}{uiText(unread === 1 ? \"it\" : \"them\")} {uiText(\"to read \")}{uiText(unread === 1 ? \"its\" : \"their\")} {uiText(\"sheet numbers. \")}<button type=\"button\" onClick={onSearchAll}>{uiText(\"Search all sheet text\")}</button></p>}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Files whose sheet numbers are not fully read: {0}. Open them to read the numbers.",
+          "ru": "Файлов с ещё не прочитанными номерами листов: {0}. Откройте их, чтобы прочитать номера.",
+          "bindings": {
+            "0": {
+              "expression": "unread",
+              "example": "2"
+            }
+          },
+          "example_ru": "Файлов с ещё не прочитанными номерами листов: 2. Откройте их, чтобы прочитать номера."
+        },
+        {
+          "role": "label",
+          "when": "always",
+          "en": "Search all sheet text",
+          "ru": "Поиск по тексту всех листов",
+          "bindings": {},
+          "example_ru": "Поиск по тексту всех листов"
+        }
+      ],
+      "notes": "unread — количество файлов, не список имён. Действие кнопки описано отдельно от инструкции открыть файлы."
     },
     {
+      "id": 83,
+      "file": "web/src/components/StampPanel.jsx",
+      "line": 116,
+      "context": "Инструкция размещения штампа.",
+      "source": "`Click ` + `Place` + `on a stamp, then click the plan. Placed stamps are normal, editable markups.`",
+      "source_excerpt": ": <span>{uiText(\"Click \")}<b>{uiText(\"Place\")}</b> {uiText(\"on a stamp, then click the plan. Placed stamps are normal, editable markups.\")}</span>}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "Click Place on a stamp, then click the plan. Placed stamps are normal editable markups.",
+          "ru": "Нажмите «Разместить» у нужного штампа, затем укажите место на чертеже. Размещённые штампы можно редактировать как обычные пометки.",
+          "bindings": {},
+          "example_ru": "Нажмите «Разместить» у нужного штампа, затем укажите место на чертеже. Размещённые штампы можно редактировать как обычные пометки."
+        }
+      ]
+    },
+    {
+      "id": 84,
       "file": "web/src/components/UserGuide.jsx",
       "line": 202,
+      "context": "Конец встроенной краткой справки со ссылкой на полное руководство.",
       "source": "`This is the short version. The full manual covers conditions, markups and RFIs, revisions, the report and exports, the Agent panel, and driving OpenTakeoff from an AI agent over MCP —` + ` `",
-      "ru": "Это краткая версия. Полное руководство описывает виды работ, пометки и запросы проектировщику, редакции, ведомость и экспорт, панель агента и управление OpenTakeoff через MCP. Открыть полное руководство.",
-      "slots": []
+      "source_excerpt": "{uiText(\"This is the short version. The full manual covers conditions, markups and RFIs, revisions, the report and exports, the Agent panel, and driving OpenTakeoff from an AI agent over MCP —\")}{uiText(\" \")}",
+      "messages": [
+        {
+          "role": "text",
+          "when": "always",
+          "en": "This short guide is an introduction. The full manual covers conditions, markups and RFIs, revisions, reporting, exports, the Agent panel, and MCP control. {0}.",
+          "ru": "Это краткая справка. Полное руководство описывает виды работ, пометки и запросы проектировщику, редакции, ведомость и экспорт, панель агента и управление через MCP. {0}.",
+          "bindings": {
+            "0": {
+              "expression": "link GUIDE_URL with label read the complete guide",
+              "example": "Открыть полное руководство"
+            }
+          },
+          "example_ru": "Это краткая справка. Полное руководство описывает виды работ, пометки и запросы проектировщику, редакции, ведомость и экспорт, панель агента и управление через MCP. Открыть полное руководство."
+        }
+      ],
+      "notes": "Последняя фраза — действующая ссылка, не текст с обещанием открыть документ."
+    }
+  ],
+  "catalog_grammar_slots": [
+    {
+      "key": "{0} editable markup{1} selected.",
+      "omitted": {
+        "1": "found.length===1?'':'s'"
+      },
+      "source_locations": [
+        "web/src/components/AnnotationWorkbench.jsx:123"
+      ]
+    },
+    {
+      "key": "Highlighted {0} PDF text run{1}.",
+      "omitted": {
+        "1": "chosen.length===1?'':'s'"
+      },
+      "source_locations": [
+        "web/src/components/AnnotationWorkbench.jsx:133"
+      ]
+    },
+    {
+      "key": "{0} — {1} segment{2} on this sheet Stated role: {3}{4}{5}",
+      "omitted": {
+        "2": "l.seg_count === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/components/LayerPanel.jsx:49"
+      ]
+    },
+    {
+      "key": "{0} material row{1} no longer follow{2} the family",
+      "omitted": {
+        "1": "localCount(c) === 1 ? \"\" : \"s\"",
+        "2": "localCount(c) === 1 ? \"s\" : \"\""
+      },
+      "source_locations": [
+        "web/src/components/TakeoffsPanel.jsx:1046"
+      ]
+    },
+    {
+      "key": "{0} shared-floor pair{1} — another condition claims the same floor, or a room is traced twice. Activate the row to see each pair.",
+      "omitted": {
+        "1": "collisionsByCond.get(c.id).length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/components/TakeoffsPanel.jsx:1065"
+      ]
+    },
+    {
+      "key": "This stitch carries {0} takeoff{1}/markup{2} — delete or move them first.",
+      "omitted": {
+        "1": "n === 1 ? \"\" : \"s\"",
+        "2": "n === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:1475"
+      ]
+    },
+    {
+      "key": "Removed {0} PDF{1} from the plan set — takeoffs on them stay in the project and restore on re-add.",
+      "omitted": {
+        "1": "names.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:2049"
+      ]
+    },
+    {
+      "key": "Opened {0} sheet{1}{2}.",
+      "omitted": {
+        "1": "names.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:2139"
+      ]
+    },
+    {
+      "key": "Exported {0}.takeoff.json — {1} takeoff{2}, {3} condition{4}. The plan PDF isn't in it: to restore, open the same PDF, then Import takeoff.",
+      "omitted": {
+        "2": "n === 1 ? \"\" : \"s\"",
+        "4": "conditions.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:3366"
+      ]
+    },
+    {
+      "key": "Exported {0}.otk — {1} PDF{2} + the full takeoff ({3} shape{4}). Self-contained: open it on any machine, or hand it to another estimator.",
+      "omitted": {
+        "2": "sheets.length === 1 ? \"\" : \"s\"",
+        "4": "shapes.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:3411"
+      ]
+    },
+    {
+      "key": "Opened {0} — {1} PDF{2}, {3} takeoff{4}.{5}",
+      "omitted": {
+        "2": "pdfs.length === 1 ? \"\" : \"s\"",
+        "4": "n === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:3438"
+      ]
+    },
+    {
+      "key": "Applied profile{0} — {1} condition template{2}, {3} material{4}, {5} stamp{6}, {7} report template{8}{9}. Your previous setup downloaded as opentakeoff-profile-backup.otprofile.",
+      "omitted": {
+        "2": "n.templates === 1 ? \"\" : \"s\"",
+        "4": "n.materials === 1 ? \"\" : \"s\"",
+        "6": "n.stamps === 1 ? \"\" : \"s\"",
+        "8": "n.reportTemplates === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:3477"
+      ]
+    },
+    {
+      "key": "Align before tracing — {0} takeoff{1} already live on this stitch. Delete them (or a fresh stitch) to re-align.",
+      "omitted": {
+        "1": "n === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:4147"
+      ]
+    },
+    {
+      "key": "{0}: {1} SF from {2} face{3}{4}{5} — ⏎ creates, Esc discards.",
+      "omitted": {
+        "3": "r.faces === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:5899"
+      ]
+    },
+    {
+      "key": "Pasted {0} takeoff{1}{2} — drag to position.",
+      "omitted": {
+        "1": "made.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:6223"
+      ]
+    },
+    {
+      "key": "Imported {0} stamp{1}.",
+      "omitted": {
+        "1": "inStamps.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:6644"
+      ]
+    },
+    {
+      "key": "No takeoffs for {0} on the open sheet{1} yet.",
+      "omitted": {
+        "1": "groupKeys.length > 1 ? \"s\" : \"\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:6958"
+      ]
+    },
+    {
+      "key": "Accepted {0} agent proposal{1}.{2}",
+      "omitted": {
+        "1": "made.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:7539"
+      ]
+    },
+    {
+      "key": "Rule applied — {0} deduct{1} added (⌘Z undoes all). {2}.",
+      "omitted": {
+        "1": "made.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:7610"
+      ]
+    },
+    {
+      "key": "{0} transition{1} derived between {2} and {3} — {4} LF onto {5}, dashed until you Accept (⌘Z undoes the sweep).",
+      "omitted": {
+        "1": "made.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:7678"
+      ]
+    },
+    {
+      "key": "Accepted {0}{1} shape{2} — pencil is now ink (⌘Z undoes).",
+      "omitted": {
+        "2": "g.ids.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:7711"
+      ]
+    },
+    {
+      "key": "Rejected {0}{1} proposed shape{2} removed (⌘Z restores).",
+      "omitted": {
+        "2": "g.ids.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:7716"
+      ]
+    },
+    {
+      "key": "Created {0} condition{1} from the schedule.",
+      "omitted": {
+        "1": "made.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8248"
+      ]
+    },
+    {
+      "key": "Delete {0} and its {1} takeoff{2}? This can't be undone.",
+      "omitted": {
+        "2": "owned.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8270"
+      ]
+    },
+    {
+      "key": "Split {0} out of its family? {1} row{2} freeze at {3} current values, and edits to {4} stop reaching it. It keeps its name and still subtotals with the family.",
+      "omitted": {
+        "2": "n === 1 ? \"\" : \"s\"",
+        "3": "n === 1 ? \"its\" : \"their\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8411"
+      ]
+    },
+    {
+      "key": "Repriced {0} takeoff{1} that loaded without quantities.",
+      "omitted": {
+        "1": "healed.size === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8555"
+      ]
+    },
+    {
+      "key": "Waste set to {0}% on {1} condition{2}.",
+      "omitted": {
+        "2": "ids.size === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8782"
+      ]
+    },
+    {
+      "key": "Deleted {0} condition{1}{2}.",
+      "omitted": {
+        "1": "live.length === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8799"
+      ]
+    },
+    {
+      "key": "Update {0} linked line{1} across conditions to the library values? Overrides on those lines are replaced.",
+      "omitted": {
+        "1": "n === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8890"
+      ]
+    },
+    {
+      "key": "Updated {0} linked line{1} from the library.",
+      "omitted": {
+        "1": "n === 1 ? \"\" : \"s\""
+      },
+      "source_locations": [
+        "web/src/pages/TakeoffCanvas.jsx:8892"
+      ]
     }
   ]
 }

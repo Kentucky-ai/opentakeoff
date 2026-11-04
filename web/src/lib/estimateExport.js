@@ -44,7 +44,7 @@ export function estimateWorkbook({ est, projectName = "", companyName = "", clie
     ["Base bid", est.total],
   ];
   if (!est.complete) summary.push([], [`Not fully priced: ${est.unpriced.length} condition${est.unpriced.length === 1 ? "" : "s"} count at $0 for what is missing (see the Unpriced tab).`]);
-  if (language === 'ru' && !est.complete) summary[summary.length - 1] = [`Не все цены заданы. Позиций без полной стоимости: ${est.unpriced.length}. Неуказанные цены учитываются как нулевые; см. лист «Не заданные цены».`];
+  if (language === 'ru' && !est.complete) summary[summary.length - 1] = [`Не все цены заданы. Позиций без полной стоимости: ${est.unpriced.length}. Неуказанные цены учитываются как нулевые; см. лист «${localize("Unpriced")}».`];
   for (const w of est.warnings) summary.push([w]);
 
   const materials = [["Finish", "Material", "Qty", "Unit", "$/unit", "Cost $", "Status"]];

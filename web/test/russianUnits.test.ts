@@ -34,6 +34,7 @@ test('the ACTUAL estimate export localizes all three sheets, units and missing-p
  assert.deepEqual(wb.map(s=>s.name),['Смета','Материалы','Без цены']);
  const cells=wb.flatMap(s=>s.rows.flat()).filter(x=>typeof x==='string');
  for(const forbidden of ['Untitled project','Overhead','Profit','Sales tax','Adhesive','unpriced','SF','gal'])assert.ok(!cells.some(c=>c.includes(forbidden)),forbidden);
+ assert.ok(cells.some(c=>c.includes('см. лист «Без цены»')));
  assert.ok(cells.includes('л'));assert.ok(cells.includes('Клей'));assert.ok(cells.includes('м²'));
  const m=wb[1].rows.find(r=>r.includes('Клей'));assert.ok(m);close(m[2],2*K);
  }finally{setLanguage('en');}

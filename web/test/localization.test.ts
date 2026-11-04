@@ -69,12 +69,60 @@ test("human CSV headings localize without altering numeric values or quoted user
     assert.ok(output.includes('My floor, section 2;4,5'));
   } finally { setLanguage("en"); }
 });
-test("runtime catalog is identical to the editable JSON and keeps interpolation placeholders", () => {
+test("runtime catalog matches JSON and preserves every content placeholder", () => {
   const json = JSON.parse(readFileSync(new URL("../src/lib/i18n/ru.json", import.meta.url), "utf8"));
   assert.deepEqual(catalog, json);
+  const handoff = JSON.parse(readFileSync(new URL("../../docs/i18n/ru-sentences-598.json", import.meta.url), "utf8"));
+  const grammar = new Map(handoff.catalog_grammar_slots.map((entry: { key: string; omitted: Record<string, string> }) => [entry.key, entry.omitted]));
   for (const [key, text] of Object.entries(catalog)) {
-    const en = [...key.matchAll(/\{\d+\}/g)].map((m) => m[0]).sort();
+    const omitted = grammar.get(key) as Record<string, string> | undefined;
+    const en = [...key.matchAll(/\{(\d+)\}/g)].filter((m) => !omitted || !Object.prototype.hasOwnProperty.call(omitted, m[1])).map((m) => m[0]).sort();
     const ru = [...text.matchAll(/\{\d+\}/g)].map((m) => m[0]).sort();
     assert.deepEqual(ru, en, key);
   }
+  for (const [key, omitted] of grammar) {
+    assert.ok(Object.prototype.hasOwnProperty.call(catalog, key as string));
+    for (const [id, expression] of Object.entries(omitted as Record<string, string>)) {
+      assert.ok((key as string).includes(`{${id}}`));
+      // An omitted slot must be evidenced as an English grammar-only ternary.
+      const choices = /\?\s*(["'])([^"']*)\1\s*:\s*(["'])([^"']*)\3$/.exec(expression);
+      assert.ok(choices, expression);
+      assert.ok([choices[2], choices[4]].every((s) => ["", "s", "es", "its", "their"].includes(s)), expression);
+    }
+  }
+});
+
+test("Russian count messages omit English endings while keeping counts and proposal labels", () => {
+  try {
+    setLanguage("ru");
+    for (const count of [1, 2, 5, 21]) {
+      const suffix = count === 1 ? "" : "s";
+      assert.equal(localizeText(`Imported ${count} stamp${suffix}.`), `Импортировано штампов: ${count}`);
+      assert.equal(localizeText(`Highlighted ${count} PDF text run${suffix}.`), `Выделено фрагментов текста PDF: ${count}`);
+      assert.equal(localizeText(`Accepted “Batch A” — ${count} shape${suffix} — pencil is now ink (⌘Z undoes).`), `Приняты фигуры: “Batch A” — ${count}. Контуры сохранены (⌘Z — отменить).`);
+    }
+    assert.equal(localizeText("Price = cost ÷ (1 − 100%) — a margin must be under 100%."), "Цена = себестоимость ÷ (1 − 100%) — маржа должна быть меньше 100%.");
+    assert.equal(localizeText("Sheet point approved — seal placed (⌘Z undoes)."), "Точка на листе утверждена — отметка поставлена (⌘Z — отменить).");
+  } finally { setLanguage("en"); }
+});
+
+test("all 84 handoff locations have separate message roles, source bindings and rendered examples", () => {
+  const handoff = JSON.parse(readFileSync(new URL("../../docs/i18n/ru-sentences-598.json", import.meta.url), "utf8"));
+  assert.equal(handoff.sentences.length, 84);
+  assert.equal(new Set(handoff.sentences.map((s: { id: number }) => s.id)).size, 84);
+  const slots = (s: string) => [...new Set([...s.matchAll(/\{(\d+)\}/g)].map((m) => m[1]))].sort();
+  for (const site of handoff.sentences) {
+    // Source excerpts identify the reviewed head, not a frozen implementation.
+    assert.ok(site.source_excerpt.length > 0, `${site.file}:${site.line}`);
+    for (const message of site.messages) {
+      assert.deepEqual(slots(message.en), slots(message.ru), `${site.id}: ${message.en}`);
+      assert.deepEqual(Object.keys(message.bindings).sort(), slots(message.ru));
+      assert.equal(message.example_ru, message.ru.replace(/\{(\d+)\}/g, (_: string, id: string) => message.bindings[id].example));
+      assert.ok(!/\{\d+\}/.test(message.example_ru));
+    }
+  }
+  const refArea = handoff.sentences.find((s: { id: number }) => s.id === 4);
+  assert.ok(refArea.messages.some((m: { ru: string }) => m.ru.includes("периметр контура пола × высота")));
+  const geometry = handoff.sentences.find((s: { id: number }) => s.id === 72);
+  assert.equal(geometry.messages[0].example_ru, "Измерений по фильтру: 75 из 100");
 });
