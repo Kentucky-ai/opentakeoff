@@ -19,11 +19,9 @@
   letter-spacing:-.03em;
   white-space:nowrap;
 }
-.calm-brand span {
-  color:var(--cobalt);
-}
-.calm-brand .ot-scan-star {
-  margin:-2px var(--sp-2) 0 0;
+.calm-brand {
+  display:inline-flex;
+  align-items:center;
 }
 .calm-project {
   border-left:var(--rule-soft);

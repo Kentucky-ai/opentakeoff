@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { ScanStar } from "../brand/marks.jsx";
+import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import { keyText } from "../lib/keys.ts";
 import { SheetTree } from "./SheetTree.jsx";
 import "./workspaceChrome.css";
@@ -12,7 +12,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
   onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, helpMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
   return <>
     <header className="calm-header">
-      <strong className="calm-brand"><ScanStar size={15} reach={1.6} working={running} />open<span>takeoff</span></strong>
+      <strong className="calm-brand" title="OpenTakeoff"><OtLockup size={15} />{running && <ScanStar size={13} reach={1.6} working style={{ marginLeft: 8, color: "var(--cobalt)" }} title="The agent is working" />}</strong>
       <div className="calm-project" title={title}><span>{title || "Untitled workspace"}</span><small>Premium workspace</small></div>
       <div className="calm-header-actions">
         <button type="button" onClick={onOpen} title="Open plans"><Icon name="plus" size={16} /><span>Open</span></button>
