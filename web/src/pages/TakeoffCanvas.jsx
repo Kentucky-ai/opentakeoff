@@ -12104,6 +12104,45 @@ export default function TakeoffCanvas() {
            SplitLayout.jsx). This is what keeps primaryViewport's element type
            and tree position stable across every split toggle, so the primary
            canvas subtree never unmounts/remounts on enter/exit/flip/drag. */}
+        <SplitLayout
+          orientation={splitView?.orientation ?? "v"}
+          ratio={splitView?.ratio ?? 1}
+          onRatioChange={(r) => {
+            // hold the gesture window open for every drag tick, same idiom as
+            // wheel-zoom/panel-resize — the detail-tile resync effect depends
+            // on splitView (ratio changes its identity every tick) and would
+            // otherwise re-fire paintDetail worker requests on every pointermove;
+            // this defers the real resync to one shot on drag settle.
+            gestureUntilRef.current = performance.now() + GESTURE_MS;
+            setSplitView((s) => s && { ...s, ratio: r });
+          }}
+          onFlip={() => setSplitView((s) => s && { ...s, orientation: s.orientation === "v" ? "h" : "v" })}
+          onCollapse={() => setSplitView(null)}
+          primary={primaryViewport}
+          // Task 8: a persisted/live splitView that the device can't (or isn't
+          // overridden to) mount still renders the primary pane single —
+          // `reference` going null is what SplitLayout treats as "no split"
+          // (see its header comment); `splitView` itself stays in state
+          // untouched (the "Restore split" menu item above flips
+          // splitOverride, not this).
+          reference={splitView && splitMounted ? (
+            <ReferencePane refKey={effectiveRefKey} panelImg={refPanelImg} paintBase={paintReferenceBase} paintDetail={paintReferenceDetail} epoch={refEpoch}
+              shapes={refStackedShapes} conditions={conditions} condById={condById} darkMode={darkMode} patId={patId}
+              markups={refMarkups} rfis={rfis} noteQtyLabels={noteQtyLabels} sheetBaseLabel={sheetBaseLabel}
+              refSet={refSet} activeKey={rawRefKey} tabLabel={tabLabel} onSelectRef={selectRefTab} onRemoveRef={removeRefTab} onDropSheet={dropOntoReference} />
+          ) : null}
+        />
+        {/* Work and review panel — DOCKED right-rail sibling (reflows the canvas
+            like the Takeoffs panel). Its Agent tab is the chat window
+            (components/AgentChat): a connect state until the BYO-AI seam is
+            configured; otherwise the conversation, every tool step, and the
+            per-proposal accept/reject desk. */}
+        <WorkspacePanel dockSide={workspaceLayout ? workspaceArrangement.work : undefined} width={workspaceLayout ? workspaceArrangement.workWidth : undefined} dockHandle={workspaceDockHandle("work", "Work")} open={agentOpen} shapes={shapes} conditions={condById} selectedId={selectedId}
+          sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
+          scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
+          proposalCount={agentProposals.length} onLocate={locateWork}
+          onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
+          onClose={() => { setAgentOpen(false); workButtonRef.current?.focus(); }} onReport={() => setShowReport(true)}>
           <AgentChat
             configured={isAiConfigured()}
             modelLabel={aiConfig().model}
