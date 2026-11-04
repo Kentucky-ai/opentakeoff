@@ -8,12 +8,12 @@
     "url": "https://github.com/Kentucky-ai/opentakeoff",
     "source": "github"
   },
-  "version": "0.9.102",
+  "version": "0.9.103",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "opentakeoff-mcp",
-      "version": "0.9.102",
+      "version": "0.9.103",
       "transport": {
         "type": "stdio"
       }

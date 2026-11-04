@@ -13,7 +13,9 @@ import { OT_WATERMARK } from "./branding.js";
 import { lineLabel } from "./estimate.js";
 
 const MODE = { markup: "markup on cost", margin: "margin of price" };
-const STATUS = { priced: "priced", partial: "partly priced", unpriced: "unpriced" };
+// "optional": a bordered run's derived line nobody priced — it is carried in
+// the condition's main line, so it is never on the Unpriced tab (estimate.js).
+const STATUS = { priced: "priced", partial: "partly priced", unpriced: "unpriced", optional: "optional (in main line)" };
 const rate = (v) => (v === null || v === undefined ? "" : v);
 
 /**

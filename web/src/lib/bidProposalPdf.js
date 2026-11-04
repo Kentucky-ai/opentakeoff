@@ -125,7 +125,7 @@ export async function buildBidProposalPdf(model) {
     text(s.tag, col.item, 10, bold);
     textRight(qty(s.qty), col.qty, 10);
     text(s.unit, col.unit, 10, font, muted);
-    if (model.itemized) textRight(money(s.price), col.price, 10);
+    if (model.itemized) textRight(s.included ? "Included" : money(s.price), col.price, 10, font, s.included ? muted : undefined);
     lines.forEach((l, i) => { if (i) y -= 12; text(l, col.desc, 9.5); });
     y -= 16;
   }

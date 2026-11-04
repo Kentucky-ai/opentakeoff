@@ -41,6 +41,18 @@
 // empty item labor box means "no separate labor", not a missing number. Nothing
 // here ever invents a price.
 //
+// A bordered linear run is ONE measurement carrying two numbers: its LF and
+// the border SF derived from it (LF × the condition's thickness). Before
+// multi-line estimates it priced as one line, in the unit picked (SF unless
+// the estimator chose LF); the other number now shows as its own line too, but
+// that line is OPTIONAL — priceable, never "missing": an empty rate there means
+// "carried in the main line", so a project priced on its border SF reads fully
+// priced exactly as it always did. Only the derived kind is optional: the LF
+// line when every LF on the row is a bordered run (thickness is per
+// condition, so a row with border SF has no plain runs), the area line only
+// when its whole area is border (no room or wall SF rides in it). Status
+// "optional" = an optional line nobody priced; it is not in `unpriced`.
+//
 // Markups, in order: tax_pct on material (line material + item material)
 // → overhead_pct on cost (material + labor + tax) → profit on cost + overhead,
 // either as a markup (× (1 + p)) or as a margin (÷ (1 − p): 33.33% margin is
@@ -143,6 +155,21 @@ export function lineUnits(row, mainUnit) {
 }
 
 /**
+ * Whether a NON-main line is the derived half of a bordered linear run (see
+ * the header): shown and priceable, but an empty rate there is not missing.
+ * @param {any} row a conditionTotals row
+ * @param {string} unit the line's unit
+ * @param {boolean} main whether it is the condition's main line
+ * @returns {boolean}
+ */
+export function isOptionalLine(row, unit, main) {
+  if (main || !((row?.border_sf || 0) > 0)) return false;
+  if (unit === "LF") return true;
+  if (KIND[unit] === "area") return !((row.floor_sf || 0) > 0) && !((row.wall_sf || 0) > 0);
+  return false;
+}
+
+/**
  * Material (order) and labor (measured) quantities of one conditionTotals row
  * in a pricing unit.
  * @param {any} row
@@ -200,21 +227,22 @@ export function priceEstimate({ rows = [], conditions = [], settings = null }) {
           priced: price !== null || !(m.qty > 0),
         };
       });
+      const optional = isOptionalLine(row, unit, main);
       const missing = [];
-      if (materialRate === null) missing.push("material");
-      if (laborRate === null) missing.push("labor");
+      if (materialRate === null && !optional) missing.push("material");
+      if (laborRate === null && !optional) missing.push("labor");
       for (const m of materials) if (!m.priced) missing.push(`material row: ${m.name}`);
       const anyPrice = materialRate !== null || laborRate !== null || materials.some((m) => m.price !== null || m.labor_rate !== null);
       const materialsCost = round2(materials.reduce((n, m) => n + m.cost, 0));
       const materialsLabor = round2(materials.reduce((n, m) => n + m.labor_cost, 0));
       lines.push({
-        id: row.id, key: `${row.id}:${unit}`, finish_tag: row.finish_tag, unit, main,
+        id: row.id, key: `${row.id}:${unit}`, finish_tag: row.finish_tag, unit, main, optional,
         material_qty: qty.material, labor_qty: qty.labor,
         material_rate: materialRate, labor_rate: laborRate,
         material_cost: materialCost, labor_cost: laborCost,
         materials, materials_cost: materialsCost, materials_labor_cost: materialsLabor,
         total: round2(materialCost + laborCost + materialsCost + materialsLabor),
-        status: !missing.length ? "priced" : anyPrice ? "partial" : "unpriced",
+        status: missing.length ? (anyPrice ? "partial" : "unpriced") : optional && !anyPrice ? "optional" : "priced",
         missing,
       });
     });
@@ -238,7 +266,7 @@ export function priceEstimate({ rows = [], conditions = [], settings = null }) {
   } else {
     profit = round2(base * st.profit_pct / 100);
   }
-  const unpriced = lines.filter((l) => l.status !== "priced").map((l) => ({ id: l.id, key: l.key, finish_tag: l.finish_tag, unit: l.unit, status: l.status, missing: l.missing }));
+  const unpriced = lines.filter((l) => l.missing.length > 0).map((l) => ({ id: l.id, key: l.key, finish_tag: l.finish_tag, unit: l.unit, status: l.status, missing: l.missing }));
   return {
     settings: st, lines,
     material, labor, tax, cost, overhead, profit,

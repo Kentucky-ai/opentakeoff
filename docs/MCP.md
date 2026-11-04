@@ -416,12 +416,18 @@ opening allowances refuses clipping because those openings have no locations.
 The canvas's **Estimate** panel and **Proposal** dialog have agent verbs over the same engine
 (`web/src/lib/estimate.js`):
 
-1. `set_pricing {condition, unit, material, labor, materials:[{name, price}]}` for each
+1. `set_pricing {condition, unit, line, material, labor, materials:[{name, price}]}` for each
    condition, with the estimator's prices. Material is priced on the order quantity (waste
-   applied), labor on the measured quantity, supplies per package.
+   applied), labor on the measured quantity, supplies per package. A condition has one line
+   per quantity kind it carries (a room, a run and two boxes are an SF, an LF and an EA line);
+   `line` picks which one material and labor price: leave it out for the main (first) line,
+   pass `LF`, `EA` or `SF` (a second area line) for another, one call per line. `unit` still
+   picks the main line's unit (0.9.103). A bordered linear run's derived line (its LF when the
+   border SF is the main line) is optional: priceable, but empty it is carried in the main line.
 2. `set_estimate_settings {tax_pct, overhead_pct, profit_pct, profit_mode, proposal, client}`
    for the project's markups, proposal text and client.
-3. `estimate_summary` to read the result. `complete: false` and `unpriced` name every hole.
+3. `estimate_summary` to read the result: every line with its unit, quantities, rates,
+   `main`, `optional` and `missing`. `complete: false` and `unpriced` name every hole.
 4. `export_estimate` (Excel) and `export_proposal {company}` (PDF, OpenTakeoff watermark on
    every page) to write the files beside the plan.
 

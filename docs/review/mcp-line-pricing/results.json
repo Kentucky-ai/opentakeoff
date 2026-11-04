@@ -1,0 +1,290 @@
+{
+  "passed": 16,
+  "total": 16,
+  "checks": [
+    {
+      "name": "set_pricing advertises `line`; its description no longer says first line only",
+      "ok": true
+    },
+    {
+      "name": "main-line call unchanged: SY rates on the main line, reply names the other unpriced lines",
+      "ok": true,
+      "detail": {
+        "line": [
+          "SY",
+          true,
+          false,
+          105,
+          100,
+          30,
+          6,
+          "priced",
+          []
+        ],
+        "note": "CPT-1's other lines still need prices: LF (material, labor); EA (material, labor) — set_pricing with line \"LF\"."
+      }
+    },
+    {
+      "name": "line LF / EA write pricing.by_unit",
+      "ok": true,
+      "detail": {
+        "unit": "SY",
+        "material": 30,
+        "labor": 6,
+        "by_unit": {
+          "LF": {
+            "material": 2,
+            "labor": 1.5
+          },
+          "EA": {
+            "material": 40,
+            "labor": 25
+          }
+        }
+      }
+    },
+    {
+      "name": "estimate_summary: every line with unit, quantities, rates, status, missing; complete",
+      "ok": true,
+      "detail": [
+        [
+          "SY",
+          true,
+          false,
+          105,
+          100,
+          30,
+          6,
+          "priced",
+          []
+        ],
+        [
+          "LF",
+          false,
+          false,
+          84,
+          80,
+          2,
+          1.5,
+          "priced",
+          []
+        ],
+        [
+          "EA",
+          false,
+          false,
+          2,
+          2,
+          40,
+          25,
+          "priced",
+          []
+        ]
+      ]
+    },
+    {
+      "name": "total equals the hand math",
+      "ok": true,
+      "detail": {
+        "total": 4168,
+        "expected": 4168
+      }
+    },
+    {
+      "name": "line SF on an SY main area line is refused (it would misprice the main line)",
+      "ok": true,
+      "detail": "{\"error\":\"CPT-1's area line is its main line, priced in SY. Pass line \\\"SY\\\" (or leave line out) to price it, or unit \\\"SF\\\" to switch the main line's unit.\"}"
+    },
+    {
+      "name": "old call: unit LF still switches the MAIN line's unit (by_unit untouched)",
+      "ok": true,
+      "detail": [
+        "LF",
+        true,
+        false,
+        84,
+        80,
+        2,
+        6,
+        "priced",
+        []
+      ]
+    },
+    {
+      "name": "bordered BR-1 priced on its SF: SF priced, LF optional, nothing unpriced, complete",
+      "ok": true,
+      "detail": {
+        "lines": [
+          [
+            "SF",
+            true,
+            false,
+            40,
+            40,
+            5,
+            3,
+            "priced",
+            []
+          ],
+          [
+            "LF",
+            false,
+            true,
+            120,
+            120,
+            null,
+            null,
+            "optional",
+            []
+          ]
+        ],
+        "note": "Every measured line is priced. 1 optional line (BR-1 LF) — a bordered run's derived quantity, carried in its main line's price — needs no price; set_pricing with line prices one only when the estimator gives it a separate rate."
+      }
+    },
+    {
+      "name": "BR-1 totals 40 SF × $5 + 40 SF × $3 = $320, as one line did before #597",
+      "ok": true,
+      "detail": [
+        320,
+        0
+      ]
+    },
+    {
+      "name": "export_estimate: no Unpriced tab",
+      "ok": true,
+      "detail": [
+        "Estimate",
+        "Materials"
+      ]
+    },
+    {
+      "name": "export_proposal: complete, nothing unpriced",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "proposal page rendered to proposal-included.png",
+      "ok": true
+    },
+    {
+      "name": "parity: BR-1 4 in border, priced on SF, 10% waste — same total and complete as pre-#597",
+      "ok": true,
+      "detail": {
+        "case": "BR-1 4 in border, priced on SF, 10% waste",
+        "pre597": {
+          "total": 340,
+          "complete": true,
+          "lines": [
+            "SF:priced"
+          ]
+        },
+        "main": {
+          "total": 340,
+          "complete": false,
+          "lines": [
+            "SF:priced",
+            "LF:unpriced"
+          ]
+        },
+        "branch": {
+          "total": 340,
+          "complete": true,
+          "lines": [
+            "SF:priced",
+            "LF:optional"
+          ]
+        }
+      }
+    },
+    {
+      "name": "parity: BR-2 6 in border, SY picked — same total and complete as pre-#597",
+      "ok": true,
+      "detail": {
+        "case": "BR-2 6 in border, SY picked",
+        "pre597": {
+          "total": 627.09,
+          "complete": true,
+          "lines": [
+            "SY:priced"
+          ]
+        },
+        "main": {
+          "total": 627.09,
+          "complete": false,
+          "lines": [
+            "SY:priced",
+            "LF:unpriced"
+          ]
+        },
+        "branch": {
+          "total": 627.09,
+          "complete": true,
+          "lines": [
+            "SY:priced",
+            "LF:optional"
+          ]
+        }
+      }
+    },
+    {
+      "name": "parity: RB-4 4 in run, LF picked — same total and complete as pre-#597",
+      "ok": true,
+      "detail": {
+        "case": "RB-4 4 in run, LF picked",
+        "pre597": {
+          "total": 1197.12,
+          "complete": true,
+          "lines": [
+            "LF:priced"
+          ]
+        },
+        "main": {
+          "total": 1197.12,
+          "complete": false,
+          "lines": [
+            "LF:priced",
+            "SF:unpriced"
+          ]
+        },
+        "branch": {
+          "total": 1197.12,
+          "complete": true,
+          "lines": [
+            "LF:priced",
+            "SF:optional"
+          ]
+        }
+      }
+    },
+    {
+      "name": "parity: BR-3 12 in border, labor only (material $0) — same total and complete as pre-#597",
+      "ok": true,
+      "detail": {
+        "case": "BR-3 12 in border, labor only (material $0)",
+        "pre597": {
+          "total": 264,
+          "complete": true,
+          "lines": [
+            "SF:priced"
+          ]
+        },
+        "main": {
+          "total": 264,
+          "complete": false,
+          "lines": [
+            "SF:priced",
+            "LF:unpriced"
+          ]
+        },
+        "branch": {
+          "total": 264,
+          "complete": true,
+          "lines": [
+            "SF:priced",
+            "LF:optional"
+          ]
+        }
+      }
+    }
+  ]
+}
