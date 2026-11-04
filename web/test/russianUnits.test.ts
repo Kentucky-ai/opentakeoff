@@ -31,7 +31,7 @@ test('the ACTUAL estimate export localizes all three sheets, units and missing-p
  setLanguage('ru');try{
  const est=estimateForDisplay({lines:[{id:'c',finish_tag:'CPT-1',status:'unpriced',unit:'SF',material_qty:337.74,labor_qty:321.66,material_rate:null,labor_rate:null,material_cost:0,labor_cost:0,materials_cost:0,total:0,materials:[{name:'Adhesive',unit:'gal',qty:2,price:null,cost:0,priced:false}]}],settings:{tax_pct:0,overhead_pct:0,profit_pct:0,profit_mode:'markup'},material:0,labor:0,tax:0,cost:0,overhead:0,profit:0,total:0,complete:false,warnings:[],unpriced:[{finish_tag:'CPT-1',status:'unpriced',missing:['material','labor','material row: Adhesive']}]},true,'l');
  const wb=estimateWorkbook({est,localize:localizeText,language:'ru'});
- assert.deepEqual(wb.map(s=>s.name),['Смета','Материалы','Не заданные цены']);
+ assert.deepEqual(wb.map(s=>s.name),['Смета','Материалы','Без цены']);
  const cells=wb.flatMap(s=>s.rows.flat()).filter(x=>typeof x==='string');
  for(const forbidden of ['Untitled project','Overhead','Profit','Sales tax','Adhesive','unpriced','SF','gal'])assert.ok(!cells.some(c=>c.includes(forbidden)),forbidden);
  assert.ok(cells.includes('л'));assert.ok(cells.includes('Клей'));assert.ok(cells.includes('м²'));

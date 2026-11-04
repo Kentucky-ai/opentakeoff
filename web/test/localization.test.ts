@@ -64,9 +64,9 @@ test("human CSV headings localize without altering numeric values or quoted user
     assert.equal(localizeCsv(csv), csv);
     setLanguage("ru");
     const output = localizeCsv(csv);
-    assert.ok(output.startsWith('Вид работ,"Пол, м²"'));
-    assert.ok(output.includes('Ковровое покрытие 1 (CPT-1),12.345'));
-    assert.ok(output.includes('"My floor, section 2",4.5'));
+    assert.ok(output.startsWith('\uFEFFВид работ;Пол, м²'));
+    assert.ok(output.includes('Ковровое покрытие 1 (CPT-1);12,345'));
+    assert.ok(output.includes('My floor, section 2;4,5'));
   } finally { setLanguage("en"); }
 });
 test("runtime catalog is identical to the editable JSON and keeps interpolation placeholders", () => {

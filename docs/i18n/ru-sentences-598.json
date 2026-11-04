@@ -1,0 +1,730 @@
+{
+  "note": "Translation handoff for PR #598. Source locations refer to the reviewed PR head. Each record replaces one listed composition. Slots take display-ready values, including units where indicated. Controls, links and formatting remain separate UI elements. Engineering wires these templates after rebase. For conditional text use a full alternative, never English plural suffixes.",
+  "sentences": [
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10010,
+      "source": "`Make this a rule for all ` + `rooms? Excludes enclosed regions under ` + `SF`",
+      "ru": "Применить это правило ко всем помещениям с маркой {0}? Замкнутые области площадью менее {1} {2} будут исключены.",
+      "slots": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10018,
+      "source": "`matching region` + `staged as dashed deducts — `",
+      "ru": "Подготовлено областей для вычета: {0}. Они показаны пунктиром. Правило — {1}.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10106,
+      "source": "`Set a height for ` + `— H in the condition editor`",
+      "ru": "Задайте высоту для {0} в поле H свойств вида работ.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10217,
+      "source": "`Display only — floor-area perimeters × this condition's height (not committed)` + `vert (perim × H)`",
+      "ru": "{0} — площадь стен по периметру пола × высота. Справочное значение, в измерениях не сохраняется.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10231,
+      "source": "`plan + ` + `vert`",
+      "ru": "= {0} в плане + {1} по вертикали",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10239,
+      "source": "`shapes on ` + `· zoom `",
+      "ru": "Измерений: {0}, листов: {1}, увеличение: {2}%.",
+      "slots": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10770,
+      "source": "`Real length:` + ` `",
+      "ru": "Фактическая длина ({0})",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10786,
+      "source": "`Check on one sheet — those two clicks landed on different sheets. ` + `Reset`",
+      "ru": "Обе точки должны находиться на одном листе. Нажмите «Сбросить» и укажите их заново.",
+      "slots": []
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10788,
+      "source": "`No scale set for ` + `— pick a standard scale or calibrate first, then check it here.`",
+      "ru": "Для листа {0} масштаб не задан. Сначала выберите стандартный масштаб или задайте его по известному размеру, затем проверьте здесь.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10790,
+      "source": "`Those two clicks landed on the same point — click the two ` + `ends` + `of a printed dimension.`",
+      "ru": "Обе точки совпали. Укажите два конца размерной линии на чертеже.",
+      "slots": []
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10793,
+      "source": "`measures ` + `at ` + `· drawing says` + ` `",
+      "ru": "Измерено {0} при масштабе {1}. Размер на чертеже ({2})",
+      "slots": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10917,
+      "source": "`Open ` + `Create annotation` + `in the drawing toolbar to choose a cloud, highlight, callout, text note, or dimension, then click the plan to annotate it. ` + `🖼 Image` + `marquees a region (two clicks) — or use ` + `Upload image…` + `in Captures below.`",
+      "ru": "На панели построения откройте «Создать пометку», выберите облако, выделение, выноску, текст или размер, затем укажите место на чертеже. Кнопка «Изображение» позволяет выделить область двумя щелчками. Также можно нажать «Загрузить изображение…» в разделе «Снимки» ниже.",
+      "slots": []
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10920,
+      "source": "`No markups ` + `yet.` + `Images now live in ` + `Captures` + `below.`",
+      "ru": "На выбранных листах пока нет пометок. Изображения находятся в разделе «Снимки» ниже.",
+      "slots": []
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 10955,
+      "source": "`Auto (linkage color)` + `auto`",
+      "ru": "Авто — использовать цвет связанного вида работ",
+      "slots": []
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 11494,
+      "source": "`The seed is only ` + `segment(s) — likely a FRAGMENT, and fragments match everywhere (every square corner reads as one). Marquee the whole symbol.`",
+      "ru": "В образце всего {0} сегментов. Вероятно, выделен лишь фрагмент символа. Такие фрагменты встречаются повсюду — например, любой прямой угол даст совпадение. Выделите символ целиком.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 11501,
+      "source": "`of ` + `matched will commit`",
+      "ru": "Будут сохранены совпадения: {0} из {1}. {2}",
+      "slots": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 11522,
+      "source": "`question(s)` + `— ↵ accept · X dismiss · → next` + `— all answered`",
+      "ru": "Вопросов: {0}. ↵ — принять, X — отклонить, → — следующий.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 11536,
+      "source": "`Count the seed` + `— drawing says `",
+      "ru": "Учесть образец с маркой {0}, указанной на чертеже",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/pages/TakeoffCanvas.jsx",
+      "line": 11541,
+      "source": "`Commit ` + `as `",
+      "ru": "Сохранить {0} в виде работ {1}",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1121,
+      "source": "`syncing through your ` + `Microsoft 365 library`",
+      "ru": "Синхронизация через вашу библиотеку Microsoft 365",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1174,
+      "source": "`A real medical-center ` + `floor finish plan` + `— its scale is read off the sheet; pick a finish and trace a flooring takeoff in seconds.`",
+      "ru": "Настоящий план отделки полов медицинского центра. Масштаб определяется по листу. Выберите покрытие и обведите помещение, чтобы рассчитать объём работ.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1177,
+      "source": "`Working with Claude, Codex or Cursor?` + ` `",
+      "ru": "Работаете с Claude, Codex или Cursor? Подключите ИИ-агента.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1184,
+      "source": "`AGPL-3.0 open source · an open project by` + ` `",
+      "ru": "Открытый проект Kentucky AI под лицензией AGPL-3.0",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1222,
+      "source": "`Open ` + `as tabs`",
+      "ru": "Открыть выбранные листы во вкладках ({0})",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1226,
+      "source": "`Open ` + `side-by-side`",
+      "ru": "Открыть выбранные листы рядом ({0})",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1231,
+      "source": "`Stitch ` + `into one surface`",
+      "ru": "Сшить выбранные листы в одну рабочую поверхность ({0})",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1292,
+      "source": "`⇄ 365 library` + ` `",
+      "ru": "Синхронизация с библиотекой Microsoft 365. Отключение синхронизации сохранит локальную работу в этом браузере.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1319,
+      "source": "`Remove ` + `selected`",
+      "ru": "Удалить выбранные файлы ({0})",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1327,
+      "source": "`Remove ` + `PDF` + `from the plan set?`",
+      "ru": "Удалить PDF из комплекта чертежей: {0}?",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/PlanNavigator.jsx",
+      "line": 1368,
+      "source": "`This PDF has ` + `— they're preserved and restore if you re-add the same file.`",
+      "ru": "В PDF есть измерения: {0}. Они сохранятся в проекте и восстановятся при повторном добавлении этого файла.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 58,
+      "source": "`1. Download ` + `opentakeoff-mcp.mcpb` + `— the link always points at the newest release.`",
+      "ru": "1. Скачайте {0}. Ссылка всегда ведёт на последнюю версию.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 88,
+      "source": "`Any app that runs local (“stdio”) MCP servers takes the same entry. In Cursor it goes in ` + `(every project) or ` + `(one project):`",
+      "ru": "В приложениях с поддержкой локальных MCP-серверов (stdio) используется одна и та же запись. Для Cursor добавьте её в {0} для всех проектов или в {1} для одного проекта.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 146,
+      "source": "`Needs ` + `Node 20+` + `— check with `",
+      "ru": "Требуется Node 20 или новее. Проверить версию можно командой {0}.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 155,
+      "source": "`Download the sample plan` + ` `",
+      "ru": "Скачать образец чертежа",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 156,
+      "source": "`— the same VA finish plan the canvas demo opens.` + ` `",
+      "ru": "Это тот же план отделки медицинского центра VA, который открывается в демонстрационном проекте.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 158,
+      "source": "`Then ask Claude, with the file's full path (on a Mac: right-click it in Finder, hold Option, ` + `Copy … as Pathname`",
+      "ru": "Затем обратитесь к Claude и укажите полный путь к файлу. На Mac щёлкните файл правой кнопкой в Finder, удерживая Option, и выберите «Копировать … как путь».",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 162,
+      "source": "`You should hear back about two sheets: ` + `AF101` + `at ` + `, and ` + `AF600` + `(the finish schedule) with no scale found. From there, ask it to set the scale and take off a room.`",
+      "ru": "В ответе должны быть два листа — AF101 с масштабом {0} и AF600 с ведомостью отделки, для которого масштаб не найден. Затем попросите агента задать масштаб и обмерить помещение.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ConnectAI.jsx",
+      "line": 167,
+      "source": "`Step by step with troubleshooting: ` + `the connect guide` + `. How an agent runs a full takeoff: ` + `the agent manual`",
+      "ru": "Порядок подключения и устранение неполадок описаны в руководстве по подключению. Полный процесс подсчёта объёмов описан в руководстве для агента.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/ReportPanel.jsx",
+      "line": 570,
+      "source": "`Import a design-token file (e.g. a Claude Design ` + `) to reskin this report — palette and fonts only. Your company identity stays where it is.`",
+      "ru": "Импортируйте файл дизайн-токенов, например {0} из Claude Design, чтобы изменить палитру и шрифты ведомости. Реквизиты организации сохранятся.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ReportPanel.jsx",
+      "line": 819,
+      "source": "`w/Waste` + `= measured quantity × waste %. Waste is set per condition in the canvas. Wall ` + `comes from Surface-Area traces (run × height); Border ` + `from Linear runs with a thickness.`",
+      "ru": "Объём с запасом = измеренный объём × (1 + запас / 100). Запас задаётся для каждого вида работ. Площадь стен ({0}) рассчитывается как длина × высота, площадь полос ({0}) — как длина × ширина.",
+      "slots": [
+        "0",
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ReportPanel.jsx",
+      "line": 821,
+      "source": "`Perim ` + `(ref) sums floor-trace perimeters — includes door openings and shared walls; reference only, never totaled or waste-adjusted.`",
+      "ru": "Периметр ({0}, справочно) — сумма периметров контуров пола с дверными проёмами и общими стенами. Он приводится для справки, в итоговый объём и расчёт запаса не входит.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ReportPanel.jsx",
+      "line": 929,
+      "source": "`By finish:` + ` `",
+      "ru": "По видам работ — {0}",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ReportPanel.jsx",
+      "line": 1105,
+      "source": "`Help grow a shared, flooring-tuned open model. We send only the ` + `derived takeoff`",
+      "ru": "Помогите развивать открытую модель для напольных покрытий. Мы передаём только производные данные подсчёта объёмов.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/ReportPanel.jsx",
+      "line": 1115,
+      "source": "`This build has no contribution endpoint configured, so nothing can be sent. (Set ` + `at build time, or` + `in your browser.)`",
+      "ru": "В этой сборке адрес для отправки данных не настроен. Для настройки задайте {0} при сборке или {1} в браузере.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/TakeoffsPanel.jsx",
+      "line": 612,
+      "source": "`Max usable length of one physical roll — 0 = continuous (cut off one roll). When set, cuts pack across rolls and the diagram marks the roll breaks.` + `max`",
+      "ru": "Макс. длина рулона ({0}). Ноль означает отсутствие ограничения — раскрой из одного рулона. При заданной длине отрезы распределяются по рулонам, а границы рулонов отмечаются на схеме.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/TakeoffsPanel.jsx",
+      "line": 703,
+      "source": "`Derive onto ` + `— where these two meet.`",
+      "ru": "Рассчитать переходный профиль на стыке двух покрытий и отнести его к виду работ {0}.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/TakeoffsPanel.jsx",
+      "line": 735,
+      "source": "`LF across ` + `″ of wall`",
+      "ru": "Длина вдоль стены: {0} пог. фут. Ширина разделяющей стены: {1} дюйм.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/TakeoffsPanel.jsx",
+      "line": 811,
+      "source": "`of ` + `hidden on the plan — totals unchanged`",
+      "ru": "Скрыто видов работ на чертеже: {0} из {1}. Итоговые объёмы сохраняются.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/TakeoffsPanel.jsx",
+      "line": 1318,
+      "source": "`+ save ` + `to the library`",
+      "ru": "Сохранить {0} в библиотеку",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/TakeoffsPanel.jsx",
+      "line": 1374,
+      "source": "`Figured seam length from the roll layout — 0 until the condition carries a roll setup` + `seam LF`",
+      "ru": "Длина швов ({0}) рассчитывается по раскладке рулонного материала. Пока параметры рулона не заданы, значение равно нулю.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/AnnotationWorkbench.jsx",
+      "line": 266,
+      "source": "`Weight` + `Annotation line weight` + `pt`",
+      "ru": "Толщина линии пометки ({0} пт)",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/AnnotationWorkbench.jsx",
+      "line": 269,
+      "source": "`Width` + `Marker width` + `pt` + `Opacity` + `Highlight opacity`",
+      "ru": "Ширина маркера ({0} пт), непрозрачность ({1}%)",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/AnnotationWorkbench.jsx",
+      "line": 270,
+      "source": "`Text` + `Note text size` + `pt`",
+      "ru": "Размер текста ({0} пт)",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/AnnotationWorkbench.jsx",
+      "line": 277,
+      "source": "`of ` + `selected` + `Check the list or click numbered results on the sheet.` + `Select matches` + `Clear selection`",
+      "ru": "Выбрано совпадений: {0} из {1}. Отметьте их в списке или нажмите пронумерованные результаты на листе.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/ImportSchedulePanel.jsx",
+      "line": 241,
+      "source": "`Category guessed from the row's own words — no printed heading names one` + `from description`",
+      "ru": "Категория определена по описанию строки — отдельного заголовка категории в ведомости нет.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/ImportSchedulePanel.jsx",
+      "line": 250,
+      "source": "`read as ` + `— check the code against the schedule.`",
+      "ru": "Распознано как {0}. Сверьте код с ведомостью.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/ImportSchedulePanel.jsx",
+      "line": 328,
+      "source": "`Create ` + `condition`",
+      "ru": "Создать видов работ: {0}",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/LayerPanel.jsx",
+      "line": 62,
+      "source": "`Wall — treat this layer's ink as hard boundary (a fill stops at it)` + `wall`",
+      "ru": "Стена — линии слоя ограничивают заливку.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/LayerPanel.jsx",
+      "line": 64,
+      "source": "`Off — ignore this layer's ink entirely (a fill passes through it)` + `off`",
+      "ru": "Выкл. — линии слоя не ограничивают заливку.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/LayerPanel.jsx",
+      "line": 84,
+      "source": "`What the drawing states each ink is — feeds One-Click and room detection on these sheets. ` + `Wall` + `stops a fill, ` + `Off` + `is passed through, ` + `Auto` + `follows the stated role. The sheet itself draws unchanged.`",
+      "ru": "Назначение линий в чертеже используется для заливки одним щелчком и распознавания помещений. В режиме «Стена» заливка останавливается на линиях слоя, в режиме «Выкл.» проходит сквозь них, а в режиме «Авто» учитывает назначение слоя в чертеже. Внешний вид листа сохраняется.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/RevisionsPanel.jsx",
+      "line": 176,
+      "source": "`Diff this revision against the live takeoff` + `Compare with current` + ` `",
+      "ru": "Сравнить эту редакцию с текущими измерениями",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/RevisionsPanel.jsx",
+      "line": 223,
+      "source": "`ordered ` + ` `",
+      "ru": "К закупке ({0}): {1} → {2}. Изменение: {3}.",
+      "slots": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "file": "web/src/components/RevisionsPanel.jsx",
+      "line": 224,
+      "source": "`condition` + `moved`",
+      "ru": "Изменено видов работ: {0}.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/RollPanel.jsx",
+      "line": 118,
+      "source": "`Draw the figured cuts over the plan` + `cuts`",
+      "ru": "Показать расчётный раскрой на чертеже",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/RollPanel.jsx",
+      "line": 119,
+      "source": "`Edit cuts on the plan — drag a cut along its lane, pull its ends to resize; double-click resets a cut to the figured layout` + `edit`",
+      "ru": "Редактировать раскрой на чертеже — перетаскивайте отрезы вдоль полос и меняйте длину за концы. Двойной щелчок возвращает расчётную раскладку.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/RollPanel.jsx",
+      "line": 137,
+      "source": "`order ` + `cut`",
+      "ru": "К закупке: {0}. Количество: {1} {2}. Отрезов: {3}. {4}",
+      "slots": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    },
+    {
+      "file": "web/src/components/WorkspaceLayout.jsx",
+      "line": 76,
+      "source": "`Work panel width ` + `Work panel width` + `px`",
+      "ru": "Ширина панели работы и проверки ({0} пикс.)",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/WorkspaceLayout.jsx",
+      "line": 77,
+      "source": "`Sheets panel width ` + `Sheets panel width` + `px`",
+      "ru": "Ширина панели листов ({0} пикс.)",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/WorkspaceLayout.jsx",
+      "line": 80,
+      "source": "`Saved arrangements` + `Arrangement name` + `e.g. My estimating desk` + `Save current`",
+      "ru": "Сохранить текущее расположение панелей под именем {0}",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/WorkspacePanel.jsx",
+      "line": 63,
+      "source": "`Show more · ` + `remaining`",
+      "ru": "Показать ещё. Осталось: {0}.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/WorkspacePanel.jsx",
+      "line": 72,
+      "source": "`Geometry` + `vertices · ` + `holes`",
+      "ru": "Геометрия — вершин: {0}, внутренних вырезов: {1}.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/WorkspacePanel.jsx",
+      "line": 79,
+      "source": "`of ` + `measurements` + `Open report →`",
+      "ru": "Показано измерений: {0} из {1}. Открыть ведомость.",
+      "slots": [
+        "0",
+        "1"
+      ]
+    },
+    {
+      "file": "web/src/components/AiSettings.jsx",
+      "line": 23,
+      "source": "`The in-canvas takeoff agent runs on a vision model ` + `you` + `provide. Point it at an OpenAI-style or Anthropic-style endpoint: a hosted API, or a local runtime on your own machine (most local runtimes speak the OpenAI style and need no key).`",
+      "ru": "Агент обмеров использует модель с компьютерным зрением, которую подключаете вы. Укажите адрес API с поддержкой формата OpenAI или Anthropic — облачного сервиса либо локальной среды на вашем компьютере. Большинство локальных сред поддерживают формат OpenAI и работают без ключа.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/AiSettings.jsx",
+      "line": 49,
+      "source": "`The key is stored ` + `in this browser` + `(localStorage) — anyone with access to this browser profile can read it, so use a key you can revoke. Leave everything blank and the AI features stay out of your way entirely. The endpoint must allow requests from a browser (CORS); local runtimes generally allow localhost.`",
+      "ru": "Ключ хранится в этом браузере (localStorage). Его может прочитать любой, у кого есть доступ к профилю браузера, поэтому используйте ключ, который можно отозвать. Если поля пусты, функции ИИ отключены. Адрес API должен разрешать запросы из браузера (CORS). Локальные среды обычно разрешают запросы с localhost.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/BidProposalDialog.jsx",
+      "line": 75,
+      "source": "`From ` + `your company`",
+      "ru": "Исполнитель — {0}",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/BidProposalDialog.jsx",
+      "line": 81,
+      "source": "`The estimate isn't fully priced.` + `The base bid counts ` + `at $0 for what is missing. You can still download.`",
+      "ru": "В смете заданы не все цены. Для позиций {0} неуказанные цены учтены как нулевые. Предложение можно скачать.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/OcrDownloadNotice.jsx",
+      "line": 64,
+      "source": "`Reading text from an image needs two recognition models, a character list and their runtime:` + ` `",
+      "ru": "Для распознавания текста на изображении нужны две модели, список символов и среда выполнения.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/OcrDownloadNotice.jsx",
+      "line": 65,
+      "source": "`up to ` + `, downloaded once from this site and kept in your browser.`",
+      "ru": "Объём загрузки — до {0}. Файлы скачиваются с этого сайта один раз и сохраняются в браузере.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/FirstTakeoffTour.jsx",
+      "line": 94,
+      "source": "`Same loop for every finish: pick a condition, trace, read the Report. Press ` + `any time for the shortcuts. Next, hand the same engine to an AI agent.`",
+      "ru": "Для каждого покрытия повторяйте те же действия — выберите вид работ, обведите контур и откройте ведомость. Клавиша ? показывает сочетания клавиш. Затем можно поручить подсчёт ИИ-агенту.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/ReferencePins.jsx",
+      "line": 69,
+      "source": "`Open the source sheet and highlight the captured region` + `Source: ` + `Resize ↘`",
+      "ru": "Источник — {0}. Открыть исходный лист и подсветить область снимка.",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/RfiPanel.jsx",
+      "line": 62,
+      "source": "`No RFIs yet — select a cloud, callout, or note in the markup panel and press ` + `Raise RFI`",
+      "ru": "Запросов пока нет. Выберите облако, выноску или примечание на панели пометок и нажмите «Создать запрос».",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/SheetTree.jsx",
+      "line": 121,
+      "source": "`file` + `fully numbered yet; open ` + `to read ` + `sheet numbers. ` + `Search all sheet text`",
+      "ru": "Ещё не прочитаны номера листов в файлах: {0}. Откройте их для чтения номеров или нажмите «Поиск по тексту всех листов».",
+      "slots": [
+        "0"
+      ]
+    },
+    {
+      "file": "web/src/components/StampPanel.jsx",
+      "line": 116,
+      "source": "`Click ` + `Place` + `on a stamp, then click the plan. Placed stamps are normal, editable markups.`",
+      "ru": "Нажмите «Разместить» у нужного штампа, затем укажите место на чертеже. Размещённые штампы можно редактировать как обычные пометки.",
+      "slots": []
+    },
+    {
+      "file": "web/src/components/UserGuide.jsx",
+      "line": 202,
+      "source": "`This is the short version. The full manual covers conditions, markups and RFIs, revisions, the report and exports, the Agent panel, and driving OpenTakeoff from an AI agent over MCP —` + ` `",
+      "ru": "Это краткая версия. Полное руководство описывает виды работ, пометки и запросы проектировщику, редакции, ведомость и экспорт, панель агента и управление OpenTakeoff через MCP. Открыть полное руководство.",
+      "slots": []
+    }
+  ]
+}
