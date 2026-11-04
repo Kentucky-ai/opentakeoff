@@ -308,13 +308,16 @@ Open **Supporting Materials** on a condition. Two free-text fields sit above the
 
 Below that, list what actually goes on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each line carries:
 
-- a **coverage rate**—*1 unit per N*—and a **basis**: floor SF, linear LF, each, or **seam LF**;
+- a **quantity rule** and a **basis** (floor SF, linear LF, each, or **seam LF**): **1 per N** is a coverage rate—*1 gal per 150 SF*—and **N per 1** is a count per measured unit—*2 anchors per EA*, *1 cover plate per piece*;
 - a **round up** flag (on by default—you buy whole buckets and bags);
+- the item's own **waste %**, applied before the round-up (cut tape, spilled adhesive). It's separate from the condition's waste, and empty means none;
 - a **preset picker** for adhesive and mortar lines: real trowel-notch and roller spread rates (PSA rollers at 300 SF/gal down to coarse wood notches at 40 SF/gal; mortar trowels from 90 to 30 SF per 50-lb bag). Generic industry-typical values—always verify against the product data sheet;
 - for **grout** lines, an inline **calculator**: enter tile L × W × thickness, joint width (1/32″–1/2″), and bag weight, and the SF/bag rate derives itself, writing its work into the note (`12×24×3/8″ @ 1/8″ · 25 lb`);
 - a **note** field for coats, notch, anything the order needs to remember.
 
-Order quantity = measured basis ÷ coverage, **rounded up to whole units**. The Report sums every condition's lines into one combined buy list (§10).
+Order quantity = measured basis ÷ coverage (or × the count per unit), plus the item's waste, **rounded up to whole units**. The Report sums every condition's lines into one combined buy list (§10).
+
+**Assemblies.** A condition's item list is its assembly. Under the list, **Assembly: save as…** saves it by name (rules, waste and notes, never prices) to your assembly library, and **+ apply assembly…** adds a saved one to the condition you're on; items the condition already has are skipped. The **Library** tab lists your assemblies with **Apply to** the active condition and ✕. The library is yours across projects and travels in your `.otprofile`. Nothing ships in it.
 
 **The seam LF basis** is the one that isn't measured off the drawing—it's *figured* off the
 condition's roll layout (§4, Roll goods): the length where two cuts actually meet on the floor,
@@ -774,28 +777,28 @@ Nothing is pre-filled. Every field saves as you type, stays in this browser, and
 
 ### Estimate
 
-**Estimate** (in the toolbar, in **Find an action**, and in the Report header) prices what you measured. Each condition that has takeoffs gets a row:
+**Estimate** (in the toolbar, in **Find an action**, and in the Report header) prices what you measured. Each condition gets a line for **each kind of quantity it carries**: a CPT-1 with a room, a border line and two floor-box counts is three lines (SF, LF and EA), each with its own prices.
 
-- **Unit**—SF, SY, LF or EA. It starts as what you measured (area, then length, then count).
+- **Unit**—the condition's first line is SF, SY, LF or EA. It starts as what you measured (area, then length, then count). Its other lines price in their own unit (area in SF, then LF, then EA).
 - **Material $/unit** prices the **order quantity**, with the condition's waste. **Labor $/unit** prices the **measured quantity**, without waste. EA never carries waste.
-- **▸ materials** opens the condition's supporting materials (adhesive, grout and so on) to price per package. Quantities are already rounded up to whole packages.
+- **▸ items** on the first line opens the condition's assembly items (adhesive, grout and so on). **Material $/unit** prices each item's order quantity, already rounded up to whole packages with the item's waste. **Labor $/unit** on an item is optional. It prices the item's measured quantity (no waste, no round-up). Leave it empty when the condition's own labor covers the install.
 - Across the top: **Overhead**, **Profit** (markup or margin) and **Sales tax** on material for this project. The first time a project's estimate opens they're copied from **Company setup**. After that they belong to the project: changing your defaults never re-prices a bid you already worked up. **Company defaults** copies them again when you ask.
 
 An empty box means *not entered*, never $0. Type 0 for scope you aren't charging for. Until every line is priced, a banner names what's missing, the row says **PARTLY PRICED** or **UNPRICED**, and the total reads **Base bid — priced so far**.
 
-**Excel** downloads `<project> - estimate.xlsx`: **Estimate** (every line, then material, labor, tax, overhead, profit and the base bid), **Materials** (each supply's packages, price and cost) and, when anything is missing, **Unpriced**. Rates you didn't enter stay empty cells. Every tab ends with *Prepared with OpenTakeoff*.
+**Excel** downloads `<project> - estimate.xlsx`: **Estimate** (every line, then material, labor, tax, overhead, profit and the base bid), **Materials** (each assembly item's packages, prices and costs) and, when anything is missing, **Unpriced**. Rates you didn't enter stay empty cells. Every tab ends with *Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com* and prints it as the page footer. You can't turn it off.
 
 Prices are saved with the project. Condition templates never carry them, so every new job starts unpriced.
 
 ### Proposal
 
-**Estimate → Proposal PDF…** builds the bid proposal you send: your letterhead from **Company setup** (name, logo, address, phone, email, license), **Prepared for** (client, address and reference, saved with the project), the scope (each condition, its spec description and measured quantity), the **base bid**, then inclusions, exclusions, terms and a signature block for both sides.
+**Estimate → Proposal PDF…** builds the bid proposal you send: your letterhead from **Company setup** (name, logo, address, phone, email, license), **Prepared for** (client, address and reference, saved with the project), the scope (each estimate line, its spec description and measured quantity), the **base bid**, then inclusions, exclusions, terms and a signature block for both sides.
 
 - **Lump sum** prints one base bid. **Itemized** prints a price on each line: the base bid spread over the lines in proportion to their cost, to the cent, so the lines add up to the base bid exactly.
 - The first time you open it, the inclusions, exclusions, terms and validity are copied from Company setup. Edits here change **this job only**. **Reset text to Company setup** copies them again.
 - If the estimate isn't fully priced, the dialog says which lines and still lets you download.
 
-Every page of the proposal, the marked set and the printed report carries **Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com**. The proposal and the marked set also carry a light diagonal *OpenTakeoff* watermark. Branding as your trade name puts your company on the document; it doesn't remove these.
+Every page of the proposal, the marked set and the printed report carries **Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com**. The proposal and the marked set also carry a light diagonal *OpenTakeoff* watermark. Branding as your trade name puts your company on the document; it doesn't remove these, and no setting does.
 
 ### The numbers, honestly
 
@@ -1317,7 +1320,7 @@ those are the ones worth pinning down before you rely on a number.
 | **Reported, never counted** | A quantity the engine found but refuses to commit, with the reason. Transitions across a wall are the common one: the real transition is a threshold in a doorway nothing can locate from a trace. Go measure it ([§5](#5-the-measuring-tools)). |
 | **Deduct / Cut Out** | A void subtracted from a condition's floor total—a column, a shaft, casework. Draws dashed red and carries its negative sign into the audit ([§5](#5-the-measuring-tools)). |
 | **Measured versus w/Waste** | Measured is what's on the drawing. w/Waste is what you order. Waste lives only in the order column, never in the measured number ([§10](#10-the-report-and-exports)). |
-| **Basis** | What a supporting material is bought against: floor SF, linear LF, each, or figured seam LF. Order quantity = basis ÷ coverage rate, rounded up ([§4](#4-conditions--your-finishes)). |
+| **Basis** | What a supporting material is bought against: floor SF, linear LF, each, or figured seam LF. Order quantity = basis ÷ coverage rate (or × a count per unit), plus the item's waste, rounded up ([§4](#4-conditions--your-finishes)). |
 | **Figured seam LF** | Seam length read off the roll layout—where two cuts actually meet—not a percentage of perimeter. Needs a roll setup; without one it reads 0, meaning *needs a layout* ([§4](#4-conditions--your-finishes)). |
 | **Roll goods** | Broadloom, sheet vinyl, sheet rubber—material that comes off a roll, so the order depends on how the cuts nest, not on area alone ([§4](#4-conditions--your-finishes)). |
 | **Stitch** | Two to four sheets split at a match line, joined into one working surface so a room crossing the seam traces as one shape. Align it before you trace on it ([§2](#2-opening-plans-and-moving-around)). |

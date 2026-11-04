@@ -14,7 +14,7 @@
 // the on-screen table: waste applied only to order quantities, never measured.
 
 import { GETTERS, colGetter, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
-import { grandTotals, materialsSummary, roundSheetRow, hasMultipliers, BY_SHEET_BASE_NOTE } from "./totals.js";
+import { grandTotals, materialsSummary, roundSheetRow, hasMultipliers, BY_SHEET_BASE_NOTE, coverageLabel } from "./totals.js";
 import { round2 } from "./num.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
 
@@ -62,7 +62,11 @@ export function sanitizeSheetName(name, used = new Set()) {
 //   number (finite)      → <c r=… ><v>…</v></c>
 //   null / undefined / "" → cell skipped entirely
 //   anything else         → inline string, XML-escaped
-export function sheetXml(rows) {
+// `footer` (optional) is the printed page footer, centred on every page Excel
+// prints from the tab — the estimate's OpenTakeoff line rides here so a
+// printed or PDF-saved estimate carries it too. "&" is Excel's header/footer
+// code character, so a literal one is doubled.
+export function sheetXml(rows, { footer = "" } = {}) {
   const out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'];
   rows.forEach((cells, ri) => {
@@ -81,7 +85,9 @@ export function sheetXml(rows) {
     });
     out.push("</row>");
   });
-  out.push("</sheetData></worksheet>");
+  out.push("</sheetData>");
+  if (footer) out.push(`<headerFooter><oddFooter>${escXml(`&C${String(footer).replace(/&/g, "&&")}`)}</oddFooter></headerFooter>`);
+  out.push("</worksheet>");
   return out.join("");
 }
 
@@ -102,7 +108,7 @@ const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
 
 /**
  * Zip sheet definitions into an .xlsx byte array.
- * @param {Array<{name: string, rows: any[][]}>} sheets one entry per tab, in order
+ * @param {Array<{name: string, rows: any[][], footer?: string}>} sheets one entry per tab, in order
  * @returns {Promise<Uint8Array>} download with MIME
  *   application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
  */
@@ -143,7 +149,7 @@ export async function buildXlsx(sheets) {
     "xl/_rels/workbook.xml.rels": strToU8(wbRels),
     "xl/styles.xml": strToU8(STYLES_XML),
   };
-  sheets.forEach((s, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(s.rows)); });
+  sheets.forEach((s, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(s.rows, { footer: s.footer })); });
   return zipSync(files);
 }
 
@@ -206,10 +212,9 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   if (hasMultipliers(bySheet)) bySheetRows.push([], [BY_SHEET_BASE_NOTE]);
 
   // Materials — per condition, then the combined buy list (mirrors the CSV)
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const materials = [["Finish", "Material", "Qty", "Unit", "Coverage", "Note"]];
   for (const r of rows) for (const m of (r.materials || [])) {
-    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+    materials.push([r.finish_tag, m.name, m.qty, m.unit, coverageLabel(m), m.note || ""]);
   }
   const combined = materialsSummary(rows);
   if (combined.length) {

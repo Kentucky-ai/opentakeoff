@@ -156,6 +156,7 @@ import { NOTE_PT, inkPx, layoutNote, noteBox, canvasMeasure } from "../lib/marku
 import { snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
 import { nextRfiNumber } from "../lib/rfi.js";
 import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch } from "../lib/materials.js";
+import { assemblyRows } from "../lib/assemblies.js";
 import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
@@ -8336,6 +8337,16 @@ export default function TakeoffCanvas() {
     // (minted with no origin_id, so nothing upstream ever touches it)
     return isFamilyParent(cs, activeCond) ? propagateRowAdd(next, activeCond, row, uid) : next;
   });
+  // a saved assembly (lib/assemblies.js) → new rows on the active condition, through the same
+  // family seam as one added row; items the condition already names are skipped
+  const applyAssembly = (assembly) => setConditions((cs) => {
+    const cur = cs.find((c) => c.id === activeCond);
+    const { rows } = assemblyRows(assembly, uid, cur?.materials);
+    if (!cur || !rows.length) return cs;
+    let next = cs.map((c) => (c.id === activeCond ? { ...c, materials: [...(c.materials || []), ...rows], updated_at: nowIso() } : c));
+    if (isFamilyParent(cs, activeCond)) for (const row of rows) next = propagateRowAdd(next, activeCond, row, uid);
+    return next;
+  });
   const updateMaterial = (mid, patch) => setConditions((cs) => {
     const cur = cs.find((c) => c.id === activeCond);
     // NAME edits re-classify a geometry-less line's kind
@@ -8907,7 +8918,7 @@ export default function TakeoffCanvas() {
     onActivate: activateCondition, onLocate: locateCondition,
     onAddCondition: addCondition, onDeleteCondition: deleteCondition,
     onUpdateCond: updateCond, onSetCondParam: setCondParam, onAssignAttr: assignAttr,
-    onAddMaterial: addMaterial, onUpdateMaterial: updateMaterial, onRemoveMaterial: removeMaterial,
+    onAddMaterial: addMaterial, onUpdateMaterial: updateMaterial, onRemoveMaterial: removeMaterial, onApplyAssembly: applyAssembly,
     onDuplicateCondition: duplicateCondition, onSplitCondition: splitCondition,
     onDeriveTransitions: deriveTransitionsOnto,   // returns its result synchronously — the panel renders the withheld report from it
     onLocateTransition: locateSheetPoint,

@@ -7,7 +7,9 @@
 // exclusions can change without touching the firm's defaults:
 //   { itemized, scope_note, inclusions, exclusions, terms, valid_days }
 //
-// Prices come from priceEstimate() (lib/estimate.js). An itemized proposal
+// Prices come from priceEstimate() (lib/estimate.js). The scope lists every
+// estimate line — a condition carrying SF, LF and EA is three scope rows, each
+// with its own measured quantity and unit. An itemized proposal
 // shows each line's SELL price: the base bid spread over the lines in
 // proportion to their cost, in cents, the rounding remainder on the largest
 // line, so the printed lines always add up to the printed base bid.
