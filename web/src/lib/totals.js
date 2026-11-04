@@ -21,7 +21,7 @@ import { coverageText } from './coveragePresentation.js';
 
 import { round2 } from "./num.js";
 import { REPORT_SCHEMA } from "./takeoffConstants.ts";
-import { csvEsc as esc } from "./csv.js";
+import { createExportPresentation } from "./exportPresentation.js";
 import { GETTERS, CSV_PROFILE, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
 import { attrValue } from "./conditionColumns.js";
@@ -398,9 +398,11 @@ export function grandTotals(rows) {
  *   dimensioned column/section to m²/m and RETIRES the SY column (upstream's
  *   metric contract); coverage rates in the materials section stay as entered
  *   (SF/LF-based). "imperial" (default) is byte-identical to the frozen export.
+ * @param {{language?: string, localize?: (value: any) => any}} [presentation]
  * @returns {string}
  */
-export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null, byLabel = null, brandName = "OpenTakeoff", units = "imperial") {
+export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null, byLabel = null, brandName = "OpenTakeoff", units = "imperial", presentation = {}) {
+  const p = createExportPresentation(presentation);
   // the caller passes RAW descriptors; conversion happens here (one site per
   // output) through the same applyUnits seam the report table uses
   const columns = applyUnits(cols || CSV_PROFILE.filter((c) => c.defaultVisible), units, METRIC_CSV_LABELS);
@@ -408,9 +410,9 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
   const A = (v) => (M ? round2((Number(v) || 0) * M2_PER_SF) : v);
   const L = (v) => (M ? round2((Number(v) || 0) * M_PER_FT) : v);
-  const lines = [columns.map((c) => esc(c.header)).join(",")];
+  const lines = [p.row(columns.map(c => c.custom ? c.header : p.label(c.header)))];
   for (const r of rows) {
-    lines.push(columns.map((c) => esc(colGetter(c)?.(r, ctx))).join(","));
+    lines.push(p.row(columns.map(c => c.key === "finish" ? p.finish(r.finish_tag) : colGetter(c)?.(r, ctx))));
   }
   const g = grandTotals(rows);
   // TOTAL row, column-driven: "TOTAL" under the finish column, grand-total
@@ -418,25 +420,25 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // reference figures never total). A metric descriptor carries `conv` so the
   // by-key reads convert exactly like the body cells.
   const foot = (c) => {
-    if (c.key === "finish") return "TOTAL";
+    if (c.key === "finish") return p.label("TOTAL");
     // derived waste feet: same getter as the body cells (g carries all four inputs)
     const v = (c.key === "waste_sf" || c.key === "waste_lf") ? GETTERS[c.key](g) : (g[c.key] !== undefined ? g[c.key] : "");
     return c.conv && v !== "" ? c.conv(v) : v;
   };
-  lines.push(columns.map((c) => esc(foot(c))).join(","));
+  lines.push(p.row(columns.map(foot)));
 
   // supporting materials — per condition, then a combined buy list. Coverage
   // rates deliberately stay as entered (SF/LF-based) in metric mode — the
   // upstream metric contract; the report panel carries the footnote.
   const perCond = [];
-  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, coverageText(m, units), m.note || ""]);
+  for (const r of rows) for (const m of (r.materials || [])) perCond.push([p.finish(r.finish_tag), p.material(m.name), m.qty, p.unit(m.unit), p.coverage(coverageText(m, units), m.unit), p.note(m.note || "")]);
   if (perCond.length) {
     lines.push("");
-    lines.push(["Finish", "Material", "Qty", "Unit", "Coverage", "Note"].map(esc).join(","));
-    for (const row of perCond) lines.push(row.map(esc).join(","));
+    lines.push(p.header(["Finish", "Material", "Qty", "Unit", "Coverage", "Note"]));
+    for (const row of perCond) lines.push(p.row(row));
     lines.push("");
-    lines.push(["Material (combined)", "Qty", "Unit"].map(esc).join(","));
-    for (const s of materialsSummary(rows)) lines.push([s.name, s.qty, s.unit].map(esc).join(","));
+    lines.push(p.header(["Material (combined)", "Qty", "Unit"]));
+    for (const s of materialsSummary(rows)) lines.push(p.row([p.material(s.name), s.qty, p.unit(s.unit)]));
   }
 
   // per-sheet subtotals — base (unmultiplied) quantities, rounded here at
@@ -444,17 +446,17 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // because display labels are session-volatile.
   if (bySheet && bySheet.length) {
     lines.push("");
-    lines.push(["Sheet", "Sheet ID", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"].map(esc).join(","));
+    lines.push(p.header(["Sheet", "Sheet ID", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"]));
     for (const g of bySheet) {
       const label = sheetLabel ? sheetLabel(g.sheet_id) : g.sheet_id;
       for (const row of g.rows) {
         const mult = row.multiplier || 1;
         const finish = mult > 1 ? `${row.finish_tag} ×${mult}` : row.finish_tag;
         const r = roundSheetRow(row);
-        lines.push([label, g.sheet_id, finish, A(r.floor_sf), A(r.wall_sf), A(r.border_sf), L(r.lf), r.ea].map(esc).join(","));
+        lines.push(p.row([label, g.sheet_id, p.finish(finish), A(r.floor_sf), A(r.wall_sf), A(r.border_sf), L(r.lf), r.ea]));
       }
     }
-    if (hasMultipliers(bySheet)) lines.push("# " + BY_SHEET_BASE_NOTE);
+    if (hasMultipliers(bySheet)) lines.push("# " + p.label(BY_SHEET_BASE_NOTE));
   }
 
   // per-label subtotals (#112) — ORDERED quantities (waste/×N applied per
@@ -463,15 +465,15 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // CSV stays byte-identical.
   if (byLabel && byLabel.length) {
     lines.push("");
-    lines.push(["Label", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"].map(esc).join(","));
+    lines.push(p.header(["Label", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"]));
     for (const g of byLabel) {
-      const name = g.value || "Unlabeled";
-      for (const row of g.rows) lines.push([name, row.finish_tag, A(row.floor_sf), A(row.wall_sf), A(row.border_sf), L(row.lf), row.ea].map(esc).join(","));
+      const name = g.value || p.label("Unlabeled");
+      for (const row of g.rows) lines.push(p.row([name, p.finish(row.finish_tag), A(row.floor_sf), A(row.wall_sf), A(row.border_sf), L(row.lf), row.ea]));
     }
   }
 
-  const title = projectName ? `# ${projectName} — ${brandName} report\n` : "";
-  return title + lines.join("\n") + "\n";
+  if (projectName) lines.unshift(`# ${projectName} — ${brandName} ${presentation.language === "ru" ? p.label("Report") : "report"}`);
+  return p.document(lines);
 }
 
 // Report JSON envelope — schema opentakeoff.report.v1. Extracted pure so the

@@ -1,4 +1,4 @@
-import { getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
+import { formatMessage, getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
 // Proposal — the bid proposal PDF for this project: who it's for, lump sum or
 // itemized, and this job's copy of the proposal text (lib/bidProposal.js).
 // The company block and the prices come from Company setup and the Estimate;
@@ -72,13 +72,13 @@ export default function BidProposalDialog({ est, conditions, projectName, client
             style={{ background: "none", border: "none", color: "var(--ink-soft)", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 4 }}>×</button>
         </div>
         <p style={{ margin: "4px 0 0", color: "var(--ink-muted)", fontSize: 12.5 }}>
-          {uiText("From ")}{company.name ? <strong>{company.name}</strong> : uiText("your company")}
+          {formatMessage("Contractor: {0}", [company.name || uiText("your company")])}
           {onOpenCompanySetup && <> · <button onClick={onOpenCompanySetup} style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", padding: 0, fontSize: 12.5 }}>{uiText(company.name ? "Company setup…" : "Add your company in Company setup…")}</button></>}
         </p>
 
         {!est.complete && (
           <div role="status" style={{ margin: "10px 0 0", padding: "8px 12px", border: "1px solid var(--c-danger)", fontSize: 12.5 }}>
-            <strong>{uiText("The estimate isn't fully priced.")}</strong> {uiText("The base bid counts ")}{uiText(est.unpriced.map((u) => u.finish_tag).join(", "))} {uiText("at $0 for what is missing. You can still download.")}</div>
+            <strong>{uiText("The estimate isn't fully priced.")}</strong> {uiText("The base bid counts ")}{est.unpriced.map((u) => u.finish_tag).join(", ")} {uiText("at $0 for what is missing. You can still download.")}</div>
         )}
 
         <div style={{ ...section, borderTop: "none", marginTop: 8 }}>{uiText("Prepared for — saved with this project")}</div>
@@ -92,7 +92,7 @@ export default function BidProposalDialog({ est, conditions, projectName, client
         </label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <label style={{ ...row, flex: "1 1 160px" }}>
-            <span className="field-label">{uiText("Reference")}</span>
+            <span className="field-label">{uiText("Order reference")}</span>
             <input name="proposal-client-reference" autoComplete="off" value={clientInfo.reference || ""} onChange={client("reference")} className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={{ ...row, flex: "1 1 120px" }}>

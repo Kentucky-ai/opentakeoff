@@ -74,9 +74,16 @@ const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const patterns = Object.entries(ru).filter(([key]) => /\{\d+\}/.test(key)).map(([key, value]) => {
   const fields = [...key.matchAll(/\{(\d+)\}/g)].map((m) => m[1]);
   const parts = key.split(/\{\d+\}/g);
-  return { prefix: parts[0], regex: new RegExp("^" + parts.map(escape).join("([\\s\\S]*?)") + "$"), fields, value };
-}).sort((a, b) => b.prefix.length - a.prefix.length);
+  return { prefix: parts[0], specificity: parts.join("").length, regex: new RegExp("^" + parts.map(escape).join("([\\s\\S]*?)") + "$"), fields, value };
+}).sort((a, b) => b.prefix.length - a.prefix.length || b.specificity - a.specificity);
 const cache = new Map();
+
+// Known message key + raw values. Interpolated project data is never translated
+// or re-parsed as another message. Format nested UI messages explicitly first.
+export function formatMessage(key, values = [], lang = language) {
+  const template = lang === "ru" && Object.hasOwn(ru, key) ? ru[key] : key;
+  return template.replace(/\{(\d+)\}/g, (_match, id) => String(values[Number(id)] ?? ""));
+}
 
 // Runs at the React presentation boundary. React nodes, arrays, numbers and
 // unknown project strings pass through unchanged; no DOM rewriting occurs.
@@ -121,11 +128,14 @@ export function localizeCsv(text) {
     } else cell += ch;
   }
   if (cell || row.length) { row.push(cell.replace(/\r$/, "")); rows.push(row); }
-  const encode = (value) => {
-    const localized = /^-?\d+\.\d+$/.test(value) ? value.replace(".", ",") : localizeText(value);
+  // Compatibility path for already-serialized CSV: its cell types have been
+  // lost, so only the header can be translated safely. New exporters format
+  // typed cells before serialization instead.
+  const encode = (value, header) => {
+    const localized = header ? localizeText(value) : value;
     return /[;"\r\n]/.test(localized) ? '"' + localized.replace(/"/g, '""') + '"' : localized;
   };
-  return "\uFEFF" + rows.map((cells) => cells.map(encode).join(";")).join("\r\n");
+  return "\uFEFF" + rows.map((cells, i) => cells.map(value => encode(value, i === 0)).join(";")).join("\r\n");
 }
 
 export function formatEstimateMoney(value, lang = language) {

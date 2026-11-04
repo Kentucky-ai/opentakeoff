@@ -694,7 +694,7 @@ html[lang="ru"] .calm-context-pinned { flex:0 0 auto; }
 html[lang="ru"] .calm-property-editor { font-size:11px; gap:6px; }
 html[lang="ru"] .calm-property-editor > strong { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media (max-width:1450px) {
- html[lang="ru"] .report-toolbar { flex-wrap:wrap; }
+ .report-toolbar { flex-wrap:wrap; }
  html[lang="ru"] .calm-header-actions { flex-wrap:wrap; }
 }
 html[lang="ru"] [data-takeoffs-header] > span { flex-wrap:wrap; min-width:0; } html[lang="ru"] [data-takeoffs-header] button { white-space:nowrap; font-size:11px!important; padding:3px 6px!important; }

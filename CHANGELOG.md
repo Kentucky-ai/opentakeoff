@@ -2,6 +2,9 @@
 
 ## Russian localization: unit and export corrections
 
+- Preserve custom names and textual codes when localizing CSV, Excel and editable fields; format numeric CSV cells before serialization.
+- Format archive/import, proposal acceptance and bulk-delete receipts with explicit message keys and raw data parameters.
+- Wrap long finish names in the report, marked-set legend, proposal PDF and localized Excel sheets; reserve the report's close corner at narrower English and Russian widths.
 - Localized the actual estimate Excel export, project/company forms, proposal form and PDF, annotation style choices and plan-set copy.
 - Added litre/US-gallon display selection at import and export, reversible metric quantity/rate display, and preservation of source package rounding and costs.
 - Replaced clipped fit text with «Лист целиком», clarified allowance/perimeter column names, and allowed estimate headings to wrap.

@@ -6,7 +6,7 @@
 
 ## 1. Предложение применить правило вычета внутренних областей ко всем помещениям с той же маркой отделки.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10010](../../web/src/pages/TakeoffCanvas.jsx#L10010).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10010](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10010).
 
 **Текст**
 
@@ -21,7 +21,7 @@
 
 ## 2. Результат предварительного применения правила. Вычеты ещё не приняты.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10018](../../web/src/pages/TakeoffCanvas.jsx#L10018).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10018](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10018).
 
 **Текст**
 
@@ -34,7 +34,7 @@
 
 ## 3. Сообщение при построении площади стен без высоты вида работ.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10106](../../web/src/pages/TakeoffCanvas.jsx#L10106).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10106](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10106).
 
 **Текст**
 
@@ -46,7 +46,7 @@
 
 ## 4. Справочная площадь вертикальных поверхностей в плавающем окне итогов. Число уже содержит единицу площади.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10217](../../web/src/pages/TakeoffCanvas.jsx#L10217).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10217](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10217).
 
 **Подпись**
 
@@ -64,7 +64,7 @@
 
 ## 5. Состав длины выбранного линейного измерения. fl() включает единицу длины.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10231](../../web/src/pages/TakeoffCanvas.jsx#L10231).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10231](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10231).
 
 **Текст**
 
@@ -77,7 +77,7 @@
 
 ## 6. Нижняя строка плавающего окна. visibleShapes — количество фигур на видимых листах.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10239](../../web/src/pages/TakeoffCanvas.jsx#L10239).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10239](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10239).
 
 **Текст**
 
@@ -91,7 +91,7 @@
 
 ## 7. Подпись поля фактической длины при калибровке по двум точкам.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10770](../../web/src/pages/TakeoffCanvas.jsx#L10770).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10770](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10770).
 
 **Подпись**
 
@@ -101,7 +101,7 @@
 
 ## 8. Ошибка проверки размера. Точки попали на разные листы.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10786](../../web/src/pages/TakeoffCanvas.jsx#L10786).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10786](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10786).
 
 **Текст**
 
@@ -113,7 +113,7 @@
 
 ## 9. Проверка размера до задания масштаба.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10788](../../web/src/pages/TakeoffCanvas.jsx#L10788).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10788](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10788).
 
 **Текст**
 
@@ -125,7 +125,7 @@
 
 ## 10. Обе точки для проверки размера совпали.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10790](../../web/src/pages/TakeoffCanvas.jsx#L10790).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10790](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10790).
 
 **Текст**
 
@@ -133,7 +133,7 @@
 
 ## 11. Результат измерения и отдельное поле для размера, указанного на чертеже.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10793](../../web/src/pages/TakeoffCanvas.jsx#L10793).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10793](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10793).
 
 **Текст**
 
@@ -152,7 +152,7 @@
 
 ## 12. Инструкция на старой панели пометок.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10917](../../web/src/pages/TakeoffCanvas.jsx#L10917).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10917](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10917).
 
 **Текст**
 
@@ -160,7 +160,7 @@
 
 ## 13. Пустой список пометок на одном листе или на группе листов.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10920](../../web/src/pages/TakeoffCanvas.jsx#L10920).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10920](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10920).
 
 **Текст** · условие `groupKeys.length === 1`
 
@@ -176,7 +176,7 @@
 
 ## 14. Кнопка автоматического цвета пометки.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:10955](../../web/src/pages/TakeoffCanvas.jsx#L10955).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:10955](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L10955).
 
 **Подпись**
 
@@ -188,7 +188,7 @@
 
 ## 15. Предупреждение поиска символов, когда выделено слишком мало сегментов.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:11494](../../web/src/pages/TakeoffCanvas.jsx#L11494).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:11494](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L11494).
 
 **Текст**
 
@@ -200,7 +200,7 @@
 
 ## 16. Счётчик совпадений, которые будут сохранены, и необязательная строка с маркой.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:11501](../../web/src/pages/TakeoffCanvas.jsx#L11501).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:11501](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L11501).
 
 **Текст**
 
@@ -215,7 +215,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 17. Число неоднозначных совпадений и состояние их проверки.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:11522](../../web/src/pages/TakeoffCanvas.jsx#L11522).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:11522](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L11522).
 
 **Текст** · условие `openQ > 0`
 
@@ -239,7 +239,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 18. Флажок включения образца в подсчёт символов.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:11536](../../web/src/pages/TakeoffCanvas.jsx#L11536).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:11536](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L11536).
 
 **Подпись** · условие `seedTag is nonempty`
 
@@ -255,7 +255,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 19. Кнопка сохранения найденных символов в активный вид работ.
 
-Исходное место — [web/src/pages/TakeoffCanvas.jsx:11541](../../web/src/pages/TakeoffCanvas.jsx#L11541).
+Исходное место — [web/src/pages/TakeoffCanvas.jsx:11541](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/pages/TakeoffCanvas.jsx#L11541).
 
 **Подпись**
 
@@ -270,7 +270,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 20. Статус синхронизации рядом с отдельной кнопкой остановки.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1121](../../web/src/components/PlanNavigator.jsx#L1121).
+Исходное место — [web/src/components/PlanNavigator.jsx:1121](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1121).
 
 **Текст**
 
@@ -282,7 +282,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 21. Описание демонстрационного PDF на начальном экране.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1174](../../web/src/components/PlanNavigator.jsx#L1174).
+Исходное место — [web/src/components/PlanNavigator.jsx:1174](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1174).
 
 **Текст**
 
@@ -290,7 +290,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 22. Вопрос и соседняя кнопка подключения агента.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1177](../../web/src/components/PlanNavigator.jsx#L1177).
+Исходное место — [web/src/components/PlanNavigator.jsx:1177](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1177).
 
 **Текст**
 
@@ -302,7 +302,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 23. Лицензия и ссылка на автора на начальном экране.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1184](../../web/src/components/PlanNavigator.jsx#L1184).
+Исходное место — [web/src/components/PlanNavigator.jsx:1184](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1184).
 
 **Текст**
 
@@ -316,7 +316,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 24. Кнопка открытия выбранных листов отдельными вкладками.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1222](../../web/src/components/PlanNavigator.jsx#L1222).
+Исходное место — [web/src/components/PlanNavigator.jsx:1222](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1222).
 
 **Подпись** · условие `sel.length > 0`
 
@@ -332,7 +332,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 25. Кнопка одновременного просмотра листов рядом, с общим панорамированием.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1226](../../web/src/components/PlanNavigator.jsx#L1226).
+Исходное место — [web/src/components/PlanNavigator.jsx:1226](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1226).
 
 **Подпись** · условие `sel.length >= 2`
 
@@ -348,7 +348,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 26. Кнопка сшивки выбранных листов в одну поверхность.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1231](../../web/src/components/PlanNavigator.jsx#L1231).
+Исходное место — [web/src/components/PlanNavigator.jsx:1231](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1231).
 
 **Подпись** · условие `sel.length >= 2`
 
@@ -364,7 +364,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 27. Компактный индикатор синхронизации и кнопка отключения.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1292](../../web/src/components/PlanNavigator.jsx#L1292).
+Исходное место — [web/src/components/PlanNavigator.jsx:1292](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1292).
 
 **Подпись**
 
@@ -384,7 +384,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 28. Кнопка удаления выбранных PDF в режиме управления комплектом.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1319](../../web/src/components/PlanNavigator.jsx#L1319).
+Исходное место — [web/src/components/PlanNavigator.jsx:1319](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1319).
 
 **Подпись** · условие `mSel.length > 0`
 
@@ -400,7 +400,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 29. Заголовок подтверждения массового удаления PDF. Значение — количество, а не имя файла.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1327](../../web/src/components/PlanNavigator.jsx#L1327).
+Исходное место — [web/src/components/PlanNavigator.jsx:1327](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1327).
 
 **Текст**
 
@@ -412,7 +412,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 30. Предупреждение об измерениях при закрытии одного PDF.
 
-Исходное место — [web/src/components/PlanNavigator.jsx:1368](../../web/src/components/PlanNavigator.jsx#L1368).
+Исходное место — [web/src/components/PlanNavigator.jsx:1368](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/PlanNavigator.jsx#L1368).
 
 **Текст**
 
@@ -424,7 +424,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 31. Первый шаг установки MCP-пакета в Claude Desktop.
 
-Исходное место — [web/src/components/ConnectAI.jsx:58](../../web/src/components/ConnectAI.jsx#L58).
+Исходное место — [web/src/components/ConnectAI.jsx:58](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L58).
 
 **Текст**
 
@@ -438,7 +438,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 32. Пути к общему и проектному файлам конфигурации MCP в Cursor.
 
-Исходное место — [web/src/components/ConnectAI.jsx:88](../../web/src/components/ConnectAI.jsx#L88).
+Исходное место — [web/src/components/ConnectAI.jsx:88](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L88).
 
 **Текст**
 
@@ -451,7 +451,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 33. Требование к версии Node на вкладках подключения, где cur.node=true.
 
-Исходное место — [web/src/components/ConnectAI.jsx:146](../../web/src/components/ConnectAI.jsx#L146).
+Исходное место — [web/src/components/ConnectAI.jsx:146](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L146).
 
 **Текст**
 
@@ -466,7 +466,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 34. Ссылка скачивания образца чертежа.
 
-Исходное место — [web/src/components/ConnectAI.jsx:155](../../web/src/components/ConnectAI.jsx#L155).
+Исходное место — [web/src/components/ConnectAI.jsx:155](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L155).
 
 **Подпись**
 
@@ -474,7 +474,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 35. Пояснение после ссылки на образец.
 
-Исходное место — [web/src/components/ConnectAI.jsx:156](../../web/src/components/ConnectAI.jsx#L156).
+Исходное место — [web/src/components/ConnectAI.jsx:156](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L156).
 
 **Текст**
 
@@ -482,7 +482,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 36. Инструкция Claude Desktop перед примером запроса. Альтернативная ветвь — терминальный агент.
 
-Исходное место — [web/src/components/ConnectAI.jsx:158](../../web/src/components/ConnectAI.jsx#L158).
+Исходное место — [web/src/components/ConnectAI.jsx:158](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L158).
 
 **Текст** · условие `desktop === true`
 
@@ -494,7 +494,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 37. Ожидаемый ответ агента по конкретному демонстрационному PDF.
 
-Исходное место — [web/src/components/ConnectAI.jsx:162](../../web/src/components/ConnectAI.jsx#L162).
+Исходное место — [web/src/components/ConnectAI.jsx:162](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L162).
 
 **Текст**
 
@@ -504,7 +504,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 38. Две ссылки на инструкции подключения и работу агента.
 
-Исходное место — [web/src/components/ConnectAI.jsx:167](../../web/src/components/ConnectAI.jsx#L167).
+Исходное место — [web/src/components/ConnectAI.jsx:167](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ConnectAI.jsx#L167).
 
 **Текст**
 
@@ -517,7 +517,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 39. Пояснение импорта темы оформления ведомости.
 
-Исходное место — [web/src/components/ReportPanel.jsx:570](../../web/src/components/ReportPanel.jsx#L570).
+Исходное место — [web/src/components/ReportPanel.jsx:570](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ReportPanel.jsx#L570).
 
 **Текст**
 
@@ -529,7 +529,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 40. Пояснение расчёта объёмов с запасом под основной таблицей ведомости.
 
-Исходное место — [web/src/components/ReportPanel.jsx:819](../../web/src/components/ReportPanel.jsx#L819).
+Исходное место — [web/src/components/ReportPanel.jsx:819](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ReportPanel.jsx#L819).
 
 **Текст**
 
@@ -543,7 +543,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 41. Справочное пояснение, если включена графа периметра.
 
-Исходное место — [web/src/components/ReportPanel.jsx:821](../../web/src/components/ReportPanel.jsx#L821).
+Исходное место — [web/src/components/ReportPanel.jsx:821](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ReportPanel.jsx#L821).
 
 **Текст**
 
@@ -555,7 +555,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 42. Подпись перед списком материалов, разбитым по видам работ.
 
-Исходное место — [web/src/components/ReportPanel.jsx:929](../../web/src/components/ReportPanel.jsx#L929).
+Исходное место — [web/src/components/ReportPanel.jsx:929](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ReportPanel.jsx#L929).
 
 **Подпись**
 
@@ -565,7 +565,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 43. Вводный абзац перед перечнем данных для открытой модели.
 
-Исходное место — [web/src/components/ReportPanel.jsx:1105](../../web/src/components/ReportPanel.jsx#L1105).
+Исходное место — [web/src/components/ReportPanel.jsx:1105](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ReportPanel.jsx#L1105).
 
 **Текст**
 
@@ -575,7 +575,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 44. Техническое сообщение об отсутствии адреса отправки данных.
 
-Исходное место — [web/src/components/ReportPanel.jsx:1115](../../web/src/components/ReportPanel.jsx#L1115).
+Исходное место — [web/src/components/ReportPanel.jsx:1115](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ReportPanel.jsx#L1115).
 
 **Текст**
 
@@ -588,7 +588,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 45. Поле предельной длины рулона. Единица уже показана соседним контролом.
 
-Исходное место — [web/src/components/TakeoffsPanel.jsx:612](../../web/src/components/TakeoffsPanel.jsx#L612).
+Исходное место — [web/src/components/TakeoffsPanel.jsx:612](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/TakeoffsPanel.jsx#L612).
 
 **Подпись**
 
@@ -602,7 +602,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 46. Пояснение перед выбором двух покрытий для расчёта переходов.
 
-Исходное место — [web/src/components/TakeoffsPanel.jsx:703](../../web/src/components/TakeoffsPanel.jsx#L703).
+Исходное место — [web/src/components/TakeoffsPanel.jsx:703](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/TakeoffsPanel.jsx#L703).
 
 **Текст**
 
@@ -616,7 +616,7 @@ mLine — дополнительная строка данных, показыв
 
 ## 47. Справочная строка перехода через перегородку. Длина не включается в измеренные переходы.
 
-Исходное место — [web/src/components/TakeoffsPanel.jsx:735](../../web/src/components/TakeoffsPanel.jsx#L735).
+Исходное место — [web/src/components/TakeoffsPanel.jsx:735](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/TakeoffsPanel.jsx#L735).
 
 **Текст**
 
@@ -632,7 +632,7 @@ gap_in — толщина разделяющей перегородки, не ш
 
 ## 48. Статус скрытых видов работ на плане.
 
-Исходное место — [web/src/components/TakeoffsPanel.jsx:811](../../web/src/components/TakeoffsPanel.jsx#L811).
+Исходное место — [web/src/components/TakeoffsPanel.jsx:811](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/TakeoffsPanel.jsx#L811).
 
 **Текст**
 
@@ -645,7 +645,7 @@ gap_in — толщина разделяющей перегородки, не ш
 
 ## 49. Кнопка сохранения активного вида работ как шаблона.
 
-Исходное место — [web/src/components/TakeoffsPanel.jsx:1318](../../web/src/components/TakeoffsPanel.jsx#L1318).
+Исходное место — [web/src/components/TakeoffsPanel.jsx:1318](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/TakeoffsPanel.jsx#L1318).
 
 **Подпись**
 
@@ -657,7 +657,7 @@ gap_in — толщина разделяющей перегородки, не ш
 
 ## 50. Пункт базы расчёта расхода вспомогательного материала по длине швов.
 
-Исходное место — [web/src/components/TakeoffsPanel.jsx:1374](../../web/src/components/TakeoffsPanel.jsx#L1374).
+Исходное место — [web/src/components/TakeoffsPanel.jsx:1374](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/TakeoffsPanel.jsx#L1374).
 
 **Подпись**
 
@@ -669,7 +669,7 @@ gap_in — толщина разделяющей перегородки, не ш
 
 ## 51. Поле толщины линии пометки. Подпись, доступное имя и пункты списка — разные тексты.
 
-Исходное место — [web/src/components/AnnotationWorkbench.jsx:266](../../web/src/components/AnnotationWorkbench.jsx#L266).
+Исходное место — [web/src/components/AnnotationWorkbench.jsx:266](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/AnnotationWorkbench.jsx#L266).
 
 **Подпись**
 
@@ -689,7 +689,7 @@ gap_in — толщина разделяющей перегородки, не ш
 
 ## 52. Параметры маркера. Слайдер opacity хранит дробь от 0,1 до 0,75, процент в исходном UI не выводится.
 
-Исходное место — [web/src/components/AnnotationWorkbench.jsx:269](../../web/src/components/AnnotationWorkbench.jsx#L269).
+Исходное место — [web/src/components/AnnotationWorkbench.jsx:269](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/AnnotationWorkbench.jsx#L269).
 
 **Подпись**
 
@@ -719,7 +719,7 @@ gap_in — толщина разделяющей перегородки, не ш
 
 ## 53. Поле размера текста пометки.
 
-Исходное место — [web/src/components/AnnotationWorkbench.jsx:270](../../web/src/components/AnnotationWorkbench.jsx#L270).
+Исходное место — [web/src/components/AnnotationWorkbench.jsx:270](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/AnnotationWorkbench.jsx#L270).
 
 **Подпись**
 
@@ -739,7 +739,7 @@ gap_in — толщина разделяющей перегородки, не ш
 
 ## 54. Сводка выделенных совпадений при создании пометок по образцу.
 
-Исходное место — [web/src/components/AnnotationWorkbench.jsx:277](../../web/src/components/AnnotationWorkbench.jsx#L277).
+Исходное место — [web/src/components/AnnotationWorkbench.jsx:277](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/AnnotationWorkbench.jsx#L277).
 
 **Текст**
 
@@ -766,7 +766,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 55. Индикатор категории, выведенной из описания строки ведомости.
 
-Исходное место — [web/src/components/ImportSchedulePanel.jsx:241](../../web/src/components/ImportSchedulePanel.jsx#L241).
+Исходное место — [web/src/components/ImportSchedulePanel.jsx:241](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ImportSchedulePanel.jsx#L241).
 
 **Подпись**
 
@@ -778,7 +778,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 56. Код, распознанный до автоматической правки. Инструкция дополнительно озвучивается скринридером.
 
-Исходное место — [web/src/components/ImportSchedulePanel.jsx:250](../../web/src/components/ImportSchedulePanel.jsx#L250).
+Исходное место — [web/src/components/ImportSchedulePanel.jsx:250](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ImportSchedulePanel.jsx#L250).
 
 **Подпись**
 
@@ -802,7 +802,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 57. Кнопка импорта выбранных видов работ из ведомости.
 
-Исходное место — [web/src/components/ImportSchedulePanel.jsx:328](../../web/src/components/ImportSchedulePanel.jsx#L328).
+Исходное место — [web/src/components/ImportSchedulePanel.jsx:328](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ImportSchedulePanel.jsx#L328).
 
 **Подпись**
 
@@ -816,7 +816,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 58. Кнопка назначения слоя непроходимой границей для заливки.
 
-Исходное место — [web/src/components/LayerPanel.jsx:62](../../web/src/components/LayerPanel.jsx#L62).
+Исходное место — [web/src/components/LayerPanel.jsx:62](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/LayerPanel.jsx#L62).
 
 **Подпись**
 
@@ -828,7 +828,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 59. Кнопка игнорирования слоя алгоритмом заливки.
 
-Исходное место — [web/src/components/LayerPanel.jsx:64](../../web/src/components/LayerPanel.jsx#L64).
+Исходное место — [web/src/components/LayerPanel.jsx:64](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/LayerPanel.jsx#L64).
 
 **Подпись**
 
@@ -840,7 +840,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 60. Пояснение влияния назначения слоёв на автоматическое выделение помещений.
 
-Исходное место — [web/src/components/LayerPanel.jsx:84](../../web/src/components/LayerPanel.jsx#L84).
+Исходное место — [web/src/components/LayerPanel.jsx:84](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/LayerPanel.jsx#L84).
 
 **Текст**
 
@@ -848,7 +848,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 61. Кнопка сравнения сохранённой редакции с текущими измерениями.
 
-Исходное место — [web/src/components/RevisionsPanel.jsx:176](../../web/src/components/RevisionsPanel.jsx#L176).
+Исходное место — [web/src/components/RevisionsPanel.jsx:176](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/RevisionsPanel.jsx#L176).
 
 **Подпись**
 
@@ -860,7 +860,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 62. Сводка изменения площади к закупке при сравнении редакций.
 
-Исходное место — [web/src/components/RevisionsPanel.jsx:223](../../web/src/components/RevisionsPanel.jsx#L223).
+Исходное место — [web/src/components/RevisionsPanel.jsx:223](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/RevisionsPanel.jsx#L223).
 
 **Текст**
 
@@ -877,7 +877,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 63. Счётчик изменившихся видов работ рядом со сводкой площадей.
 
-Исходное место — [web/src/components/RevisionsPanel.jsx:224](../../web/src/components/RevisionsPanel.jsx#L224).
+Исходное место — [web/src/components/RevisionsPanel.jsx:224](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/RevisionsPanel.jsx#L224).
 
 **Текст**
 
@@ -889,7 +889,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 64. Переключатель показа раскроя на чертеже.
 
-Исходное место — [web/src/components/RollPanel.jsx:118](../../web/src/components/RollPanel.jsx#L118).
+Исходное место — [web/src/components/RollPanel.jsx:118](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/RollPanel.jsx#L118).
 
 **Подпись**
 
@@ -901,7 +901,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 65. Переключатель режима ручной правки раскроя.
 
-Исходное место — [web/src/components/RollPanel.jsx:119](../../web/src/components/RollPanel.jsx#L119).
+Исходное место — [web/src/components/RollPanel.jsx:119](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/RollPanel.jsx#L119).
 
 **Подпись**
 
@@ -913,7 +913,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 66. Сводка раскроя. Длина уже отформатирована в футах/дюймах, площадь к закупке имеет отдельную единицу.
 
-Исходное место — [web/src/components/RollPanel.jsx:137](../../web/src/components/RollPanel.jsx#L137).
+Исходное место — [web/src/components/RollPanel.jsx:137](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/RollPanel.jsx#L137).
 
 **Текст**
 
@@ -939,7 +939,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 67. Слайдер ширины панели измерений и проверки.
 
-Исходное место — [web/src/components/WorkspaceLayout.jsx:76](../../web/src/components/WorkspaceLayout.jsx#L76).
+Исходное место — [web/src/components/WorkspaceLayout.jsx:76](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/WorkspaceLayout.jsx#L76).
 
 **Подпись**
 
@@ -955,7 +955,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 68. Слайдер ширины панели листов.
 
-Исходное место — [web/src/components/WorkspaceLayout.jsx:77](../../web/src/components/WorkspaceLayout.jsx#L77).
+Исходное место — [web/src/components/WorkspaceLayout.jsx:77](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/WorkspaceLayout.jsx#L77).
 
 **Подпись**
 
@@ -971,7 +971,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 69. Форма сохранения расположения панелей. Это несколько контролов, а не предложение с именем.
 
-Исходное место — [web/src/components/WorkspaceLayout.jsx:80](../../web/src/components/WorkspaceLayout.jsx#L80).
+Исходное место — [web/src/components/WorkspaceLayout.jsx:80](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/WorkspaceLayout.jsx#L80).
 
 **Заголовок**
 
@@ -993,7 +993,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 70. Кнопка дозагрузки следующих 50 строк в списке измерений.
 
-Исходное место — [web/src/components/WorkspacePanel.jsx:63](../../web/src/components/WorkspacePanel.jsx#L63).
+Исходное место — [web/src/components/WorkspacePanel.jsx:63](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/WorkspacePanel.jsx#L63).
 
 **Подпись**
 
@@ -1005,7 +1005,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 71. Геометрия выбранного измерения. Число holes — количество внутренних контуров, а не вершин в них.
 
-Исходное место — [web/src/components/WorkspacePanel.jsx:72](../../web/src/components/WorkspacePanel.jsx#L72).
+Исходное место — [web/src/components/WorkspacePanel.jsx:72](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/WorkspacePanel.jsx#L72).
 
 **Текст**
 
@@ -1018,7 +1018,7 @@ review.warning — самостоятельное сообщение. Не вк�
 
 ## 72. Счётчик после фильтрации и отдельная кнопка открытия ведомости.
 
-Исходное место — [web/src/components/WorkspacePanel.jsx:79](../../web/src/components/WorkspacePanel.jsx#L79).
+Исходное место — [web/src/components/WorkspacePanel.jsx:79](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/WorkspacePanel.jsx#L79).
 
 **Текст**
 
@@ -1037,7 +1037,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 73. Объяснение выбора модели для агента в настройках ИИ.
 
-Исходное место — [web/src/components/AiSettings.jsx:23](../../web/src/components/AiSettings.jsx#L23).
+Исходное место — [web/src/components/AiSettings.jsx:23](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/AiSettings.jsx#L23).
 
 **Текст**
 
@@ -1045,7 +1045,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 74. Условия хранения ключа и доступа к API. Сохранены все исходные утверждения.
 
-Исходное место — [web/src/components/AiSettings.jsx:49](../../web/src/components/AiSettings.jsx#L49).
+Исходное место — [web/src/components/AiSettings.jsx:49](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/AiSettings.jsx#L49).
 
 **Текст**
 
@@ -1053,7 +1053,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 75. Организация-исполнитель в диалоге коммерческого предложения.
 
-Исходное место — [web/src/components/BidProposalDialog.jsx:75](../../web/src/components/BidProposalDialog.jsx#L75).
+Исходное место — [web/src/components/BidProposalDialog.jsx:75](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/BidProposalDialog.jsx#L75).
 
 **Текст** · условие `company.name is nonempty`
 
@@ -1071,7 +1071,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 76. Предупреждение о неполных расценках в коммерческом предложении.
 
-Исходное место — [web/src/components/BidProposalDialog.jsx:81](../../web/src/components/BidProposalDialog.jsx#L81).
+Исходное место — [web/src/components/BidProposalDialog.jsx:81](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/BidProposalDialog.jsx#L81).
 
 **Текст**
 
@@ -1085,7 +1085,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 77. Первый абзац уведомления перед загрузкой моделей OCR.
 
-Исходное место — [web/src/components/OcrDownloadNotice.jsx:64](../../web/src/components/OcrDownloadNotice.jsx#L64).
+Исходное место — [web/src/components/OcrDownloadNotice.jsx:64](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/OcrDownloadNotice.jsx#L64).
 
 **Текст**
 
@@ -1093,7 +1093,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 78. Размер однократной загрузки OCR. formatMB() уже содержит единицу размера.
 
-Исходное место — [web/src/components/OcrDownloadNotice.jsx:65](../../web/src/components/OcrDownloadNotice.jsx#L65).
+Исходное место — [web/src/components/OcrDownloadNotice.jsx:65](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/OcrDownloadNotice.jsx#L65).
 
 **Текст**
 
@@ -1105,7 +1105,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 79. Завершение обучающего обмера. Клавиша ? остаётся оформленной как kbd.
 
-Исходное место — [web/src/components/FirstTakeoffTour.jsx:94](../../web/src/components/FirstTakeoffTour.jsx#L94).
+Исходное место — [web/src/components/FirstTakeoffTour.jsx:94](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/FirstTakeoffTour.jsx#L94).
 
 **Текст**
 
@@ -1117,7 +1117,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 80. Нижняя строка закреплённого фрагмента. Кнопка перехода и указатель изменения размера независимы.
 
-Исходное место — [web/src/components/ReferencePins.jsx:69](../../web/src/components/ReferencePins.jsx#L69).
+Исходное место — [web/src/components/ReferencePins.jsx:69](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/ReferencePins.jsx#L69).
 
 **Подпись**
 
@@ -1137,7 +1137,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 81. Пустой журнал запросов проектировщику.
 
-Исходное место — [web/src/components/RfiPanel.jsx:62](../../web/src/components/RfiPanel.jsx#L62).
+Исходное место — [web/src/components/RfiPanel.jsx:62](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/RfiPanel.jsx#L62).
 
 **Текст**
 
@@ -1145,7 +1145,7 @@ rows.length включает все отфильтрованные строки,
 
 ## 82. Примечание в дереве листов при поиске, если номера листов в части PDF ещё не прочитаны.
 
-Исходное место — [web/src/components/SheetTree.jsx:121](../../web/src/components/SheetTree.jsx#L121).
+Исходное место — [web/src/components/SheetTree.jsx:121](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/SheetTree.jsx#L121).
 
 **Текст**
 
@@ -1163,7 +1163,7 @@ unread — количество файлов, не список имён. Дей
 
 ## 83. Инструкция размещения штампа.
 
-Исходное место — [web/src/components/StampPanel.jsx:116](../../web/src/components/StampPanel.jsx#L116).
+Исходное место — [web/src/components/StampPanel.jsx:116](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/StampPanel.jsx#L116).
 
 **Текст**
 
@@ -1171,7 +1171,7 @@ unread — количество файлов, не список имён. Дей
 
 ## 84. Конец встроенной краткой справки со ссылкой на полное руководство.
 
-Исходное место — [web/src/components/UserGuide.jsx:202](../../web/src/components/UserGuide.jsx#L202).
+Исходное место — [web/src/components/UserGuide.jsx:202](https://github.com/Glade04/opentakeoff/blob/cc6f8891de647675bbfbf67f691bfd0144d18873/web/src/components/UserGuide.jsx#L202).
 
 **Текст**
 

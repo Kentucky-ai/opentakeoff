@@ -1,3 +1,4 @@
+import { wrapPdfText } from "./pdfText.js";
 import { stampWatermark } from "./pdfWatermark.js";
 import { getLanguage, localizeText, rfiStatusLabel } from "./i18n/core.js";
 import { annotationScene, pathString } from './annotationTools.js';
@@ -425,17 +426,14 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     const rows = conditionTotals(conditions, markedShapes).filter((r) => r.shape_count > 0);
     draw(t("CONDITIONS"), { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
     for (const r of rows) {
-      if (y < 120) continueLegend("CONDITIONS");
       const c = condById[r.id] || {};
-      pg.drawRectangle({ x: 52, y: y - 2, width: 14, height: 10, color: rgb(...hex(c.color)), opacity: 0.8, borderColor: rgb(...hex(c.color)), borderWidth: 0.7 });
-      draw(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}`, { x: 72, y, size: 10.5, font: bold, color: ink });
       // zero-gate on the CONVERTED value — what the page prints (a 0.5 SF
       // sliver reads 0.0 m2 in metric; it must drop, not print "0 m2")
       const qty = [
         shows(uA(r.floor_sf)) ? `${num(uA(r.floor_sf))} ${AU}` : "", shows(uA(r.wall_sf)) ? `${num(uA(r.wall_sf))} ${AU} ${russian ? "стены" : "wall"}` : "",
         shows(uA(r.border_sf)) ? `${num(uA(r.border_sf))} ${AU} ${russian ? "полосы" : "border"}` : "", shows(uL(r.lf)) ? `${num(uL(r.lf))} ${LU}` : "", shows(r.ea, 0) ? `${num(r.ea, 0)} ${russian ? "шт." : "EA"}` : "",
       ].filter(Boolean).join(" · ");
-      draw(qty || "-", { x: 190, y, size: 10, font, color: ink });
+
       const orderQty = [
         shows(uA(r.total_sf_net)) ? `${num(uA(r.total_sf_net))} ${AU}` : "",
         shows(uL(r.lf_net)) ? `${num(uL(r.lf_net))} ${LU}` : "",
@@ -443,8 +441,21 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       // Count totals have no waste-adjusted field. Do not invent an area
       // quantity for a linear/count condition on the cover.
       const allowance = orderQty ? `${russian ? "Запас" : "waste"} ${r.waste_pct}% -> ${orderQty}` : "";
-      draw([c.hatch && c.hatch !== "solid" ? t(c.hatch) : "", allowance].filter(Boolean).join(" · "), { x: 420, y, size: 8.5, font, color: muted });
-      y -= 15;
+      const columns = [
+        { text: r.finish_tag + (r.multiplier > 1 ? ' ×' + r.multiplier : ''), x: 72, width: 110, size: 10.5, font: bold, color: ink },
+        { text: qty || '-', x: 190, width: 222, size: 10, font, color: ink },
+        { text: [c.hatch && c.hatch !== 'solid' ? t(c.hatch) : '', allowance].filter(Boolean).join(' · '), x: 420, width: 140, size: 8.5, font, color: muted },
+      ].map(col => ({ ...col, lines: wrapPdfText(col.text, col.font, col.size, col.width, encode) }));
+      const lineCount = Math.max(...columns.map(col => col.lines.length));
+      // Reserve each physical line, so long names continue without overwriting
+      // quantities, other rows or the footer, including across page breaks.
+      for (let line = 0; line < lineCount; line++) {
+        if (y < 120) continueLegend('CONDITIONS');
+        if (line === 0) pg.drawRectangle({ x: 52, y: y - 2, width: 14, height: 10, color: rgb(...hex(c.color)), opacity: 0.8, borderColor: rgb(...hex(c.color)), borderWidth: 0.7 });
+        for (const col of columns) if (col.lines[line]) draw(col.lines[line], { x: col.x, y, size: col.size, font: col.font, color: col.color });
+        y -= 13;
+      }
+      y -= 2;
     }
     y -= 10;
     if (y < 120) continueLegend("BY SHEET");
@@ -466,8 +477,11 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         pg.drawRectangle({ x: 66, y: y - 1, width: 9, height: 7, color: rgb(...hex(c.color)), opacity: 0.8 });
         const { floor_sf: floor, wall_sf: wall, border_sf: border, lf, ea } = roundSheetRow(r);
         const qty = [shows(uA(floor)) ? `${num(uA(floor))} ${AU}` : "", shows(uA(wall)) ? `${num(uA(wall))} ${AU} ${russian ? "стены" : "wall"}` : "", shows(uA(border)) ? `${num(uA(border))} ${AU} ${russian ? "полосы" : "border"}` : "", shows(uL(lf)) ? `${num(uL(lf))} ${LU}` : "", shows(ea, 0) ? `${num(ea, 0)} ${russian ? "шт." : "EA"}` : ""].filter(Boolean).join(" · ");
-        draw(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}  ${qty}`, { x: 82, y, size: 8.5, font, color: ink });
-        y -= 11;
+        const lines = wrapPdfText(r.finish_tag + (r.multiplier > 1 ? ' ×' + r.multiplier : '') + '  ' + qty, font, 8.5, 478, encode);
+        for (const line of lines) {
+          if (y < 92) { continueLegend('BY SHEET'); draw(sh.label, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13; }
+          draw(line, { x: 82, y, size: 8.5, font, color: ink }); y -= 11;
+        }
       }
       y -= 5;
     }

@@ -108,7 +108,7 @@ export function SheetTree({ items, current, onSelect, namer, countKnown, query, 
         return <div key={r.id} {...common} className={`calm-tree-sheet${r.depth === 2 ? " is-child" : ""}`} aria-current={n.key === current ? "page" : undefined} title={uiText(rowTitle(n))} onClick={() => { setFocusId(r.id); pick(n.key); }}>
           <Icon name="document" size={17} />
           <span>
-            <strong className={n.number ? "calm-sheet-number" : undefined}>{uiText(n.number ?? n.label)}</strong>
+            <strong className={n.number ? "calm-sheet-number" : undefined}>{n.number ?? n.label}</strong>
             {n.kind !== "sheet" && <small>{uiText(n.file)}</small>}
           </span>
           {/* an unnumbered row's label already starts with its level */}

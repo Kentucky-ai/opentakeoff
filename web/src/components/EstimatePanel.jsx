@@ -1,4 +1,5 @@
-import { formatEstimateMoney as money, getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
+import { createExportPresentation } from "../lib/exportPresentation.js";
+import { formatMessage, formatEstimateMoney as money, getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
 // Estimate — price the takeoff by hand: a unit and material / labor $ per unit
 // on each condition, $ per package on its supporting materials, then the
 // project's markups. Every number comes from lib/estimate.js (the same engine
@@ -39,7 +40,7 @@ function PriceInput({ value, onCommit, label, name }) {
     if (value !== committed.current) { committed.current = value; setText(value === null || value === undefined ? "" : String(value)); }
   }, [value]);
   return (
-    <input name={name} aria-label={uiText(label)} inputMode="decimal" value={text} placeholder={uiText("—")}
+    <input name={name} aria-label={label} inputMode="decimal" value={text} placeholder={uiText("—")}
       onChange={(e) => { setText(e.target.value); const v = priceValue(getLanguage() === 'ru' ? e.target.value.replace(',', '.') : e.target.value); committed.current = v; onCommit(v); }}
       className="field-input mono" style={{ width: 84, padding: "3px 6px", textAlign: "right" }} />
   );
@@ -48,6 +49,7 @@ function PriceInput({ value, onCommit, label, name }) {
 export default function EstimatePanel({ projectName, clientInfo = {}, conditions, shapes, rollByCond = null, settings, onSettings, onUpdateCondition, onClose, onOpenCompanySetup, companyRev = 0, onClientInfo = null, bidProposal = null, onBidProposal = null }) {
   const rootRef = useRef(null);
   const liquidUnit = useMaterialUnit();
+  const display = createExportPresentation({ language: getLanguage(), localize: uiText });
   const metric = getLanguage() === 'ru';
   const [open, setOpen] = useState(() => new Set());   // conditions whose material rows are expanded
   const [msg, setMsg] = useState("");
@@ -75,7 +77,7 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
   const rows = useMemo(() => conditionTotals(conditions, shapes, seamCtx), [conditions, shapes, seamCtx]);
   const sourceEst = useMemo(() => priceEstimate({ rows, conditions, settings }), [rows, conditions, settings]);
   const est = useMemo(() => estimateForDisplay(sourceEst, metric, liquidUnit), [sourceEst, metric, liquidUnit]);
-  const missingText = (missing) => missing.map(x => x.startsWith('material row: ') ? uiText('Supporting material') + ': ' + uiText(x.slice(14)) : uiText(x)).join(', ');
+  const missingText = (missing) => missing.map(x => x.startsWith('material row: ') ? uiText('Supporting material') + ': ' + display.material(x.slice(14)) : uiText(x)).join(', ');
   const condById = useMemo(() => new Map(conditions.map((c) => [c.id, c])), [conditions]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const company = useMemo(() => activeProfile(loadProfiles()) || {}, [companyRev]);
@@ -158,7 +160,7 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
         {!est.complete && (
           <div role="status" style={{ margin: "0 0 12px", padding: "8px 12px", border: "1px solid var(--c-danger)", color: "var(--ink)", fontSize: 12.5 }}>
             <strong>{uiText('Some prices are missing.')} </strong>
-            {uiText('Unentered prices count as zero in the total: ')}{est.unpriced.map(u => uiText(u.finish_tag) + ' (' + missingText(u.missing) + ')').join(' · ')}.
+            {uiText('Unentered prices count as zero in the total: ')}{est.unpriced.map(u => display.finish(u.finish_tag) + ' (' + missingText(u.missing) + ')').join(' · ')}.
           </div>
         )}
         {est.warnings.map((w) => <p key={w} role="alert" style={{ color: "var(--c-danger)", fontSize: 12.5, margin: "0 0 8px" }}>{uiText(w)}</p>)}
@@ -189,7 +191,7 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
                     <tr data-estimate-line={l.finish_tag}>
                       <td style={{ ...td, ...left, fontFamily: "var(--f-body)" }}>
                         <span style={{ display: "inline-block", width: 10, height: 10, background: c.fill || c.color, border: `1px solid ${c.color}`, marginRight: 8, verticalAlign: "middle" }} />
-                        <strong>{uiText(l.finish_tag)}</strong>
+                        <strong>{display.finish(l.finish_tag)}</strong>
                         {l.materials.length > 0 && (
                           <button onClick={() => setOpen((s) => { const n = new Set(s); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n; })}
                             aria-expanded={expanded} title={uiText("Price this condition's supporting materials")}
@@ -202,15 +204,15 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
                         )}
                       </td>
                       <td style={td}>
-                        <select name="price-unit" aria-label={uiText(`${l.finish_tag} pricing unit`)} value={metric && l.source_unit === "SY" ? "SF" : l.source_unit} onChange={(e) => setPricing(c, { unit: e.target.value })}
+                        <select name="price-unit" aria-label={formatMessage("{0} pricing unit", [l.finish_tag])} value={metric && l.source_unit === "SY" ? "SF" : l.source_unit} onChange={(e) => setPricing(c, { unit: e.target.value })}
                           className="field-input" style={{ width: "auto", padding: "2px 4px", fontSize: 12 }}>
                           {PRICE_UNITS.filter(u => !metric || u !== "SY").map((u) => <option key={u} value={u}>{uiText(pricingDisplay(u, metric).unit)}{metric && u === 'SY' ? uiText(' (source: sq yd)') : ''}</option>)}
                         </select>
                       </td>
                       <td style={td} title={uiText("Order quantity — waste applied")}>{uiText(qty(l.material_qty))}</td>
-                      <td style={td}><PriceInput name="price-material" label={`${l.finish_tag} material $ per ${l.unit}`} value={l.material_rate} onCommit={(v) => setPricing(c, { material: v === null ? null : v * l.quantity_factor })} /></td>
+                      <td style={td}><PriceInput name="price-material" label={formatMessage("{0}: material price, {1}/{2}", [l.finish_tag, metric ? "₽" : "$", display.unit(l.unit)])} value={l.material_rate} onCommit={(v) => setPricing(c, { material: v === null ? null : v * l.quantity_factor })} /></td>
                       <td style={td} title={uiText("Measured quantity — no waste")}>{uiText(qty(l.labor_qty))}</td>
-                      <td style={td}><PriceInput name="price-labor" label={`${l.finish_tag} labor $ per ${l.unit}`} value={l.labor_rate} onCommit={(v) => setPricing(c, { labor: v === null ? null : v * l.quantity_factor })} /></td>
+                      <td style={td}><PriceInput name="price-labor" label={formatMessage("{0}: labor price, {1}/{2}", [l.finish_tag, metric ? "₽" : "$", display.unit(l.unit)])} value={l.labor_rate} onCommit={(v) => setPricing(c, { labor: v === null ? null : v * l.quantity_factor })} /></td>
                       <td style={td}>{uiText(money(l.material_cost))}</td>
                       <td style={td}>{uiText(money(l.labor_cost))}</td>
                       <td style={td}>{uiText(money(l.materials_cost))}</td>
@@ -219,12 +221,12 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
                     {expanded && l.materials.map((m, i) => (
                       <tr key={`${l.id}-m${i}`} style={{ background: "var(--paper-bright)" }}>
                         <td style={{ ...td, ...left, fontFamily: "var(--f-body)", paddingLeft: 36, color: "var(--ink-soft)" }}>
-                          {uiText(m.name)}
+                          {display.material(m.name)}
                           {!m.priced && <span style={{ marginLeft: 8, fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--c-danger)" }}>{uiText("UNPRICED")}</span>}
                         </td>
                         <td style={td}>{uiText(m.unit || "unit")}</td>
                         <td style={td} title={uiText("Whole packages — rounded up")}>{uiText(qty(m.qty))}</td>
-                        <td style={td}><PriceInput name="price-supply" label={`${l.finish_tag} ${m.name} $ per ${m.unit || "unit"}`} value={m.price} onCommit={(v) => setMaterialPrice(c, i, v)} /></td>
+                        <td style={td}><PriceInput name="price-supply" label={formatMessage("{0}: {1}, price {2}/{3}", [l.finish_tag, display.material(m.name), metric ? "₽" : "$", display.unit(m.unit || "unit")])} value={m.price} onCommit={(v) => setMaterialPrice(c, i, v)} /></td>
                         <td style={td} colSpan={4} />
                         <td style={td}>{uiText(money(m.cost))}</td>
                         <td style={td} />

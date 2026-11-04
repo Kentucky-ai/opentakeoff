@@ -1,5 +1,5 @@
 import { calibratedScaleLabel } from '../lib/calibratedScaleLabel.js';
-import { localizeText as uiText, toolFaceLabel, scaleGroups, scaleRatioLabel, measurementCount } from "../lib/i18n/core.js";
+import { finishLabel, formatMessage, localizeText as uiText, toolFaceLabel, scaleGroups, scaleRatioLabel, measurementCount } from "../lib/i18n/core.js";
 import { useTranslation, LanguageSwitcher } from "../lib/i18n/index.jsx";
 import { useAnnotationWorkbench } from '../components/AnnotationWorkbench.jsx';
 import { nativeTextRuns, markupPatch, applyMarkupPatch } from '../lib/annotationTools.js';
@@ -3332,11 +3332,11 @@ export default function TakeoffCanvas() {
       if (!await chooseImportUnits()) return;
       const { payload, note } = mergeTakeoffImport(buildPayload(), imported, sheets.map((s) => s.name));
       restoreSavedPayload(payload);
-      const parts = [`Imported ${note.shapes_added} shape${note.shapes_added === 1 ? "" : "s"}`];
-      if (note.shapes_pending) parts.push(`${note.shapes_pending} dashed pending your review — Accept turns pencil to ink`);
-      if (note.conditions_added) parts.push(`${note.conditions_added} new condition${note.conditions_added === 1 ? "" : "s"}`);
-      if (note.conditions_merged) parts.push(`${note.conditions_merged} matched your finish tags`);
-      if (note.unknown_files.length) parts.push(`some shapes reference ${note.unknown_files.join(", ")} — open that file to see them`);
+      const parts = [formatMessage("Imported measurements: {0}", [note.shapes_added])];
+      if (note.shapes_pending) parts.push(formatMessage("Measurements pending review: {0}. Accept them after checking", [note.shapes_pending]));
+      if (note.conditions_added) parts.push(formatMessage("New conditions: {0}", [note.conditions_added]));
+      if (note.conditions_merged) parts.push(formatMessage("Conditions matched by finish tag: {0}", [note.conditions_merged]));
+      if (note.unknown_files.length) parts.push(formatMessage("Open the referenced files to see their measurements: {0}", [note.unknown_files.join(", ")]));
       setCommitMsg(parts.join(" · ") + ".");
     } catch (e) {
       // module copy already speaks "Couldn't…" (the sticky danger convention);
@@ -3435,7 +3435,8 @@ export default function TakeoffCanvas() {
       await refreshSheets();
       restoreSavedPayload(takeoff);
       const n = Array.isArray(takeoff.shapes) ? takeoff.shapes.length : 0;
-      setCommitMsg(uiText(`Opened ${file.name} — ${pdfs.length} PDF${pdfs.length === 1 ? "" : "s"}, ${n} takeoff${n === 1 ? "" : "s"}.${shapes.length || conditions.length ? " Your previous takeoff was snapshotted — Revisions restores it." : ""}`));
+      setCommitMsg(formatMessage("Opened {0} — PDFs: {1}, takeoffs: {2}.{3}", [file.name, pdfs.length, n,
+        shapes.length || conditions.length ? " " + uiText("Your previous takeoff was snapshotted — Revisions restores it.") : ""]));
     } catch (e) {
       setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't open project: ${e?.message || e}`);
     }
@@ -7536,7 +7537,8 @@ export default function TakeoffCanvas() {
     }
     if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the batch
     setAgentProposals((ps) => ps.filter((p) => !accepted.has(p.id)));
-    if (made.length) setCommitMsg(uiText(`Accepted ${made.length} agent proposal${made.length === 1 ? "" : "s"}.${skippedClosed ? ` ${skippedClosed} skipped — open their sheet (with its scale set) to accept.` : ""}`));
+    if (made.length) setCommitMsg(formatMessage("Accepted agent proposals: {0}.{1}", [made.length,
+      skippedClosed ? " " + formatMessage("Skipped proposals: {0}. Open their sheets with scales set to accept them.", [skippedClosed]) : ""]));
     else if (skippedClosed) setCommitMsg(uiText("Open that proposal's sheet (with its scale set) to accept it."));
   }
   const acceptAgentProposal = (id) => acceptAgentProposals([id]);
@@ -8796,7 +8798,7 @@ export default function TakeoffCanvas() {
     if (owned) dispatchShape({ type: "delete", ids: dead.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
     if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
-    setCommitMsg(uiText(`Deleted ${live.length} condition${live.length === 1 ? "" : "s"}${owned ? ` and ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}.`));
+    setCommitMsg(formatMessage("Deleted conditions: {0}. Deleted takeoffs: {1}.", [live.length, owned]));
     return true;
   };
 
@@ -10039,7 +10041,7 @@ export default function TakeoffCanvas() {
             forty; un-batched pending shapes keep the original pill. */}
         {pendingGroups.map((g) => {
           const n = g.ids.length;
-          const label = g.proposal ? g.proposal.label : `${n} proposed shape${n === 1 ? "" : "s"}`;
+          const label = g.proposal ? g.proposal.label : formatMessage("Proposed measurements: {0}", [n]);
           const key = g.proposal ? g.proposal.id : "_loose";
           return (
             <div key={key} data-proposal-pill={key} style={{ pointerEvents: "auto", display: "flex", alignItems: "stretch", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)" }}>
@@ -10048,7 +10050,7 @@ export default function TakeoffCanvas() {
                   ? `Proposal “${g.proposal.label}”${g.proposal.rationale ? ` — ${g.proposal.rationale}` : ""}. ${n} shape${n === 1 ? "" : "s"} render${n === 1 ? "s" : ""} dashed pending your review. Accept makes the whole batch ink in one step (⌘Z undoes).`
                   : `${n} machine-proposed shape${n === 1 ? "" : "s"} render${n === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`)}
                 style={{ padding: "6px 12px", border: "none", background: "transparent", color: "inherit", font: "inherit", cursor: "pointer" }}>
-                {uiText("Accept ")}{g.proposal ? <>“{uiText(label)}” <span style={{ fontWeight: 500, color: "var(--ink-muted)" }}>· {uiText(n)}</span></> : label}
+                {uiText("Accept ")}{g.proposal ? <>“{label}” <span style={{ fontWeight: 500, color: "var(--ink-muted)" }}>· {uiText(n)}</span></> : label}
               </button>
               <button onClick={() => rejectProposalGroup(g)}
                 title={uiText(`Reject ${g.proposal ? `“${g.proposal.label}”` : "these shapes"} — removes ${n === 1 ? "the pending shape" : `all ${n} pending shapes`} (⌘Z restores).`)}
@@ -10208,7 +10210,7 @@ export default function TakeoffCanvas() {
             );
           })()}
           <div style={{ height: 1, background: "var(--divider-soft)", margin: "8px 0" }} />
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{uiText(aCond?.finish_tag || "—")} {uiText("total (")}{uiText(condRow?.shape_count || 0)}{uiText(condMult > 1 ? ` ×${condMult}` : "")})</div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{finishLabel(aCond?.finish_tag || "—")} {uiText("total (")}{uiText(condRow?.shape_count || 0)}{uiText(condMult > 1 ? ` ×${condMult}` : "")})</div>
           {condTotal !== 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{uiText(num(areaVal(condTotal, units)))} <span style={{ fontSize: 12, fontWeight: 600 }}>{uiText(areaUnit(units))}</span> {units === "imperial" && <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-secondary)" }}>· {uiText(num(condTotal / 9))} {uiText("SY")}</span>}</div>}
           {wallTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{uiText(num(areaVal(wallTotal, units)))} <span style={{ fontSize: 12, fontWeight: 600 }}>{uiText(areaUnit(units))} {uiText("wall")}</span></div>}
           {borderTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{uiText(num(areaVal(borderTotal, units)))} <span style={{ fontSize: 12, fontWeight: 600 }}>{uiText(areaUnit(units))} {uiText("border")}</span></div>}
@@ -10277,7 +10279,7 @@ export default function TakeoffCanvas() {
                 <div key={zr.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={zr.hatch || "solid"} line={zr.color} fill={zr.fill} /></span>
-                    <b style={{ fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{uiText(zr.finish_tag || "—")}</b>
+                    <b style={{ fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{finishLabel(zr.finish_tag || "—")}</b>
                     {zr.multiplier > 1 && <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>×{uiText(zr.multiplier)}</span>}
                     <span style={{ marginLeft: "auto", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)" }}>{uiText(parts.join(" · ") || "—")}</span>
                   </div>
@@ -10385,7 +10387,7 @@ export default function TakeoffCanvas() {
         ]} />}
         fileMenu={<><ToolMenu title={tr("Files and workspace")} face={<span>{tr("File")}</span>} onOpenChange={onMenuDepth} items={sheetMenuItems} /><PresenceChip bridge={store.syncBridge} /><AccountChip note={cloudMode ? tr("Synced to Google Drive") : tr("Local workspace")} onOpenChange={onMenuDepth} /></>}
         conditionControl={<><label className="calm-condition-label" htmlFor="workspace-condition">{tr("Condition")}</label><select id="workspace-condition" value={activeCond || ""} onChange={(e) => activateCondition(e.target.value)} title={uiText(tool === "select" && selectedId ? tr("Reassign selected measurement") : tr("Condition for the next measurement"))}>
-          {!conditions.length && <option value="">{tr("No conditions")}</option>}{conditions.map((c) => <option key={c.id} value={c.id}>{uiText(c.finish_tag)}</option>)}</select>
+          {!conditions.length && <option value="">{tr("No conditions")}</option>}{conditions.map((c) => <option key={c.id} value={c.id}>{finishLabel(c.finish_tag)}</option>)}</select>
           <button type="button" onClick={addCondition} title={tr("Add condition")} aria-label={tr("Add condition")}><Icon name="plus" size={14} /></button>
           <button type="button" onClick={() => setWorkspaceDetailsOpen((v) => !v)} aria-expanded={workspaceDetailsOpen} disabled={!aCond}>{tr("Properties")}</button></>}
         history={<><button type="button" onClick={() => poly.length ? dropLastPoint() : undoShapeCommand()} title={tr("Undo (⌘Z)")} aria-label={tr("Undo")}><Icon name="undo" size={16} /></button><button type="button" onClick={redoShapeCommand} title={tr("Redo (⇧⌘Z)")} aria-label={tr("Redo")}><span style={{ display: "flex", transform: "scaleX(-1)" }}><Icon name="undo" size={16} /></span></button></>}
@@ -10394,7 +10396,7 @@ export default function TakeoffCanvas() {
         scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title={tr("Switch display units")}>{uiText(units === "metric" ? (language === "ru" ? "Метры" : "m") : (language === "ru" ? "Футы и дюймы" : "ft"))}</button><ToolMenu title={uiText(scaleTitle)} onOpenChange={onScaleMenuDepth} face={<span data-tour="scale">{uiText(scaleFace)}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 290, maxHeight: "min(600px, 70vh)", overflowY: "auto" }} items={scaleItems} /></>}
       />}
       {workspaceLayout && !workspaceArrangement.readout && selShape?.measure_role === "surface_area" && <div className="calm-property-editor"><label>{tr("Selected wall height")} <input aria-label={tr("Selected wall height")} type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")} onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }} onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }} /></label><span>{uiText(heightUnit(units))} → {uiText(fa(selShape.computed?.area_sf || 0))}</span><button type="button" onClick={clearShapeHeight}>{tr("Use condition height")}</button></div>}
-      {!focusMode && workspaceLayout && workspaceDetailsOpen && aCond && <div className="calm-property-editor"><strong>{uiText(aCond.finish_tag)}</strong><ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} /><button type="button" onClick={() => setWorkspaceDetailsOpen(false)}>{tr("Close properties")}</button></div>}
+      {!focusMode && workspaceLayout && workspaceDetailsOpen && aCond && <div className="calm-property-editor"><strong>{finishLabel(aCond.finish_tag)}</strong><ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} /><button type="button" onClick={() => setWorkspaceDetailsOpen(false)}>{tr("Close properties")}</button></div>}
       {workspaceLayout && <><WorkspaceCommandMenu open={workspaceSearchOpen} onClose={() => setWorkspaceSearchOpen(false)} actions={workspaceActions} onOpenChange={onMenuDepth} /><WorkspaceLayoutDialog open={workspaceLayoutOpen} onClose={() => setWorkspaceLayoutOpen(false)} prefs={workspacePrefs} onOpenChange={onMenuDepth} /></>}
       {!focusMode && !workspaceLayout && (
       <div data-topbar style={{ display: "flex", gap: 7, alignItems: "center", padding: "0 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
@@ -10654,7 +10656,7 @@ export default function TakeoffCanvas() {
                     title={uiText(reassign ? `Reassign the selected takeoff to ${c.finish_tag} (double-click opens the panel)` : `${c.finish_tag} — press ${idx + 1} or click to activate, double-click to open in the panel, drag onto another chip to reorder`)}
                     style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px 3px 5px", border: on ? `2px solid ${c.color}` : (reassign ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5, lineHeight: 1 }}>
                     {idx < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{uiText(idx + 1)}</span>}
-                    <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span><span title={uiText(c.finish_tag)}>{c.finish_tag}</span>
+                    <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span><span title={finishLabel(c.finish_tag)}>{c.finish_tag}</span>
                   </button>
                   <button type="button" onClick={() => unpinFromPalette(c.id)} title={uiText(`Unpin ${c.finish_tag} from the palette`)}
                     style={{ border: "none", background: "none", cursor: "pointer", color: "var(--cobalt)", padding: "0 3px", lineHeight: 0, display: "inline-flex" }}>
@@ -10674,7 +10676,7 @@ export default function TakeoffCanvas() {
               same component the docked panel row renders (one source of truth) */}
           {aCond && (
             <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "var(--sp-2)" }}>
-              <button type="button" aria-expanded={conditionDetails} onClick={() => setConditionDetails((v) => !v)} style={{ border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-secondary)", padding: "var(--sp-1) var(--sp-2)", fontSize: "var(--fs-s)", cursor: "pointer" }}>{uiText(conditionDetails ? "▾" : "▸")} {uiText(aCond.finish_tag)} {uiText("properties")}</button>
+              <button type="button" aria-expanded={conditionDetails} onClick={() => setConditionDetails((v) => !v)} style={{ border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-secondary)", padding: "var(--sp-1) var(--sp-2)", fontSize: "var(--fs-s)", cursor: "pointer" }}>{uiText(conditionDetails ? "▾" : "▸")} {finishLabel(aCond.finish_tag)} {uiText("properties")}</button>
               {conditionDetails && <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} />}
             </div>
           )}
@@ -10747,7 +10749,7 @@ export default function TakeoffCanvas() {
             return (
               <button key={c.id} draggable onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copy"; }} onClick={() => activateCondition(c.id)} title={uiText(tool === "select" && selectedId ? "Reassign selected shape to this condition" : (hot ? `Press ${hIdx + 1} · drag to the palette to pin` : "Drag to the palette to pin"))} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
                 {hot && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinnedPal ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinnedPal ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px" }}>{uiText(hIdx + 1)}</span>}
-                <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span><span title={uiText(c.finish_tag)}>{c.finish_tag}</span>
+                <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span><span title={finishLabel(c.finish_tag)}>{c.finish_tag}</span>
               </button>
             );
           })}
@@ -10986,7 +10988,7 @@ export default function TakeoffCanvas() {
                                <span title={uiText(`Annotation is about ${lc.finish_tag}`)}
                                  style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
                                  <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
-                                 {uiText(lc.finish_tag)}
+                                 {finishLabel(lc.finish_tag)}
                                </span>
                                <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={uiText("Make this the active condition")}>{uiText("Select")}</button>
                                <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={uiText("Detach this annotation from its condition")}>{uiText("Detach")}</button>
@@ -10995,7 +10997,7 @@ export default function TakeoffCanvas() {
                              <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
                                title={uiText("Attach this annotation to a condition")} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
                                <option value="">{uiText("Attach to condition…")}</option>
-                               {conditions.map((c) => <option key={c.id} value={c.id}>{uiText(c.finish_tag)}</option>)}
+                               {conditions.map((c) => <option key={c.id} value={c.id}>{finishLabel(c.finish_tag)}</option>)}
                              </select>
                            )}
                          </div>
@@ -11139,7 +11141,7 @@ export default function TakeoffCanvas() {
                                      <span title={uiText(`Annotation is about ${lc.finish_tag}`)}
                                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
                                        <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
-                                       {uiText(lc.finish_tag)}
+                                       {finishLabel(lc.finish_tag)}
                                      </span>
                                      <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={uiText("Make this the active condition")}>{uiText("Select")}</button>
                                      <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={uiText("Detach this annotation from its condition")}>{uiText("Detach")}</button>
@@ -11148,7 +11150,7 @@ export default function TakeoffCanvas() {
                                    <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
                                      title={uiText("Attach this annotation to a condition")} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
                                      <option value="">{uiText("Attach to condition…")}</option>
-                                     {conditions.map((c) => <option key={c.id} value={c.id}>{uiText(c.finish_tag)}</option>)}
+                                     {conditions.map((c) => <option key={c.id} value={c.id}>{finishLabel(c.finish_tag)}</option>)}
                                    </select>
                                  )}
                                </div>

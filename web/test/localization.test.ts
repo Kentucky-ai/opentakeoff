@@ -57,7 +57,7 @@ test("locale does not redefine measurement conversions or an entered wall height
   setLanguage("en");
   assert.equal(lenVal(10, "imperial"), 10);
 });
-test("human CSV headings localize without altering numeric values or quoted user data", () => {
+test("legacy serialized CSV localizes headings but preserves body data without guessing types", () => {
   const csv = 'Finish,Floor m²\r\nCPT-1,12.345\r\n"My floor, section 2",4.5\r\n';
   try {
     setLanguage("en");
@@ -65,8 +65,8 @@ test("human CSV headings localize without altering numeric values or quoted user
     setLanguage("ru");
     const output = localizeCsv(csv);
     assert.ok(output.startsWith('\uFEFFВид работ;Пол, м²'));
-    assert.ok(output.includes('Ковровое покрытие 1 (CPT-1);12,345'));
-    assert.ok(output.includes('My floor, section 2;4,5'));
+    assert.ok(output.includes('CPT-1;12.345'));
+    assert.ok(output.includes('My floor, section 2;4.5'));
   } finally { setLanguage("en"); }
 });
 test("runtime catalog matches JSON and preserves every content placeholder", () => {

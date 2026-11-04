@@ -1,3 +1,4 @@
+import { rfiStatusLabel } from "./i18n/core.js";
 // RFI (Request For Information) helpers — pure, node-testable (see
 // test/rfi.test.ts). The RFI register turns the dormant markup.rfi_id hook into
 // a real deliverable: a markup links to an RFI via markup.rfi_id === rfi.id
@@ -13,7 +14,7 @@
 // there) — the status colors below are the same cobalt/positive/danger literals
 // the canvas uses elsewhere.
 
-import { csvEsc as esc } from "./csv.js";
+import { createExportPresentation } from "./exportPresentation.js";
 
 // The four RFI states, in lifecycle order. `color` is a literal hex (used both
 // as an SVG fill and as DOM chrome), `label` is the human string.
@@ -80,7 +81,8 @@ export function linkedMarkups(rfi, markups = []) {
  * @param {string} [projectName]
  * @param {((sheetId: any) => string)|null} [sheetLabel]
  */
-export function rfisToCsv(rfis = [], markups = [], projectName = "", sheetLabel = null, brandName = "OpenTakeoff") {
+export function rfisToCsv(rfis = [], markups = [], projectName = "", sheetLabel = null, brandName = "OpenTakeoff", presentation = {}) {
+  const p = createExportPresentation(presentation);
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
   const header = [
     "Number", "Subject", "Status", "Ball in court", "Priority",
@@ -88,30 +90,30 @@ export function rfisToCsv(rfis = [], markups = [], projectName = "", sheetLabel 
     "Response date", "Linked markups", "Linked sheets",
   ];
   const lines = [
-    "# RFI log — one row per RFI; linked markups/sheets derived from markup.rfi_id",
-    header.map(esc).join(","),
+    "# " + p.label("RFI log — one row per RFI; linked markups/sheets derived from markup.rfi_id"),
+    p.header(header),
   ];
   for (const r of liveRfis(rfis)) {
     const linked = linkedMarkups(r, markups);
     const sheets = [...new Set(linked.map((m) => label(m.sheet_id)))].join("; ");
-    lines.push([
+    lines.push(p.row([
       r.number ?? "",
       r.subject ?? "",
-      rfiStatus(r.status).label,
+      presentation.language === "ru" ? rfiStatusLabel(r.status, "ru") : rfiStatus(r.status).label,
       r.to ?? "",
-      r.priority ?? "",
-      r.cost_impact ? "yes" : "",
-      r.schedule_impact ? "yes" : "",
+      p.label(r.priority ?? ""),
+      r.cost_impact ? p.label("yes") : "",
+      r.schedule_impact ? p.label("yes") : "",
       r.date ?? "",
       r.question ?? "",
       r.response ?? "",
       r.response_date ?? "",
       linked.length,
       sheets,
-    ].map(esc).join(","));
+    ]));
   }
-  const title = projectName ? `# ${projectName} — ${brandName} RFI log\n` : "";
-  return title + lines.join("\n") + "\n";
+  if (projectName) lines.unshift(`# ${projectName} — ${brandName} ${presentation.language === "ru" ? p.label("RFI log") : "RFI log"}`);
+  return p.document(lines);
 }
 
 // JSON envelope for the RFI log — same schema idiom as shapesToJson.

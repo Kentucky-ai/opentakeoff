@@ -8,9 +8,12 @@
 // become '-12.5. The prefix is applied BEFORE the quote test, so a
 // formula-shaped cell that also contains a comma/quote gets the prefixed
 // text quoted as a whole.
-export const csvEsc = (v) => {
+/** @param {any} v @param {string | number} [delimiter] */
+export const csvEsc = (v, delimiter = ",") => {
+  // Existing callers pass csvEsc directly to Array.map (its second arg is an index).
+  const separator = typeof delimiter === "string" ? delimiter : ",";
   const s = typeof v === "string"
     ? (/^[=+\-@\t]/.test(v) ? `'${v}` : v)
     : String(v ?? "");
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return s.includes(separator) || /["\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };

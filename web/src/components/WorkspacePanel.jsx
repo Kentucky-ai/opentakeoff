@@ -1,4 +1,4 @@
-import { localizeText as uiText } from "../lib/i18n/core.js";
+import { finishLabel, localizeText as uiText } from "../lib/i18n/core.js";
 import { useEffect, useMemo, useState } from "react";
 import { filterWork, workActor, workMethod, workQuantity, workReviewState } from "../lib/workReview.js";
 import { Z } from "../lib/ui.js";
@@ -56,8 +56,8 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
         <div className="workspace-list" aria-label={uiText("Measurements")}>
           {!rows.length && <div className="workspace-empty"><h3>{uiText(shapes.length ? "No matching work" : "Your measurements appear here")}</h3><p>{uiText(shapes.length ? "Change the filter or search to see more measurements." : "Measure on the plan or import an agent’s takeoff. Inspect either actor’s work here, then open its boundary on the drawing.")}</p></div>}
           {rows.slice(0, limit).map((shape) => <button type="button" className="workspace-row" key={shape.id} aria-pressed={selectedId === shape.id} onClick={() => onLocate(shape)}>
-            <span className="workspace-row-top"><strong>{uiText(conditions[shape.condition_id]?.finish_tag || "Unassigned")}{uiText(shape.label ? ` · ${shape.label}` : "")}</strong><span className="workspace-quantity">{uiText(quantity(shape))}</span></span>
-            <span className="workspace-sheet">{uiText(sheetLabel(shape.sheet_id))}</span>
+            <span className="workspace-row-top"><strong>{conditions[shape.condition_id] ? finishLabel(conditions[shape.condition_id].finish_tag) : uiText("Unassigned")}{shape.label ? ` · ${shape.label}` : ""}</strong><span className="workspace-quantity">{uiText(quantity(shape))}</span></span>
+            <span className="workspace-sheet">{sheetLabel(shape.sheet_id)}</span>
             <span className="workspace-row-bottom"><span>{workActor(shape) === "Agent" && <ScanStar size={10} style={{ marginRight: 5, color: "var(--cobalt)" }} />}{uiText(shape.author || workActor(shape))}</span><span className={workReviewState(shape) === "Needs review" ? "workspace-pending" : ""}>{uiText(workReviewState(shape))}</span></span>
           </button>)}
           {rows.length > limit && <button type="button" className="workspace-more" onClick={() => setLimit((n) => n + 50)}>{uiText("Show more · ")}{uiText(rows.length - limit)} {uiText("remaining")}</button>}

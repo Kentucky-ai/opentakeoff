@@ -78,7 +78,7 @@ export default function RfiPanel({ docked = false, rfis: rfisIn = [], markups = 
         return (
           <div key={r.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
-              <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: "var(--cobalt)" }}>{uiText(String(r.number ?? ""))}</span>
+              <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: "var(--cobalt)" }}>{String(r.number ?? "")}</span>
               <span style={{ padding: "1px 7px", background: st.color, color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{rfiStatusLabel(st.id)}</span>
               {agent && (
                 <span title={uiText(pending ? "Raised by an agent over MCP — pending until you accept it" : "Raised by an agent over MCP — accepted")}
@@ -152,7 +152,7 @@ export default function RfiPanel({ docked = false, rfis: rfisIn = [], markups = 
                 : linked.map((m) => (
                   <button key={m.id} onClick={() => onFlyTo && onFlyTo(m)} title={uiText(`Fly to this ${m.type} on ${sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}`)}
                     style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", border: "1px solid var(--cobalt)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11 }}>
-                    <Icon name="target" size={11} />{uiText(sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id)}
+                    <Icon name="target" size={11} />{sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}
                   </button>
                 ))}
             </div>

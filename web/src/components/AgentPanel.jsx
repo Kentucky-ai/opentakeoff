@@ -1,4 +1,4 @@
-import { localizeText as uiText } from "../lib/i18n/core.js";
+import { finishLabel, localizeText as uiText } from "../lib/i18n/core.js";
 // Agent panel — the docked right-rail surface for the in-canvas takeoff agent.
 // An estimator types a goal; the agent (running on the user's OWN model via
 // the BYO-AI seam) aims the app's deterministic tools and stages DASHED pencil
@@ -104,7 +104,7 @@ export default function AgentPanel({
                   <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 12px", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
                     <span style={{ width: 10, height: 10, flexShrink: 0, background: cond?.color || "var(--cobalt)", border: "1px solid var(--ink-faint)" }} />
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontWeight: 600 }}>{uiText(cond?.finish_tag || "?")}</span>
+                      <span style={{ fontWeight: 600 }}>{finishLabel(cond?.finish_tag || "?")}</span>
                       {uiText(p.measure_role === "deduct" ? " (deduct)" : "")} · {uiText(sheetLabel(p.sheet_id))}
                       {uiText(p.area_sf != null ? ` · ${fmtArea(p.area_sf)}` : "")}
                       <span style={{ display: "block", color: "var(--ink-muted)", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(evidenceText(p.evidence))}>

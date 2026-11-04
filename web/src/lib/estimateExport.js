@@ -7,6 +7,7 @@
 // Every tab opens with the project line and closes with OT_WATERMARK: the
 // estimate is prepared with OpenTakeoff in every branding mode.
 
+import { createExportPresentation } from "./exportPresentation.js";
 import { OT_WATERMARK } from "./branding.js";
 
 const MODE = { markup: "markup on cost", margin: "margin of price" };
@@ -19,19 +20,21 @@ const rate = (v) => (v === null || v === undefined ? "" : v);
  * @returns {Array<{name: string, rows: any[][]}>}
  */
 export function estimateWorkbook({ est, projectName = "", companyName = "", clientName = "", date = "", localize = (v) => v, language = "en" }) {
+  const p = createExportPresentation({ language, localize });
+  const heading = cells => cells.map(value => localize(value));
   const head = [
-    ["Estimate", projectName || localize("Untitled project")],
-    ...(companyName ? [["Prepared by", companyName]] : []),
-    ...(clientName ? [["Prepared for", clientName]] : []),
-    ...(date ? [["Date", date]] : []),
+    [localize("Estimate"), projectName || localize("Untitled project")],
+    ...(companyName ? [[localize("Prepared by"), companyName]] : []),
+    ...(clientName ? [[localize("Prepared for"), clientName]] : []),
+    ...(date ? [[localize("Date"), date]] : []),
     [],
   ];
   const foot = [[], [OT_WATERMARK]];
   const st = est.settings;
 
-  const lines = [["Finish", "Status", "Unit", "Material qty", "Material $/unit", "Material $", "Labor qty", "Labor $/unit", "Labor $", "Material rows $", "Line total $"]];
+  const lines = [heading(["Finish", "Status", "Unit", "Material qty", "Material $/unit", "Material $", "Labor qty", "Labor $/unit", "Labor $", "Material rows $", "Line total $"])];
   for (const l of est.lines) {
-    lines.push([l.finish_tag, STATUS[l.status], l.unit, l.material_qty, rate(l.material_rate), l.material_cost, l.labor_qty, rate(l.labor_rate), l.labor_cost, l.materials_cost, l.total]);
+    lines.push([p.finish(l.finish_tag), localize(STATUS[l.status]), p.unit(l.unit), l.material_qty, rate(l.material_rate), l.material_cost, l.labor_qty, rate(l.labor_rate), l.labor_cost, l.materials_cost, l.total]);
   }
   const summary = [
     [],
@@ -42,14 +45,14 @@ export function estimateWorkbook({ est, projectName = "", companyName = "", clie
     [`Overhead (${st.overhead_pct}%)`, est.overhead],
     [`Profit (${st.profit_pct}% ${MODE[st.profit_mode]})`, est.profit],
     ["Base bid", est.total],
-  ];
+  ].map(heading);
   if (!est.complete) summary.push([], [`Not fully priced: ${est.unpriced.length} condition${est.unpriced.length === 1 ? "" : "s"} count at $0 for what is missing (see the Unpriced tab).`]);
   if (language === 'ru' && !est.complete) summary[summary.length - 1] = [`Не все цены заданы. Позиций без полной стоимости: ${est.unpriced.length}. Неуказанные цены учитываются как нулевые; см. лист «${localize("Unpriced")}».`];
-  for (const w of est.warnings) summary.push([w]);
+  for (const w of est.warnings) summary.push([localize(w)]);
 
-  const materials = [["Finish", "Material", "Qty", "Unit", "$/unit", "Cost $", "Status"]];
+  const materials = [heading(["Finish", "Material", "Qty", "Unit", "$/unit", "Cost $", "Status"])];
   for (const l of est.lines) {
-    for (const m of l.materials) materials.push([l.finish_tag, m.name, m.qty, m.unit, rate(m.price), m.cost, m.priced ? "priced" : "unpriced"]);
+    for (const m of l.materials) materials.push([p.finish(l.finish_tag), p.material(m.name), m.qty, p.unit(m.unit), rate(m.price), m.cost, localize(m.priced ? "priced" : "unpriced")]);
   }
 
   const sheets = [
@@ -57,11 +60,11 @@ export function estimateWorkbook({ est, projectName = "", companyName = "", clie
     { name: "Materials", rows: [...head, ...materials, ...foot] },
   ];
   if (!est.complete) {
-    const unpriced = [["Finish", "Status", "Missing"]];
-    for (const u of est.unpriced) unpriced.push([u.finish_tag, STATUS[u.status], u.missing.map(v => v.startsWith('material row: ') ? localize('Supporting material') + ': ' + localize(v.slice(14)) : localize(v)).join('; ')]);
+    const unpriced = [heading(["Finish", "Status", "Missing"])];
+    for (const u of est.unpriced) unpriced.push([p.finish(u.finish_tag), localize(STATUS[u.status]), u.missing.map(v => v.startsWith('material row: ') ? localize('Supporting material') + ': ' + p.material(v.slice(14)) : localize(v)).join('; ')]);
     sheets.push({ name: "Unpriced", rows: [...head, ...unpriced, ...foot] });
   }
-  return sheets.map(sheet => ({...sheet, name: localize(sheet.name), ...(language === 'ru' ? {columnWidths: [44,26,16,24,24,20,24,24,20,30,24]} : {}), rows: sheet.rows.map((row, rowIndex) => row.map((v, colIndex) => typeof v === 'string' && !(rowIndex < head.length && colIndex > 0) ? localize(v) : v))}));
+  return sheets.map(sheet => ({...sheet, name: localize(sheet.name), ...(language === 'ru' ? {columnWidths: [44,26,16,24,24,20,24,24,20,30,24]} : {})}));
 }
 
 export function estimateFileName(projectName, language = "en") {

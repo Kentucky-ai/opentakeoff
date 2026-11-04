@@ -79,7 +79,7 @@ export default function ProjectHome() {
             // row and button both open — same action, the button is just an
             // explicit affordance mirroring the project rows below.
             <div key={r.id} onClick={() => open(r)} style={{ ...rowBase, cursor: "pointer" }}>
-              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(r.name)}>{uiText(r.name)}</strong>
+              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</strong>
               <button type="button" onClick={(e) => { e.stopPropagation(); open(r); }} style={openBtn}>{uiText("Open")}</button>
             </div>
           ))}
@@ -114,7 +114,7 @@ export default function ProjectHome() {
             // glyph: a drill triangle would misread as "expand," and this matches
             // the recents rows above.
             <div key={f.id} onClick={() => open(f)} style={{ ...rowBase, cursor: "pointer" }}>
-              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(f.name)}>{uiText(f.name)}</strong>
+              <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</strong>
               <button type="button" onClick={(e) => { e.stopPropagation(); open(f); }} style={openBtn}>{uiText("Open")}</button>
             </div>
           ))

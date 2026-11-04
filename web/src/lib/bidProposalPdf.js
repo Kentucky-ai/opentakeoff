@@ -1,3 +1,4 @@
+import { wrapPdfText } from "./pdfText.js";
 import { formatEstimateMoney as money, getLanguage, localizeText as uiText, finishLabel } from './i18n/core.js';
 import { pricingDisplay } from './estimatePresentation.js';
 // Bid proposal → PDF (letter, pdf-lib, lazy-loaded like the marked set).
@@ -19,25 +20,7 @@ const qty = (v) => (Number(v) || 0).toLocaleString(getLanguage() === "ru" ? "ru-
 // Splits on the text's own line breaks FIRST, then makes each line WinAnsi-safe
 // (sanitizing first would turn every newline into "?").
 export function wrapText(text, font, size, width, encode = winAnsiSafe) {
-  const out = [];
-  for (const para of String(text || "").split(/\r?\n/)) {
-    let line = "";
-    for (const word of encode(para).split(/\s+/).filter(Boolean)) {
-      const next = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(next, size) <= width) { line = next; continue; }
-      if (line) out.push(line);
-      let w = word;
-      while (font.widthOfTextAtSize(w, size) > width && w.length > 1) {
-        let n = w.length - 1;
-        while (n > 1 && font.widthOfTextAtSize(w.slice(0, n), size) > width) n--;
-        out.push(w.slice(0, n));
-        w = w.slice(n);
-      }
-      line = w;
-    }
-    out.push(line);
-  }
-  return out;
+  return wrapPdfText(text, font, size, width, encode);
 }
 
 const dataUrlBytes = (url) => {
@@ -132,14 +115,29 @@ export async function buildBidProposalPdf(model, { fontBytes, boldBytes } = {}) 
   if (model.itemized) textRight("PRICE", col.price, 8, bold, muted);
   y -= 6; hr(6); y -= 8;
   for (const s of model.scope) {
-    const lines = wrap(s.description || (ru ? finishLabel(s.tag, "ru") : ""), font, 9.5, descW);
-    ensure(14 + Math.max(0, lines.length - 1) * 12);
-    page.drawText(unicode ? String(s.tag) : winAnsiSafe(s.tag), {x:col.item,y,size:10,font:bold,color:ink});
+    const fullName = bold.widthOfTextAtSize(encode(s.tag), 10) > col.desc - col.item - 6;
+    const description = s.description || (ru ? finishLabel(s.tag, "ru") : "");
+    // The item column normally holds a short drawing code. A full custom name
+    // gets a spanning line above its quantities instead of a very narrow stack.
+    if (fullName) {
+      const nameLines = wrap(s.tag, bold, 10, RIGHT - M);
+      ensure(Math.min((nameLines.length + 1) * 13 + 16, PAGE[1] - M - BOTTOM));
+      para(s.tag, col.item, RIGHT - M, 10, bold);
+    }
+    const lines = wrap(fullName && description === s.tag ? "" : description, font, 9.5, descW);
+    const tagLines = fullName ? [] : wrap(s.tag, bold, 10, col.desc - col.item - 6);
+    const rowLines = Math.max(lines.length, tagLines.length);
+    ensure(Math.min(14 + Math.max(0, rowLines - 1) * 12, PAGE[1] - M - BOTTOM));
     const display = pricingDisplay(s.unit, ru);
     textRight(qty(s.qty * display.factor), col.qty, 10);
     text(display.unit, col.unit, 10, font, muted);
     if (model.itemized) textRight(money(s.price), col.price, 10);
-    lines.forEach((l, i) => { if (i) y -= 12; textData(l, col.desc, 9.5); });
+    for (let i = 0; i < rowLines; i++) {
+      if (i) y -= 12;
+      ensure(12);
+      if (tagLines[i]) textData(tagLines[i], col.item, 10, bold);
+      if (lines[i]) textData(lines[i], col.desc, 9.5);
+    }
     y -= 16;
   }
   if (model.scope_note) { y -= 2; para(model.scope_note, M, RIGHT - M, 9.5, font, muted); }

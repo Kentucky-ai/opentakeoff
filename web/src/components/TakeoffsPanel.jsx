@@ -1,6 +1,6 @@
 import MaterialUnitSelector, { useMaterialUnit } from './MaterialUnitSelector.jsx';
 import { liquidFactor } from '../lib/materialUnits.js';
-import { getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
+import { formatMessage, finishLabel, getLanguage, localizeText as uiText } from "../lib/i18n/core.js";
 import { useTranslation as useUiLocale } from "../lib/i18n/index.jsx";
 // TakeoffsPanel — the docked conditions panel on the canvas's right edge
 // (reflows the canvas, not an overlay): every condition with its running
@@ -244,10 +244,10 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
                 style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>{uiText("↺ follow")}</button>
             )}
             {lm && <span title={uiText(`Linked to “${lm.name}” in the material library — amber fields differ from the library values`)} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
-            <input name="material-name" value={uiText(m.name)} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder={uiText("Material (e.g. Adhesive)")} style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
+            <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder={uiText("Material (e.g. Adhesive)")} style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
             {uiText(ov("name") && rv(m, "name"))}
             <span style={{ color: "var(--ink-muted)" }}>1</span>
-            <input name="material-unit" readOnly={volumeFactor !== null} title={uiText('Liquid material units')} value={volumeFactor !== null ? uiText(liquidUnit) : uiText(m.unit)} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder={uiText("unit")} style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
+            <input name="material-unit" readOnly={volumeFactor !== null} title={uiText('Liquid material units')} value={volumeFactor !== null ? uiText(liquidUnit) : m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder={uiText("unit")} style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
             {uiText(ov("unit") && rv(m, "unit"))}
             <span style={{ color: "var(--ink-muted)" }}>{uiText("per")}</span>
             <input name="material-per" type="number" min="0" step="any" value={m.per ? Number((m.per * perFactor).toFixed(6)) : ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) / perFactor })} placeholder={uiText("0")} style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
@@ -347,7 +347,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             return (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-muted)" }}>
                 <span style={{ color: "var(--c-danger)" }}>✕</span>
-                <span style={{ textDecoration: "line-through" }}>{uiText(src?.name || "(removed material)")}</span>
+                <span style={{ textDecoration: "line-through" }}>{src?.name || uiText("(removed material)")}</span>
                 <span style={{ fontSize: 10 }}>{uiText("removed here")}</span>
                 {src && onRestoreDroppedRow && (
                   <button onClick={() => onRestoreDroppedRow(k)} title={uiText(`Put it back — takes the row from ${parentTag || "the family"} again`)}
@@ -365,7 +365,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
           title={uiText("Attach a material from the library — the line copies the library values and stays linked")}
           style={{ ...ip, marginLeft: 6, background: "var(--paper-bright)", color: "var(--ink-muted)" }}>
           <option value="">{uiText("+ from library…")}</option>
-          {library.map((lm) => <option key={lm.id} value={lm.id}>{uiText(lm.name || "(unnamed)")}{uiText(lm.per ? ` · ${lm.per}/${lm.unit || "?"}` : "")}</option>)}
+          {library.map((lm) => <option key={lm.id} value={lm.id}>{lm.name || uiText("(unnamed)")}{uiText(lm.per ? ` · ${lm.per}/${lm.unit || "?"}` : "")}</option>)}
         </select>
       )}
     </>
@@ -382,11 +382,11 @@ function ColumnSelects({ columns, cond, onAssign }) {
         const v = attrValue(cond?.attrs, cc.id);   // the shared assigned-value rule (hydrate sanitizes, this keeps the display consistent)
         return (
           <label key={cc.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, marginRight: 12, marginBottom: 6 }}>
-            <span style={{ color: "var(--ink-muted)" }}>{uiText(columnLabel(cc))}</span>
+            <span style={{ color: "var(--ink-muted)" }}>{columnLabel(cc)}</span>
             <select name="assign-column-value" value={v} onChange={(e) => onAssign(cc.id, e.target.value)} style={{ ...ip, background: "var(--paper-bright)" }}>
               <option value="">{uiText("Unassigned")}</option>
-              {cc.values.map((val) => <option key={val} value={val}>{uiText(val)}</option>)}
-              {v && !cc.values.includes(v) && <option value={v}>{uiText(v)} {uiText("(removed)")}</option>}
+              {cc.values.map((val) => <option key={val} value={val}>{val}</option>)}
+              {v && !cc.values.includes(v) && <option value={v}>{v} {uiText("(removed)")}</option>}
             </select>
           </label>
         );
@@ -700,14 +700,14 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
       ) : (
         <div>
           <div style={{ color: "var(--ink-muted)", marginBottom: 5 }}>
-            {uiText("Derive onto ")}<b style={{ color: "var(--ink)" }}>{uiText(c.finish_tag)}</b> {uiText("— where these two meet.")}</div>
+            {uiText("Derive onto ")}<b style={{ color: "var(--ink)" }}>{finishLabel(c.finish_tag)}</b> {uiText("— where these two meet.")}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
             <select name="transition-a" value={draft.a} onChange={(e) => setDraft({ ...draft, a: e.target.value })} style={selStyle}>
-              {opts.map((s) => <option key={s.id} value={s.id}>{uiText(s.finish_tag)} ({uiText(s.rooms)})</option>)}
+              {opts.map((s) => <option key={s.id} value={s.id}>{finishLabel(s.finish_tag)} ({uiText(s.rooms)})</option>)}
             </select>
             <span style={{ color: "var(--ink-muted)" }}>{uiText("meets")}</span>
             <select name="transition-b" value={draft.b} onChange={(e) => setDraft({ ...draft, b: e.target.value })} style={selStyle}>
-              {opts.map((s) => <option key={s.id} value={s.id}>{uiText(s.finish_tag)} ({uiText(s.rooms)})</option>)}
+              {opts.map((s) => <option key={s.id} value={s.id}>{finishLabel(s.finish_tag)} ({uiText(s.rooms)})</option>)}
             </select>
             <button name="transition-derive" onClick={run} disabled={!ready}
               style={{ padding: "2px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent",
@@ -790,7 +790,7 @@ export function MultiplierField({ value, onChange }) {
 // click contract are testable without mounting the whole panel.
 export function ConditionEye({ tag, hidden, onToggle }) {
   return (
-    <button type="button" aria-pressed={!hidden} aria-label={uiText(`${hidden ? "Show" : "Hide"} ${tag} on the plan`)}
+    <button type="button" aria-pressed={!hidden} aria-label={formatMessage("{0} {1} on the plan", [uiText(hidden ? "Show" : "Hide"), tag])}
       onClick={(e) => { e.stopPropagation(); onToggle(!!e.altKey); }}
       onDoubleClick={(e) => e.stopPropagation()}
       title={uiText(keyText(uiText(hidden ? "Hidden on the plan — click to show (⌥-click shows only this one). Still counted in totals, report and exports." : "Hide on the plan (⌥-click shows only this one). Hiding never changes a quantity.")))}
@@ -1041,7 +1041,7 @@ function TakeoffsPanel({
             <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {/* a twin reads as one: whose it is, and how many of its rows have gone their own way */}
               {c.variant_of ? <span aria-hidden title={uiText("A twin — its materials follow another condition")} style={{ color: "var(--ink-faint)", fontWeight: 400 }}>↳ </span> : null}
-              {uiText(c.finish_tag)}<MultiplierChip mult={mult} />
+              {finishLabel(c.finish_tag)}<MultiplierChip mult={mult} />
               {c.variant_of && localCount(c) > 0 ? (
                 <span title={uiText(`${localCount(c)} material row${localCount(c) === 1 ? "" : "s"} no longer follow${localCount(c) === 1 ? "s" : ""} the family`)}
                   style={{ marginLeft: 5, fontFamily: "var(--f-mono,monospace)", fontSize: 9, fontWeight: 500, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{uiText(localCount(c))}</span>
@@ -1164,7 +1164,7 @@ function TakeoffsPanel({
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, padding: "3px 6px", border: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11 }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-muted)" }}
                     title={uiText(`These materials follow “${par?.finish_tag || "the original"}”. Edit a row and only that row stops following.`)}>
-                    {uiText("↳ twin of ")}<b style={{ color: "var(--ink)" }}>{uiText(par?.finish_tag || "—")}</b>
+                    {uiText("↳ twin of ")}<b style={{ color: "var(--ink)" }}>{finishLabel(par?.finish_tag || "—")}</b>
                     {n ? <span style={{ color: "var(--cobalt)" }}> · {uiText(n)} {uiText("local")}</span> : null}
                   </span>
                   {onSplitCondition && (
@@ -1322,7 +1322,7 @@ function TakeoffsPanel({
               <div key={`${t.finish_tag}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                 <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={t.hatch || "solid"} line={t.color} fill={t.fill} /></span>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{uiText(t.finish_tag)}</div>
+                  <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{finishLabel(t.finish_tag)}</div>
                   <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
                     {uiText(t.waste_pct || 0)}{uiText("% waste")}{uiText(t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : "")}{uiText(t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : "")}{uiText(t.rise_ft > 0 ? ` · ↑${dimInputStr(t.rise_ft, units, "height")}${units === "metric" ? " m" : "′"}` : "")}{uiText(t.drop_ft > 0 ? ` · ↓${dimInputStr(t.drop_ft, units, "height")}${units === "metric" ? " m" : "′"}` : "")}{uiText(t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : "")}
                   </div>
@@ -1360,7 +1360,7 @@ function TakeoffsPanel({
                         commit routes every transient value through libEntryPatch's rename
                         re-classification, where a select-all-retype walks the entry's kind
                         through arbitrary intermediate classifications */}
-                    <LibDraftInput name="library-material-name" value={uiText(lm.name)} placeholder={uiText("Material (e.g. Adhesive)")} width={150}
+                    <LibDraftInput name="library-material-name" value={lm.name} placeholder={uiText("Material (e.g. Adhesive)")} width={150}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { name: t })} />
                     <span style={{ color: "var(--ink-muted)" }}>1</span>
                     <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder={uiText("unit")} style={{ ...ip, width: 54 }} />

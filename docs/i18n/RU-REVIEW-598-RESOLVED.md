@@ -68,6 +68,8 @@ The long schedule-reader tool contract remains in English to preserve every fiel
 
 ## Verification
 
+The subsequent [delivery audit](DELIVERY-AUDIT-598.md) fixes data-versus-label collisions in exports and editable fields, uses explicit interpolation in selected receipts, and records the actual browser/export checks. It supersedes the test count below: the final web check passed with **3620 passed, 4 skipped, 0 failed and 0 cancelled**. The 84-location document remains a historical engineering handoff, not a claim that every composition has been wired.
+
 The localization checks exercise counts 1, 2, 5 and 21, optional proposal labels, approval wording, the full margin warning, all content placeholders, the 84-location handoff and all rendered examples. They also check that Excel names the same unpriced sheet that its warning references.
 
 Run npm run check in web/. Run npm run check:tool-count and npm run check:wiki in mcp/, npm run check in protocol/, and node scripts/check-doc-links.mjs from the repository root. The final full web check passed on 2026-11-04: 3616 tests passed, 4 skipped and 0 failed (3620 total). Typecheck, lint, ORT validation, benchmarks, production build and OCR distribution validation passed. MCP tool-count, wiki, protocol and documentation-link checks passed. All 84 source excerpts were separately verified against their recorded source lines. Automated checks protect interpolation and export behavior; the contextual wording decisions are documented above.

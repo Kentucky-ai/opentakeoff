@@ -13,6 +13,40 @@ const fonts = {
   fontBytes: readFileSync(new URL("../public/fonts/NotoSans-Regular.ttf", import.meta.url)),
   boldBytes: readFileSync(new URL("../public/fonts/NotoSans-Bold.ttf", import.meta.url)),
 };
+
+test("long Russian finish names stay inside PDF columns and survive continuation pages", { timeout: 60000 }, async () => {
+  const source = await PDFDocument.create(); source.addPage([300, 200]);
+  const sourceBytes = await source.save();
+  const long = "Очень длинное наименование напольного покрытия для проверки переноса текста в ведомости " + "ДлинныйКод".repeat(12);
+  const conditions = Array.from({ length: 4 }, (_, i) => ({ id: `long-${i}`, finish_tag: `${long} КОНЕЦ-${String(i).padStart(2, "0")}`, color: "#2563eb", waste_pct: 5 }));
+  const shapes = conditions.map(c => ({ id: c.id, sheet_id: "plan", condition_id: c.id, measure_role: "floor_area", verts_norm: [[.1,.1],[.4,.1],[.4,.4]], computed: { area_sf: 100, perimeter_lf: 40 } }));
+  const { bytes } = await buildMarkedSetPdf({
+    ...fonts, language: "ru", units: "metric", projectName: "Report", dark: false, conditions, shapes, markups: [], company: null, clientInfo: null,
+    sheets: [{ key: "plan", file: "plan", page: 1, label: "AF101" }], loadPdfData: async () => sourceBytes,
+    getPage: async () => ({ rotate: 0, getViewport: ({ scale }: {scale: number}) => ({ width: 300*scale, height: 200*scale, transform: [scale,0,0,-scale,0,200*scale] }) }),
+  });
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), useSystemFonts: true, verbosity: 0 }).promise;
+  try {
+    assert.ok(doc.numPages > 2, "long rows paginate rather than disappear");
+    let all = "", nameLines = 0;
+    for (let n = 1; n < doc.numPages; n++) {
+      const page = await doc.getPage(n), content = await page.getTextContent();
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+
+        const x = item.transform[4], y = item.transform[5];
+        if (x === 72 || x === 82) {
+          nameLines++;
+          all += item.str;
+          assert.ok(x + item.width <= (x === 72 ? 182 : 560) + .1, `text exceeds its column: ${item.str}`);
+          assert.ok(y >= 92, "row must stay above the footer");
+        }
+      }
+    }
+    assert.ok(nameLines > conditions.length * 2);
+    for (const c of conditions) assert.equal(all.replace(/\s/g, "").split(c.finish_tag.replace(/\s/g, "")).length - 1, 2, "name occurs in both totals and by-sheet details");
+  } finally { await doc.destroy(); }
+});
 async function texts(bytes: Uint8Array) {
   const doc = await pdfjs.getDocument({ data: bytes.slice(), useSystemFonts: true, verbosity: 0 }).promise;
   try {
@@ -80,7 +114,8 @@ test("marked PDF paginates a large legend instead of silently dropping the last 
 test("Russian proposal translates labels, preserves customer text and numbers pages in Russian", async () => {
   setLanguage("ru");
   try {
-    const est = { lines:[{id:"c",finish_tag:"CPT-1",labor_qty:100,unit:"SF",total:500}],total:500,complete:true,unpriced:[] };
+    const longName = "Очень длинное наименование напольного покрытия для проверки переноса текста в ведомости";
+    const est = { lines:["Report", "Work", "001.20", longName].map((finish_tag, i) => ({id:`c${i}`,finish_tag,labor_qty:100,unit:"SF",total:530})),total:2120,complete:true,unpriced:[] };
     const model = buildBidProposal({ est, company:{name:"Solid",address:"Materials"}, clientInfo:{client_name:"Work"}, projectName:"Report", conditions:[], locale:"ru-RU",
       proposal:{itemized:true,valid_days:30,scope_note:"Solid",terms:"Work",inclusions:Array(65).fill("Report").join("\n")} });
     const {bytes,pages} = await buildBidProposalPdf(model,fonts);
@@ -88,6 +123,15 @@ test("Russian proposal translates labels, preserves customer text and numbers pa
     const content = await texts(bytes);
     assert.ok(content[0].includes("Коммерческое предложение"));
     for (const text of ["Solid","Materials","Work","Report"]) assert.ok(content.join(" ").includes(text),text);
+    assert.ok(content.join(" ").replace(/\s/g, "").includes(longName.replace(/\s/g, "")));
+    assert.ok(content.join(" ").includes("001.20"));
+    const doc = await pdfjs.getDocument({ data: bytes.slice(), useSystemFonts: true, verbosity: 0 }).promise;
+    try {
+      const page = await doc.getPage(1), tc = await page.getTextContent();
+      for (const item of tc.items) if ("str" in item && item.transform[4] === 54 && item.str.includes("наименование")) {
+        assert.ok(item.transform[4] + item.width <= 558.1, "custom item name stays inside the page");
+      }
+    } finally { await doc.destroy(); }
     content.forEach((text,i)=>assert.ok(text.includes(`Страница ${i+1} из ${pages}`)));
     assert.ok(!content.join(" ").includes("Page "));
   } finally { setLanguage("en"); }

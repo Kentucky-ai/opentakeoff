@@ -1,3 +1,4 @@
+import { createExportPresentation } from "./exportPresentation.js";
 import { coverageText } from './coveragePresentation.js';
 // Minimal SpreadsheetML (.xlsx) writer — hand-rolled, zipped with fflate
 // (already a dependency; lazy-loaded like the ingest zip path — see #16).
@@ -6,7 +7,8 @@ import { coverageText } from './coveragePresentation.js';
 // Scope: exactly what the takeoff report needs — multiple worksheets of plain
 // cells. Strings go out as inline strings (<c t="inlineStr"><is><t>…), numbers
 // as plain <v>; no shared-strings table, no formulas (so pasted "=..." finish
-// tags can never execute — inline strings are inert text), no column widths.
+// tags can never execute — inline strings are inert text). Optional column
+// widths also enable wrapped text and fitted row heights for deliverables.
 // A minimal styles.xml ships because Excel expects the part to exist.
 //
 // The workbook builder (reportWorkbook) reads the SAME sources as the CSV/JSON
@@ -69,7 +71,10 @@ export function sheetXml(rows, columnWidths = []) {
   if (columnWidths.length) out.push('<cols>' + columnWidths.map((width, i) => '<col min="' + (i+1) + '" max="' + (i+1) + '" width="' + Math.max(8,Math.min(60,Number(width)||16)) + '" customWidth="1"/>').join('') + '</cols>');
   out.push('<sheetData>');
   rows.forEach((cells, ri) => {
-    out.push(`<row r="${ri + 1}">`);
+    const wrapped = columnWidths.length > 0;
+    const lines = wrapped ? Math.max(1, ...cells.map((value, ci) => typeof value === "string"
+      ? value.split(/\r?\n/).reduce((n, line) => n + Math.max(1, Math.ceil(line.length / Math.max(6, Math.floor((columnWidths[ci] || 16) * .8) - 2))), 0) : 1)) : 1;
+    out.push(`<row r="${ri + 1}"${wrapped ? ` ht="${Math.min(409, lines * 15)}" customHeight="1"` : ""}>`);
     cells.forEach((v, ci) => {
       if (v === null || v === undefined || v === "") return;
       const ref = `${colLetter(ci)}${ri + 1}`;
@@ -79,7 +84,7 @@ export function sheetXml(rows, columnWidths = []) {
         const t = escXml(v);
         // preserve leading/trailing whitespace the way Excel expects
         const sp = /^\s|\s$/.test(String(v)) ? ' xml:space="preserve"' : "";
-        out.push(`<c r="${ref}" t="inlineStr"><is><t${sp}>${t}</t></is></c>`);
+        out.push(`<c r="${ref}"${wrapped ? ' s="1"' : ""} t="inlineStr"><is><t${sp}>${t}</t></is></c>`);
       }
     });
     out.push("</row>");
@@ -89,14 +94,14 @@ export function sheetXml(rows, columnWidths = []) {
 }
 
 // The bare-minimum stylesheet — Excel treats fillId 0 (none) and 1 (gray125)
-// as reserved, so both ship even though no cell references a style.
+// as reserved. The second cell style wraps localized deliverable text.
 const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
   '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
   '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
   '<borders count="1"><border/></borders>' +
   '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-  '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>' +
+  '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>' +
   '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
   "</styleSheet>";
 
@@ -171,12 +176,15 @@ export async function buildXlsx(sheets) {
  * @param {{perimByCond?: Map<any, number>, attrsByCond?: Map<any, object>, specByCond?: Map<any, object>}|null}
  *   [args.ctx] handed to the getters
  * @param {((sheetId: any) => string)|null} [args.sheetLabel]
+ * @param {{language?: string, localize?: (value: any) => any}} [args.presentation]
  * @param {"imperial"|"metric"} [args.units] display units — "metric" converts
  *   the Conditions, By-sheet, floor × room, and Shapes tabs to m2/m (SY retires)
  *   exactly like the CSV. "imperial" (default) is byte-identical.
  * @returns {Array<{name: string, rows: any[][]}>}
  */
-export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols = null, ctx = null, sheetLabel = null, units = "imperial", byFloorRoom = [] }) {
+export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols = null, ctx = null, sheetLabel = null, units = "imperial", byFloorRoom = [], presentation = {} }) {
+  const p = createExportPresentation(presentation);
+  const heading = cells => cells.map(p.label);
   const columns = applyUnits(cols || [], units, METRIC_CSV_LABELS);
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
   const M = units === "metric";
@@ -187,36 +195,36 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   // Conditions — same columns, getters, and TOTAL row as totalsToCsv (per-
   // column get, i.e. custom columns, falls back to the shared GETTERS; a
   // metric descriptor carries `conv` so the by-key TOTAL reads convert too)
-  const conditions = [columns.map((c) => c.header)];
-  for (const r of rows) conditions.push(columns.map((c) => colGetter(c)?.(r, ctx)));
+  const conditions = [columns.map(c => c.custom ? c.header : p.label(c.header))];
+  for (const r of rows) conditions.push(columns.map(c => c.key === "finish" ? p.finish(r.finish_tag) : colGetter(c)?.(r, ctx)));
   const g = grandTotals(rows);
   conditions.push(columns.map((c) => {
-    if (c.key === "finish") return "TOTAL";
+    if (c.key === "finish") return p.label("TOTAL");
     const v = (c.key === "waste_sf" || c.key === "waste_lf") ? GETTERS[c.key](g) : (g[c.key] !== undefined ? g[c.key] : "");
     return c.conv && v !== "" ? c.conv(v) : v;
   }));
 
   // By sheet — base (unmultiplied) quantities, rounded at serialization only
-  const bySheetRows = [["Sheet", "Sheet ID", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"]];
+  const bySheetRows = [heading(["Sheet", "Sheet ID", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"])];
   for (const gp of bySheet) {
     for (const row of gp.rows) {
       const mult = row.multiplier || 1;
       const finish = mult > 1 ? `${row.finish_tag} ×${mult}` : row.finish_tag;
       const r = roundSheetRow(row);
-      bySheetRows.push([String(label(gp.sheet_id)), String(gp.sheet_id), finish, A(r.floor_sf), A(r.wall_sf), A(r.border_sf), L(r.lf), r.ea]);
+      bySheetRows.push([String(label(gp.sheet_id)), String(gp.sheet_id), p.finish(finish), A(r.floor_sf), A(r.wall_sf), A(r.border_sf), L(r.lf), r.ea]);
     }
   }
-  if (hasMultipliers(bySheet)) bySheetRows.push([], [BY_SHEET_BASE_NOTE]);
+  if (hasMultipliers(bySheet)) bySheetRows.push([], [p.label(BY_SHEET_BASE_NOTE)]);
 
   // Materials — per condition, then the combined buy list (mirrors the CSV)
-  const materials = [["Finish", "Material", "Qty", "Unit", "Coverage", "Note"]];
+  const materials = [heading(["Finish", "Material", "Qty", "Unit", "Coverage", "Note"])];
   for (const r of rows) for (const m of (r.materials || [])) {
-    materials.push([r.finish_tag, m.name, m.qty, m.unit, coverageText(m, units), m.note || ""]);
+    materials.push([p.finish(r.finish_tag), p.material(m.name), m.qty, p.unit(m.unit), p.coverage(coverageText(m, units), m.unit), p.note(m.note || "")]);
   }
   const combined = materialsSummary(rows);
   if (combined.length) {
-    materials.push([], ["Material (combined)", "Qty", "Unit"]);
-    for (const s of combined) materials.push([s.name, s.qty, s.unit]);
+    materials.push([], heading(["Material (combined)", "Qty", "Unit"]));
+    for (const s of combined) materials.push([p.material(s.name), s.qty, p.unit(s.unit)]);
   }
 
   // Shapes — measured only: no multiplier, no waste (shapesDetail semantics).
@@ -226,9 +234,10 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
     ["Per-shape measured quantities — no multiplier or waste; standalone deducts negative; reconciled cutouts stay as audit rows with zero additive area because the parent is already net; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF"],
     ["Shape", "Sheet", "Sheet ID", "Finish", "Role", `Area ${AU}`, LU, "EA", `Height ${M ? "m" : "ft"}`, "Height override", `Rise ${M ? "m" : "ft"}`, `Drop ${M ? "m" : "ft"}`, "Origin"],
   ];
+  shapesTab.forEach((row, i) => { shapesTab[i] = heading(row); });
   for (const r of shapeRows) {
-    shapesTab.push([String(r.shape_id), String(r.sheet), String(r.sheet_id), r.finish, r.role,
-      A(r.area_sf), L(r.lf), r.ea, L(r.height_ft), r.height_override ? "yes" : "", L(r.rise_ft ?? 0), L(r.drop_ft ?? 0), r.origin]);
+    shapesTab.push([String(r.shape_id), String(r.sheet), String(r.sheet_id), p.finish(r.finish), p.label(r.role),
+      A(r.area_sf), L(r.lf), r.ea, L(r.height_ft), r.height_override ? p.label("yes") : "", L(r.rise_ft ?? 0), L(r.drop_ft ?? 0), p.label(r.origin)]);
   }
 
   // By floor × room — the cross-section the other tabs each flatten one axis
@@ -244,10 +253,11 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
     ["Ordered quantities per floor × room — waste % and xN applied per slice; each floor's rooms reconcile to that floor's shapes. Coverage ceils are per-cell display, not a buy list"],
     ["Sheet", "Sheet ID", "Room", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA", `Total ${AU}`, `Total ${AU} w/Waste`],
   ];
+  floorRoom.forEach((row, i) => { floorRoom[i] = heading(row); });
   for (const gp of byFloorRoom) {
     for (const grp of gp.groups) {
       for (const row of grp.rows) {
-        floorRoom.push([String(label(gp.sheet_id)), String(gp.sheet_id), grp.label, row.finish_tag,
+        floorRoom.push([String(label(gp.sheet_id)), String(gp.sheet_id), grp.label, p.finish(row.finish_tag),
           A(row.floor_sf), A(row.wall_sf), A(row.border_sf), L(row.lf), row.ea,
           A(row.total_sf), A(row.total_sf_net)]);
       }
@@ -255,10 +265,10 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   }
 
   return [
-    { name: "Conditions", rows: conditions },
-    { name: "By sheet", rows: bySheetRows },
-    { name: "Materials", rows: materials },
-    { name: "Shapes", rows: shapesTab },
-    { name: "By floor × room", rows: floorRoom },
+    { name: p.label("Conditions"), rows: conditions },
+    { name: p.label("By sheet"), rows: bySheetRows },
+    { name: p.label("Materials"), rows: materials },
+    { name: p.label("Shapes"), rows: shapesTab },
+    { name: p.label("By floor × room"), rows: floorRoom },
   ];
 }

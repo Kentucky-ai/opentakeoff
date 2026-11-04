@@ -1,4 +1,4 @@
-import { localizeText as uiText } from "../lib/i18n/core.js";
+import { finishLabel, localizeText as uiText } from "../lib/i18n/core.js";
 // RevisionsPanel — save the takeoff as a named revision, then compare any two
 // (or a revision against the live takeoff) as quantity deltas: per condition,
 // per sheet, and on the supporting-materials buy list. Addendum lands → save
@@ -166,7 +166,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
               <tbody>
                 {revs.map((r) => (
                   <tr key={r.id}>
-                    <td style={{ ...td, textAlign: "left", fontWeight: 600 }}>{uiText(r.name)}</td>
+                    <td style={{ ...td, textAlign: "left", fontWeight: 600 }}>{r.name}</td>
                     <td style={{ ...td, color: "var(--ink-muted)" }}>{uiText(r.created_at ? new Date(r.created_at).toLocaleString() : "—")}</td>
                     <td style={td}>{uiText(r.conditions)}</td>
                     <td style={td}>{uiText(r.shapes)}</td>
@@ -196,12 +196,12 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
               <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, color: "var(--ink)", margin: 0 }}>{uiText("Compare")}</h3>
               <select value={baseId} onChange={(e) => setBaseId(e.target.value)} style={sel} name="compare-baseline">
                 <option value="" disabled>{uiText("baseline…")}</option>
-                {revs.map((r) => <option key={r.id} value={r.id}>{uiText(r.name)}</option>)}
+                {revs.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
               <span style={{ color: "var(--ink-muted)" }}>→</span>
               <select value={compareId} onChange={(e) => setCompareId(e.target.value)} style={sel} name="compare-to">
                 <option value="current">{uiText("Current takeoff")}</option>
-                {revs.filter((r) => r.id !== baseId).map((r) => <option key={r.id} value={r.id}>{uiText(r.name)}</option>)}
+                {revs.filter((r) => r.id !== baseId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
               <div style={{ flex: 1 }} />
               <label style={{ fontSize: 12, color: "var(--ink-muted)", display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
@@ -213,13 +213,13 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
               <p style={{ marginTop: 14, color: "var(--ink-muted)", fontSize: 12.5 }}>{uiText("Pick a baseline revision to diff.")}</p>
             ) : identical ? (
               <p style={{ marginTop: 14, color: "var(--c-positive)", fontSize: 13, fontWeight: 600 }}>
-                {uiText("Identical takeoffs — no visible quantity change between “")}{uiText(nameOf(baseId))}{uiText("” and “")}{uiText(nameOf(compareId))}”.
+                {uiText("Identical takeoffs — no visible quantity change between “")}{nameOf(baseId)}{uiText("” and “")}{nameOf(compareId)}”.
               </p>
             ) : (
               <>
                 {/* headline: the ordered-quantity move */}
                 <p style={{ margin: "14px 0 10px", fontSize: 13, color: "var(--ink)" }}>
-                  <strong>{uiText(nameOf(baseId))}</strong> → <strong>{uiText(nameOf(compareId))}</strong>:{uiText(" ")}
+                  <strong>{nameOf(baseId)}</strong> → <strong>{nameOf(compareId)}</strong>:{uiText(" ")}
                   {uiText("ordered ")}{uiText(AU)} {uiText(num(av(diff.totals.a.total_sf_net)))} → <strong>{uiText(num(av(diff.totals.b.total_sf_net)))}</strong>{uiText(" ")}
                   ({uiText(delta(diff.totals.deltas.total_sf_net, false, av))}) · {uiText(diff.changed)} {uiText("condition")}{uiText(diff.changed === 1 ? "" : "s")} {uiText("moved")}</p>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
@@ -239,7 +239,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                         <td style={{ ...td, textAlign: "left" }}>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                             <span style={{ width: 12, height: 12, background: c.color, display: "inline-block", border: "1px solid var(--ink-faint)" }} />
-                            <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{uiText(c.finish_tag)}</strong>
+                            <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{finishLabel(c.finish_tag)}</strong>
                           </span>
                         </td>
                         <td style={{ ...td, textAlign: "left" }}>{uiText(chip(c.status))}</td>
@@ -273,7 +273,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                       <tbody>
                         {sheetRows.map((s) => (
                           <tr key={s.sheet_id}>
-                            <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)" }}>{uiText(revSheetLabel(s.sheet_id))}</td>
+                            <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)" }}>{revSheetLabel(s.sheet_id)}</td>
                             <td style={{ ...td, textAlign: "left" }}>{uiText(chip(s.status))}</td>
                             <td style={td}>{uiText(delta(s.deltas.floor_sf, false, av))}</td>
                             <td style={td}>{uiText(delta(s.deltas.wall_sf, false, av))}</td>
@@ -295,15 +295,15 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                       <thead><tr>
                         <th style={{ ...th, textAlign: "left" }}>{uiText("Material")}</th>
                         <th style={{ ...th, textAlign: "left" }}>{uiText("Status")}</th>
-                        <th style={th}>{uiText("Qty (")}{uiText(nameOf(baseId))})</th>
-                        <th style={th}>{uiText("Qty (")}{uiText(nameOf(compareId))})</th>
+                        <th style={th}>{uiText("Qty (")}{nameOf(baseId)})</th>
+                        <th style={th}>{uiText("Qty (")}{nameOf(compareId)})</th>
                         <th style={th}>Δ</th>
                         <th style={{ ...th, textAlign: "left", paddingLeft: 16 }}>{uiText("Unit")}</th>
                       </tr></thead>
                       <tbody>
                         {matRows.map((m, i) => (
                           <tr key={i}>
-                            <td style={{ ...td, textAlign: "left" }}>{uiText(m.name)}</td>
+                            <td style={{ ...td, textAlign: "left" }}>{m.name}</td>
                             <td style={{ ...td, textAlign: "left" }}>{uiText(chip(m.status))}</td>
                             <td style={td}>{uiText(num(m.a_qty, 2))}</td>
                             <td style={{ ...td, fontWeight: 700 }}>{uiText(num(m.b_qty, 2))}</td>

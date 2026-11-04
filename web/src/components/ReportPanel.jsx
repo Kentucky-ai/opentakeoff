@@ -1,4 +1,5 @@
-import { localizeText as uiText, localizeCsv, getLanguage } from "../lib/i18n/core.js";
+import { createExportPresentation } from "../lib/exportPresentation.js";
+import { localizeText as uiText, getLanguage } from "../lib/i18n/core.js";
 // ReportPanel — the takeoff deliverable. A STACK-style breakdown by condition
 // (finish): measured quantity, waste %, and waste-adjusted order quantity, with
 // a grand total. Exports to CSV / JSON, prints, and hosts the opt-in
@@ -328,22 +329,24 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     saveColPrefs(next);
   };
 
+  const exportOptions = { language: getLanguage(), localize: uiText };
+  const display = createExportPresentation(exportOptions);
   const baseName = (projectName || "takeoff").replace(/[^\p{L}\p{N}_.-]+/gu, "_");
-  const exportCsv = () => downloadText(`${baseName}.csv`, localizeCsv(totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx, byLabelExport.length ? byLabelExport : null, brand.brandName, units)), "text/csv");
+  const exportCsv = () => downloadText(`${baseName}.csv`, totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx, byLabelExport.length ? byLabelExport : null, brand.brandName, units, exportOptions), "text/csv");
   const exportJson = () => downloadText(`${baseName}.json`,
     JSON.stringify(reportJson({ projectName, rows: sourceRows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport, displayUnits: units, rollGoods: rollReportRows(rollByCond, rows), proposedConditionEdits: proposedEditRows }), null, 2),
     "application/json");
-  const exportRfisCsv = () => downloadText(`${baseName}_rfis.csv`, localizeCsv(rfisToCsv(rfis, markups, projectName, sheetLabel, brand.brandName)), "text/csv");
+  const exportRfisCsv = () => downloadText(`${baseName}_rfis.csv`, rfisToCsv(rfis, markups, projectName, sheetLabel, brand.brandName, exportOptions), "text/csv");
   const exportRfisJson = () => downloadText(`${baseName}_rfis.json`,
     JSON.stringify(rfisToJson(rfis, projectName), null, 2), "application/json");
   // Excel workbook — same sources as the CSV/JSON (Conditions tab follows the
   // column picker like the CSV); buildXlsx lazy-loads fflate on first use
   const exportXlsx = async () => {
-    const sheets = reportWorkbook({ rows, bySheet, shapeRows: shapesDetail(conditions, shapes, sheetLabel), cols: csvCols, ctx, sheetLabel, units, byFloorRoom });
-    const bytes = await buildXlsx(sheets.map((sheet) => ({ ...sheet, name: uiText(sheet.name), ...(getLanguage() === 'ru' ? {columnWidths:[44,26,24,22,22,22,22,22,22,22,22,22,22,22]} : {}), rows: sheet.rows.map((row) => row.map((cell) => typeof cell === "string" ? uiText(cell) : cell)) })));
+    const sheets = reportWorkbook({ rows, bySheet, shapeRows: shapesDetail(conditions, shapes, sheetLabel), cols: csvCols, ctx, sheetLabel, units, byFloorRoom, presentation: exportOptions });
+    const bytes = await buildXlsx(sheets.map((sheet) => ({ ...sheet, ...(getLanguage() === 'ru' ? {columnWidths:[44,26,24,22,22,22,22,22,22,22,22,22,22,22]} : {}) })));
     downloadText(`${baseName}.xlsx`, bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   };
-  const exportShapesCsv = () => downloadText(`${baseName}_shapes.csv`, localizeCsv(shapesToCsv(shapesDetail(conditions, shapes, sheetLabel), projectName, brand.brandName, units)), "text/csv");
+  const exportShapesCsv = () => downloadText(`${baseName}_shapes.csv`, shapesToCsv(shapesDetail(conditions, shapes, sheetLabel), projectName, brand.brandName, units, exportOptions), "text/csv");
   const exportShapesJson = () => downloadText(`${baseName}_shapes.json`,
     JSON.stringify(shapesToJson(shapesDetail(conditions, shapes, sheetLabel), projectName), null, 2),
     "application/json");
@@ -373,7 +376,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     downloadText(`${baseName}_dxf.zip`, zipSync(files, { level: 6 }), "application/zip");
   };
 
-  const th = { textAlign: "right", padding: "7px 6px", fontFamily: "var(--f-mono)", fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", borderBottom: "1.25px solid var(--ink)", whiteSpace: "nowrap" };
+  const th = { textAlign: "right", padding: "7px 6px", fontFamily: "var(--f-mono)", fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", borderBottom: "1.25px solid var(--ink)", whiteSpace: "normal" };
   const td = { textAlign: "right", padding: "8px 6px", fontVariantNumeric: "tabular-nums", borderBottom: "1px solid var(--ink-faint)", whiteSpace: "nowrap" };
 
   // one condition-table cell, keyed off the column profile; values come
@@ -395,10 +398,10 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     switch (col.key) {
       case "finish":
         return (
-          <td key={col.key} style={{ ...td, textAlign: "left" }}>
+          <td key={col.key} style={{ ...td, textAlign: "left", whiteSpace: "normal", width: "30%", maxWidth: 300 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <span style={{ width: 12, height: 12, background: r.color, display: "inline-block", border: "1px solid var(--ink-faint)" }} />
-              <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{uiText(r.finish_tag)}</strong>
+              <span style={{ flexShrink: 0, width: 12, height: 12, background: r.color, display: "inline-block", border: "1px solid var(--ink-faint)" }} />
+              <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" }}>{display.finish(r.finish_tag)}</strong>
               {r.multiplier > 1 && <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>×{uiText(r.multiplier)}</span>}
             </span>
             {/* proposals (#365): the pending diff beside the current values —
@@ -523,7 +526,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               {templates.map((t) => (
                 <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0" }}>
                   <button onClick={() => applyTemplate(t)} title={uiText("Apply this layout")}
-                    style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, padding: "3px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(t.name)}</button>
+                    style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, padding: "3px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</button>
                   <button onClick={() => renameTpl(t)} title={uiText("Rename")}
                     style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
                   <button onClick={() => setTemplates(deleteTemplate(t.id))} title={uiText("Delete this template")}
@@ -571,7 +574,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               {theme.name ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <span className="pip" />
-                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }} title={uiText(theme.name)}>{uiText(theme.name)}</div>
+                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }} title={theme.name}>{theme.name}</div>
                 </div>
               ) : (
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginBottom: 8 }}>{uiText("Using the default house style.")}</div>
@@ -714,7 +717,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           {/* meta footer: scale provenance · attribution · disclaimer */}
           <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--ink-muted)", lineHeight: 1.6, borderTop: "1px solid var(--ink-faint)", paddingTop: 6, marginBottom: 12 }}>
             {scaleInfo.map((si) => (
-              <div key={si.sheet_id}>{uiText(sheetLabel ? sheetLabel(si.sheet_id) : si.sheet_id)} — {uiText(!si.scale_source || si.scale_source === "unknown" ? "scale set — provenance unrecorded" : si.scale_source)}{si.scale_confirmed === false ? <span style={{ color: "var(--c-warning)", fontWeight: 700 }}> {uiText("· agent-set, UNCONFIRMED")}</span> : null}</div>
+              <div key={si.sheet_id}>{sheetLabel ? sheetLabel(si.sheet_id) : si.sheet_id} — {uiText(!si.scale_source || si.scale_source === "unknown" ? "scale set — provenance unrecorded" : si.scale_source)}{si.scale_confirmed === false ? <span style={{ color: "var(--c-warning)", fontWeight: 700 }}> {uiText("· agent-set, UNCONFIRMED")}</span> : null}</div>
             ))}
             <div>{uiText("Generated ")}{uiText(new Date().toLocaleDateString())}</div>
             <div>{uiText(DISCLAIMER)}</div>
@@ -745,7 +748,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               <tr>
                 {tableCols.map((c) => (
                   // custom, spec, and labor columns are text — header left-aligns with the cells
-                  <th key={c.key} style={c.key === "finish" || c.custom || c.spec || c.labor ? { ...th, textAlign: "left" } : c.accent ? { ...th, color: "var(--cobalt)" } : th}>{uiText(c.header)}</th>
+                  <th key={c.key} style={c.key === "finish" || c.custom || c.spec || c.labor ? { ...th, textAlign: "left" } : c.accent ? { ...th, color: "var(--cobalt)" } : th}>{c.custom ? c.header : uiText(c.header)}</th>
                 ))}
               </tr>
             </thead>
@@ -771,7 +774,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   {grouped && (
                     <tr style={{ breakAfter: "avoid" }}>
                       <td colSpan={tableCols.length} style={{ ...td, textAlign: "left", fontFamily: "var(--f-display)", fontSize: 13, fontWeight: 700, background: "var(--paper-cream)", borderTop: "1px solid var(--ink-soft)", borderBottom: "1px solid var(--ink-soft)", padding: "9px 10px", ...(gp.value === null ? { fontStyle: "italic" } : {}) }}>
-                        {uiText(gp.label)}
+                        {gp.label}
                       </td>
                     </tr>
                   )}
@@ -832,7 +835,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>{uiText("By sheet")}</h3>
             {bySheet.map((gp) => (
               <div key={gp.sheet_id} style={{ margin: "0 0 14px" }}>
-                <h3 style={{ fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.06em", color: "var(--ink-muted)", margin: "0 0 6px" }}>{uiText(sheetLabel ? sheetLabel(gp.sheet_id) : gp.sheet_id)}</h3>
+                <h3 style={{ fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.06em", color: "var(--ink-muted)", margin: "0 0 6px" }}>{sheetLabel ? sheetLabel(gp.sheet_id) : gp.sheet_id}</h3>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
                   <thead>
                     <tr>
@@ -847,10 +850,10 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   <tbody>
                     {gp.rows.map((r) => (
                       <tr key={r.id}>
-                        <td style={{ ...td, textAlign: "left" }}>
+                        <td style={{ ...td, textAlign: "left", whiteSpace: "normal", width: "38%", maxWidth: 360 }}>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ width: 12, height: 12, background: r.color, display: "inline-block", border: "1px solid var(--ink-faint)" }} />
-                            <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{uiText(r.finish_tag)}</strong>
+                            <span style={{ flexShrink: 0, width: 12, height: 12, background: r.color, display: "inline-block", border: "1px solid var(--ink-faint)" }} />
+                            <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" }}>{display.finish(r.finish_tag)}</strong>
                             {r.multiplier > 1 && <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>×{uiText(r.multiplier)}</span>}
                           </span>
                         </td>
@@ -893,8 +896,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                         {uiText(m.type === "cloud" ? "CLOUD" : m.type === "callout" ? "CALLOUT" : "NOTE")}
                       </span>
                     </td>
-                    <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{uiText(sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id)}</td>
-                    <td style={{ ...td, textAlign: "left", whiteSpace: "normal", width: "60%" }}>{uiText(resolveNote(m.text, m.condition_id, noteQty).text || "—")}</td>
+                    <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}</td>
+                    <td style={{ ...td, textAlign: "left", whiteSpace: "normal", width: "60%" }}>{resolveNote(m.text, m.condition_id, noteQty).text || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -918,7 +921,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               <tbody>
                 {matSummary.map((m, i) => (
                   <tr key={i}>
-                    <td style={{ ...td, textAlign: "left" }}>{uiText(m.name)}</td>
+                    <td style={{ ...td, textAlign: "left" }}>{display.material(m.name)}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{uiText(num(m.qty, 2))}</td>
                     <td style={{ ...td, textAlign: "left", paddingLeft: 16, color: "var(--ink-muted)" }}>{uiText(m.unit || "—")}</td>
                   </tr>
@@ -934,8 +937,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 // doesn't (#27)
                 <React.Fragment key={r.id}>
                   <span style={{ marginRight: 14, display: "inline-block" }}>
-                    <strong style={{ fontFamily: "var(--f-mono)" }}>{uiText(r.finish_tag)}</strong>{uiText(" ")}
-                    {uiText(r.materials.map((m) => `${uiText(m.name)} ${num(m.qty, 2)}${m.unit ? " " + uiText(m.unit) : ""}${m.note ? ` (${uiText(m.note)})` : ""}`).join(" · "))}
+                    <strong style={{ fontFamily: "var(--f-mono)" }}>{display.finish(r.finish_tag)}</strong>{uiText(" ")}
+                    {r.materials.map((m) => `${display.material(m.name)} ${num(m.qty, 2)}${m.unit ? " " + uiText(m.unit) : ""}${m.note ? ` (${display.note(m.note)})` : ""}`).join(" · ")}
                   </span>{uiText(" ")}
                 </React.Fragment>
               ))}

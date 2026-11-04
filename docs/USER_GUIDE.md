@@ -824,6 +824,8 @@ Every page of the proposal, the marked set and the printed report carries **Prep
 | **Marked set** | A distribution-ready PDF built in your browser: every sheet that carries takeoffs or markups, the work burned in as drawn—condition colors, hatches, quantity chips, count markers, markups (toggleable)—behind a legend cover with net totals, w/Waste quantities, and a by-sheet breakdown. Exports in your current view: dark canvas → dark PDF. Send it to a GC who will never install anything. |
 | **RFI CSV / JSON** | The RFI register (appears once RFIs exist). |
 
+In Russian, CSV uses UTF-8 with a BOM, semicolons between cells and decimal commas for numeric cells. Custom names, notes, custom-column captions and text codes such as `001.20` remain literal data. CSV does not carry cell types: use **Excel** when a code must retain leading zeros when opened in a spreadsheet, or import its CSV column explicitly as text. Excel exports store codes as text and quantities/costs as numbers. Localized workbooks wrap long names; the marked-set and proposal PDFs also wrap long names without overwriting quantities.
+
 **Contribute** also lives here—covered with the rest of your data in §12.
 
 ---
