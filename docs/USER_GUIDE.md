@@ -969,13 +969,13 @@ Select a measurement to open its sheet and center its boundary. Its **Measuremen
 
 On smaller screens the panel opens as a drawer; on phones it fills the work area. Selecting a measurement returns you to the plan. **Open report →** opens the existing report. Floating totals clear both views. The condition’s **properties** disclosure above the drawing hides or shows its appearance controls.
 
-Select the **Agent** tab inside **Work** to run the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. Closing the panel preserves its search and in-session task draft; page reload still discards uncommitted browser-agent proposals and the run log.
+Select the **Agent** tab inside **Work** to chat with the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. The conversation is saved with the project in this browser and comes back after a reload (**New chat** clears it); a page reload still discards uncommitted browser-agent proposals, and a run that was going when the page closed shows as stopped.
 
 The Agent panel is the newest way to run the engine: describe a takeoff in a sentence, and an AI model—**yours**, on your key, from your browser—works the sheet with the app's own tools and stages **dashed proposals you accept or reject**. It is a proposer, never a committer.
 
 ### What it is, structurally
 
-Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
+Open **Work**, then select **Agent**. It is a chat window: ask about the project or give it a job—*"Take off the carpet per the finish schedule on this sheet"*—and press `⏎` (`⇧⏎` adds a line). With no messages yet it offers a few starting points (read the finish schedule, trace the rooms on this sheet, list the sheets, check the conditions); picking one fills the box for you to edit and send. Each message runs a tool-use loop against a registry of the app's own deterministic tools, with the earlier questions and answers of the conversation (never their tool results) and the sheet you are looking at sent along as context:
 
 - **`list_sheets`**—what's open, with sizes and scale status;
 - **`read_sheet_text`**—the sheet's positioned text layer;
@@ -985,7 +985,7 @@ Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per th
 - **`get_conditions` / `create_condition`**—your condition list (creation dedupes against existing tags);
 - **`propose_shapes`**—stage proposals for your review.
 
-Proposals include evidence fields. Inspect the boundary and its claimed evidence before accepting it; those fields do not independently verify the geometry. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that stops the run.
+Proposals include evidence fields. Inspect the boundary and its claimed evidence before accepting it; those fields do not independently verify the geometry. Each reply shows the model's answer, how many proposals it staged, and a **Show every step** list—every tool call with a short label and its status (running, done, failed), refusals included—capped at 24 model turns, with a **■ Stop** button that stops the run. With no model connected, the tab shows a connect card: **AI settings…** for your own key, or **Connect your AI** to drive OpenTakeoff from Claude Desktop, Codex or Cursor over MCP instead.
 
 ### The scale gate holds
 
@@ -1072,7 +1072,7 @@ Point AI settings at it—endpoint `http://localhost:8787`, API style **Anthropi
 - **Model**—a vision-capable model id.
 - **API key**—optional; local runtimes generally need none. Stored **in this browser's localStorage only**—anyone with access to this browser profile can read it, so use a key you can revoke. The endpoint must allow browser requests (CORS); local runtimes generally allow localhost.
 
-What's sent, and only while an agent run you started is going: your goal, the prompts, and what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
+What's sent, and only while an agent run you started is going: your message, the earlier questions and answers in this project's chat (never their tool results), the sheet you're looking at, the prompts, and what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
 
 ### MCP — for agent users
 
@@ -1228,7 +1228,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 | Key | Action |
 |---|---|
-| `⌘⏎` | Run the agent (in the Agent panel's goal box) |
+| `⏎` / `⇧⏎` | Send the message / new line (in the Agent chat's composer) |
 | `⏎` | Apply calibration (calibrate field) · grade the check (check field) · save (revision-name field) |
 
 ---

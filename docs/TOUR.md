@@ -255,7 +255,8 @@ cost/schedule impact flags, exporting as CSV/JSON and as an RFI schedule page in
 ### The Agent panel, in the browser
 Choose **Work** to inspect canvas and imported agent measurements together: search across
 sheets, locate boundaries, inspect provenance, and record an undoable review. Its **Agent**
-tab runs the browser agent. Imported takeoffs need no model connection to review.
+tab is a chat window for the browser agent, saved per project in this browser. Imported
+takeoffs need no model connection to review.
 The same proposer/reviewer split as MCP without leaving the canvas: describe a takeoff in a
 sentence and a model—**yours**, on your key, from your browser—works the sheet with the
 app's own deterministic tools and stages dashed proposals you accept, correct, or reject. It
@@ -308,14 +309,16 @@ app's own tools at it. Open the **Agent** panel and its AI settings, and point i
 **OpenAI-style** endpoint (the default; local runtimes on your own machine speak it and need no
 key) or an **Anthropic-style** one, plus a vision-capable model id.
 
-- **What's sent, and only while a run you started is going:** your goal, the prompts, and what
-  the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF
+- **What's sent, and only while a run you started is going:** your message, the earlier
+  questions and answers in this project's chat, the sheet you're looking at, the prompts, and
+  what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF
   file name), each sheet's size and scale status, the text and schedule rows it reads, and
   images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It
   also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it
   measures. This list isn't complete. Never the whole plan file.
 - **Nothing configured = nothing sent.** Unconfigured builds make zero AI network calls; the
-  Agent panel only offers AI settings. No telemetry either way.
+  Agent chat only offers AI settings (and Connect your AI for MCP clients). No telemetry
+  either way.
 - Shapes the agent finds are **proposals**: each one waits, dashed, until you accept it.
   Conditions it creates are added to your list right away.
 - The key is stored in this browser's localStorage—use one you can revoke. Deployers:
