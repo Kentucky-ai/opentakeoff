@@ -17,7 +17,7 @@ test("Estimate tab: one row per priced line, summary matches the engine, waterma
   assert.equal(sheet.name, "Estimate");
   assert.deepEqual(sheet.rows[0], ["Estimate", "Demo"]);
   assert.deepEqual(find(sheet.rows, "Prepared by"), ["Prepared by", "Sample Co"]);
-  assert.deepEqual(find(sheet.rows, "LVT-1"), ["LVT-1", "priced", "SF", 110, 2, 220, 100, 1, 100, 0, 320]);
+  assert.deepEqual(find(sheet.rows, "LVT-1"), ["LVT-1", "priced", "SF", 110, 2, 220, 100, 1, 100, 0, 0, 320]);
   assert.deepEqual(find(sheet.rows, "Base bid"), ["Base bid", e.total]);
   assert.deepEqual(find(sheet.rows, "Material"), ["Material", 220]);
   assert.deepEqual(sheet.rows[sheet.rows.length - 1], [OT_WATERMARK]);
@@ -30,7 +30,7 @@ test("an un-entered rate is an empty cell, never 0, and an Unpriced tab lists wh
   assert.equal(line[1], "partly priced");
   assert.equal(line[7], "");        // labor $/unit
   assert.equal(line[8], 0);         // labor $ counts as 0 in the total
-  assert.ok(sheets[0].rows.some((r) => typeof r[0] === "string" && r[0].startsWith("Not fully priced: 1 condition")));
+  assert.ok(sheets[0].rows.some((r) => typeof r[0] === "string" && r[0].startsWith("Not fully priced: 1 line")));
   assert.deepEqual(sheets.map((s) => s.name), ["Estimate", "Materials", "Unpriced"]);
   assert.deepEqual(find(sheets[2].rows, "CPT-1"), ["CPT-1", "partly priced", "labor"]);
 });
@@ -42,7 +42,8 @@ test("fully priced: no Unpriced tab; material rows carry qty, price and cost", (
   }];
   const sheets = estimateWorkbook({ est: est(conds, [area("a", 234)]) });
   assert.deepEqual(sheets.map((s) => s.name), ["Estimate", "Materials"]);
-  assert.deepEqual(find(sheets[1].rows, "CT-1"), ["CT-1", "Thinset", 3, "bag", 10, 30, "priced"]);
+  // order qty 3 whole bags; labor qty is the measured 234 ÷ 95 = 2.46, no labor rate entered (optional on an item)
+  assert.deepEqual(find(sheets[1].rows, "CT-1"), ["CT-1", "Thinset", 3, "bag", 10, 30, 2.46, "", 0, "priced"]);
 });
 
 test("margin and an impossible margin are labeled; the warning rides the summary", () => {

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Z } from "../lib/ui.js";
 import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
 import { bidProposalFromDefaults, buildBidProposal, bidProposalFileName } from "../lib/bidProposal.js";
+import { lineLabel } from "../lib/estimate.js";
 import { loadEstimatingDefaults, TEXT_LIMIT } from "../lib/companySetup.js";
 import { loadProfiles, activeProfile } from "../lib/identity.js";
 import { downloadText } from "../lib/totals.js";
@@ -77,7 +78,7 @@ export default function BidProposalDialog({ est, conditions, projectName, client
 
         {!est.complete && (
           <div role="status" style={{ margin: "10px 0 0", padding: "8px 12px", border: "1px solid var(--c-danger)", fontSize: 12.5 }}>
-            <strong>The estimate isn't fully priced.</strong> The base bid counts {est.unpriced.map((u) => u.finish_tag).join(", ")} at $0 for what is missing. You can still download.
+            <strong>The estimate isn't fully priced.</strong> The base bid counts {est.unpriced.map((u) => lineLabel(est, u)).join(", ")} at $0 for what is missing. You can still download.
           </div>
         )}
 
