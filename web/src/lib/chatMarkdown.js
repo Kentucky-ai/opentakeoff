@@ -42,7 +42,10 @@ export function parseInline(src) {
 const UL = /^\s*[-*+]\s+(.*)$/;
 const OL = /^\s*(\d{1,4})[.)]\s+(.*)$/;
 const HEAD = /^(#{1,4})\s+(.*?)\s*#*\s*$/;
-const FENCE = /^\s*```\s*([\w+-]*)\s*$/;
+// an opening fence may carry any info string ("csv title=x.csv", "c#"); its
+// first word is the language. Only a bare ``` closes the block.
+const FENCE = /^\s*```\s*([^`\s]*)[^`]*$/;
+const FENCE_END = /^\s*```\s*$/;
 
 /** Markdown text → blocks.
  *  @returns {any[]} */
@@ -60,7 +63,7 @@ export function parseMarkdown(src) {
       endPara(); endList();
       const body = [];
       i++;
-      while (i < lines.length && !FENCE.test(lines[i])) { body.push(lines[i]); i++; }
+      while (i < lines.length && !FENCE_END.test(lines[i])) { body.push(lines[i]); i++; }
       blocks.push({ type: "code", lang: fence[1] || "", text: body.join("\n") });
       continue;
     }
