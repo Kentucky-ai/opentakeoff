@@ -409,6 +409,9 @@ test("rollColProfile: empty without figured layouts; ×N-applied getters through
   assert.equal(mOrder.get(row, ctx), round2(87 * 0.3048));
   assert.equal(mSeam.header, "Seam m");
   assert.equal(mSeam.get(row, ctx), round2(90 * 0.3048));
+  // a non-roll condition stays blank in metric too, never a converted 0
+  assert.equal(mOrder.get({ id: "other", multiplier: 1 }, ctx), "");
+  assert.equal(mSeam.get({ id: "other", multiplier: 1 }, ctx), "");
 });
 
 // Node 24 also exposes Web Storage; explicitly isolate these browser-storage fixtures.
