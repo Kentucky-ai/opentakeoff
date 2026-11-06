@@ -2,7 +2,14 @@ import type { ToolReply } from "./format.ts";
 
 const TRACE_ENV = "OPENTAKEOFF_MCP_TRACE";
 
+/** Set while the Assistant window is open: every tool call is mirrored there (assistantBridge.ts). */
+export const toolCallSinks: Array<(tool: string, ok: boolean, ms: number) => void> = [];
+
 export function traceToolCall(tool: string, args: unknown, startedAt: bigint, reply: ToolReply): void {
+  if (toolCallSinks.length && !tool.startsWith("assistant_")) {
+    const ms = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    for (const sink of toolCallSinks) { try { sink(tool, reply.isError !== true, ms); } catch { /* the window is best-effort */ } }
+  }
   if (process.env[TRACE_ENV] !== "1") return;
 
   // result_size spans every part — for image tools that's meta + base64 bytes

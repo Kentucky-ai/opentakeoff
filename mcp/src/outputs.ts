@@ -1218,3 +1218,22 @@ export const exportProposalOutput = {
   path: z.string(), pages: z.number().int(), base_bid: z.number(), itemized: z.boolean(), complete: z.boolean(), unpriced: z.array(unpricedRow),
   note: z.string().optional(),
 };
+
+// ── the Assistant window (assistantBridge.ts) ──
+const poweredBy = z.object({ name: z.string().describe("The AI app driving this server, as it announced itself (e.g. claude-ai, claude-code, codex-mcp-client)"), version: z.string() });
+export const assistantOpenOutput = {
+  port: z.number().int().describe("127.0.0.1 port the window connects to"),
+  code: z.string().describe("One-time pairing code the person types into the canvas's Assistant window (empty when already paired)"),
+  link: z.string().describe("Opens the canvas and pairs automatically — give this to the person"),
+  powered_by: poweredBy,
+  already_paired: z.boolean(),
+  next: z.string().describe("What to tell the person, then what to call"),
+};
+export const assistantListenOutput = {
+  status: z.enum(["message", "timeout", "sleep"]).describe("message = the person wrote; timeout = call again; sleep = stop, they are away"),
+  message: z.string().nullable().describe("What the person typed (several messages joined), or null"),
+  idle_s: z.number().int().describe("Seconds since the person last wrote"),
+};
+export const assistantSayOutput = {
+  delivered_to: z.number().int().describe("Open windows that received the reply (0 = the person closed the window; it shows when they reopen)"),
+};

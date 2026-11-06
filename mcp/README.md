@@ -44,9 +44,9 @@ what's missing where rendering isn't available.
 engine is re-validated against a wider plan corpus: `tools/list` never names them, the
 initialize `instructions` say so and point at `measure_polygon`, and no other tool's
 description sends an agent to a verb that is not there. A default build registers
-**<!--tool-count-->58<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
+**<!--tool-count-->61<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
 exports — is unchanged. Set `OPENTAKEOFF_ONE_CLICK=1` in the server's environment to
-register both verbs (<!--tool-count-all-->60<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
+register both verbs (<!--tool-count-all-->63<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
 `test/gate.test.ts` pins both surfaces. The rows and examples below that use `one_click`
 describe the lifted build. Design note: [`docs/design/ONE_CLICK_GATE.md`](../docs/design/ONE_CLICK_GATE.md).
 
@@ -123,7 +123,7 @@ includes document text, shape vertices, or result payload content.
 
 ### Staged tool exposure (opt-in)
 
-By default every client gets all <!--tool-count-->58<!--/tool-count--> tool schemas on `tools/list`—the flat
+By default every client gets all <!--tool-count-->61<!--/tool-count--> tool schemas on `tools/list`—the flat
 contract every published client already expects. Fifty-two descriptions is real
 token weight for an agent session that may never touch half of them, so the
 server can instead stage the surface along the workflow it already teaches:
@@ -132,7 +132,7 @@ server can instead stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage (load, scale, read the set—<!--tool-count-setup-->11<!--/tool-count-setup--> tools) starts
+Staged, only the **setup** stage (load, scale, read the set—<!--tool-count-setup-->14<!--/tool-count-setup--> tools) starts
 enabled, plus one opener: `open_tool_stage`. Calling it with `"measure"`,
 `"revise"`, or `"handoff"` enables that stage's tools and fires
 `tools/list_changed`, so any client that supports dynamic tool lists (Claude
@@ -209,6 +209,14 @@ The [generated tool index](../docs/MCP_TOOL_INDEX.md) lists stages and required 
 | `sheet_context` | The region's STRUCTURE in one frame: classified vector segments (endpoints as drawn, meta byte per segment), text spans with bboxes, and hatch-family instances with content-derived ids—same pattern spec ⇒ same id anywhere on the sheet, so plan↔legend matching is `id === id`. Decimation is declared and counted on every reply: `kept + dropped === total_in_region`, cap applies longest-first so walls survive. |
 | `get_sheet_vectors` | The STROKES (#367): the sheet's vector layer exactly as the engine is fed it—flat `[x1, y1, x2, y2, …]` points in image px, one meta byte per segment (curve / clip / fill-only / polyline-arc flags, pen width in the high nibble), per-segment stroke luminance, the drawn figure each segment belongs to, the placed-image area, and the PDF layer table with a per-segment layer index. Nothing classified, decimated, or merged—so a reader can run its own room finder, symbol matcher, or wall classifier against the same array and commit through the existing verbs. Paged (default 20,000 segments, ceiling 100,000) with `offset + returned + dropped === total` on every page; `next_cursor` recovers exactly what `dropped` counts. Read-only and stateless. Refuses on a scan and names `view_sheet` as the path. |
 | `view_sheet` | The agent's eyes: render the sheet (or an image-px crop) to PNG. `overlay` burns committed shapes in (solid = human-affirmed, dashed = unreviewed) to verify geometry landed; `grid` burns in a calibrated 1-ft/5-ft measuring grid with foot labels (`"auto"` from the set scale, or the drawing scale like `"1/4"`) so dimensions are counted off cells, not guessed; `marks` (#297) burns disclosure layers in — `question` (withheld placements, orange ?-circle), `struck` (rejections, magenta struck ×), `ring` (the sweep's seed, violet double ring) — in colors off the common CAD pens, so what a reply names, the picture shows. |
+
+### The Assistant window — talk to your AI from inside the canvas
+
+| Tool | What it does |
+|---|---|
+| `assistant_open` | Starts a private link on `127.0.0.1` (ports 47615–47619; only the OpenTakeoff app's origin may use it, and only after pairing) and returns a one-time `code` and a `link` that opens the canvas already paired. The canvas's Assistant window then shows which AI app is answering ("Powered by Claude Code", "Claude Desktop", "Codex", …) from the name the client announced at initialize. |
+| `assistant_listen` | Waits (default 45 s, max 240 s, with progress pings) for what the person types in the window. `message` → do the work and answer with `assistant_say`; `timeout` → listen again; `sleep` after 10 idle minutes → stop and tell them to say "listen" when they want you back. Every other tool call is mirrored into the window live while you work. |
+| `assistant_say` | Puts your Markdown reply in the window. |
 
 ### The agent revises its own work
 
