@@ -160,7 +160,14 @@ export default function EstimatePanel({ projectName, clientInfo = {}, conditions
         {msg && <p role="status" style={{ color: "var(--ink-muted)", fontSize: 12.5, margin: "0 0 8px" }}>{msg}</p>}
 
         {est.lines.length > 0 && (
-          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+          // fixed layout: with auto layout every column re-flowed when a status
+          // badge (UNPRICED → PARTLY PRICED) changed width or an item row opened
+          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13, tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "24%" }} />
+              <col style={{ width: "6%" }} />
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <col key={i} style={{ width: "8.75%" }} />)}
+            </colgroup>
             <thead>
               <tr>
                 <th style={{ ...th, ...left }}>Finish</th>

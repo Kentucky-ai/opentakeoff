@@ -48,6 +48,12 @@ export function WorkspaceNavigator({ open, items, current, onSelect, onClose, on
   </aside>;
 }
 
+// Row ids are built from the row's POSITION, not its action id: action ids carry
+// raw labels such as `scale-1/8" = 1'-0"`, and an id with quotes and spaces is
+// not a valid CSS selector — label[for=…] / #id lookups throw on it, which broke
+// page inspection (and the accessibility-tree readers built on it) app-wide.
+const actionDomId = (i) => `workspace-action-row-${i}`;
+
 export function WorkspaceCommandMenu({ open, onClose, actions, onOpenChange }) {
   const dialogRef = useRef(null);
   const [query, setQuery] = useState("");
@@ -64,9 +70,9 @@ export function WorkspaceCommandMenu({ open, onClose, actions, onOpenChange }) {
   useEffect(() => { dialogRef.current?.querySelector(".is-highlighted")?.scrollIntoView({ block: "nearest" }); }, [index]);
   const run = (row) => { if (row && !row.disabled) { onClose(); row.run(); } };
   return <dialog ref={dialogRef} className="calm-command-menu" onKeyDown={(e) => e.stopPropagation()} aria-label="Find an action" onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === e.currentTarget) { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose(); } }}>
-    <header><Icon name="search" size={18} /><input name="workspace-action-search" role="combobox" aria-autocomplete="list" aria-expanded={true} aria-controls="workspace-action-results" aria-activedescendant={rows[index] ? `workspace-action-${rows[index].id}` : undefined} aria-label="Search actions" autoFocus value={query} placeholder="Find a tool, sheet, or action…" onChange={(e) => { setQuery(e.target.value); setIndex(0); }}
+    <header><Icon name="search" size={18} /><input name="workspace-action-search" role="combobox" aria-autocomplete="list" aria-expanded={true} aria-controls="workspace-action-results" aria-activedescendant={rows[index] ? actionDomId(index) : undefined} aria-label="Search actions" autoFocus value={query} placeholder="Find a tool, sheet, or action…" onChange={(e) => { setQuery(e.target.value); setIndex(0); }}
       onKeyDown={(e) => { if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))); } else if (e.key === "Enter") { e.preventDefault(); run(rows[index]); } }} /><button type="button" aria-label="Close action search" onClick={onClose}>Esc</button></header>
-    <div className="calm-command-results" id="workspace-action-results" role="listbox" aria-label="Actions">{rows.map((row, i) => <button type="button" role="option" tabIndex={-1} aria-selected={i === index} id={`workspace-action-${row.id}`} key={row.id} className={i === index ? "is-highlighted" : ""} disabled={row.disabled} onMouseEnter={() => setIndex(i)} onClick={() => run(row)}><span>{row.label}<small>{row.group}</small></span>{row.shortcut && <kbd>{keyText(row.shortcut)}</kbd>}</button>)}{!rows.length && <p>No matching action. Try “scale”, “import”, or a tool name.</p>}</div>
+    <div className="calm-command-results" id="workspace-action-results" role="listbox" aria-label="Actions">{rows.map((row, i) => <button type="button" role="option" tabIndex={-1} aria-selected={i === index} id={actionDomId(i)} key={row.id} className={i === index ? "is-highlighted" : ""} disabled={row.disabled} onMouseEnter={() => setIndex(i)} onClick={() => run(row)}><span>{row.label}<small>{row.group}</small></span>{row.shortcut && <kbd>{keyText(row.shortcut)}</kbd>}</button>)}{!rows.length && <p>No matching action. Try “scale”, “import”, or a tool name.</p>}</div>
     <footer>↑ ↓ to choose · Enter to run · Esc to close</footer>
   </dialog>;
 }

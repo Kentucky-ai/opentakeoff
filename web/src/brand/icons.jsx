@@ -44,6 +44,8 @@ export const icons = {
   copy: (s) => <I size={s}><rect x="8" y="8" width="12" height="12" /><path d="M16 8 V 4 H 4 V 16 H 8" /></I>,
   paste: (s) => <I size={s}><rect x="5" y="5" width="14" height="16" /><rect x="9" y="3" width="6" height="4" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="15" y2="16" /></I>,
   duplicate: (s) => <I size={s}><rect x="8" y="8" width="12" height="12" /><path d="M16 8 V 4 H 4 V 16 H 8" /><path d="M12 14 H 16 M14 12 V 16" /></I>,
+  more: (s) => <I size={s}><circle cx="6" cy="12" r="1.2" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" /><circle cx="18" cy="12" r="1.2" fill="currentColor" stroke="none" /></I>,
+  scissors: (s) => <I size={s}><circle cx="6.5" cy="17.5" r="2.6" /><circle cx="17.5" cy="17.5" r="2.6" /><path d="M8.4 15.6 L 18 5 M15.6 15.6 L 6 5" /></I>,
   undo: (s) => <I size={s}><path d="M9 5 L 5 9 L 9 13" /><path d="M5 9 H 14.5 a 4.8 4.8 0 0 1 0 9.6 H 8" /></I>,
   zoomIn: (s) => <I size={s}><circle cx="10.5" cy="10.5" r="6" /><path d="M15 15 L 20 20" /><path d="M8 10.5 H 13 M 10.5 8 V 13" /></I>,
   zoomOut: (s) => <I size={s}><circle cx="10.5" cy="10.5" r="6" /><path d="M15 15 L 20 20" /><path d="M8 10.5 H 13" /></I>,
