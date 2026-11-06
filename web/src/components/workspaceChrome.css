@@ -59,7 +59,13 @@
   align-items:center;
   gap:var(--sp-1);
   min-width:0;
+  /* last resort when the row is still wider than the window: scroll it rather
+     than push Premium/Classic past the right edge (menus open position:fixed,
+     so scrolling never clips them — see ToolMenu) */
+  overflow-x:auto;
+  scrollbar-width:none;
 }
+.calm-header-actions::-webkit-scrollbar { display:none; }
 .calm-header button,.calm-context button,.calm-navigator button {
   display:inline-flex;
   align-items:center;
@@ -373,6 +379,13 @@
 }
 .workspace-calm [data-tool-rail] {
   padding-top:var(--sp-3)!important;
+}
+/* The action row needs ~1280px with the search label shown; collapse the
+   label (⌘K still works) before the row can overflow at 1366–1440 laptops. */
+@media(max-width:1500px) {
+  .calm-header .calm-search-trigger>span {
+    display:none;
+  }
 }
 @media(max-width:1250px) {
   .calm-project {

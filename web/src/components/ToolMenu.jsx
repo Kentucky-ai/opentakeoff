@@ -63,7 +63,9 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
         setFlyAt({ left: Math.max(8, Math.min(r.left, window.innerWidth - menuW - 8)), bottom: window.innerHeight - r.top + 6, maxH: Math.max(120, r.top - 16) });
       } else {
         const top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - estH - 8));
-        const maxH = window.innerHeight - top - 8;
+        // stop above the status bar (≈28px) instead of running to the window's
+        // bottom edge — the long scale list scrolls inside its own panel
+        const maxH = Math.max(160, window.innerHeight - top - 40);
         if (flipNow) {
           setFlyAt({ right: Math.max(8, window.innerWidth - r.right), top, maxH });
         } else {
