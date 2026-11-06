@@ -8,11 +8,11 @@
 // capture — so every canvas shortcut it teaches (A, ⏎, scroll-zoom) works while
 // it is up. The spotlight ring around the control a step names is
 // pointer-events:none for the same reason.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Z } from "../lib/ui.js";
 import { ScanStar } from "../brand/marks.jsx";
 import { keyText } from "../lib/keys.ts";
-import { TOUR_STEPS } from "../lib/firstTakeoff.js";
+import { TOUR_STEPS, TOUR_CARD_W as CARD_W, TOUR_CARD_GAP, cardPlacement, stepBody } from "../lib/firstTakeoff.js";
 
 // Outline the first VISIBLE element matching `selector`. Polled rather than
 // observed: the target can move with panel docking, layout switches and the
@@ -52,27 +52,67 @@ function Spotlight({ selector }) {
 
 const fmtSf = (n) => `${Math.round(n).toLocaleString()} SF`;
 
+const GAP = TOUR_CARD_GAP;
+
+function readRail() {
+  const el = document.querySelector("[data-tool-rail]");
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  return { side: el.getAttribute("data-dock-side") || "left", left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+}
+
+function useRailPlacement(cardRef) {
+  const [place, setPlace] = useState(() => cardPlacement(null, 0));
+  useEffect(() => {
+    const read = () => {
+      const cardLeft = cardRef.current?.getBoundingClientRect().left;
+      const next = cardPlacement(readRail(), window.innerHeight, cardLeft);
+      setPlace((prev) => (prev.bottom === next.bottom && prev.side === next.side ? prev : next));
+    };
+    read();
+    const id = setInterval(read, 250);
+    window.addEventListener("resize", read);
+    return () => { clearInterval(id); window.removeEventListener("resize", read); };
+  }, [cardRef]);
+  return place;
+}
+
 export default function FirstTakeoffTour({ done, step, sheetOpen, sampleBusy, onLoadSample, onClose, onConnect, result }) {
   const doneSet = new Set(done);
   const n = TOUR_STEPS.findIndex((s) => s.id === step?.id);
   const finished = !step;
+  const cardRef = useRef(null);
+  const place = useRailPlacement(cardRef);
+  const [cardH, setCardH] = useState(0);
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setCardH(Math.ceil(el.getBoundingClientRect().height)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const body = stepBody(step, place.side);
   return (
     <>
       <style>{`
         @keyframes ot-tour-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
         .ot-tour-spotlight { animation: ot-tour-pulse 1.4s ease-in-out infinite }
         @media (prefers-reduced-motion: reduce) { .ot-tour-spotlight { animation: none } }
+        /* the card floats over the Report on the last step: give the Report room
+           to scroll its last rows (the buy list) clear of it */
+        .report-scroll { padding-bottom: ${cardH + place.bottom + 16}px !important }
       `}</style>
       {!finished && <Spotlight selector={step.target} />}
-      <section
+      <section ref={cardRef}
         role="region" aria-label="Guided first takeoff" aria-live="polite"
         style={{
-          position: "fixed", left: "calc(var(--rail-w, 52px) + 14px)", bottom: 38,
+          position: "fixed", left: `calc(var(--rail-w, 52px) + ${GAP}px)`, bottom: place.bottom,
           // in progress it sits under every menu and dialog; the done card rises
           // over the Report (z 50, which is where the last step lands you) but
           // stays under the Report's own popovers (60+)
           zIndex: finished ? Z.modal + 5 : Z.drawer + 1,
-          width: "min(340px, calc(100vw - var(--rail-w, 52px) - 28px))",
+          width: `min(${CARD_W}px, calc(100vw - var(--rail-w, 52px) - ${GAP * 2}px))`,
           background: "var(--paper-bright)", color: "var(--ink)", border: "1px solid var(--ink-faint)",
           boxShadow: "var(--shadow-2)", padding: "14px 16px 14px", fontFamily: "var(--f-body)",
         }}>
@@ -107,7 +147,7 @@ export default function FirstTakeoffTour({ done, step, sheetOpen, sampleBusy, on
         ) : (
           <>
             <strong style={{ display: "block", marginTop: 6, fontFamily: "var(--f-display)", fontSize: 16 }}>{step.title}</strong>
-            <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-soft)", margin: "5px 0 0" }}>{keyText(step.body)}</p>
+            <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-soft)", margin: "5px 0 0" }}>{keyText(body)}</p>
             {step.id === "open" && !sheetOpen && (
               <button type="button" onClick={onLoadSample} disabled={sampleBusy}
                 style={{ marginTop: 11, padding: "8px 13px", border: "none", background: "var(--cobalt)", color: "var(--accent-contrast)", fontWeight: 700, fontSize: 12.5, cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1 }}>
