@@ -284,16 +284,26 @@ Two rules carry over from the app unchanged:
   fields appear on the tool replies, so an agent can triage before it
   commits.
 
-And one capability deliberately does **not** carry over: **stitching**. The
-canvas can join sheets split at a match line into one composite surface, but
-there is no agent verb for it—aligning the match line means clicking the
-same drawn wall junction on both halves, a human-judgment act whose failure
-mode (a subtly sloppy join) silently skews every quantity that crosses the
-seam. Same doctrine as the scale gate, taken one step further: here the agent
-doesn't even propose. A human stitches and aligns in the canvas; an agent
-works the member sheets individually and leaves seam-crossing rooms to the
-person at the screen. See the Limits section of
-[`mcp/README.md`](../mcp/README.md) for the round-trip caveat that follows.
+And match-line **stitching** is guarded by strict automated gates. The
+canvas can join sheets split at a match line into one composite surface. Over
+MCP, agents use `stitch_sheets` and `align_stitch`. Because aligning a match line
+means clicking the same drawn wall junction on both halves—where a subtly sloppy
+join could skew quantities that cross the seam—the agent is held to a verification
+protocol:
+1. Member sheets must have calibrated, matching scales.
+2. `align_stitch` performs an automated linework seam check (`checkSeamLinework`), measuring wall displacement and leftover rotation. If mismatch exceeds 0.50" or rotation exceeds 0.25°, the stitch is withheld with discrepancy coordinates.
+3. `view_sheet` renders the seam crop with overlay so the agent inspects the join.
+4. Measuring across the seam is only allowed after the seam check passes (`aligned: true`). If the seam check fails or withholds, the agent must measure member sheets individually and inform the user.
+Shapes committed to a stitch retain `reviewed: false` and render dashed in the canvas for estimator review.
+
+
+
+
+
+
+
+
+
 
 ## An example session
 
@@ -398,7 +408,7 @@ New agent measurements, including `measure_polygon` and `measure_line`, explicit
 
 The [generated tool index](MCP_TOOL_INDEX.md) gives each tool's stage and required
 arguments directly from the running server's schemas. The default surface has
-<!--tool-count-->58<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
+<!--tool-count-->61<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
 
 Use `list_annotations` → `edit_annotation {annotation_id, text}` to shorten or clear
 a note. One `undo_last` restores the text. Geometry, dimension length, links and

@@ -17,10 +17,15 @@ already exist; deleting a stitch also refuses while takeoffs or markups exist.
 
 Use the composite as one measuring surface. Its marked-set page is labeled as
 a composite, not an architect-issued sheet. Save the editable project archive
-when preserving the composite is required. MCP has no stitch/alignment tool and
-its current import/export path omits stitches: it cannot be used as a lossless
-handoff for that document. Have an MCP agent measure source sheets individually
-with explicit scope boundaries instead.
+when preserving the composite is required. MCP supports stitched composite surfaces
+via `stitch_sheets` and `align_stitch`. The agent must align the sheets across match
+lines and verify that the automated linework seam check passes before measuring across
+seams; if the seam check fails or withholds, the agent measures each sheet separately
+and informs the user. Takeoff import and export preserve composite stitch definitions
+losslessly.
+
+
+
 
 Source: [Human stitching instructions](../USER_GUIDE.md#stitching-a-floor-split-at-a-match-line),
 [stitch records](../../web/src/lib/stitches.ts),
