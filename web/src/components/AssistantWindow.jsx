@@ -37,6 +37,8 @@ export default function AssistantWindow({ open, onOpen, onClose, onConnectHelp, 
   const [code, setCode] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [slow, setSlow] = useState(false);            // pairing has hung — usually Chrome's local-network prompt
+  useEffect(() => { if (!busy) { setSlow(false); return undefined; } const t = setTimeout(() => setSlow(true), 2500); return () => clearTimeout(t); }, [busy]);
   const listRef = useRef(null);
   const name = poweredByName(client);
 
@@ -99,7 +101,7 @@ export default function AssistantWindow({ open, onOpen, onClose, onConnectHelp, 
   }
 
   return (
-    <section className="ot-asst" role="dialog" aria-label="Assistant" style={{ zIndex: Z.drawer + 1 }}
+    <section className="ot-asst" role="dialog" aria-label="Assistant" style={{ zIndex: Z.modal - 1 }}
       onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") onClose(); }}>
       <header className="ot-asst-head">
         <ScanStar size={20} working={working} title={working ? `${name} is working` : undefined} />
@@ -123,6 +125,7 @@ export default function AssistantWindow({ open, onOpen, onClose, onConnectHelp, 
             <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ABC123" aria-label="Pairing code" autoComplete="off" spellCheck={false} />
             <button type="submit" disabled={busy || !code.trim()}>{busy ? "Pairing…" : "Pair"}</button>
           </form>
+          {slow && <p className="ot-asst-note">Waiting on your browser — if it asks to let this site <b>reach apps and services on this device</b>, choose <b>Allow</b>. That's how the window reaches your AI on this computer; nothing goes online.</p>}
           {conn === "expired" && <p className="ot-asst-note">The last link ended (your AI app restarted). Ask it again to open the assistant.</p>}
         </div>
       ) : (
