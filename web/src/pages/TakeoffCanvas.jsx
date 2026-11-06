@@ -42,6 +42,7 @@ import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfi
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
+import ToolTray from "../components/ToolTray.jsx";
 import ConnectAI from "../components/ConnectAI.jsx";
 import CompanySetup from "../components/CompanySetup.jsx";
 import EstimatePanel from "../components/EstimatePanel.jsx";
@@ -757,6 +758,17 @@ export default function TakeoffCanvas() {
   const workspaceArrangement = workspacePrefs.layout;
   // the tool dock floating at the canvas foot (Premium's position; default since 2026-11)
   const dockBottom = workspaceLayout && workspaceArrangement.tools === "bottom";
+  // the dock's ⋯ tray — every tool that isn't on the dock itself, laid out at once (Premium's layout)
+  const [trayOpen, setTrayOpen] = useState(false);
+  const dockWrapRef = useRef(null);
+  useEffect(() => {
+    if (!trayOpen) return undefined;
+    const onDown = (e) => { if (dockWrapRef.current && !dockWrapRef.current.contains(e.target)) setTrayOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setTrayOpen(false); };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
+  }, [trayOpen]);
   const [workspaceNavigationOpen, setWorkspaceNavigationOpen] = useState(false);
   const [workspaceControlsOpen, setWorkspaceControlsOpen] = useState(false);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
@@ -10382,9 +10394,9 @@ export default function TakeoffCanvas() {
         onControls={() => setWorkspaceControlsOpen((v) => !v)} controlsOpen={workspaceControlsOpen} onSearch={() => setWorkspaceSearchOpen(true)}
         pinControl={pinButton}
         panelTools={<div className="calm-panel-tools" role="group" aria-label="Quantity and review tools">
-          {panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "document", "Markup list — existing clouds, callouts, and notes", leftTab === "markup", markupCount)}
-          {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", "Stamps — reusable annotations dropped click-to-place", leftTab === "stamp", stampLib.stamps.length)}
-          {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", "RFI register — raise, track, and export Requests For Information", leftTab === "rfi", rfis.length)}
+          {!dockBottom && panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "document", "Markup list — existing clouds, callouts, and notes", leftTab === "markup", markupCount)}
+          {!dockBottom && panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", "Stamps — reusable annotations dropped click-to-place", leftTab === "stamp", stampLib.stamps.length)}
+          {!dockBottom && panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", "RFI register — raise, track, and export Requests For Information", leftTab === "rfi", rfis.length)}
           {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size)}
           {layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", "PDF layers — drawing layers", layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0))}
           {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
@@ -10401,7 +10413,7 @@ export default function TakeoffCanvas() {
           <button type="button" onClick={addCondition} title="Add condition" aria-label="Add condition"><Icon name="plus" size={14} /></button>
           <button type="button" onClick={() => setWorkspaceDetailsOpen((v) => !v)} aria-expanded={workspaceDetailsOpen} disabled={!aCond}>Properties</button></>}
         history={<><button type="button" onClick={() => poly.length ? dropLastPoint() : undoShapeCommand()} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" size={16} /></button><button type="button" onClick={redoShapeCommand} title="Redo (⇧⌘Z)" aria-label="Redo"><span style={{ display: "flex", transform: "scaleX(-1)" }}><Icon name="undo" size={16} /></span></button></>}
-        aids={<><button type="button" aria-pressed={tool === "zone"} onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))} title="Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool."><Icon name="zone" size={15} />Zone</button><button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"><Icon name="snap" size={15} />Snap</button><button type="button" aria-pressed={angleOn} onClick={() => setAngleOn((v) => !v)} title="45°/90° angle guides"><Icon name="angle" size={15} />45°</button>{draftMenu}<span className="calm-separator" />{annotations.control}</>}
+        aids={dockBottom ? <>{draftMenu}</> : <><button type="button" aria-pressed={tool === "zone"} onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))} title="Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool."><Icon name="zone" size={15} />Zone</button><button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"><Icon name="snap" size={15} />Snap</button><button type="button" aria-pressed={angleOn} onClick={() => setAngleOn((v) => !v)} title="45°/90° angle guides"><Icon name="angle" size={15} />45°</button>{draftMenu}<span className="calm-separator" />{annotations.control}</>}
         action={finishOk && <button type="button" onClick={finishShape}>Finish ({poly.length})</button>}
         scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title="Switch display units">{units === "metric" ? "m" : "ft"}</button><ToolMenu title={scaleTitle} onOpenChange={onScaleMenuDepth} face={<span data-tour="scale">{scaleFace}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 250 }} items={scaleItems} /></>}
       />}
@@ -10834,7 +10846,72 @@ export default function TakeoffCanvas() {
            its variety flyout on one tile (five markup kinds don't earn five
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
-       {view === "canvas" && (
+       {view === "canvas" && dockBottom && (() => {
+         // Premium's dock: the five everyday tools and Cut, then ⋯ for everything else, then history
+         const toggleLeft = (id) => setLeftTab((t) => (t === id ? null : id));
+         const trayGroups = [
+           ["Measure", [
+             ...(oneClickEnabled() ? [{ id: "oneclick", icon: "oneClick", label: "One-click area — click inside a room", short: "One-click", shortcut: "O", active: tool === "oneclick", onSelect: () => setTool("oneclick") }] : []),
+             { id: "surface", icon: "surface", label: "Surface (wall) area", short: "Wall area", shortcut: "S", active: tool === "surface", onSelect: () => setTool("surface") },
+             { id: "deduct-rect", icon: "deductRect", label: "Rectangle cutout", short: "Rect cutout", shortcut: "⇧D", active: tool === "deduct-rect", onSelect: () => setTool("deduct-rect") },
+           ]],
+           ["Check & find", [
+             { id: "zone", icon: "zone", label: "Zone check — trace a region to read every condition's quantities inside it. Nothing is saved.", short: "Zone check", active: tool === "zone", onSelect: () => setTool((t) => (t === "zone" ? "select" : "zone")) },
+             { id: "symbol", icon: "symbol", label: "Symbol sweep — box one example; every match is counted", short: "Symbol sweep", shortcut: "Y", active: tool === "symbol", onSelect: () => setTool("symbol") },
+             { id: "textcopy", icon: "copyText", label: "Copy text — click two corners around a note or schedule", short: "Copy text", active: tool === "textcopy", onSelect: armCopyText },
+           ]],
+           ["Mark up", [
+             ...annotations.items.map((it) => ({ ...it, short: { "annot-sweep": "Mark all", "annot-selection": "Select notes", "annot-cloud": "Cloud" }[it.id] })),
+             ...MARKUP_TOOLS.filter((t) => !["highlighter", "cloud", "callout"].includes(t.id)).map((t) => ({ id: t.id, icon: t.icon, label: t.label, short: { text: "Text", highlight: "Box", dimension: "Dimension", image: "Image" }[t.id], shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
+             { id: "approve", icon: "approve", label: "Approval stamp — your sign-off that a takeoff was checked. Human-only.", short: "Approve", active: tool === "approve", onSelect: () => setTool((t) => (t === "approve" ? "select" : "approve")) },
+             { id: "markup-list", icon: "document", label: "Markup list — existing clouds, callouts, and notes", short: "Markup list", count: markupCount, active: leftTab === "markup", onSelect: () => toggleLeft("markup") },
+             { id: "stamps", icon: "stamp", label: "Stamps — reusable annotations dropped click-to-place", short: "Stamp library", count: stampLib.stamps.length, active: leftTab === "stamp", onSelect: () => toggleLeft("stamp") },
+             { id: "rfis", icon: "rfi", label: "RFI register — raise, track, and export Requests For Information", short: "Issues", count: rfis.length, active: leftTab === "rfi", onSelect: () => toggleLeft("rfi") },
+           ]],
+           ["Scale", [
+             { id: "calibrate", icon: "calibrate", label: "Calibrate — click two points of a known dimension", short: "Calibrate", active: tool === "calibrate", onSelect: () => setTool("calibrate") },
+           ]],
+           ["Aids", [
+             { id: "snap", icon: "snap", label: "Snap to plan lines and corners (beta)", short: "Snap", active: snapOn, stayOpen: true, onSelect: () => setSnapOn((v) => !v) },
+             { id: "angle", icon: "angle", label: "45° / 90° angle guides — ⇧ locks", short: "45° / 90°", active: angleOn, stayOpen: true, onSelect: () => setAngleOn((v) => !v) },
+           ]],
+         ];
+         const trayArmed = trayGroups.some(([, items]) => items.some((it) => it.active && !["snap", "angle", "markup-list", "stamps", "rfis"].includes(it.id)));
+         const sep = (k) => <span key={k} aria-hidden="true" style={{ width: 1, height: 24, background: "var(--ink-faint)", margin: "0 5px", flexShrink: 0 }} />;
+         return (
+           <div ref={dockWrapRef} data-dock-wrap onPointerDown={(e) => e.stopPropagation()}
+             style={{ position: "absolute", left: 0, right: 0, bottom: 14, marginInline: "auto", width: "max-content", maxWidth: "calc(100% - 28px)", zIndex: 25 }}>
+             {trayOpen && <ToolTray groups={trayGroups} onPicked={() => setTrayOpen(false)} />}
+             {tool === "highlighter" && (
+               <div style={{ position: "absolute", left: 0, bottom: "calc(100% + 10px)", zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", gap: 6 }} title="Ink">
+                 {HL_INKS.map((c) => <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))} aria-label={`Ink ${c}`} style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+               </div>
+             )}
+             <nav data-tool-rail data-dock-side="bottom" role="toolbar" aria-label="Tools"
+               style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 3, padding: "6px 8px", border: "1px solid var(--ink-faint)", borderRadius: 12, background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", overflowX: "auto" }}>
+               {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
+               {sep("s1")}
+               {railTile("area", "area", "Area", "A")}
+               {railTile("rect", "rectTool", "Rectangle", "R")}
+               {railTile("linear", "linear", "Linear", "L")}
+               {railTile("count", "count", "Count", "C")}
+               {railTile("cut", "scissors", "Cut — polygon cutout (D); click again for a rectangle cutout (⇧D)", "D",
+                 () => setTool((t) => (t === "deduct" ? "deduct-rect" : "deduct")), { armed: tool === "deduct" || tool === "deduct-rect", tint: tool === "deduct" || tool === "deduct-rect" ? "var(--c-danger)" : undefined })}
+               {sep("s2")}
+               <button type="button" onClick={() => setTrayOpen((v) => !v)} aria-expanded={trayOpen} aria-controls="ot-tool-tray" aria-label="More tools"
+                 title="More tools — measure, check & find, mark up, scale and aids"
+                 style={{ position: "relative", width: "var(--ctl-l)", height: "var(--ctl-l)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-1)", cursor: "pointer",
+                   border: `1px solid ${trayOpen || trayArmed ? "color-mix(in srgb, var(--cobalt) 45%, transparent)" : "transparent"}`, background: trayOpen ? "var(--tint-select)" : "transparent", color: trayOpen || trayArmed ? "var(--cobalt)" : "var(--ink)" }}>
+                 <Icon name="more" size={18} />
+               </button>
+               {sep("s3")}
+               {railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false })}
+               {railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false })}
+             </nav>
+           </div>
+         );
+       })()}
+       {view === "canvas" && !dockBottom && (
        <nav data-tool-rail data-dock-side={workspaceLayout ? workspaceArrangement.tools : undefined} role="toolbar" aria-label="Tools"
          onPointerDown={dockBottom ? (e) => e.stopPropagation() : undefined}
          style={dockBottom
