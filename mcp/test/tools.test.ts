@@ -63,6 +63,7 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // px and says so.
 // link_annotation takes an id and a tag — no geometry crosses it, so the
 // coordinate contract would be noise rather than clarity.
+// the assistant_* verbs carry chat text between the person's AI app and the canvas window — no geometry.
 // export_marked_pdf takes a file path and writes a document — same reasoning.
 // list_shapes returns ids and quantities, no geometry — same reasoning.
 // derive_base takes shape ids and lineal feet — same reasoning.
@@ -72,7 +73,7 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // no geometry crosses them — same reasoning.
 // the proposal verbs (#365) other than revise_proposal take a label, a
 // rationale, a condition diff, or a record id — no geometry crosses them.
-const NO_COORDS = new Set(["undo_last", "set_pricing", "set_estimate_settings", "estimate_summary", "export_estimate", "export_proposal", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "edit_annotation", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
+const NO_COORDS = new Set(["assistant_open", "assistant_listen", "assistant_say", "undo_last", "set_pricing", "set_estimate_settings", "estimate_summary", "export_estimate", "export_proposal", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "edit_annotation", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
   "propose_takeoff", "withdraw_proposal", "propose_condition_edit", "withdraw_condition_edit",
   // scope_merge (#366) takes two shape ids and a winner — no geometry crosses it
   "scope_merge"]);

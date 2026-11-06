@@ -7,7 +7,8 @@ import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server
 import { ok, okImage, fail, UserError, type ToolReply } from "./format.ts";
 import { oneClickEnabled, GATE_HINT } from "./gate.ts";
 import { UNDO_CAP, CONTEXT_MIN_LEN_PX, CONTEXT_MAX_SEGMENTS, CONTEXT_MAX_SEGMENTS_CEIL, VECTORS_DEFAULT_LIMIT, VECTORS_LIMIT_CEIL, type Session } from "./session.ts";
-import { traceToolCall } from "./trace.ts";
+import { traceToolCall, toolCallSinks } from "./trace.ts";
+import { AssistantBridge, LISTEN_DEFAULT_S, LISTEN_MAX_S, IDLE_SLEEP_MS } from "./assistantBridge.ts";
 import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
   measurePolygonOutput, measureLineOutput, measureSurfaceOutput, placeCountOutput, symbolSweepOutput, takeoffSummaryOutput,
@@ -25,6 +26,7 @@ import {
   proposeConditionEditOutput, withdrawConditionEditOutput,
   scopeDuplicatesOutput, scopeMergeOutput,
   setPricingOutput, setEstimateSettingsOutput, estimateSummaryOutput, exportEstimateOutput, exportProposalOutput,
+  assistantOpenOutput, assistantListenOutput, assistantSayOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
@@ -76,6 +78,48 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     sendResourceListChanged: () => realServer.sendResourceListChanged(),
   };
+  // ── the Assistant window (assistantBridge.ts): talk to this AI from inside the OpenTakeoff canvas ──
+  const bridge = new AssistantBridge(() => {
+    const v = (realServer as unknown as { server?: { getClientVersion?: () => { name?: string; version?: string } | undefined } }).server?.getClientVersion?.();
+    return { name: v?.name || "your AI app", version: v?.version || "" };
+  });
+  toolCallSinks.push((tool, okd, ms) => bridge.activity(tool, okd, ms));
+  server.registerTool("assistant_open", {
+    description: "Open the OpenTakeoff Assistant window: the person can then talk to YOU from inside the OpenTakeoff canvas (opentakeoff.kentucky-ai.com) instead of only here. Starts a private link on 127.0.0.1 and returns a one-time pairing `code` and a `link`. Give the person the link (or the 6-letter code to type into the canvas's Assistant window), then call assistant_listen and keep calling it: each message they type arrives as its result; do the work with the other tools, answer with assistant_say, then listen again. Call it when the person asks for the OpenTakeoff assistant/window, or says \"listen\" after a pause.",
+    inputSchema: {},
+    outputSchema: assistantOpenOutput,
+  }, run("assistant_open", async () => {
+    const o = await bridge.open();
+    return { ...o, next: o.already_paired
+      ? "Already paired — the window is live. Call assistant_listen now."
+      : `Tell the person: open ${o.link} (or, in the canvas, Assistant → enter code ${o.code}). Then call assistant_listen.` };
+  }));
+  server.registerTool("assistant_listen", {
+    description: `Wait for the person's next message in the OpenTakeoff Assistant window (after assistant_open). Returns status "message" with their text — do what they ask (with the other tools), reply with assistant_say, then call assistant_listen again. Status "timeout" = nothing typed yet: call assistant_listen again right away, saying nothing to the person. Status "sleep" = ${IDLE_SLEEP_MS / 60000} quiet minutes: stop listening and tell the person in one line to say "listen" when they want you back (then call assistant_open, which reconnects without a new code).`,
+    inputSchema: {
+      wait_s: z.number().int().min(1).max(LISTEN_MAX_S).optional().describe(`Seconds to wait (default ${LISTEN_DEFAULT_S}, max ${LISTEN_MAX_S}). Keep it under your client's tool timeout.`),
+    },
+    outputSchema: assistantListenOutput,
+  }, async (args: { wait_s?: number }, extra: { _meta?: { progressToken?: string | number }; sendNotification?: (n: unknown) => Promise<void> }) => {
+    const startedAt = process.hrtime.bigint();
+    let reply: ToolReply;
+    try {
+      const token = extra?._meta?.progressToken;
+      // progress pings keep clients that reset their timeout on progress from cutting a long wait short
+      const onTick = token !== undefined && extra.sendNotification
+        ? (s: number) => { extra.sendNotification!({ method: "notifications/progress", params: { progressToken: token, progress: s, message: "waiting for the person in the OpenTakeoff window" } }).catch(() => {}); }
+        : undefined;
+      reply = ok(await bridge.waitForMessage(args.wait_s ?? LISTEN_DEFAULT_S, onTick));
+    } catch (e) { reply = fail(e); }
+    traceToolCall("assistant_listen", args, startedAt, reply);
+    return reply;
+  });
+  server.registerTool("assistant_say", {
+    description: "Show your reply in the OpenTakeoff Assistant window (Markdown). Use it for every answer to a message that came through assistant_listen — the person is reading the window, not this chat. Then call assistant_listen again.",
+    inputSchema: { text: z.string().min(1).describe("Your reply, Markdown") },
+    outputSchema: assistantSayOutput,
+  }, run("assistant_say", ({ text }) => bridge.say(text)));
+
   server.registerTool("load_plan", {
     description: `Open a plan PDF from disk. Default: replace the whole session (previous documents, scales, conditions, and shapes are cleared). merge: true ADDS the document to the working set instead (#152) — a bid set is plans + schedule + addenda, not one PDF — keeping every scale, condition, and shape; sheet keys carry file names so documents never collide, the sheet graph spans the whole set (resolve_tag can chain a plan tag on one file to a schedule row in another), and the marked set covers every worked sheet. Re-loading an already-merged file is refused — reload = replace, deliberately. Returns file, files, page_count, and one entry per sheet. The loaded sheets also become browsable resources (takeoff://sheets). ${COORDS}`,
     inputSchema: {
