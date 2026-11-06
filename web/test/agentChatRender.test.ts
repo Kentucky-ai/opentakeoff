@@ -24,6 +24,17 @@ test("markdown: paragraphs, headings, lists, fenced code", () => {
   assert.equal(ol[0].start, 3);
 });
 
+test("markdown: a fence with a longer info string opens a code block and ends at the bare fence", () => {
+  const blocks = parseMarkdown("Here is the export:\n```csv title=takeoff.csv\nCode,Qty\nCPT-1,1200\n```\nThe **CPT-1** total is 1,200 SF.\n\n- next step");
+  assert.deepEqual(blocks.map((b: any) => b.type), ["p", "code", "p", "ul"]);
+  assert.equal(blocks[1].lang, "csv");
+  assert.equal(blocks[1].text, "Code,Qty\nCPT-1,1200");
+  assert.deepEqual(blocks[2].inline, [{ t: "text", v: "The " }, { t: "b", v: "CPT-1" }, { t: "text", v: " total is 1,200 SF." }]);
+  const cs = parseMarkdown("```c#\nvar x = 1;\n```\nDone.");
+  assert.deepEqual(cs.map((b: any) => [b.type, b.lang ?? null]), [["code", "c#"], ["p", null]]);
+  assert.equal(cs[0].text, "var x = 1;");
+});
+
 test("markdown: inline emphasis, and markers that are not emphasis stay literal", () => {
   assert.deepEqual(parseInline("a *b* and __c__"), [{ t: "text", v: "a " }, { t: "i", v: "b" }, { t: "text", v: " and " }, { t: "b", v: "c" }]);
   assert.deepEqual(parseInline("2 * 3 * 4"), [{ t: "text", v: "2 * 3 * 4" }]);
