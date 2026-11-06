@@ -6782,6 +6782,34 @@ export default function TakeoffCanvas() {
   // markup on the source sheet to resolve (only a synthetic {sheet_id, rect}),
   // so centerOnMarkup/flyToMarkup can't express this — this is why traceSource
   // doesn't reuse them.
+  // Symbol sweep review: bring the selected question into view. q.at is in the
+  // sheet's own pixels (the overlay draws it at q.at[0] + xOffset), and the
+  // sweep panel floats over the canvas's right side, so center within the part
+  // of the canvas left of the panel — otherwise the ring lands under the panel.
+  function centerOnSweepQuestion(sw, i) {
+    const q = sw?.questions?.[i];
+    const sp = q && panelByKey(sw.key);
+    const el = containerRef.current;
+    if (!q || !sp?.img?.w || !el) return false;
+    const r = el.getBoundingClientRect();
+    const panelLeft = window.innerWidth - FLOAT_GAP - SWEEP_PANEL_W;
+    const visibleW = Math.max(120, Math.min(r.right, panelLeft) - r.left);
+    const scale = tfRef.current.scale;
+    const sx = q.at[0] + sp.xOffset, sy = q.at[1];
+    setTfNow({ x: visibleW / 2 - sx * scale, y: r.height / 2 - sy * scale, scale });
+    return true;
+  }
+  // Follow the review cursor: ↵ / X advance it and → / ← step it, so whenever
+  // qIndex moves the view goes with it. Not on the sweep's first render — the
+  // person is still looking at the seed they just marqueed.
+  const sweepFocusRef = useRef(null);
+  useEffect(() => {
+    if (!sweep) { sweepFocusRef.current = null; return; }
+    const id = `${sweep.key}#${sweep.qIndex}`;
+    const prev = sweepFocusRef.current;
+    sweepFocusRef.current = id;
+    if (prev && prev !== id && prev.startsWith(`${sweep.key}#`)) centerOnSweepQuestion(sweep, sweep.qIndex);
+  }, [sweep?.key, sweep?.qIndex]); // eslint-disable-line react-hooks/exhaustive-deps
   function centerOnPanelPoint(sp, nx, ny) {
     if (!sp?.img?.w) return false;
     const el = containerRef.current;
@@ -11542,7 +11570,7 @@ export default function TakeoffCanvas() {
               {sweep.questions.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 150, overflowY: "auto" }}>
                   {sweep.questions.map((q, i) => (
-                    <button key={i} type="button" onClick={() => setSweep((s) => ({ ...s, qIndex: i }))}
+                    <button key={i} type="button" title="Show this spot on the sheet" onClick={() => { setSweep((s) => ({ ...s, qIndex: i })); centerOnSweepQuestion(sweep, i); }}
                       style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", fontFamily: "var(--f-body)", fontSize: "var(--fs-s)", textAlign: "left", background: i === sweep.qIndex ? "var(--tint-select)" : "transparent", border: `1px solid ${i === sweep.qIndex ? "var(--c-warning)" : "var(--ink-faint)"}`, color: q.state === "dismissed" ? "var(--text-faint)" : "var(--ink)", textDecoration: q.state === "dismissed" ? "line-through" : "none", cursor: "pointer" }}>
                       <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: q.state === "accepted" ? "var(--c-positive)" : q.state === "dismissed" ? "var(--text-faint)" : DS.symbol.question }}>{q.state === "accepted" ? "✓" : q.state === "dismissed" ? "×" : "?"}</span>
                       <span>{Math.round(q.score * 100)}%{q.label ? ` · ${q.label.label}` : ""}{q.readings > 1 ? ` · read ${q.readings} ways` : ""}</span>
