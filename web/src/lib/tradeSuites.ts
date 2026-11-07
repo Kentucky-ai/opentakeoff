@@ -33,6 +33,8 @@ export interface TradeSuite {
   /** the method, handed over once at open time — short, imperative, names the tools in order */
   method: string;
   presets: SuitePreset[];
+  /** finish-tag prefixes that place a condition in this suite when it carries no explicit trade */
+  prefixes: string[];
 }
 
 export const DIVISIONS: Record<string, string> = {
@@ -49,6 +51,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "finishes",
     label: "Finishes",
+    prefixes: [],
     divisions: ["09"],
     summary: "flooring, base, transitions, wall finishes: core tools, no extra tools",
     tools: [],
@@ -62,6 +65,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "roofing",
     label: "Roofing",
+    prefixes: ["RF-"],
     divisions: ["07"],
     summary: "sloped roof area and squares, true rake/hip/valley LF, drip edge, starter, ridge cap, underlayment",
     tools: ["roof_takeoff"],
@@ -87,6 +91,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "siding",
     label: "Siding",
+    prefixes: ["SD-"],
     divisions: ["07"],
     summary: "net wall area and squares from elevations, opening trim, starter, corners, lap pieces",
     tools: ["siding_takeoff"],
@@ -108,6 +113,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "soffit_fascia",
     label: "Soffit & fascia",
+    prefixes: ["SF-"],
     divisions: ["07"],
     summary: "soffit SF from eave/rake LF × depth, fascia LF, wall receiver, attic intake vent area",
     tools: ["soffit_takeoff"],
@@ -124,6 +130,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "glazing",
     label: "Glazing & storefront",
+    prefixes: ["GL-"],
     divisions: ["08"],
     summary: "storefront / curtain wall: frame SF, lites, glass SF, mullion LF, perimeter sealant",
     tools: ["glazing_takeoff"],
@@ -141,6 +148,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "doors",
     label: "Doors, frames & hardware",
+    prefixes: ["DR-", "HW-"],
     divisions: ["08"],
     summary: "doors per type and size from the door schedule, matched to tags on the plans: core tools",
     tools: [],
@@ -154,6 +162,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "plumbing",
     label: "Plumbing",
+    prefixes: ["P-"],
     divisions: ["22"],
     summary: "fixture counts checked against the schedule QTY, pipe LF by system/size, hangers, fittings, insulation",
     tools: ["plumbing_rollup"],
@@ -171,6 +180,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
   {
     id: "electrical",
     label: "Electrical & low voltage",
+    prefixes: ["E-", "FA-", "LV-"],
     divisions: ["26", "27", "28"],
     summary: "legend devices and fixtures counted, conduit LF with drops, wire LF by conductors, boxes, whips",
     tools: ["electrical_rollup"],
@@ -214,4 +224,37 @@ export function suiteOfTool(tool: string): TradeSuite | undefined {
 /** The catalog an agent reads before opening anything: one line per suite. */
 export function suiteCatalogLines(): string[] {
   return TRADE_SUITES.map((s) => `${s.id} (Div ${s.divisions.join("/")}): ${s.summary}`);
+}
+
+// ── The canvas trade view ──────────────────────────────────────────────────
+// A condition's trade is its own `trade` field when that names a suite, else
+// the suite whose tag prefix it carries (RF-…, SD-…), else Finishes: a takeoff
+// from before suites existed is a finishes takeoff. The view is a filter only:
+// it hides other trades' conditions and shapes, never a quantity.
+
+export const ALL_TRADES = "all";
+
+export function conditionTrade(c: { trade?: unknown; finish_tag?: unknown } | null | undefined): string {
+  if (c && typeof c.trade === "string" && BY_ID.has(c.trade)) return c.trade;
+  const tag = String(c?.finish_tag ?? "").trim().toUpperCase();
+  for (const s of TRADE_SUITES) if (s.prefixes.some((p) => tag.startsWith(p))) return s.id;
+  return "finishes";
+}
+
+/** Ids of the conditions a trade view hides ("all" hides none). */
+export function tradeHiddenIds(conditions: readonly { id: string; trade?: unknown; finish_tag?: unknown }[], view: string): Set<string> {
+  if (!view || view === ALL_TRADES || !BY_ID.has(view)) return new Set();
+  return new Set(conditions.filter((c) => conditionTrade(c) !== view).map((c) => c.id));
+}
+
+/** Conditions per trade, for the picker's counts. */
+export function tradeCounts(conditions: readonly { trade?: unknown; finish_tag?: unknown }[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of conditions) { const t = conditionTrade(c); out[t] = (out[t] ?? 0) + 1; }
+  return out;
+}
+
+/** A stored view value, or "all" for anything that is not a suite id. */
+export function sanitizeViewTrade(raw: unknown): string {
+  return typeof raw === "string" && BY_ID.has(raw) ? raw : ALL_TRADES;
 }

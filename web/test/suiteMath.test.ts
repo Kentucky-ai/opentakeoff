@@ -167,3 +167,24 @@ test("registry: no prices or product names in any suite text", () => {
   assert.doesNotMatch(text, /\$\s*\d/);
   assert.doesNotMatch(text, /[®™]|\bsku\b|\bmodel no/);
 });
+
+test("trade view: explicit trade wins, then tag prefix, then Finishes; the view hides other trades only", async () => {
+  const { conditionTrade, tradeHiddenIds, tradeCounts, sanitizeViewTrade, ALL_TRADES } = await import("../src/lib/tradeSuites.ts");
+  assert.equal(conditionTrade({ finish_tag: "RF-FIELD" }), "roofing");
+  assert.equal(conditionTrade({ finish_tag: "sd-wall" }), "siding");          // case-insensitive
+  assert.equal(conditionTrade({ finish_tag: "SF-SOFFIT" }), "soffit_fascia");
+  assert.equal(conditionTrade({ finish_tag: "P-WC1" }), "plumbing");
+  assert.equal(conditionTrade({ finish_tag: "FA-HORN" }), "electrical");
+  assert.equal(conditionTrade({ finish_tag: "PT-1" }), "finishes");           // paint is not plumbing
+  assert.equal(conditionTrade({ finish_tag: "LVT-1" }), "finishes");          // pre-suite takeoffs read as finishes
+  assert.equal(conditionTrade({ finish_tag: "LVT-1", trade: "glazing" }), "glazing");
+  assert.equal(conditionTrade({ finish_tag: "RF-1", trade: "nonsense" }), "roofing");
+  const cs = [{ id: "a", finish_tag: "RF-FIELD" }, { id: "b", finish_tag: "LVT-1" }, { id: "c", finish_tag: "X", trade: "roofing" }];
+  assert.deepEqual([...tradeHiddenIds(cs, "roofing")], ["b"]);
+  assert.equal(tradeHiddenIds(cs, ALL_TRADES).size, 0);
+  assert.equal(tradeHiddenIds(cs, "bogus").size, 0);
+  assert.deepEqual(tradeCounts(cs), { roofing: 2, finishes: 1 });
+  assert.equal(sanitizeViewTrade("siding"), "siding");
+  assert.equal(sanitizeViewTrade("drop table"), "all");
+  assert.equal(sanitizeViewTrade(null), "all");
+});

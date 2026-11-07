@@ -30,6 +30,18 @@ that. A client that reads its tool list only once can pre-open suites with
 | plumbing | 22 | `plumbing_rollup` | Fixture counts against the schedule QTY, pipe LF, hangers, fittings, insulation. |
 | electrical | 26, 27, 28 | `electrical_rollup` | Wire LF by conductors, couplings, straps, boxes and plates, fixture whips. |
 
+## In the canvas
+
+The status bar's **Trade** picker shows one trade at a time, with each trade's
+condition count. Other trades' conditions leave the Condition list and the
+Takeoffs panel and their shapes hide; the Report, estimate and exports keep
+everything. A condition made while a trade is showing is booked to it
+(`trade` on the condition). Otherwise a condition's trade is read from its tag
+prefix (`RF-`, `SD-`, `SF-`, `GL-`, `DR-`/`HW-`, `P-`, `E-`/`FA-`/`LV-`), else
+Finishes, so the suite tools' default tags land in the right trade. Set it by
+hand in the condition's properties. The picker is per user and saved in the
+browser, not in the project.
+
 ## What the suite tools do and do not do
 
 - They are derives. Each reads shapes already committed under its tags and
