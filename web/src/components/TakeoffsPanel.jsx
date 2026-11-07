@@ -44,6 +44,7 @@ import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
 import { Z } from "../lib/ui.js";
 import { ftIn } from "../lib/units";
 import { describeConditionEdit } from "../lib/proposals.js";
+import { TRADE_SUITES, suiteById, conditionTrade } from "../lib/tradeSuites.ts";
 
 export const PANEL_MIN_W = 240;
 export const PANEL_MAX_W = 560;
@@ -462,6 +463,15 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
             style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
           <span style={{ color: "var(--ink-muted)" }}>%</span>
         </span>
+        <label style={{ display: "flex", alignItems: "center", gap: 4 }} title="The trade this condition belongs to — what the status bar's Trade view filters on. Auto reads the tag prefix (RF-, SD-, GL-, P-, E- …), else Finishes.">
+          <span style={{ color: "var(--ink-muted)" }}>Trade</span>
+          <select name="condition-trade" value={typeof c.trade === "string" && suiteById(c.trade) ? c.trade : ""}
+            onChange={(e) => onUpdateCond({ trade: e.target.value || undefined })}
+            style={{ padding: "2px 4px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }}>
+            <option value="">Auto ({suiteById(conditionTrade({ finish_tag: c.finish_tag }))?.label})</option>
+            {TRADE_SUITES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </label>
       </div>
       {isRow && rule()}
       {isRow ? (
@@ -925,6 +935,7 @@ function TakeoffsPanel({
   onAddLabel, onRenameLabel, onRemoveLabel,
   onToggleCollapse, onHoldGesture, onTogglePin,
   hiddenConds = NO_HIDDEN, onToggleHidden,
+  tradeHidden = NO_HIDDEN, viewTradeLabel = null, onShowAllTrades,
 }) {
   const [panelTab, setPanelTab] = useState("takeoffs");       // "takeoffs" | "library" | "materials" | "columns"
   const assemblies = useAssemblyLibrary();
@@ -985,9 +996,11 @@ function TakeoffsPanel({
     // strip, and applyTemplate can activate a row the query hides, and the
     // properties editor lives only in the active row — it must stay reachable
     if (condQ) v = v.filter(({ c }) => matchesQuery(c) || c.id === activeCond);
+    // the status bar's Trade view (lib/tradeSuites.ts) — same active-row exemption as the query
+    if (tradeHidden.size) v = v.filter(({ c }) => !tradeHidden.has(c.id) || c.id === activeCond);
     if (panelPrefs.az) v = [...v].sort((a, b) => natCompare(a.c.finish_tag, b.c.finish_tag));
     return v;
-  }, [conditions, condQ, matchesQuery, activeCond, panelPrefs.az]);
+  }, [conditions, condQ, matchesQuery, activeCond, panelPrefs.az, tradeHidden]);
   const condGroups = useMemo(() => {
     if (!panelPrefs.group) return [{ name: null, items: condView }];
     const by = new Map();
@@ -1344,6 +1357,15 @@ function TakeoffsPanel({
             title="Group by tag family (the text before the dash: CPT, LVT, CT…)"
             style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.group ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.group ? "var(--cobalt)" : "transparent", color: panelPrefs.group ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>≡ grp</button>
         </div>
+        {viewTradeLabel && tradeHidden.size > 0 && (
+          <div style={{ padding: "5px 10px", borderBottom: "1px solid var(--ink-faint)", flexShrink: 0 }}>
+            <button type="button" data-trade-view-note="" onClick={onShowAllTrades}
+              title={`The canvas shows ${viewTradeLabel} only; ${tradeHidden.size} other condition(s) are hidden from view (the Report, estimate and exports keep them). Click to show all trades.`}
+              style={{ padding: "3px 7px", borderRadius: 0, border: "1px solid var(--cobalt)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4, whiteSpace: "nowrap" }}>
+              {viewTradeLabel} · {tradeHidden.size} hidden ×
+            </button>
+          </div>
+        )}
         {/* bulk actions — appear while a ⌘/⇧ multi-selection is live
             (liveChecked: the count never claims ids the list lost) */}
         {liveChecked.length > 0 && (

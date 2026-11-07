@@ -18,6 +18,7 @@ import ReferencePins, { PinButton } from "../components/ReferencePins.jsx";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keyText } from "../lib/keys.ts";
 import { nextHatchId } from "../lib/takeoffConstants.ts";
+import { TRADE_SUITES, ALL_TRADES, tradeHiddenIds, tradeCounts, sanitizeViewTrade, suiteById, conditionTrade } from "../lib/tradeSuites.ts";
 import { buildTakeoffDocument, sheetEntry } from "../lib/takeoffDocument.js";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
@@ -448,6 +449,23 @@ export default function TakeoffCanvas() {
   const [leftTab, setLeftTab] = useState(null);
   const [showMarkups, setShowMarkups] = useState(true);       // markup SVG layer visibility (orthogonal to the export checkbox)
   const [hiddenConds, setHiddenConds] = useState(() => new Set()); // condition ids whose takeoffs are hidden on the canvas (#440) — VIEW STATE: never persisted, never touches totals/report/exports
+  // the status bar's Trade view (lib/tradeSuites.ts): shows one trade's conditions and shapes, and books new
+  // conditions to it. Per-user VIEW STATE in localStorage — never a quantity, never in the project file.
+  const [viewTrade, setViewTrade] = useState(() => { try { return sanitizeViewTrade(localStorage.getItem("opentakeoff_view_trade")); } catch { return ALL_TRADES; } });
+  useEffect(() => { try { localStorage.setItem("opentakeoff_view_trade", viewTrade); } catch { /* private mode */ } }, [viewTrade]);
+  // switching trades moves the active condition to that trade's first one, when it has any
+  const pickViewTrade = (raw) => {
+    const v = sanitizeViewTrade(raw);
+    setViewTrade(v);
+    if (v === ALL_TRADES) return;
+    const cs = agentStateRef.current.conditions.length ? agentStateRef.current.conditions : conditions;
+    const cur = cs.find((c) => c.id === activeCond);
+    if (cur && conditionTrade(cur) === v) return;
+    const first = cs.find((c) => conditionTrade(c) === v);
+    if (first) activateCondition(first.id, { reassign: false });
+  };
+  const viewTradeRef = useRef(viewTrade);   // mintCondition reads the live value (the agent can mint mid-run on a stale closure)
+  viewTradeRef.current = viewTrade;
   const [editor, setEditor] = useState(null);                 // inline on-canvas text editor { left, top, value, multiline, commit } (retires window.prompt; screen-space overlay, NOT an SVG child)
   const [panelEditId, setPanelEditId] = useState(null);       // markup id whose text is being edited inline in the markup panel (off-screen fallback for the ✎ button)
   const [captureQuery, setCaptureQuery] = useState("");       // always-on name filter over the GLOBAL Captures list (transient, mirrors condQuery)
@@ -1657,10 +1675,15 @@ export default function TakeoffCanvas() {
   // what the renderer paints and what the pickers scan, so a hidden shape
   // can't be seen or clicked — while visibleShapes (totals, tally, transition
   // sources) still carries it. Hiding changes the view, never a number.
+  // the Trade view hides other trades the same way, on top of the eye toggles (which it never rewrites)
+  // the active condition always shows: what you are drawing under never goes invisible
+  const tradeHidden = useMemo(() => { const h = tradeHiddenIds(conditions, viewTrade); h.delete(activeCond); return h; }, [conditions, viewTrade, activeCond]);
+  const tradeCountMap = useMemo(() => tradeCounts(conditions), [conditions]);
+  const viewHidden = useMemo(() => (tradeHidden.size ? new Set([...hiddenConds, ...tradeHidden]) : hiddenConds), [hiddenConds, tradeHidden]);
   const stackedShapes = useMemo(() => {
-    const drawn = hiddenConds.size ? visibleShapes.filter((s) => !hiddenConds.has(s.condition_id)) : visibleShapes;
+    const drawn = viewHidden.size ? visibleShapes.filter((s) => !viewHidden.has(s.condition_id)) : visibleShapes;
     return [...drawn].sort((a, b) => tierOf(a) - tierOf(b));
-  }, [visibleShapes, hiddenConds]);
+  }, [visibleShapes, viewHidden]);
   // Reference-pane shapes (split screen, Task 5): deliberately NOT filtered
   // through `visibleShapes` — the reference pane can frame a sheet the
   // primary's sheetGroup doesn't include at all (the tab-drop gesture from
@@ -1672,8 +1695,8 @@ export default function TakeoffCanvas() {
   // drop out here too (#440 parity): a condition hidden on the primary never
   // reappears in the mirror.
   const refStackedShapes = useMemo(
-    () => (effectiveRefKey ? shapes.filter((s) => s.sheet_id === effectiveRefKey && !hiddenConds.has(s.condition_id)).sort((a, b) => tierOf(a) - tierOf(b)) : []),
-    [shapes, effectiveRefKey, hiddenConds]
+    () => (effectiveRefKey ? shapes.filter((s) => s.sheet_id === effectiveRefKey && !viewHidden.has(s.condition_id)).sort((a, b) => tierOf(a) - tierOf(b)) : []),
+    [shapes, effectiveRefKey, viewHidden]
   );
   const visibleMarkups = useMemo(() => {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
@@ -7065,6 +7088,9 @@ export default function TakeoffCanvas() {
       multiplier: 1,        // ×N for identical repeated units (measure one, multiply)
       waste_pct: 0,         // flooring waste allowance (manual) — applied in the Report
       materials: [],        // supporting materials (adhesive, grout, …) with coverage rates
+      // booked to the trade the canvas is showing, so it stays visible; "All trades" books nothing
+      // (the tag prefix, else Finishes, decides — lib/tradeSuites.ts conditionTrade)
+      ...(viewTradeRef.current !== ALL_TRADES ? { trade: viewTradeRef.current } : {}),
     };
     agentStateRef.current = { ...agentStateRef.current, conditions: [...cs, c] };
     setConditions((prev) => [...prev, c]);
@@ -10442,7 +10468,7 @@ export default function TakeoffCanvas() {
         ]} />}
         fileMenu={<><ToolMenu title="Files and workspace" face={<span>File</span>} onOpenChange={onMenuDepth} items={sheetMenuItems} /><PresenceChip bridge={store.syncBridge} /><AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} /></>}
         conditionControl={<><label className="calm-condition-label" htmlFor="workspace-condition">Condition</label><select id="workspace-condition" value={activeCond || ""} onChange={(e) => activateCondition(e.target.value)} title={tool === "select" && selectedId ? "Reassign selected measurement" : "Condition for the next measurement"}>
-          {!conditions.length && <option value="">No conditions</option>}{conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}</select>
+          {!conditions.length && <option value="">No conditions</option>}{conditions.filter((c) => !tradeHidden.has(c.id)).map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}</select>
           <button type="button" onClick={addCondition} title="Add condition" aria-label="Add condition"><Icon name="plus" size={14} /></button>
           <button type="button" onClick={() => setWorkspaceDetailsOpen((v) => !v)} aria-expanded={workspaceDetailsOpen} disabled={!aCond}>Properties</button></>}
         history={<><button type="button" onClick={() => poly.length ? dropLastPoint() : undoShapeCommand()} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" size={16} /></button><button type="button" onClick={redoShapeCommand} title="Redo (⇧⌘Z)" aria-label="Redo"><span style={{ display: "flex", transform: "scaleX(-1)" }}><Icon name="undo" size={16} /></span></button></>}
@@ -11462,6 +11488,7 @@ export default function TakeoffCanvas() {
           templates={templates}
           palette={palette}
           hiddenConds={hiddenConds}
+          tradeHidden={tradeHidden} viewTradeLabel={viewTrade !== ALL_TRADES ? suiteById(viewTrade)?.label : null} onShowAllTrades={() => setViewTrade(ALL_TRADES)}
           rollByCond={rollByCond}
           transitionSources={transitionSources}
           matLib={matLib}
@@ -11682,6 +11709,16 @@ export default function TakeoffCanvas() {
         <span ref={statusCoordRef} aria-hidden="true" style={{ minWidth: 150 }} />
         <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
         <span>{scaleFace}</span>
+        <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
+        <label data-trade-picker="" style={{ display: "flex", alignItems: "center", gap: 6 }}
+          title="The trade this canvas shows: other trades' conditions and shapes hide (the Report, estimate and exports keep everything), and new conditions are booked to it. Yours only; saved in this browser.">
+          <span style={{ opacity: 0.75 }}>Trade</span>
+          <select aria-label="Trade view" value={viewTrade} onChange={(e) => pickViewTrade(e.target.value)}
+            style={{ font: "inherit", color: "inherit", background: "transparent", border: "1px solid currentColor", borderRadius: 0, padding: "0 4px", cursor: "pointer" }}>
+            <option value={ALL_TRADES}>All trades ({conditions.length})</option>
+            {TRADE_SUITES.map((t) => <option key={t.id} value={t.id}>{t.label} ({tradeCountMap[t.id] || 0})</option>)}
+          </select>
+        </label>
         {commitMsg && (
           <span title={commitMsg} style={{ marginLeft: 8, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
             {commitMsg}

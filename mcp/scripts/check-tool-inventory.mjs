@@ -7,6 +7,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer } from '../server.ts';
 import { Session } from '../src/session.ts';
 import { ALL_TOOL_NAMES, TOOL_NAMES, stageOf } from '../src/staging.ts';
+import { TRADE_SUITES } from '../../web/src/lib/tradeSuites.ts';
 
 const write = process.argv.includes('--write');
 const target = fileURLToPath(new URL('../../docs/MCP_TOOL_INDEX.md', import.meta.url));
@@ -32,6 +33,7 @@ try {
       return `| \`${t.name}\` | ${stageOf(t.name)} | ${TOOL_NAMES.includes(t.name) ? 'Default' : 'One-Click gate lifted'} | ${required} |`;
     }), '',
     '`open_tool_stage {stage}` exists only when staged exposure is enabled. Setup starts open; measure, revise and handoff open on demand. This opener is not part of the default flat count.', '',
+    `Trade-suite tools are not in the default list or count: \`open_suite {suite}\` enables them (or \`OPENTAKEOFF_MCP_SUITES\` pre-opens them). ${TRADE_SUITES.filter(s => s.tools.length).map(s => `${s.id}: ${s.tools.map(t => '`' + t + '`').join(', ')}`).join('; ')}. See [trade suites](wiki/suites.md).`, '',
     'Schema-required fields are only the first validation layer: conditional requirements (such as annotation coordinates by type or exactly one calibration method) are explained by each tool and validated by its handler.', '',
     'Sources: [tool registrations](../mcp/src/tools.ts), [stage table](../mcp/src/staging.ts), [output schemas](../mcp/src/outputs.ts).', '',
   ].join('\n');

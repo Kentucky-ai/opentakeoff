@@ -291,7 +291,10 @@ export interface ShapeOrigin {
    * become shapes. */
   derived?:
     | { from_shape_id: string; gross_lf: number; openings_lf: number }
-    | { between_shape_ids: string[]; between: string[]; case: "butt"; gap_in: number };
+    | { between_shape_ids: string[]; between: string[]; case: "butt"; gap_in: number }
+    // a trade-suite derive (src/suites.ts): the tool, the source shape where
+    // there is one, and the figures it used — never a guessed input
+    | { suite_tool: string; from_shape_id?: string; [k: string]: unknown };
   /** rule_v1 (#88/#207): the correction rule that minted this deduct, the
    * estimator's seed correction it re-ran, and the room it landed in — the
    * same three-way citation the canvas's Apply stamps. */
@@ -2341,6 +2344,55 @@ export class Session {
    * time (net of openings); a later edit_shape re-measure of the polyline is
    * the gross boundary again — the openings deduction lives here and in
    * origin.derived, not in the geometry. */
+  // ── Trade suites (src/suites.ts) ─────────────────────────────────────────
+  // The suite tools are derives: they read what is committed, figure the
+  // trade's quantities with web/src/lib/suiteMath.ts, and commit what follows
+  // as reviewed:false shapes in ONE journal step, exactly like derive_base.
+
+  /** A condition's material rows (id + name), [] when the tag does not exist. */
+  conditionMaterials(tag: string): { id: string; name: string }[] {
+    return (this.conditions.find((x) => x.finish_tag === tag)?.materials ?? []).map((m) => ({ id: m.id, name: m.name }));
+  }
+
+  /** Does a condition with this tag exist? */
+  hasCondition(tag: string): boolean {
+    return this.conditions.some((x) => x.finish_tag === tag);
+  }
+
+  /** A condition's shapes with their geometry in image px and in feet. */
+  suiteShapes(tag: string, roles?: MeasureRole[]): { shape: Shape; upp: number; px: Point[]; ft: Point[] }[] {
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) return [];
+    return this.shapes
+      .filter((x) => x.condition_id === c.id && (!roles || roles.includes(x.measure_role)))
+      .map((shape) => {
+        const s = this.sheet(shape.sheet_id);
+        if (!(s.upp && s.upp > 0)) throw new UserError(`${shape.id} sits on ${s.key}, which has no scale — set_scale first.`);
+        const px: Point[] = shape.verts_norm.map(([x, y]) => [x * s.widthPx, y * s.heightPx]);
+        return { shape, upp: s.upp, px, ft: px.map(([x, y]) => [x * s.upp!, y * s.upp!] as Point) };
+      });
+  }
+
+  /** The report row for one condition (multiplier applied, waste beside it), or null. */
+  suiteTotals(tag: string): { lf: number; ea: number; floor_sf: number; wall_sf: number; total_sf: number; multiplier: number; waste_pct: number } | null {
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) return null;
+    return (conditionTotals([c], this.shapes) as { lf: number; ea: number; floor_sf: number; wall_sf: number; total_sf: number; multiplier: number; waste_pct: number }[])[0];
+  }
+
+  /** Commit a suite derive's shapes as one journal step; returns the new ids in order. */
+  suiteCommit(tool: string, items: { sheet_id: string; tag: string; role: MeasureRole; px: Point[]; computed: Shape["computed"]; derived: Record<string, unknown>; height_ft?: number }[]): string[] {
+    const ids = items.map((it) => {
+      const shape = this.commit(this.sheet(it.sheet_id), it.tag, it.role, it.px, it.computed, {
+        method: "agent_v1", actor: "agent", reviewed: false, derived: { suite_tool: tool, ...it.derived },
+      });
+      if (it.height_ft !== undefined) shape.height_ft = it.height_ft;
+      return shape.id;
+    });
+    this.flushCommits(tool);
+    return ids;
+  }
+
   deriveBase(opts: { source_condition: string; condition: string; openings?: { shape_id: string; lf: number }[] }) {
     const src = this.conditions.find((x) => x.finish_tag === opts.source_condition);
     if (!src) {
@@ -2548,7 +2600,7 @@ export class Session {
    * what to do instead. */
   private cutRunOut(parent: Shape, verts: Point[]) {
     const derived = parent.origin?.derived;
-    if (derived && "openings_lf" in derived && derived.openings_lf > 0) {
+    if (derived && "openings_lf" in derived && Number(derived.openings_lf) > 0) {
       throw new UserError("This derived base already has numeric openings with no stored locations. Use measure_line for the installed runs; clipping this gross perimeter would lose the existing allowance.");
     }
     if (parent.origin?.reviewed === true) {

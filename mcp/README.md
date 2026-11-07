@@ -44,9 +44,9 @@ what's missing where rendering isn't available.
 engine is re-validated against a wider plan corpus: `tools/list` never names them, the
 initialize `instructions` say so and point at `measure_polygon`, and no other tool's
 description sends an agent to a verb that is not there. A default build registers
-**<!--tool-count-->61<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
+**<!--tool-count-->62<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
 exports — is unchanged. Set `OPENTAKEOFF_ONE_CLICK=1` in the server's environment to
-register both verbs (<!--tool-count-all-->63<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
+register both verbs (<!--tool-count-all-->64<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
 `test/gate.test.ts` pins both surfaces. The rows and examples below that use `one_click`
 describe the lifted build. Design note: [`docs/design/ONE_CLICK_GATE.md`](../docs/design/ONE_CLICK_GATE.md).
 
@@ -123,7 +123,7 @@ includes document text, shape vertices, or result payload content.
 
 ### Staged tool exposure (opt-in)
 
-By default every client gets all <!--tool-count-->61<!--/tool-count--> tool schemas on `tools/list`—the flat
+By default every client gets all <!--tool-count-->62<!--/tool-count--> tool schemas on `tools/list`—the flat
 contract every published client already expects. Fifty-two descriptions is real
 token weight for an agent session that may never touch half of them, so the
 server can instead stage the surface along the workflow it already teaches:
@@ -132,7 +132,7 @@ server can instead stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage (load, scale, read the set—<!--tool-count-setup-->14<!--/tool-count-setup--> tools) starts
+Staged, only the **setup** stage (load, scale, read the set—<!--tool-count-setup-->15<!--/tool-count-setup--> tools) starts
 enabled, plus one opener: `open_tool_stage`. Calling it with `"measure"`,
 `"revise"`, or `"handoff"` enables that stage's tools and fires
 `tools/list_changed`, so any client that supports dynamic tool lists (Claude
@@ -217,6 +217,41 @@ The [generated tool index](../docs/MCP_TOOL_INDEX.md) lists stages and required 
 | `assistant_open` | Starts a private link on `127.0.0.1` (ports 47615–47619; only the OpenTakeoff app's origin may use it, and only after pairing) and returns a one-time `code` and a `link` that opens the canvas already paired. The canvas's Assistant window then shows which AI app is answering ("Powered by Claude Code", "Claude Desktop", "Codex", …) from the name the client announced at initialize. |
 | `assistant_listen` | Waits (default 45 s, max 240 s, with progress pings) for what the person types in the window. `message` → do the work and answer with `assistant_say`; `timeout` → listen again; `sleep` after 10 idle minutes → stop and tell them to say "listen" when they want you back. Every other tool call is mirrored into the window live while you work. |
 | `assistant_say` | Puts your Markdown reply in the window. |
+
+### Trade suites, opened one trade at a time
+
+| Tool | What it does |
+|---|---|
+| `open_suite` | Opens a trade suite: enables that trade's tools and returns its method (the steps, in order, naming the tools) and the condition tags its tools default to. No arguments returns the catalog. `division: "07"` opens every suite of a CSI division. Idempotent; never closes anything. |
+
+Each suite's tools are registered **disabled**, so they are not in `tools/list`
+until `open_suite` enables them and fires `tools/list_changed`. An agent doing a
+roof never carries the plumbing schemas, and a suite's method is handed over
+once, at open time, instead of riding every turn. The long form is the
+`takeoff://wiki/suites` resource.
+
+| Suite | Divisions | Tool it adds |
+|---|---|---|
+| finishes | 09 | none: core tools (`measure_polygon`, `derive_base`, `derive_transitions`, `measure_surface`) |
+| roofing | 07 | `roof_takeoff`: sloped SF and squares from plan-view planes and a stated pitch, true rake/hip/valley LF, drip edge, starter, ridge cap, underlayment, ice & water. Writes the slope factors onto the conditions so every total reads true. |
+| siding | 07 | `siding_takeoff`: net wall SF and squares from elevation faces minus openings, opening trim (doors 3 sides), starter along wall bottoms, corner LF, lap pieces. |
+| soffit_fascia | 07 | `soffit_takeoff`: soffit SF (eave/rake LF × depth from the wall section), fascia LF, wall receiver, attic intake vent area. |
+| glazing | 08 | `glazing_takeoff`: per frame: lites, daylight opening size, glass SF, mullion LF (committed as lines), perimeter sealant. |
+| doors | 08 | none: core tools (`find_schedule`, `sweep_schedule_row`, `count_marks`) |
+| plumbing | 22 | `plumbing_rollup`: fixture counts checked against the schedule QTY, pipe LF with hangers, fittings allowance, insulation. |
+| electrical | 26, 27, 28 | `electrical_rollup`: wire LF per run by conductors and sets, couplings, straps, a box and plate per device, fixture whips. |
+
+The suite tools are derives: they read what is already committed and commit
+what follows as unreviewed shapes or material rows, one `undo_last` step per
+write (each reply says how many). They never measure the drawing themselves and
+never invent a document value: pitch, soffit depth, grid and hanger spacing are
+arguments, and every allowance is reported as an allowance.
+
+A client that reads the tool list only once can pre-open suites:
+
+```bash
+OPENTAKEOFF_MCP_SUITES=roofing,siding npx -y opentakeoff-mcp   # or =all
+```
 
 ### The agent revises its own work
 

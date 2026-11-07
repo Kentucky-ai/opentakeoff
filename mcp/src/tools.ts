@@ -32,6 +32,7 @@ import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
 import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
 import { importTakeoff } from "./importing.ts";
+import { registerSuites } from "./suites.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
 // description knows the space it is working in.
@@ -64,7 +65,7 @@ const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
 // Returns every RegisteredTool by name so staged exposure (#230) can disable
 // and re-enable groups after the fact. The wrapper keeps all forty call sites
 // below byte-identical: `server` here is a recording facade over the real one.
-export function registerTools(realServer: McpServer, session: Session, opts: { oneClick?: boolean } = {}): Map<string, RegisteredTool> {
+export function registerTools(realServer: McpServer, session: Session, opts: { oneClick?: boolean; suites?: string[] | "all" } = {}): Map<string, RegisteredTool> {
   // The TEMPORARY One-Click gate (src/gate.ts): on a default build one_click and
   // detect_rooms are not registered at all, and every description that used to
   // point an agent at them points at measure_polygon instead.
@@ -889,6 +890,10 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     outputSchema: deleteRfiOutput,
   }, run("delete_rfi", ({ rfi_id }) => session.deleteRfi(rfi_id)));
+
+  // ── trade suites (suites.ts): open_suite is a setup tool; the trade tools
+  // register on the real server, disabled until a suite is opened ──
+  registerSuites(server, realServer, session, { suites: opts.suites });
 
   return registered;
 }

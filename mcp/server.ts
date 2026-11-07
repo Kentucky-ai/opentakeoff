@@ -10,6 +10,7 @@ import { registerTools } from "./src/tools.ts";
 import { registerResources } from "./src/resources.ts";
 import { applyStagedTools, STAGED_INSTRUCTIONS } from "./src/staging.ts";
 import { oneClickEnabled, GATE_NOTE } from "./src/gate.ts";
+import { SUITE_INSTRUCTIONS } from "./src/suites.ts";
 import pkg from "./package.json" with { type: "json" };
 
 export function buildServer(
@@ -18,7 +19,9 @@ export function buildServer(
   // forty and gets it by default. The option exists so tests don't mutate env.
   // oneClick — the TEMPORARY gate (src/gate.ts): false on a default build, so
   // one_click / detect_rooms are not registered; true puts them back.
-  opts: { stagedTools?: boolean; oneClick?: boolean } = {},
+  // suites — trade suites to pre-open (src/suites.ts); default reads
+  // OPENTAKEOFF_MCP_SUITES, and an empty value keeps every trade tool hidden.
+  opts: { stagedTools?: boolean; oneClick?: boolean; suites?: string[] | "all" } = {},
 ): McpServer {
   const staged = opts.stagedTools ?? process.env.OPENTAKEOFF_MCP_STAGED_TOOLS === "1";
   const oneClick = oneClickEnabled(opts.oneClick);
@@ -40,11 +43,12 @@ export function buildServer(
       `WITHHELD IS NOT A FAILURE — IT IS THE ANSWER. ${oneClick ? "detect_rooms, " : ""}symbol_sweep, sweep_schedule_row, count_marks and derive_transitions all measure things they then decline to commit, and say why: a near-match in the score band, a room the schedule cannot answer for, adjacency across a WALL rather than a butt joint. Read those arrays, view_sheet the coordinates they hand you, and resolve them or report them. A withheld item you ignore is a hole in the bid; one you never mention is worse.`,
       "For annotation cleanup, list_annotations gives ids and edit_annotation changes only text with undo. RFI-linked notes require review in the browser register; annotation edits cannot create approval.",
       "When the DRAWINGS are the problem — a schedule row the plan never draws, a room the schedule has no row for, a finish called out two ways — raise it with create_rfi (annotate a cloud at the conflict first and link it) instead of describing it in prose: the question lands numbered in the estimator's RFI register and prints in the marked set, pending their acceptance before it goes to the architect.",
+      SUITE_INSTRUCTIONS,
       ...(oneClick ? [] : [GATE_NOTE]),
       ...(staged ? [STAGED_INSTRUCTIONS] : []),
     ].join("\n"),
   });
-  const registered = registerTools(server, session, { oneClick });
+  const registered = registerTools(server, session, { oneClick, suites: opts.suites });
   registerResources(server, session);
   if (staged) applyStagedTools(server, registered, oneClick);
   return server;
