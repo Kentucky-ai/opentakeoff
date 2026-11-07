@@ -9,6 +9,14 @@ function I({ children, size = 24, stroke = 1.5, color = "currentColor" }) {
 }
 
 export const icons = {
+  folder: (s) => <I size={s}><path d="M3 6 H 9.5 L 11.5 8 H 21 V 19 H 3 Z" /></I>,
+  help: (s) => <I size={s}><circle cx="12" cy="12" r="9" /><path d="M9.4 9.4 C 9.4 7.9 10.6 7 12 7 C 13.5 7 14.6 8 14.6 9.3 C 14.6 11.4 12 11.4 12 13.6" /><circle cx="12" cy="16.8" r="0.6" fill="currentColor" /></I>,
+  bell: (s) => <I size={s}><path d="M6 16.5 V 11 C 6 7.7 8.7 5 12 5 C 15.3 5 18 7.7 18 11 V 16.5 L 19.5 18 H 4.5 Z" /><path d="M10 20.5 H 14" /></I>,
+  list: (s) => <I size={s}><path d="M9 6 H 20 M9 12 H 20 M9 18 H 20" /><circle cx="4.8" cy="6" r="0.9" fill="currentColor" /><circle cx="4.8" cy="12" r="0.9" fill="currentColor" /><circle cx="4.8" cy="18" r="0.9" fill="currentColor" /></I>,
+  sidebar: (s) => <I size={s}><rect x="3.5" y="4.5" width="17" height="15" /><line x1="9" y1="4.5" x2="9" y2="19.5" /></I>,
+  noFill: (s) => <I size={s}><circle cx="12" cy="12" r="7" /><line x1="7" y1="17" x2="17" y2="7" /></I>,
+  scaleRule: (s) => <I size={s}><rect x="2.5" y="8.5" width="19" height="7" /><path d="M6 8.5 V 11.5 M9.5 8.5 V 12.5 M13 8.5 V 11.5 M16.5 8.5 V 12.5 M20 8.5 V 11.5" /></I>,
+  refresh: (s) => <I size={s}><path d="M19 12 A 7 7 0 1 1 16.9 7" /><path d="M17.5 3.5 V 7.5 H 13.5" /></I>,
   logo: (s) => <I size={s}><path d="M2 18 C 7 18, 7 6, 12 12 S 17 18, 22 6" /><circle cx="7" cy="14" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="17" cy="10" r="1" fill="currentColor" /></I>,
   spec: (s) => <I size={s}><path d="M5 3 H 16 L 19 6 V 21 H 5 Z" /><line x1="8" y1="9" x2="16" y2="9" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></I>,
   document: (s) => <I size={s}><path d="M6 3 H 16 L 19 6 V 21 H 6 Z" /><path d="M16 3 V 6 H 19" /><line x1="9" y1="12" x2="16" y2="12" /><line x1="9" y1="16" x2="16" y2="16" /></I>,

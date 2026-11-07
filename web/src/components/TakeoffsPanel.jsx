@@ -188,7 +188,7 @@ function CoveragePresetSelect({ material: m, onPick }) {
 }
 
 // Editable supporting-materials rows for a condition (coverage-derived order qty).
-function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote,
+export function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote,
     twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow,
     heightFt = 0 }) {
   // library link affordances (#47, all optional so the editor works standalone):
@@ -849,7 +849,7 @@ const NO_HIDDEN = new Set();
 // Read here rather than threaded through the canvas: a save from this panel,
 // a profile import and another tab all announce themselves, so the list stays
 // current without a canvas-level copy.
-function useAssemblyLibrary() {
+export function useAssemblyLibrary() {
   const [list, setList] = useState(() => loadAssemblies());
   useEffect(() => {
     const reload = () => setList(loadAssemblies());
