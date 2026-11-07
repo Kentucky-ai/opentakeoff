@@ -16,8 +16,9 @@
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const checkIssues = process.argv.includes("--issues");
 
 // The doc set from the issue: top-level READMEs (all languages), docs/, and
