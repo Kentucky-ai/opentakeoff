@@ -3,7 +3,7 @@
 <a href="https://opentakeoff.kentucky-ai.com"><img src="docs/img/brand/hero.svg" alt="OpenTakeoff: the scan star beside the wordmark, and an agent tracing two rooms of a floor plan on their wall faces" width="100%"></a>
 
 **Measure construction plans in your browser, or hand the same engine to your AI agent.**<br/>
-Free, open source and local. Nothing uploads, and nobody has to sign up.
+Free, open source, and local by default. Plan files stay in your browser. If you choose to send a contribution, Contribute sends its whitelisted takeoff payload and any optional credit text you enter to the configured endpoint.
 
 [![GitHub stars](https://img.shields.io/github/stars/Kentucky-ai/opentakeoff?style=flat&logo=github&label=stars&color=62d4dc)](https://github.com/Kentucky-ai/opentakeoff/stargazers)
 [![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp&color=62d4dc)](https://www.npmjs.com/package/opentakeoff-mcp)
@@ -181,7 +181,7 @@ takeoff. Everything is in the [CHANGELOG](CHANGELOG.md), and the older highlight
 | **Report and export** | SF, SY, LF and EA per condition, with and without waste. Exports CSV, JSON, Excel, DXF and a **Marked Set PDF** |
 | **Review** | Revisions with quantity deltas, markups, approval seals, an RFI register, and agent proposals you accept or reject |
 | **MCP server** | <!--tool-count-->62<!--/tool-count--> tools, sheet resources, a packaged wiki and multi-document sessions ([`mcp/`](mcp/README.md)) |
-| **Privacy** | Runs only in the client. Work is stored in IndexedDB and localStorage and is never uploaded |
+| **Privacy** | Runs in the client. Ordinary takeoffs stay in IndexedDB and localStorage; Contribute sends its whitelisted payload and optional credit text only after you choose to send it and an endpoint is configured |
 
 You'll find every feature in depth in [**the tour**](docs/TOUR.md), every feature mapped to
 its code in [FEATURES.md](FEATURES.md), and every click in the [user manual](docs/USER_GUIDE.md).
@@ -257,9 +257,11 @@ with the finish an expert assigned to it) that doesn't exist today. The thesis, 
 can be attacked, is that **markup is label**.
 
 OpenTakeoff is the instrument that produces that corpus. Collection is opt-in and auditable.
-The **Contribute** button builds a payload that contains only derived data. It never includes
-the PDF, file names, client names or scale values, and a whitelist in
-[`contribute.js`](web/src/lib/contribute.js) enforces that. The contract is
+The **Contribute** button sends a whitelisted takeoff payload to a configured endpoint after
+you submit it. The payload includes derived takeoff data, limited provenance and opaque shape
+IDs and timestamps. If you enter a credit line, that text is sent too. The payload never includes
+the PDF, file names, client names or scale values. A whitelist in
+[`contribute.js`](web/src/lib/contribute.js) enforces the fields. The contract is
 [`docs/CONTRIBUTION_SPEC.md`](docs/CONTRIBUTION_SPEC.md), and the bundled
 [capture server](capture/README.md) banks the rows on your own machine. If you don't run it,
 nothing is captured. The engine is free because a corpus is only as good as the number of real

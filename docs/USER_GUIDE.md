@@ -14,7 +14,7 @@ The top **Annotate** row provides **Arrow**, **Highlighter**, **Callout**, **Clo
 Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
 
 
-OpenTakeoff is a takeoff canvas that runs in your browser. Open a plan, set the scale, trace the finishes—or let an AI agent stage the tracing while you keep the accept button—and walk away with a priced-out quantity report, a materials buy list, and a marked set you can send to a GC. Everything happens on your machine: no account, no upload, no install.
+OpenTakeoff is a takeoff canvas that runs in your browser. Open a plan, set the scale, trace the finishes—or let an AI agent stage the tracing while you keep the accept button—and walk away with a priced-out quantity report, a materials buy list, and a marked set you can send to a GC. A basic takeoff needs no account or install and keeps the plan file in your browser. Optional integrations can contact their configured services; Contribute sends its whitelisted takeoff payload and any optional credit text you enter after you confirm it.
 
 This manual takes you from a blank browser tab to a finished, exported takeoff, and covers every shipped feature along the way. Shortcuts appear inline as you meet each tool; the complete table is in [§15](#15-keyboard-reference).
 
@@ -115,7 +115,7 @@ Drag onto the canvas (or click the **Open your plans** target on the empty scree
 - **Images**—scans, screenshots, photos of a sheet. They're wrapped into PDF pages in your browser.
 - **`.zip` plan sets**—the whole download off a bid platform. Unzipped in the browser; every PDF inside opens. An unreadable image is skipped individually, without stopping the remaining plans or valid images. (Hostile-archive guards cap entry counts, sizes, and nesting, so a malformed zip fails cleanly instead of ballooning the tab.)
 
-Nothing uploads anywhere. The file is read locally, rendered locally, and stored locally.
+Opening a plan reads, renders, and stores the file locally; it does not upload the plan. The separate, opt-in Contribute flow can send its whitelisted takeoff payload and any optional credit text you enter to a configured endpoint (§12).
 
 ### The sheet gallery (`G`)
 
@@ -926,12 +926,12 @@ Team deployments can wire a Google Drive "Projects" root. Then a **project is a 
 
 ### Contribute — what's sent, what never is
 
-Every finished takeoff is a set of expert decisions: *this* region is *this* finish at *this* waste. The **Contribute** button in the Report lets you donate that—and only that—to an open flooring model, or bank it into a corpus you own. It's a button, not a background process: **nothing is ever sent until you click it**, and a build with no endpoint configured can't send at all.
+Every finished takeoff is a set of expert decisions: *this* region is *this* finish at *this* waste. In the Report, **Contribute** lets you send a whitelisted takeoff payload to an open flooring model, or bank it into a corpus you own. The payload includes derived takeoff data; if you enter the optional credit line, that text is sent too. Nothing is sent until you confirm in the modal, and a build with no endpoint configured can't send at all.
 
 What a contribution contains, in plain language:
 
 - your **condition labels** (the finish tags and their hatch, waste %, multiplier),
-- each shape's **role and quantities** (SF / LF / EA) and its **geometry as a pure shape**—normalized 0-to-1 against the sheet, so it carries no scale and no location,
+- each shape's **role and quantities** (SF / LF / EA) and its **geometry as a pure shape**—normalized 0-to-1 against the sheet, so it carries no sheet-scale values or real-world coordinates,
 - and each shape's **provenance**: the app remembers whether a machine drew it (One-Click, the agent) and whether you fixed it—and sends that memory, including the machine's original boundary next to your corrected one. That pair is exactly what a takeoff model learns from.
 
 What is **never** sent—this list is normative, enforced by a whitelist in the payload builder, and specified field-by-field in [`CONTRIBUTION_SPEC.md`](CONTRIBUTION_SPEC.md):
@@ -956,7 +956,7 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 **Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
 
-**Premium plans.** **Premium plans** in the top toolbar, the plan gallery or the Classic **⋯** menu opens the pricing section of [kentucky-ai.com](https://kentucky-ai.com/#pricing) in a new tab, so your takeoff stays open. Current plans, prices and the 7-day free trial are listed there. Premium is a separate hosted workspace; nothing from this app is sent, and your local projects stay in your browser.
+**Premium plans.** **Premium plans** in the top toolbar, the plan gallery or the Classic **⋯** menu opens the pricing section of [kentucky-ai.com](https://kentucky-ai.com/#pricing) in a new tab, so your takeoff stays open. Opening that page does not send your takeoff data. Current plans, prices and the 7-day free trial are listed there. Premium is a separate hosted workspace; integrations such as Drive and Contribute use their configured services when you choose to use them.
 
 **One place for panel tools.** Quantities, Work, Markup list, Stamps, RFI register and Revisions live in the top toolbar. In Focus mode, the panel controls move to the right edge. **Create annotation** in the drawing toolbar creates clouds, callouts, text and highlights; **Markup list** opens existing annotations. Supporting materials remain under **Quantities → Materials** or a condition’s **Materials** button.
 
@@ -1339,7 +1339,7 @@ those are the ones worth pinning down before you rely on a number.
 | **Zone check** | A reading, not a takeoff: trace a wing and see what's inside it, with materials scaled to the zone. Nothing is saved ([§5](#5-the-measuring-tools)). |
 | **Marked set** | The distribution-ready PDF—your work burned into the drawings behind a legend cover, with a tally of how much of it a person has approved. The deliverable a GC can check ([§10](#10-the-report-and-exports)). |
 | **Revision** | A named snapshot of the whole takeoff. Compare two and you get quantity deltas per condition, per sheet, and on the buy list ([§11](#11-revisions)). |
-| **Contribute** | The opt-in button that donates a takeoff's labels and normalized shapes—never the plan, the names, or the coordinates—to a training corpus ([§12](#12-saving-your-data-and-contribute)). |
+| **Contribute** | The opt-in button that sends a takeoff's labels and normalized shape geometry to a configured endpoint after confirmation. It does not send the plan or names ([§12](#12-saving-your-data-and-contribute)). |
 
 ---
 
