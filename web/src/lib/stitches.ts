@@ -457,63 +457,166 @@ export function checkSeamLinework(
 
     const maxSearchPx = Math.max(30, upp > 0 ? (12 / (upp * 12)) : 60);
 
-    for (const sa of extractedA) {
-      let bestDist = Infinity;
-      let bestMatch: { missPx: number; angDiff: number; pB: [number, number]; at: [number, number] } | null = null;
+    // Spatial bucketing for extractedB to avoid O(N*M) checks
+    const bucketSize = Math.max(50, maxSearchPx);
+    const buckets = new Map<number, Seg[]>();
+    for (const sb of extractedB) {
+      const bKey = Math.floor((horizontal ? sb.my : sb.mx) / bucketSize);
+      let list = buckets.get(bKey);
+      if (!list) { list = []; buckets.set(bKey, list); }
+      list.push(sb);
+    }
 
-      for (const sb of extractedB) {
+    const getNearB = (sa: Seg): Seg[] => {
+      const coord = horizontal ? sa.my : sa.mx;
+      const b0 = Math.floor((coord - maxSearchPx) / bucketSize);
+      const b1 = Math.floor((coord + maxSearchPx) / bucketSize);
+      const res: Seg[] = [];
+      for (let b = b0; b <= b1; b++) {
+        const l = buckets.get(b);
+        if (l) {
+          for (let i = 0; i < l.length; i++) res.push(l[i]);
+        }
+      }
+      return res;
+    };
+
+    const candidates: Array<{
+      sa: Seg;
+      sb: Seg;
+      dx: number;
+      dy: number;
+      angDiff: number;
+      at: [number, number];
+      pB: [number, number];
+    }> = [];
+
+    for (const sa of extractedA) {
+      const nearB = getNearB(sa);
+      for (const sb of nearB) {
         let dang = Math.abs(sa.ang - sb.ang);
         if (dang > Math.PI / 2) dang = Math.PI - dang;
         if (dang > 0.08) continue; // angle within ~4.6 deg
 
-        // 1. Direct counterpart matching in overlap corridor
-        if (Math.abs(sa.len - sb.len) <= Math.max(5, sa.len * 0.25)) {
-          const d = Math.hypot(sb.mx - sa.mx, sb.my - sa.my);
-          if (d <= maxSearchPx && d < bestDist) {
-            bestDist = d;
-            bestMatch = {
-              missPx: d,
-              angDiff: dang,
-              pB: [sb.x0, sb.y0],
-              at: [+((sa.mx + sb.mx) / 2).toFixed(1), +((sa.my + sb.my) / 2).toFixed(1)],
-            };
-          }
-        }
+        const cos = Math.cos(sa.ang), sin = Math.sin(sa.ang);
+        const ta0 = sa.x0 * cos + sa.y0 * sin;
+        const ta1 = sa.x1 * cos + sa.y1 * sin;
+        const tb0 = sb.x0 * cos + sb.y0 * sin;
+        const tb1 = sb.x1 * cos + sb.y1 * sin;
+        const minA = Math.min(ta0, ta1);
+        const maxA = Math.max(ta0, ta1);
+        const minB = Math.min(tb0, tb1);
+        const maxB = Math.max(tb0, tb1);
+        const overlap = Math.min(maxA, maxB) - Math.max(minA, minB);
 
-        // 2. Collinear continuation across the seam (two halves meeting at seam)
-        const perp = Math.abs((sb.mx - sa.mx) * sa.nx + (sb.my - sa.my) * sa.ny);
-        if (perp <= maxSearchPx && perp < bestDist) {
-          const minCoord = horizontal ? Math.min(sa.x0, sa.x1, sb.x0, sb.x1) : Math.min(sa.y0, sa.y1, sb.y0, sb.y1);
-          const maxCoord = horizontal ? Math.max(sa.x0, sa.x1, sb.x0, sb.x1) : Math.max(sa.y0, sa.y1, sb.y0, sb.y1);
-          if (minCoord <= seamCoord && maxCoord >= seamCoord) {
-            bestDist = perp;
-            bestMatch = {
-              missPx: perp,
+        // 1. Direct counterpart matching in overlap corridor
+        if (overlap > 0 && Math.abs(sa.len - sb.len) <= Math.max(6, Math.max(sa.len, sb.len) * 0.40)) {
+          const dx = sb.mx - sa.mx;
+          const dy = sb.my - sa.my;
+          if (Math.hypot(dx, dy) <= maxSearchPx) {
+            candidates.push({
+              sa,
+              sb,
+              dx,
+              dy,
               angDiff: dang,
+              at: [+((sa.mx + sb.mx) / 2).toFixed(1), +((sa.my + sb.my) / 2).toFixed(1)],
               pB: [sb.x0, sb.y0],
-              at: horizontal ? [seamCoord, +(sa.my).toFixed(1)] : [+(sa.mx).toFixed(1), seamCoord],
-            };
+            });
+          }
+        } else if (overlap <= 0) {
+          // 2. Collinear continuation across the seam (non-overlapping segments meeting at seam)
+          const crossesSeamAngle = horizontal ? Math.abs(sa.ang) < Math.PI / 4 : Math.abs(sa.ang) >= Math.PI / 4;
+          if (crossesSeamAngle) {
+            const minCoord = horizontal ? Math.min(sa.x0, sa.x1, sb.x0, sb.x1) : Math.min(sa.y0, sa.y1, sb.y0, sb.y1);
+            const maxCoord = horizontal ? Math.max(sa.x0, sa.x1, sb.x0, sb.x1) : Math.max(sa.y0, sa.y1, sb.y0, sb.y1);
+            if (minCoord <= seamCoord && maxCoord >= seamCoord) {
+              const perp = (sb.mx - sa.mx) * sa.nx + (sb.my - sa.my) * sa.ny;
+              const gap = minB - maxA;
+              const dx = gap * cos - perp * sin;
+              const dy = gap * sin + perp * cos;
+              if (Math.hypot(dx, dy) <= maxSearchPx) {
+                candidates.push({
+                  sa,
+                  sb,
+                  dx,
+                  dy,
+                  angDiff: dang,
+                  at: horizontal ? [seamCoord, +(sa.my).toFixed(1)] : [+(sa.mx).toFixed(1), seamCoord],
+                  pB: [sb.x0, sb.y0],
+                });
+              }
+            }
           }
         }
       }
+    }
 
-      if (bestMatch && bestDist <= maxSearchPx) {
-        const missIn = upp > 0 ? bestMatch.missPx * upp * 12 : 0;
-        allMatched.push({
-          miss_px: bestMatch.missPx,
-          miss_in: missIn,
-          angle_err: bestMatch.angDiff,
-          at: bestMatch.at,
-          pA: [sa.x0, sa.y0],
-          pB: bestMatch.pB,
-        });
-        discrepancies.push({
-          at: bestMatch.at,
-          miss_px: +bestMatch.missPx.toFixed(2),
-          miss_in: +missIn.toFixed(2),
-          sheet_a_pt: [+sa.x0.toFixed(1), +sa.y0.toFixed(1)],
-          sheet_b_pt: [+bestMatch.pB[0].toFixed(1), +bestMatch.pB[1].toFixed(1)],
-        });
+    if (candidates.length > 0) {
+      // Consensus voting using spatial grid binning to find the dominant displacement mode
+      const binSize = Math.max(1.5, upp > 0 ? (0.50 / (upp * 12)) : 3.0);
+      const bins = new Map<string, { count: number; sumDx: number; sumDy: number; bx: number; by: number }>();
+
+      for (const c of candidates) {
+        const bx = Math.round(c.dx / binSize);
+        const by = Math.round(c.dy / binSize);
+        const key = `${bx},${by}`;
+        let entry = bins.get(key);
+        if (!entry) {
+          entry = { count: 0, sumDx: 0, sumDy: 0, bx, by };
+          bins.set(key, entry);
+        }
+        entry.count++;
+        entry.sumDx += c.dx;
+        entry.sumDy += c.dy;
+      }
+
+      const sortedBins = [...bins.values()].sort((a, b) => b.count - a.count);
+      const bestBin = sortedBins[0] ?? null;
+
+      const modeDx = bestBin && bestBin.count > 0 ? bestBin.sumDx / bestBin.count : 0;
+      const modeDy = bestBin && bestBin.count > 0 ? bestBin.sumDy / bestBin.count : 0;
+
+      // Match each sa to counterpart voting with or closest to the mode
+      const bySa = new Map<Seg, typeof candidates>();
+      for (const c of candidates) {
+        let list = bySa.get(c.sa);
+        if (!list) { list = []; bySa.set(c.sa, list); }
+        list.push(c);
+      }
+
+      for (const [sa, cList] of bySa.entries()) {
+        let bestCandidate = null;
+        let bestDistFromMode = Infinity;
+        for (const c of cList) {
+          const distFromMode = Math.hypot(c.dx - modeDx, c.dy - modeDy);
+          if (distFromMode < bestDistFromMode) {
+            bestDistFromMode = distFromMode;
+            bestCandidate = c;
+          }
+        }
+
+        // Only accept counterparts that belong to the displacement mode cluster (within tolerance)
+        const clusterTol = Math.max(2.5, upp > 0 ? (0.75 / (upp * 12)) : 5.0);
+        if (bestCandidate && bestDistFromMode <= clusterTol) {
+          const missPx = Math.hypot(bestCandidate.dx, bestCandidate.dy);
+          const missIn = upp > 0 ? missPx * upp * 12 : 0;
+          allMatched.push({
+            miss_px: missPx,
+            miss_in: missIn,
+            angle_err: bestCandidate.angDiff,
+            at: bestCandidate.at,
+            pA: [sa.x0, sa.y0],
+            pB: bestCandidate.pB,
+          });
+          discrepancies.push({
+            at: bestCandidate.at,
+            miss_px: +missPx.toFixed(2),
+            miss_in: +missIn.toFixed(2),
+            sheet_a_pt: [+sa.x0.toFixed(1), +sa.y0.toFixed(1)],
+            sheet_b_pt: [+bestCandidate.pB[0].toFixed(1), +bestCandidate.pB[1].toFixed(1)],
+          });
+        }
       }
     }
   }
@@ -524,18 +627,21 @@ export function checkSeamLinework(
   if (sampleCount > 0) {
     allMatched.sort((a, b) => a.miss_px - b.miss_px);
     const medIdx = Math.floor(sampleCount * 0.50);
-    const p95Idx = Math.min(sampleCount - 1, Math.floor(sampleCount * 0.95));
+    const maxIdx = sampleCount - 1; // True maximum
 
     medianPx = +allMatched[medIdx].miss_px.toFixed(2);
     medianIn = +allMatched[medIdx].miss_in.toFixed(2);
-    maxPx = +allMatched[p95Idx].miss_px.toFixed(2);
-    maxIn = +allMatched[p95Idx].miss_in.toFixed(2);
+    maxPx = +allMatched[maxIdx].miss_px.toFixed(2);
+    maxIn = +allMatched[maxIdx].miss_in.toFixed(2);
 
     const sortedAng = allMatched.map(m => m.angle_err).sort((a, b) => a - b);
     leftoverRotationDeg = +(sortedAng[Math.floor(sortedAng.length / 2)] * 180 / Math.PI).toFixed(2);
   }
 
   const withheldReasons: string[] = [];
+  if (sampleCount === 0) {
+    withheldReasons.push("No linework crossed the seam. Measure the sheets separately.");
+  }
   if (maxIn > toleranceIn) {
     withheldReasons.push(`Wall linework mismatch max ${maxIn.toFixed(2)}" (median ${medianIn.toFixed(2)}") exceeds ${toleranceIn.toFixed(2)}" tolerance.`);
   }
@@ -544,11 +650,11 @@ export function checkSeamLinework(
   }
 
   const passed = sampleCount > 0 && withheldReasons.length === 0;
-  const withheld = sampleCount > 0 && !passed;
+  const withheld = !passed;
   discrepancies.sort((a, b) => b.miss_px - a.miss_px);
 
   const note = sampleCount === 0
-    ? "No wall linework detected crossing the seam line. Verify alignment with view_sheet overlay:true."
+    ? "Seam check withheld: No linework crossed the seam. Measure the sheets separately."
     : passed
       ? `Seam check passed: ${sampleCount} wall lines verified across match line (max ${maxIn.toFixed(2)}", median ${medianIn.toFixed(2)}", rotation ${leftoverRotationDeg.toFixed(2)}°).`
       : `Seam check withheld: ${withheldReasons.join(" ")} Inspect coordinates with view_sheet.`;

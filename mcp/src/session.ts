@@ -2057,14 +2057,17 @@ export class Session {
 
     if (!crossesSeam) return;
 
-    if (st.aligned === false) {
+    if (st.aligned !== true) {
       throw new UserError(
         `Cannot measure across seam on unaligned stitch "${st.id}". Align the stitch across match lines with align_stitch before measuring across the seam.`
       );
     }
-    if (st.seam_check && !st.seam_check.passed) {
+    if (!st.seam_check || !st.seam_check.passed) {
+      const reasons = st.seam_check?.withheld_reasons?.length
+        ? ` (${st.seam_check.withheld_reasons.join(" ")})`
+        : "";
       throw new UserError(
-        `Cannot measure across seam on stitch "${st.id}": seam check withheld (${st.seam_check.withheld_reasons.join(" ")}). Measure each member sheet separately.`
+        `Cannot measure across seam on stitch "${st.id}": seam check withheld${reasons}. Measure each member sheet separately.`
       );
     }
   }
