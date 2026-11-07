@@ -1083,7 +1083,7 @@ export class Session {
     const takeoffPath = outPath.replace(/\.pdf$/i, ".takeoff.json");
     await assertWritable(takeoffPath, "json", overwrite);
 
-    const carriedDoc = buildTakeoffDocument({
+    const carriedDoc = this.#buildEnvelope({
       project_name: path.basename(outBase, ".pdf"),
       units: "imperial",
       client_info: this.clientInfo,
@@ -1172,7 +1172,7 @@ export class Session {
     const takeoffPath = outPath.replace(/\.pdf$/i, ".takeoff.json");
     await assertWritable(takeoffPath, "json", overwrite);
 
-    const mergedTakeoffDoc = buildTakeoffDocument({
+    const mergedTakeoffDoc = this.#buildEnvelope({
       project_name: path.basename(outBase, ".pdf"),
       units: "imperial",
       client_info: this.clientInfo,
@@ -5405,6 +5405,10 @@ export class Session {
     return { sheet: s, build };
   }
 
+  #buildEnvelope(fields: any): TakeoffDocument {
+    return buildTakeoffDocument(fields) as TakeoffDocument;
+  }
+
   exportPayload(): TakeoffDocument {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     // The envelope is the canvas's own writer (web/src/lib/takeoffDocument.js):
@@ -5412,7 +5416,7 @@ export class Session {
     // What the server contributes is its field bag; provenance rides the sheet
     // entries (scale_source for the report, scale_confirmed:false for the gate).
     // RFIs go through liveRfis(): withdrawn tombstones never reach the app.
-    return buildTakeoffDocument({
+    return this.#buildEnvelope({
       project_name: "",
       units: "imperial",
       client_info: this.clientInfo,
