@@ -28,7 +28,7 @@ test("wiki resources route to packaged pages before load, preserve the session a
       const before = snapshot();
       const listed = await client.listResources();
       const wikiUris = listed.resources.filter(r => r.uri.startsWith("takeoff://wiki")).map(r => r.uri).sort();
-      assert.equal(wikiUris.length, 9);
+      assert.equal(wikiUris.length, 10);   // + takeoff://wiki/suites
       for (const page of WIKI_PAGES) {
         assert.ok(wikiUris.includes(page.uri));
         const content = (await client.readResource({ uri: page.uri })).contents[0];

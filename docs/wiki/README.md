@@ -12,6 +12,7 @@ a plan. These are documentation resources, not additional measurement tools.
 | How do I measure, stitch, review and hand off work? | [Workflows](workflows.md) | `takeoff://wiki/workflows` |
 | Which tool should I call, and in which coordinate frame? | [MCP routing](mcp.md) | `takeoff://wiki/mcp` |
 | What do floor SF, wall SF, base LF and review mean? | [Domain knowledge](domain.md) | `takeoff://wiki/domain` |
+| Which trade suite do I open for roofing, siding, soffit, glazing, plumbing or electrical? | [Trade suites](suites.md) | `takeoff://wiki/suites` |
 | How do I change this repository and verify a PR? | [Repository guide](repo-guide.md) | `takeoff://wiki/repo-guide` |
 | What tools and required inputs does the runtime expose? | [Generated tool index](../MCP_TOOL_INDEX.md) | `takeoff://wiki/tool-index` |
 
