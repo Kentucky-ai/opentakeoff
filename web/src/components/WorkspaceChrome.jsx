@@ -8,7 +8,7 @@ import "./workspaceChrome.css";
 // Workspace chrome. All actions are supplied by the existing canvas;
 // this component owns only navigation, search and disclosure state.
 export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onTakeoffs, takeoffsOpen,
-  onPremium, onWork, workOpen, workButtonRef, pending, running, onReport, onEstimate, onFocus, onClassic,
+  onWork, workOpen, workButtonRef, pending, running, onReport, onEstimate, onFocus, onClassic,
   onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, helpMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
   return <>
     <header className="calm-header">
@@ -25,7 +25,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
         {panelTools}
         {onEstimate && <button type="button" onClick={onEstimate} title="Price the takeoff: material and labor per unit, markups, Excel">Estimate</button>}
         <button type="button" onClick={onReport} className="calm-report" data-tour="report"><Icon name="document" size={16} />Report</button>
-        {layoutMenu}{helpMenu}<button type="button" className="calm-premium" data-premium-trigger onClick={onPremium}>Premium plans</button><button type="button" onClick={onClassic} className="calm-classic" title="Return to the current layout without reloading the plan">Classic layout</button>
+        {layoutMenu}{helpMenu}<button type="button" onClick={onClassic} className="calm-classic" title="Return to the current layout without reloading the plan">Classic layout</button>
       </div>
     </header>
     <div className="calm-context" aria-label="Current drawing settings">

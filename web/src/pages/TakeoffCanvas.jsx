@@ -182,7 +182,6 @@ import { useAgentChat } from "../lib/useAgentChat.js";
 import { historyMessages, notReadyMessage, withViewContext } from "../lib/agentChat.js";
 import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
-import { openPremiumPricing } from "../lib/premiumPlans.js";
 import "../styles/premiumWorkspace.css";
 import { WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
 import { PremiumRail, PremiumTopBar, CanvasSideTabs } from "../components/PremiumChrome.jsx";
@@ -10512,7 +10511,6 @@ export default function TakeoffCanvas() {
           { id: "controls", label: workspaceControlsOpen ? "Hide classic toolbar" : "Classic toolbar", checked: workspaceControlsOpen, onSelect: () => setWorkspaceControlsOpen((v) => !v) },
           { id: "classic", label: "Classic layout", onSelect: () => workspacePrefs.setEnabled(false) },
           ...(cloudMode ? [{ id: "closeproj", label: "Close project", onSelect: closeProject }] : []),
-          { id: "premium-plans", label: "Premium plans", highlight: true, onSelect: openPremiumPricing },
         ];
         return <PremiumTopBar
           title={projectName || active}
@@ -10722,7 +10720,6 @@ export default function TakeoffCanvas() {
           onOpenChange={onMenuDepth}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
-            { id: "premium-plans", label: "Premium plans — pricing on kentucky-ai.com", highlight: true, onSelect: openPremiumPricing },
             { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Premium layout — compact controls", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
             { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
             { id: "tour", label: "Guided first takeoff", onSelect: startTour },
@@ -11577,7 +11574,6 @@ export default function TakeoffCanvas() {
       {(view === "gallery" || view === "picker") && (
         <PlanNavigator
           nameGen={namerGen} onSheetText={offerSheetText}
-          onPremium={openPremiumPricing}
           onStartTour={() => { startTour(); loadSampleForTour(); }}
           onConnect={() => setConnectOpen(true)}
           canClose={openTabs.length > 0}
