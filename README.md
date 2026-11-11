@@ -265,6 +265,15 @@ the PDF, file names, client names or scale values, and a whitelist in
 nothing is captured. The engine is free because a corpus is only as good as the number of real
 takeoffs that flow through it. The research program behind this, including the model work and
 the evaluation method, is in [the tour](docs/TOUR.md#the-research-program).
+
+**Contribute is not connected to anything today.** The hosted app is built with no contribution
+endpoint, so the button cannot send, and its dialog says so before you can press it. Your plans
+are not part of a contribution in any build. If an endpoint is connected later, contributions
+that are good enough become training data and small models (computer vision and other neural
+networks for reading plans), and those are released back as open source with open weights, for
+the community to use. Kentucky AI provides the compute and the training cookbooks. The open
+model problems are listed under the
+[`research`](https://github.com/Kentucky-ai/opentakeoff/labels/research) label.
 [OpenTakeoff Academy](https://union.kentucky-ai.com) scores agents on operating this engine
 against geometry they don't control.
 
