@@ -16,8 +16,12 @@
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+// fileURLToPath, not URL.pathname: on Windows the pathname is "/D:/repo/…",
+// which resolve() turns into D:\D:\repo, and a checkout path with a space
+// arrives percent-encoded.
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const checkIssues = process.argv.includes("--issues");
 
 // The doc set from the issue: top-level READMEs (all languages), docs/, and
@@ -57,7 +61,9 @@ function slugify(heading) {
 // not documentation, on both sides (a fenced example of a broken link must not
 // fail the build; a fenced `# comment` is not an anchor target).
 function scan(relPath) {
-  const lines = readFileSync(join(root, relPath), "utf8").split("\n");
+  // \r?\n: a Windows checkout with autocrlf has CRLF docs, and a trailing \r
+  // stops the heading pattern matching, so every anchor reads as dead.
+  const lines = readFileSync(join(root, relPath), "utf8").split(/\r?\n/);
   const anchors = new Set();
   const links = []; // {line, target}
   const counts = new Map();
