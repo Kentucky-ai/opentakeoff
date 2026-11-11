@@ -14,7 +14,9 @@ real bids, so every PR carries evidence a reviewer can check without taking your
 1. **Pick something.** Choose an [open issue](https://github.com/Kentucky-ai/opentakeoff/issues),
    an [RFC](https://github.com/Kentucky-ai/opentakeoff/labels/rfc), a
    [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue),
-   or a bug you hit on your own plans. For anything big, start a thread in
+   or a bug you hit on your own plans. If you bid a trade the engine does not serve yet, the
+   [Trade suite form](https://github.com/Kentucky-ai/opentakeoff/issues/new?template=trade_suite.yml)
+   asks what you trace, read and order, and needs no code. For anything big, start a thread in
    [Discussions](https://github.com/Kentucky-ai/opentakeoff/discussions) or an issue first so
    the shape is agreed before you build it.
 2. **Agree to the CLA once.** Post the one-line agreement from [CLA.md](CLA.md) as a comment on
