@@ -15,6 +15,7 @@ export const WIKI_SOURCES = Object.freeze({
   domain: 'docs/wiki/domain.md',
   'repo-guide': 'docs/wiki/repo-guide.md',
   suites: 'docs/wiki/suites.md',
+  'adding-a-suite': 'docs/wiki/adding-a-suite.md',
   'tool-index': 'docs/MCP_TOOL_INDEX.md',
 });
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
