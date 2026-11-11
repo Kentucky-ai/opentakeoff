@@ -63,7 +63,7 @@ const ctrlBtn = { display: "inline-flex", alignItems: "center", gap: 6, padding:
 
 export default function PlanNavigator({
   // presentation + exit
-  canClose, onExit, onPremium, onStartTour, onConnect, initialMode = "plan", cloudMode,
+  canClose, onExit, onStartTour, onConnect, initialMode = "plan", cloudMode,
   // plan-set (gallery) data
   sheets, withDoc, withLoadedDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
   thumbCacheRef, busyRef, openTabs, onOpen,
@@ -831,7 +831,6 @@ export default function PlanNavigator({
       <div style={{ flex: 1 }} />
 
       {/* RIGHT: source toggle · browse filters · add plans · account */}
-      {onPremium && <button type="button" data-premium-trigger onClick={onPremium} style={{...ctrlBtn, color:"var(--cobalt)", borderColor:"var(--cobalt)"}}>Premium plans</button>}
       {browseEnabled && (
         <div style={{ display: "inline-flex", border: "1px solid var(--ink-faint)", borderRadius: 2, overflow: "hidden" }}>
           <button onClick={() => setMode("plan")} style={{ ...ctrlBtn, border: "none", background: mode === "plan" ? "var(--ink)" : "transparent", color: mode === "plan" ? "var(--paper-bright)" : "var(--ink-muted)" }}>Plan set</button>

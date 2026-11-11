@@ -956,8 +956,6 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 **Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
 
-**Premium plans.** **Premium plans** in the top toolbar, the plan gallery or the Classic **⋯** menu opens the pricing section of [kentucky-ai.com](https://kentucky-ai.com/#pricing) in a new tab, so your takeoff stays open. Current plans, prices and the 7-day free trial are listed there. Premium is a separate hosted workspace; nothing from this app is sent, and your local projects stay in your browser.
-
 **One place for panel tools.** Quantities, Work, Markup list, Stamps, RFI register and Revisions live in the top toolbar. In Focus mode, the panel controls move to the right edge. **Create annotation** in the drawing toolbar creates clouds, callouts, text and highlights; **Markup list** opens existing annotations. Supporting materials remain under **Quantities → Materials** or a condition’s **Materials** button.
 
 **Inspect sheets before opening.** The visual gallery offers medium or large cards and a separate **Preview** action with **Actual pixels**. Previewing does not change the selected sheets. Escape closes the detailed preview first; the next Escape clears a typed sheet search if there is one, then returns from the gallery.
