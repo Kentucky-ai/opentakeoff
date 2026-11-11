@@ -196,7 +196,9 @@ the same bar, and a PR that clears it merges fast.
 an [RFC](https://github.com/Kentucky-ai/opentakeoff/labels/rfc), a
 [flagship](https://github.com/Kentucky-ai/opentakeoff/labels/flagship) challenge, a
 [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue),
-or a bug you hit on your own plans. If it's still an idea, start in
+or a bug you hit on your own plans. Bid a trade we don't serve yet? Tell us how you take it off
+with the [Trade suite form](https://github.com/Kentucky-ai/opentakeoff/issues/new?template=trade_suite.yml);
+no code needed. If it's still an idea, start in
 [Discussions](https://github.com/Kentucky-ai/opentakeoff/discussions).
 
 **2 · Build it.**
