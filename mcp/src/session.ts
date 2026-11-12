@@ -5533,7 +5533,7 @@ export class Session {
       members: st.members.map((m) => ({ key: m.key, dx: m.dx, dy: m.dy })),
       seam_check: seamCheck,
       note: seamCheck.passed
-        ? `Stitch "${st.name}" aligned and verified. Seam check passed: linework mismatch max ${seamCheck.max_in.toFixed(2)}" (median ${seamCheck.median_in.toFixed(2)}"), leftover rotation ${seamCheck.leftover_rotation_deg.toFixed(2)}°.`
+        ? `Stitch "${st.name}" aligned and verified. Seam check passed: linework mismatch max ${seamCheck.max_in.toFixed(2)}" (p95 ${seamCheck.p95_in.toFixed(2)}", median ${seamCheck.median_in.toFixed(2)}"), leftover rotation ${seamCheck.leftover_rotation_deg.toFixed(2)}°.`
         : `Stitch "${st.name}" aligned, but seam check was WITHHELD (${seamCheck.withheld_reasons.join(" ")}). View discrepancies with view_sheet. Measuring across seam is refused until alignment is within tolerance.`,
     };
   }

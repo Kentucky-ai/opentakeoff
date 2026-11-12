@@ -246,4 +246,37 @@ test("checkSeamLinework: collinear alignment, offsets, and rotation gates", () =
   assert.equal(rot.withheld, true);
   assert.ok(rot.leftover_rotation_deg > 0.25);
   assert.ok(rot.withheld_reasons.some((r) => r.includes("Leftover rotation")));
+
+  // 4. One wall 6" off among 25+ aligned walls -> true max_in catches it while p95_in/median_in stay 0
+  const mTopBottom = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 0, dy: 150 }];
+  const dimsTopBottom = { A: { w: 1500, h: 300 }, B: { w: 1500, h: 300 } };
+  const segA25: number[] = [];
+  const segB25: number[] = [];
+  for (let i = 0; i < 25; i++) {
+    const x = 100 + i * 35;
+    segA25.push(x, 190, x, 260);
+    segB25.push(x, 40, x, 110); // +150 = 190..260 exact alignment
+  }
+  segA25.push(1200, 190, 1200, 260);
+  segB25.push(1209, 40, 1209, 110); // single wall shifted 9 px = 6" at 1/8" scale
+  const singleOff = checkSeamLinework(
+    mTopBottom,
+    dimsTopBottom,
+    { A: new Float32Array(segA25), B: new Float32Array(segB25) },
+    upp,
+  );
+  assert.equal(singleOff.sample_count, 26);
+  assert.equal(singleOff.median_in, 0);
+  assert.equal(singleOff.p95_in, 0);
+  assert.equal(singleOff.max_in, 6);
+  assert.equal(singleOff.passed, false);
+  assert.equal(singleOff.withheld, true);
+  assert.ok(singleOff.withheld_reasons.some((r) => r.includes('max 6.00"') && r.includes('exceeds 0.50"')));
+
+  // 5. Zero matched lines across seam -> passed: false, withheld: true, explicit message
+  const zeroMatched = checkSeamLinework(members, testDims, { A: new Float32Array(), B: new Float32Array() }, upp);
+  assert.equal(zeroMatched.sample_count, 0);
+  assert.equal(zeroMatched.passed, false);
+  assert.equal(zeroMatched.withheld, true);
+  assert.ok(zeroMatched.withheld_reasons.some((r) => r.includes("No linework crossed the seam")));
 });

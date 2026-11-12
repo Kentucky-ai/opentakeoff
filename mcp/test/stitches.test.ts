@@ -366,3 +366,41 @@ test("stitch_sheets: security bounds, cutout, and marked pdf export", async () =
   assert.equal(undo.isError, false);
   assert.equal(undo.data.undone, 1);
 });
+
+test("stitch_sheets: imported stitch without aligned or seam_check refuses cross-seam measurement", async () => {
+  const client = await pair();
+  const { dir, p1, p2, k1, k2 } = await setupTwoSheets();
+  await call(client, "load_plan", { path: p1 });
+  await call(client, "load_plan", { path: p2, merge: true });
+  await call(client, "set_scale", { sheet: k1, label: '1/4" = 1\'-0"' });
+  await call(client, "set_scale", { sheet: k2, label: '1/4" = 1\'-0"' });
+
+  const stitchRes = await call(client, "stitch_sheets", { sheets: [k1, k2] });
+  assert.equal(stitchRes.isError, false);
+  const stitchId = stitchRes.data.stitch_id;
+
+  const takeoffPath = path.join(dir, "canvas-stitch.json");
+  const exp = await call(client, "export_takeoff", { path: takeoffPath });
+  assert.equal(exp.isError, false);
+  const raw = JSON.parse(await readFile(takeoffPath, "utf8"));
+  // Strip aligned and seam_check (as a canvas-authored takeoff JSON would lack them)
+  delete raw.stitches[0].aligned;
+  delete raw.stitches[0].seam_check;
+  await writeFile(takeoffPath, JSON.stringify(raw, null, 2));
+
+  const client2 = await pair();
+  await call(client2, "load_plan", { path: p1 });
+  await call(client2, "load_plan", { path: p2, merge: true });
+  const imp = await call(client2, "import_takeoff", { path: takeoffPath });
+  assert.equal(imp.isError, false);
+
+  const s1Info = await call(client2, "sheet_info", { sheet: k1 });
+  const w1 = s1Info.data.width_px;
+  const crossSeam = await call(client2, "measure_polygon", {
+    sheet: stitchId,
+    verts: [[w1 - 50, 1500], [w1 + 50, 1500], [w1 + 50, 1600], [w1 - 50, 1600]],
+    condition: "CPT-1",
+  });
+  assert.equal(crossSeam.isError, true);
+  assert.match(crossSeam.data.error, /Align the stitch across match lines/);
+});

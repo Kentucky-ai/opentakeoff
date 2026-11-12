@@ -793,7 +793,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("stitch_sheets", (a) => session.stitchSheets(a)));
 
   server.registerTool("align_stitch", {
-    description: `Align a composite stitched sheet surface across its match line using two matching reference points (image px) — one on each member sheet. Performs a seam check across the match line: analyzes vector wall linework crossing the seam, reports maximum and median linework displacement (px and inches at scale), leftover rotation, and withholding status. Refuses if linework mismatch exceeds tolerance (0.50 in / 1/2"). ${COORDS}`,
+    description: `Align a composite stitched sheet surface across its match line using two matching reference points (image px) — one on each member sheet. Performs a seam check across the match line: analyzes vector wall linework crossing the seam, reports true maximum, 95th percentile, and median linework displacement (px and inches at scale), leftover rotation, and withholding status. Refuses if true maximum linework mismatch exceeds tolerance (default 0.50 in / 1/2", calibrated from real split plans). ${COORDS}`,
     inputSchema: {
       stitch: z.string().describe("The stitch key (starts with stitch:) to align"),
       anchor: pointSchema.describe("First alignment point in image px"),
