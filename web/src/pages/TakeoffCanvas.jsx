@@ -3648,6 +3648,7 @@ export default function TakeoffCanvas() {
       const prevScales = scales;
       const prevScaleSources = scaleSources;
       const prevScaleUnconfirmed = scaleUnconfirmed;
+      const prevDetectedScales = detectedScales;
       const prevSheetLevels = sheetLevels;
       const prevSheetGroup = sheetGroup;
       const prevLastGroup = lastGroup;
@@ -3664,7 +3665,7 @@ export default function TakeoffCanvas() {
       );
       const remapped = remapWorkspaceState(
         {
-          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
           sheetRotations: prevRotations,
         },
@@ -3681,6 +3682,7 @@ export default function TakeoffCanvas() {
       setScales(remapped.scales);
       setScaleSources(remapped.scaleSources);
       setScaleUnconfirmed(remapped.scaleUnconfirmed);
+      setDetectedScales(remapped.detectedScales || {});
       setSheetLevels(remapped.sheetLevels);
       setSheetGroup(remapped.sheetGroup);
       setLastGroup(remapped.lastGroup);
@@ -3708,6 +3710,7 @@ export default function TakeoffCanvas() {
             setScales(prevScales);
             setScaleSources(prevScaleSources);
             setScaleUnconfirmed(prevScaleUnconfirmed);
+            setDetectedScales(prevDetectedScales);
             setSheetLevels(prevSheetLevels);
             setSheetGroup(prevSheetGroup);
             setLastGroup(prevLastGroup);
@@ -3757,6 +3760,7 @@ export default function TakeoffCanvas() {
       const prevScales = scales;
       const prevScaleSources = scaleSources;
       const prevScaleUnconfirmed = scaleUnconfirmed;
+      const prevDetectedScales = detectedScales;
       const prevSheetLevels = sheetLevels;
       const prevSheetGroup = sheetGroup;
       const prevLastGroup = lastGroup;
@@ -3771,7 +3775,7 @@ export default function TakeoffCanvas() {
       const remap = buildKeyRemap(file, (oldP) => oldToNew.get(oldP), totalPages);
       const remapped = remapWorkspaceState(
         {
-          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
           sheetRotations: prevRotations,
         },
@@ -3788,6 +3792,7 @@ export default function TakeoffCanvas() {
       setScales(remapped.scales);
       setScaleSources(remapped.scaleSources);
       setScaleUnconfirmed(remapped.scaleUnconfirmed);
+      setDetectedScales(remapped.detectedScales || {});
       setSheetLevels(remapped.sheetLevels);
       setSheetGroup(remapped.sheetGroup);
       setLastGroup(remapped.lastGroup);
@@ -3812,6 +3817,7 @@ export default function TakeoffCanvas() {
             setScales(prevScales);
             setScaleSources(prevScaleSources);
             setScaleUnconfirmed(prevScaleUnconfirmed);
+            setDetectedScales(prevDetectedScales);
             setSheetLevels(prevSheetLevels);
             setSheetGroup(prevSheetGroup);
             setLastGroup(prevLastGroup);
@@ -3895,7 +3901,7 @@ export default function TakeoffCanvas() {
 
       const carriedState = remapWorkspaceState(
         {
-          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
           sheetLevels, layerOverrides, rfis, stitches,
         },
         remap
@@ -3986,6 +3992,7 @@ export default function TakeoffCanvas() {
       const prevScales = scales;
       const prevScaleSources = scaleSources;
       const prevScaleUnconfirmed = scaleUnconfirmed;
+      const prevDetectedScales = detectedScales;
       const prevSheetLevels = sheetLevels;
       const prevSheetGroup = sheetGroup;
       const prevLastGroup = lastGroup;
@@ -3999,7 +4006,7 @@ export default function TakeoffCanvas() {
 
       const remapped = remapWorkspaceState(
         {
-          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
           sheetRotations: prevRotations,
         },
@@ -4021,6 +4028,7 @@ export default function TakeoffCanvas() {
       setScales(remapped.scales);
       setScaleSources(remapped.scaleSources);
       setScaleUnconfirmed(remapped.scaleUnconfirmed);
+      setDetectedScales(remapped.detectedScales || {});
       setSheetLevels(remapped.sheetLevels);
       setSheetGroup(remapped.sheetGroup);
       setLastGroup(remapped.lastGroup);
@@ -4049,6 +4057,7 @@ export default function TakeoffCanvas() {
             setScales(prevScales);
             setScaleSources(prevScaleSources);
             setScaleUnconfirmed(prevScaleUnconfirmed);
+            setDetectedScales(prevDetectedScales);
             setSheetLevels(prevSheetLevels);
             setSheetGroup(prevSheetGroup);
             setLastGroup(prevLastGroup);
@@ -4104,6 +4113,7 @@ export default function TakeoffCanvas() {
         const prevScales = scales;
         const prevScaleSources = scaleSources;
         const prevScaleUnconfirmed = scaleUnconfirmed;
+        const prevDetectedScales = detectedScales;
         const prevSheetLevels = sheetLevels;
         const prevSheetGroup = sheetGroup;
         const prevLastGroup = lastGroup;
@@ -4120,7 +4130,7 @@ export default function TakeoffCanvas() {
         );
         const remapped = remapWorkspaceState(
           {
-            shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
+            shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
             sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
             sheetRotations: prevRotations,
           },
@@ -4137,6 +4147,7 @@ export default function TakeoffCanvas() {
         setScales(remapped.scales);
         setScaleSources(remapped.scaleSources);
         setScaleUnconfirmed(remapped.scaleUnconfirmed);
+        setDetectedScales(remapped.detectedScales || {});
         setSheetLevels(remapped.sheetLevels);
         setSheetGroup(remapped.sheetGroup);
         setLastGroup(remapped.lastGroup);
@@ -4161,6 +4172,7 @@ export default function TakeoffCanvas() {
               setScales(prevScales);
               setScaleSources(prevScaleSources);
               setScaleUnconfirmed(prevScaleUnconfirmed);
+              setDetectedScales(prevDetectedScales);
               setSheetLevels(prevSheetLevels);
               setSheetGroup(prevSheetGroup);
               setLastGroup(prevLastGroup);

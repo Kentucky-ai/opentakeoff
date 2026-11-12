@@ -350,3 +350,22 @@ test("remapWorkspaceState: sheetRotations follow remapped sheet keys and drop de
   assert.equal(remappedDelete.sheetRotations["doc.pdf#3"], undefined);
 });
 
+
+test("remapWorkspaceState: the scale read off the plan follows its page on reorder, and a page without one inherits none", () => {
+  // Found on the #589 preview: AF101 (page 1, title block reads 1/8") and AF600 (page 2, a schedule with no stated scale).
+  // After dragging AF101 below AF600, AF600 offered "Plan says 1/8"" and showed a false mismatch.
+  const state = {
+    scales: { "doc.pdf": 0.1, "doc.pdf#2": 0.05 },
+    detectedScales: { "doc.pdf": { upp: 0.1, label: "1/8\" = 1'-0\"", multi: false } },
+  };
+  const remap = buildKeyRemap("doc.pdf", { 1: 2, 2: 1 }, 2);
+  const remapped = remapWorkspaceState(state, remap);
+  assert.deepEqual(remapped.detectedScales["doc.pdf#2"], { upp: 0.1, label: "1/8\" = 1'-0\"", multi: false });
+  assert.equal(remapped.detectedScales["doc.pdf"], undefined);
+  assert.equal(remapped.scales["doc.pdf"], 0.05);
+  assert.equal(remapped.scales["doc.pdf#2"], 0.1);
+
+  // Deleting the page drops its reading instead of leaving it on the page that moves up.
+  const del = remapWorkspaceState(remapped, buildKeyRemap("doc.pdf", (p) => (p === 2 ? null : p), 2));
+  assert.deepEqual(del.detectedScales, {});
+});

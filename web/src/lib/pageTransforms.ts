@@ -286,6 +286,7 @@ export interface WorkspaceSheetState {
   scales?: Record<string, number>;
   scaleSources?: Record<string, string>;
   scaleUnconfirmed?: Record<string, boolean>;
+  detectedScales?: Record<string, any>;
   sheetLevels?: Record<string, string>;
   sheetGroup?: string[];
   lastGroup?: string[];
@@ -304,7 +305,7 @@ export interface WorkspaceSheetState {
 
 /**
  * Pure function that remaps EVERY per-sheet data structure in OpenTakeoff
- * (shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed,
+ * (shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
  * sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis, sheets).
  * Items mapped to null are dropped (deleted).
  */
@@ -363,6 +364,16 @@ export function remapWorkspaceState<T extends WorkspaceSheetState>(
     for (const [k, v] of Object.entries(state.scaleUnconfirmed)) {
       const nextKey = remapKey(k);
       if (nextKey) scaleUnconfirmed[nextKey] = v;
+    }
+  }
+
+  // The scale read off the plan text belongs to the page, not to its position:
+  // without this, a reordered sheet inherits the old occupant's "Plan says" scale.
+  const detectedScales: Record<string, any> = {};
+  if (state.detectedScales) {
+    for (const [k, v] of Object.entries(state.detectedScales)) {
+      const nextKey = remapKey(k);
+      if (nextKey) detectedScales[nextKey] = v;
     }
   }
 
@@ -437,6 +448,7 @@ export function remapWorkspaceState<T extends WorkspaceSheetState>(
     scales,
     scaleSources,
     scaleUnconfirmed,
+    detectedScales,
     sheetLevels,
     layerOverrides,
     openTabs,
