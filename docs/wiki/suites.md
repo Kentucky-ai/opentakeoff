@@ -3,7 +3,8 @@
 The core tools are trade-neutral: load, scale, read the set, measure area,
 line and count, revise, export. A trade suite is what one trade adds on top:
 a short method, the condition tags its tools default to, and a tool of its own
-only where the core cannot already do the job.
+only where the core cannot already do the job. To add one, follow
+[Adding a trade suite](adding-a-suite.md).
 
 ## How an agent uses them
 
