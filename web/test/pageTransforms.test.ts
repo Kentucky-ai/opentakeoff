@@ -354,7 +354,7 @@ test("remapWorkspaceState: sheetRotations follow remapped sheet keys and drop de
 test("remapWorkspaceState: the scale read off the plan follows its page on reorder, and a page without one inherits none", () => {
   // Found on the #589 preview: AF101 (page 1, title block reads 1/8") and AF600 (page 2, a schedule with no stated scale).
   // After dragging AF101 below AF600, AF600 offered "Plan says 1/8"" and showed a false mismatch.
-  const state = {
+  const state: { scales: Record<string, number>; detectedScales: Record<string, { upp: number; label: string; multi: boolean }> } = {
     scales: { "doc.pdf": 0.1, "doc.pdf#2": 0.05 },
     detectedScales: { "doc.pdf": { upp: 0.1, label: "1/8\" = 1'-0\"", multi: false } },
   };
