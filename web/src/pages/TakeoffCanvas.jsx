@@ -4192,7 +4192,11 @@ export default function TakeoffCanvas() {
     const res = alignMembers(st.members, dims, [alignPt[0], alignPt[1]], [p[0], p[1]]);
     setAlignPt(null);
     if (res.error) { setCommitMsg(res.error); return; }
-    setStitches((list) => list.map((s) => (s.id === st.id ? { ...s, members: res.members } : s)));
+    setStitches((list) => list.map((s) => {
+      if (s.id !== st.id) return s;
+      const { aligned: _aligned, seam_check: _seamCheck, ...rest } = s;
+      return { ...rest, members: res.members };
+    }));
     setTool("select");
     setCommitMsg("Match line joined — the sheets now read as one surface. Trace straight across it.");
   }

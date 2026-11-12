@@ -279,4 +279,72 @@ test("checkSeamLinework: collinear alignment, offsets, and rotation gates", () =
   assert.equal(zeroMatched.passed, false);
   assert.equal(zeroMatched.withheld, true);
   assert.ok(zeroMatched.withheld_reasons.some((r) => r.includes("No linework crossed the seam")));
+
+  // 6. 3-member stitch: seam 1 aligned, seam 2 has 0 crossing lines -> withheld on missing seam 2
+  const mThree = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 80, dy: 0 }, { key: "C", dx: 180, dy: 0 }];
+  const dimsThree = { A: { w: 100, h: 100 }, B: { w: 120, h: 100 }, C: { w: 100, h: 100 } };
+  const multi = checkSeamLinework(
+    mThree,
+    dimsThree,
+    {
+      A: new Float32Array([70, 50, 95, 50]),
+      B: new Float32Array([-10, 50, 15, 50]), // only matches seam 1 (80+15 = 95), nothing near seam 2 (180..200)
+      C: new Float32Array(),
+    },
+    upp,
+  );
+  assert.equal(multi.passed, false);
+  assert.equal(multi.withheld, true);
+  assert.ok(multi.withheld_reasons.some((r) => r.includes("seam 2") && r.includes("B") && r.includes("C")));
+});
+
+test("mergeSegs: preserves optional lum, layerOf/layerIds, and remaps subpaths across seam clips", () => {
+  const m1Subpaths = [
+    { i0: 0, i1: 2, x0: 10, y0: 10, x1: 90, y1: 10, closed: true, flags: 0, fillLum: 0 },
+    { i0: 2, i1: 4, x0: 95, y0: 20, x1: 120, y1: 20, closed: true, flags: 0, fillLum: 128 },
+  ];
+  const merged = mergeSegs([
+    {
+      segs: [10, 10, 50, 10, 50, 10, 90, 10, 95, 20, 105, 20, 105, 20, 120, 20],
+      meta: [1, 2, 3, 4],
+      lum: [0, 50, 100, 150],
+      layerOf: [0, 1, 0, -1],
+      layerIds: ["walls", "grid"],
+      subpaths: m1Subpaths,
+      imageArea: 10,
+      dx: 0,
+      dy: 0,
+      clip: { x0: 0, y0: 0, x1: 100, y1: 100 }, // drops seg 3 (mid x=112.5 > 100)
+    },
+    {
+      segs: [20, 30, 40, 30],
+      meta: [5],
+      lum: [200],
+      layerOf: [0],
+      layerIds: ["walls"], // shared layer id with member 1
+      subpaths: [{ i0: 0, i1: 1, x0: 20, y0: 30, x1: 40, y1: 30, closed: false, flags: 0, fillLum: 0 }],
+      imageArea: 5,
+      dx: 100,
+      dy: 0,
+      clip: { x0: 100, y0: 0, x1: 200, y1: 100 },
+    },
+  ]);
+
+  assert.equal(merged.segs.length >> 2, 4);
+  assert.deepEqual(Array.from(merged.lum!), [0, 50, 100, 200]);
+  assert.deepEqual(merged.layerIds, ["walls", "grid"]);
+  assert.deepEqual(Array.from(merged.layerOf!), [0, 1, 0, 0]);
+  assert.equal(merged.subpaths!.length, 3);
+  assert.equal(merged.subpaths![0].i0, 0);
+  assert.equal(merged.subpaths![0].i1, 2);
+  assert.equal(merged.subpaths![0].closed, true);
+  // Clipped second subpath only kept 1 of 2 segments -> marked unclosed
+  assert.equal(merged.subpaths![1].i0, 2);
+  assert.equal(merged.subpaths![1].i1, 3);
+  assert.equal(merged.subpaths![1].closed, false);
+  // Second member subpath translated +100 px in x
+  assert.equal(merged.subpaths![2].i0, 3);
+  assert.equal(merged.subpaths![2].i1, 4);
+  assert.equal(merged.subpaths![2].x0, 120);
+  assert.equal(merged.subpaths![2].x1, 140);
 });

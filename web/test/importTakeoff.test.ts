@@ -268,7 +268,7 @@ test("stitches (#161): import merges new stitches and skips known stitch ids", (
     stitches: [{ id: "stitch:existing", name: "Existing", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 100, dy: 0 }] }],
   };
   const importedStitch = { id: "stitch:new", name: "New Stitch", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 200, dy: 0 }] };
-  const duplicateStitch = { id: "stitch:existing", name: "Existing Dupe", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 999, dy: 0 }] };
+  const duplicateStitch = { id: "stitch:existing", name: "Existing Dupe", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 100, dy: 0 }] };
 
   const { payload } = mergeTakeoffImport(current, doc({
     stitches: [importedStitch, duplicateStitch],
@@ -279,4 +279,27 @@ test("stitches (#161): import merges new stitches and skips known stitch ids", (
   assert.equal(payload.stitches[0].name, "Existing"); // operator state wins
   assert.equal(payload.stitches[1].id, "stitch:new");
   assert.equal(payload.stitches[1].name, "New Stitch");
+});
+
+test("stitches (#161): conflicting existing stitch placement is rejected and existing stitches block clean-replace", () => {
+  const curWithStitch = {
+    conditions: [{ id: "mine", finish_tag: "CPT-1" }],
+    shapes: [],
+    markups: [],
+    sheets: [],
+    stitches: [{ id: "stitch:existing", name: "Existing", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 100, dy: 0 }] }],
+  };
+  const { payload, note } = mergeTakeoffImport(curWithStitch, doc({
+    stitches: [{ id: "stitch:other", name: "Other", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 250, dy: 0 }] }],
+  }));
+  assert.equal(note.replaced, false);
+  assert.equal(payload.stitches.length, 2);
+  assert.equal(payload.stitches[0].id, "stitch:existing");
+
+  assert.throws(
+    () => mergeTakeoffImport(curWithStitch, doc({
+      stitches: [{ id: "stitch:existing", name: "Conflict", members: [{ key: "va.pdf", dx: 0, dy: 0 }, { key: "va.pdf#2", dx: 999, dy: 0 }] }],
+    })),
+    /Import conflict: stitch "stitch:existing"/,
+  );
 });

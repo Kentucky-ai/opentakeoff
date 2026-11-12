@@ -793,11 +793,11 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("stitch_sheets", (a) => session.stitchSheets(a)));
 
   server.registerTool("align_stitch", {
-    description: `Align a composite stitched sheet surface across its match line using two matching reference points (image px) — one on each member sheet. Performs a seam check across the match line: analyzes vector wall linework crossing the seam, reports true maximum, 95th percentile, and median linework displacement (px and inches at scale), leftover rotation, and withholding status. Refuses if true maximum linework mismatch exceeds tolerance (default 0.50 in / 1/2", calibrated from real split plans). ${COORDS}`,
+    description: `Align a composite stitched sheet surface across its match line using two matching reference points (image px) — one on each member sheet — or omit both anchor and moving to verify existing persisted member placements in place. Performs a seam check across the match line: analyzes vector wall linework crossing the seam, reports true maximum, 95th percentile, and median linework displacement (px and inches at scale), leftover rotation, and withholding status. Refuses if true maximum linework mismatch exceeds tolerance (default 0.50 in / 1/2", calibrated from real split plans). ${COORDS}`,
     inputSchema: {
-      stitch: z.string().describe("The stitch key (starts with stitch:) to align"),
-      anchor: pointSchema.describe("First alignment point in image px"),
-      moving: pointSchema.describe("Second alignment point in image px — sheet under moving translates to anchor"),
+      stitch: z.string().describe("The stitch key (starts with stitch:) to align or verify"),
+      anchor: pointSchema.optional().describe("First alignment point in image px (omit with moving to verify existing placement)"),
+      moving: pointSchema.optional().describe("Second alignment point in image px — sheet under moving translates to anchor (omit with anchor to verify existing placement)"),
       tolerance_in: z.number().positive().optional().describe("Linework displacement tolerance in inches (default: 0.50)"),
       rot_tolerance_deg: z.number().positive().optional().describe("Leftover rotation tolerance in degrees (default: 0.25)"),
     },

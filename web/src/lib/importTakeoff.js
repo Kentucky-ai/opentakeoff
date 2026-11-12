@@ -20,7 +20,7 @@ import { TAKEOFF_SCHEMA as ANN_SCHEMA } from "./takeoffConstants.ts";
 import { sanitizeApprovals } from "./approvals.js";
 import { normalizeAgentReview } from "./reviewState.js";
 import { isValidMultiplier } from "./multiplier.js";
-import { sanitizeStitches } from "./stitches.ts";
+import { sanitizeStitches, stitchPlacementsMatch } from "./stitches.ts";
 
 /** Parse + gate an import file's text. Throws with copy the message bar shows
  * verbatim — "Couldn't…" is the canvas's danger convention (isDangerMsg), so
@@ -101,7 +101,7 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   // don't block the clean-replace path. An existing calibration and approval seals
   // DO block it (#176): a seal is ink someone placed — operator state wins,
   // so a sealed-but-untraced project merges instead of being replaced.
-  if (!arr(cur.shapes).length && !arr(cur.markups).length && !arr(cur.approvals).length && !arr(cur.sheets).some((s) => s?.units_per_px > 0)) {
+  if (!arr(cur.shapes).length && !arr(cur.markups).length && !arr(cur.approvals).length && !arr(cur.stitches).length && !arr(cur.sheets).some((s) => s?.units_per_px > 0)) {
     // …except the VIEW. An MCP export typically carries empty tab/group
     // state (the session has no such concept), and adopting an empty list
     // would close the operator's open sheet and bounce them to the gallery
@@ -201,8 +201,16 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   }
 
   // ── stitches (#161): composite working surfaces ────────────────────────────
+  const curStitchesById = new Map(sanitizeStitches(cur.stitches, 4).map((s) => [s.id, s]));
+  const impStitches = sanitizeStitches(imported.stitches, 4);
+  for (const s of impStitches) {
+    const existing = curStitchesById.get(s.id);
+    if (existing && !stitchPlacementsMatch(existing, s)) {
+      throw new Error(`Import conflict: stitch "${s.id}" already exists with a different placement. Re-align or import into a clean project.`);
+    }
+  }
   const stitchIds = new Set(arr(cur.stitches).map((s) => s?.id).filter(Boolean));
-  const addedStitches = sanitizeStitches(imported.stitches, 4).filter((s) => !stitchIds.has(s.id));
+  const addedStitches = impStitches.filter((s) => !stitchIds.has(s.id));
 
   // Everything else is the operator's workspace, not import cargo: name, tabs,
   // grouping, levels, columns, labels, palette, client info, rules, counters

@@ -12,6 +12,7 @@
 // Everything here is pdfjs-free and node-tested (sheetKey.ts precedent).
 
 import { parseSheetKey } from "./sheetKey";
+import type { SubPath } from "./oneclick";
 
 export const STITCH_PREFIX = "stitch:";
 export function isStitchKey(k: unknown): k is string {
@@ -78,6 +79,22 @@ export function normalizeMembers(members: StitchMember[]): StitchMember[] {
   const my = Math.min(...members.map((m) => m.dy));
   if (mx === 0 && my === 0) return members;
   return members.map((m) => ({ ...m, dx: m.dx - mx, dy: m.dy - my }));
+}
+
+/** True when two stitch definitions describe the exact same member placement
+ * (within 1e-3 px after normalization). Used to reject conflicting imports. */
+export function stitchPlacementsMatch(a: Pick<Stitch, "members">, b: Pick<Stitch, "members">): boolean {
+  const ma = normalizeMembers(a.members);
+  const mb = normalizeMembers(b.members);
+  if (ma.length !== mb.length) return false;
+  const byKey = new Map(ma.map((m) => [m.key, m]));
+  if (byKey.size !== mb.length) return false;
+  for (const m of mb) {
+    const other = byKey.get(m.key);
+    if (!other) return false;
+    if (Math.abs(other.dx - m.dx) > 1e-3 || Math.abs(other.dy - m.dy) > 1e-3) return false;
+  }
+  return true;
 }
 
 /** Initial layout for a fresh stitch: members flush left-to-right (no gap —
@@ -209,25 +226,117 @@ export function mergePoints(
  * have the same midpoint, so exactly one member's box claims it), and still
  * excludes content hidden past the seam. imageArea sums so the raster-
  * fallback trigger signal stays honest. */
+export interface MergeSegMember {
+  segs: ArrayLike<number>;
+  meta?: ArrayLike<number>;
+  lum?: ArrayLike<number>;
+  layerOf?: ArrayLike<number>;
+  layerIds?: string[];
+  subpaths?: SubPath[];
+  imageArea?: number;
+  dx: number;
+  dy: number;
+  clip: Box;
+}
+
+export interface MergeSegResult {
+  segs: number[];
+  meta: Uint8Array;
+  imageArea: number;
+  lum?: Uint8Array;
+  layerOf?: Int32Array;
+  layerIds?: string[];
+  subpaths?: SubPath[];
+}
+
 export function mergeSegs(
-  perMember: Array<{ segs: ArrayLike<number>; meta?: ArrayLike<number>; imageArea?: number; dx: number; dy: number; clip: Box }>,
-): { segs: number[]; meta: Uint8Array; imageArea: number } {
+  perMember: MergeSegMember[],
+): MergeSegResult {
   const segs: number[] = [];
   const meta: number[] = [];
+  const hasLum = perMember.some((m) => m.lum != null);
+  const hasLayers = perMember.some((m) => m.layerOf != null || (m.layerIds && m.layerIds.length > 0));
+  const hasSubpaths = perMember.some((m) => m.subpaths != null);
+  const lumArr: number[] = [];
+  const layerOfArr: number[] = [];
+  const layerIds: string[] = [];
+  const layerMap = new Map<string, number>();
+  const subpaths: SubPath[] = [];
   let imageArea = 0;
+
   for (const m of perMember) {
     imageArea += m.imageArea || 0;
+    let localToGlobal: number[] | null = null;
+    if (hasLayers && m.layerIds) {
+      localToGlobal = m.layerIds.map((id) => {
+        let gi = layerMap.get(id);
+        if (gi === undefined) {
+          gi = layerIds.length;
+          layerIds.push(id);
+          layerMap.set(id, gi);
+        }
+        return gi;
+      });
+    }
     const n = m.segs.length >> 2;
+    const outIdxBySeg = m.subpaths ? new Int32Array(n).fill(-1) : null;
     for (let i = 0; i < n; i++) {
       const x0 = m.segs[i * 4] + m.dx, y0 = m.segs[i * 4 + 1] + m.dy;
       const x1 = m.segs[i * 4 + 2] + m.dx, y1 = m.segs[i * 4 + 3] + m.dy;
       const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
       if (mx < m.clip.x0 || mx > m.clip.x1 || my < m.clip.y0 || my > m.clip.y1) continue;
+      const outIdx = segs.length >> 2;
+      if (outIdxBySeg) outIdxBySeg[i] = outIdx;
       segs.push(x0, y0, x1, y1);
       meta.push(m.meta ? m.meta[i] : 0);
+      if (hasLum) lumArr.push(m.lum ? m.lum[i] : 0);
+      if (hasLayers) {
+        const li = m.layerOf ? m.layerOf[i] : -1;
+        layerOfArr.push(li >= 0 && localToGlobal && li < localToGlobal.length ? localToGlobal[li] : -1);
+      }
+    }
+    if (hasSubpaths && m.subpaths && outIdxBySeg) {
+      for (const sp of m.subpaths) {
+        const end = Math.min(sp.i1, n);
+        let keptCount = 0;
+        let runI0 = -1, runI1 = -1;
+        let rx0 = Infinity, ry0 = Infinity, rx1 = -Infinity, ry1 = -Infinity;
+        const flush = (closedRun: boolean) => {
+          if (runI0 >= 0 && runI1 > runI0) {
+            subpaths.push({ i0: runI0, i1: runI1, x0: rx0, y0: ry0, x1: rx1, y1: ry1, closed: closedRun, flags: sp.flags, fillLum: sp.fillLum });
+          }
+          runI0 = -1; runI1 = -1;
+          rx0 = Infinity; ry0 = Infinity; rx1 = -Infinity; ry1 = -Infinity;
+        };
+        for (let i = sp.i0; i < end; i++) {
+          const oi = outIdxBySeg[i];
+          if (oi < 0) {
+            flush(false);
+            continue;
+          }
+          keptCount++;
+          const ax = segs[oi * 4], ay = segs[oi * 4 + 1], bx = segs[oi * 4 + 2], by = segs[oi * 4 + 3];
+          if (runI0 < 0 || oi !== runI1) {
+            flush(false);
+            runI0 = oi;
+          }
+          runI1 = oi + 1;
+          rx0 = Math.min(rx0, ax, bx); ry0 = Math.min(ry0, ay, by);
+          rx1 = Math.max(rx1, ax, bx); ry1 = Math.max(ry1, ay, by);
+        }
+        const total = sp.i1 - sp.i0;
+        flush(sp.closed && total > 0 && keptCount === total && runI1 - runI0 === total);
+      }
     }
   }
-  return { segs, meta: Uint8Array.from(meta), imageArea };
+  return {
+    segs,
+    meta: Uint8Array.from(meta),
+    imageArea,
+    ...(hasLum ? { lum: Uint8Array.from(lumArr) } : {}),
+    ...(hasLayers ? { layerOf: Int32Array.from(layerOfArr), layerIds } : {}),
+    ...(hasSubpaths ? { subpaths } : {}),
+  };
 }
 
 // ── marked-set composite page (#200) ────────────────────────────────────────
@@ -400,13 +509,18 @@ export function checkSeamLinework(
 
   const allMatched: Array<{ miss_px: number; miss_in: number; angle_err: number; at: [number, number]; pA: [number, number]; pB: [number, number] }> = [];
   const discrepancies: SeamCheckDiscrepancy[] = [];
+  const seamStats: Array<{ k: number; aKey: string; bKey: string; count: number; maxIn: number; rotDeg: number }> = [];
 
   for (let k = 0; k + 1 < order.length; k++) {
     const ai = order[k], bi = order[k + 1];
     const mA = members[ai], mB = members[bi];
     const segsA = memberSegs[mA.key];
     const segsB = memberSegs[mB.key];
-    if (!segsA || !segsB) continue;
+    const seamMatched: typeof allMatched = [];
+    if (!segsA || !segsB) {
+      seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: 0, maxIn: 0, rotDeg: 0 });
+      continue;
+    }
 
     let seamCoord: number;
     let seamMin: number;
@@ -706,14 +820,16 @@ export function checkSeamLinework(
         usedB.add(c.sb);
         const missPx = Math.hypot(c.dx, c.dy);
         const missIn = upp > 0 ? missPx * upp * 12 : 0;
-        allMatched.push({
+        const entry = {
           miss_px: missPx,
           miss_in: missIn,
           angle_err: c.angDiff,
           at: c.at,
-          pA: [c.sa.x0, c.sa.y0],
+          pA: [c.sa.x0, c.sa.y0] as [number, number],
           pB: c.pB,
-        });
+        };
+        allMatched.push(entry);
+        seamMatched.push(entry);
         discrepancies.push({
           at: c.at,
           miss_px: +missPx.toFixed(2),
@@ -745,6 +861,11 @@ export function checkSeamLinework(
         recordMatch(c);
       }
     }
+
+    const seamMaxIn = seamMatched.reduce((m, x) => Math.max(m, x.miss_in), 0);
+    const seamAngs = seamMatched.map((m) => m.angle_err).sort((a, b) => a - b);
+    const seamRotDeg = seamAngs.length ? +(seamAngs[Math.floor(seamAngs.length / 2)] * 180 / Math.PI).toFixed(2) : 0;
+    seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: seamMatched.length, maxIn: +seamMaxIn.toFixed(2), rotDeg: seamRotDeg });
   }
 
   const sampleCount = allMatched.length;
@@ -770,12 +891,24 @@ export function checkSeamLinework(
   const withheldReasons: string[] = [];
   if (sampleCount === 0) {
     withheldReasons.push("No linework crossed the seam. Measure the sheets separately.");
+  } else {
+    for (const st of seamStats) {
+      if (st.count === 0) {
+        withheldReasons.push(`No linework crossed seam ${st.k + 1} (${st.aKey} ↔ ${st.bKey}). Measure those sheets separately.`);
+      }
+    }
   }
   if (maxIn > toleranceIn) {
     withheldReasons.push(`Wall linework mismatch max ${maxIn.toFixed(2)}" (p95 ${p95In.toFixed(2)}", median ${medianIn.toFixed(2)}") exceeds ${toleranceIn.toFixed(2)}" tolerance.`);
   }
   if (Math.abs(leftoverRotationDeg) > rotToleranceDeg) {
     withheldReasons.push(`Leftover rotation ${Math.abs(leftoverRotationDeg).toFixed(2)}° exceeds ${rotToleranceDeg.toFixed(2)}° tolerance.`);
+  } else {
+    for (const st of seamStats) {
+      if (st.count > 0 && Math.abs(st.rotDeg) > rotToleranceDeg) {
+        withheldReasons.push(`Leftover rotation on seam ${st.k + 1} (${st.aKey} ↔ ${st.bKey}) is ${Math.abs(st.rotDeg).toFixed(2)}°, exceeding ${rotToleranceDeg.toFixed(2)}° tolerance.`);
+      }
+    }
   }
 
   const passed = sampleCount > 0 && withheldReasons.length === 0;

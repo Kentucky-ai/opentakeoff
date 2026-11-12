@@ -75,8 +75,9 @@ import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLf
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
 import {
   isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent,
-  alignMembers, seamClips, mergePoints, mergeSegs, normalizeMembers,
-  checkSeamLinework, type Stitch, type StitchMember, type Dim, type SeamCheckResult, type SeamCheckDiscrepancy,
+  alignMembers, seamClips, memberBoxes, mergePoints, mergeSegs, normalizeMembers,
+  stitchPlacementsMatch, checkSeamLinework,
+  type Stitch, type StitchMember, type Dim, type MergeSegMember, type SeamCheckResult, type SeamCheckDiscrepancy,
 } from "../../web/src/lib/stitches.ts";
 
 // Conditions and snap behavior minted here are identical to the browser's
@@ -663,7 +664,10 @@ export const UNDO_CAP = 100;
  * actually made. */
 export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
-  | { op: "scale"; tool: string; sheet_id: string; upp: number | null; source?: string; confirmed?: boolean; shapes: Shape[] }
+  | {
+    op: "scale"; tool: string; sheet_id: string; upp: number | null; source?: string; confirmed?: boolean; shapes: Shape[];
+    composites?: { sheet_id: string; upp: number | null; source?: string; confirmed?: boolean; seam_check?: SeamCheckResult; shapes: Shape[] }[];
+  }
   | { op: "edit"; tool: string; before: Shape }
   | { op: "annotation_text"; tool: string; id: string; before: string }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
@@ -860,6 +864,7 @@ export class Session {
       this.sheets.set(key, state);
       added.push(sheetSummary(state));
     }
+    if (merging) this.refreshStitches();
     return {
       file: base,
       files: this.files,
@@ -1254,16 +1259,43 @@ export class Session {
         if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
       }
       const actualClips = seamClips(st.members, dims);
-      const perMember = [];
+      const distinctFiles = new Set(st.members.map((m) => this.fileFor(m.key))).size;
+      const multiFile = distinctFiles > 1;
+      const perMember: (MergeSegMember & { points: Point[] })[] = [];
+      const layerInfoById = new Map<string, Omit<LayerInfo, "seg_count">>();
       for (let i = 0; i < st.members.length; i++) {
         const m = st.members[i];
         const ms = this.sheets.get(m.key);
         if (ms) {
           const mgeo = await this.ensureGeometry(ms);
+          const mFile = this.fileFor(ms.key);
+          const layerIds = mgeo.layerIds?.map((id) => (multiFile ? `${mFile}::${id}` : id));
+          if (layerIds && ms.layers) {
+            const byOrigId = new Map(ms.layers.map((l) => [l.id, l] as const));
+            (mgeo.layerIds || []).forEach((origId, k) => {
+              const nsId = layerIds[k];
+              if (!layerInfoById.has(nsId)) {
+                const li = byOrigId.get(origId);
+                const name = li?.name || "";
+                const cls = classifyLayerName(name);
+                layerInfoById.set(nsId, {
+                  id: nsId,
+                  name,
+                  role: li?.role ?? cls.role,
+                  confidence: li?.confidence ?? cls.confidence,
+                  visible: li ? li.visible : true,
+                });
+              }
+            });
+          }
           perMember.push({
             points: mgeo.points,
             segs: mgeo.segs,
             meta: mgeo.meta,
+            lum: mgeo.lum,
+            layerOf: mgeo.layerOf,
+            layerIds,
+            subpaths: mgeo.subpaths,
             imageArea: mgeo.imageArea,
             dx: m.dx,
             dy: m.dy,
@@ -1278,8 +1310,30 @@ export class Session {
         meta: merged.meta,
         points: pts,
         imageArea: merged.imageArea,
+        ...(merged.lum ? { lum: merged.lum } : {}),
+        ...(merged.layerOf ? { layerOf: merged.layerOf } : {}),
+        ...(merged.layerIds ? { layerIds: merged.layerIds } : {}),
+        ...(merged.subpaths ? { subpaths: merged.subpaths } : {}),
       };
       s.snap = buildSnapGrid(pts, SNAP_CELL);
+      if (merged.layerIds?.length) {
+        const counts = new Map<number, number>();
+        const lo = merged.layerOf;
+        if (lo) for (let i = 0; i < lo.length; i++) if (lo[i] >= 0) counts.set(lo[i], (counts.get(lo[i]) || 0) + 1);
+        s.layers = merged.layerIds.map((id, k) => {
+          const base = layerInfoById.get(id);
+          return {
+            id,
+            name: base?.name || "",
+            role: base?.role ?? "unknown",
+            confidence: base?.confidence ?? 0,
+            visible: base ? base.visible : true,
+            seg_count: counts.get(k) || 0,
+          };
+        });
+      } else {
+        s.layers = [];
+      }
       return s.geo;
     }
     if (!s.page) {
@@ -1330,14 +1384,14 @@ export class Session {
     }
     const infoById = new Map(infos.map((l) => [l.id, { role: l.role, visible: l.visible }]));
     if (layersOpt) {
-      const resolve = (ref: string): LayerInfo => {
+      const resolve = (ref: string): LayerInfo[] => {
         const needle = ref.trim().toLowerCase();
-        const hit = infos.find((l) => l.id.toLowerCase() === needle || l.name.toLowerCase() === needle);
-        if (!hit) throw new UserError(`No layer ${JSON.stringify(ref)} on ${s.key}. Layers: ${infos.map((l) => l.name || l.id).join(" | ")}`);
-        return hit;
+        const hits = infos.filter((l) => l.id.toLowerCase() === needle || l.name.toLowerCase() === needle);
+        if (!hits.length) throw new UserError(`No layer ${JSON.stringify(ref)} on ${s.key}. Layers: ${infos.map((l) => l.name || l.id).join(" | ")}`);
+        return hits;
       };
-      for (const ref of layersOpt.include || []) { const l = resolve(ref); infoById.set(l.id, { role: "boundary", visible: true }); }
-      for (const ref of layersOpt.exclude || []) { const l = resolve(ref); infoById.set(l.id, { role: l.role, visible: false }); }
+      for (const ref of layersOpt.include || []) for (const l of resolve(ref)) infoById.set(l.id, { role: "boundary", visible: true });
+      for (const ref of layersOpt.exclude || []) for (const l of resolve(ref)) infoById.set(l.id, { role: l.role, visible: false });
     }
     return segRoles(geo.layerOf, layerRoleCodes(geo.layerIds, infoById));
   }
@@ -1489,20 +1543,84 @@ export class Session {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
     if (!Number.isFinite(upp) || upp <= 0) throw new UserError("Scale must be a finite positive number.");
+    const nextSource = source === "label" ? "standard" : source === "calibrate" ? "calibrated" : source;
+    const isComposite = this.stitches.has(s.key);
+    if (isComposite) {
+      const st = this.stitches.get(s.key)!;
+      for (const m of st.members) {
+        const ms = this.sheets.get(m.key);
+        if (ms && ms.upp != null && Math.abs(ms.upp - upp) > 1e-6) {
+          throw new UserError(`Cannot set scale on composite stitch "${s.key}" (${upp} ft/px) because member sheet "${ms.key}" is calibrated at ${ms.upp} ft/px. Recalibrate the member sheets consistently instead.`);
+        }
+      }
+    }
+
+    const affectedStitches = isComposite
+      ? []
+      : [...this.stitches.entries()].filter(([, st]) => st.members.some((m) => m.key === s.key));
+    const composites: NonNullable<Extract<JournalPayload, { op: "scale" }>["composites"]> = [];
+
     if (s.upp !== upp) {
       const before = this.shapes.filter((sh) => sh.sheet_id === s.key);
       if (before.some((sh) => sh.measure_role !== "count" && sh.origin?.reviewed === true)) {
         throw new UserError("This sheet contains human-reviewed measurements. Recalibrate it in the canvas, then import the updated takeoff into a fresh session.");
       }
+      for (const [stId] of affectedStitches) {
+        const csBefore = this.shapes.filter((sh) => sh.sheet_id === stId);
+        if (csBefore.some((sh) => sh.measure_role !== "count" && sh.origin?.reviewed === true)) {
+          throw new UserError(`Composite stitch "${stId}" contains human-reviewed measurements. Recalibrate it in the canvas, then import the updated takeoff into a fresh session.`);
+        }
+      }
+
       const dims = { w: s.widthPx, h: s.heightPx };
       const repriced: Shape[] = recalibrateShapes(before, dims, upp, this.conditions);
+      const byId = new Map(repriced.map((sh) => [sh.id, sh]));
+
+      for (const [stId, st] of affectedStitches) {
+        const cs = this.sheets.get(stId);
+        if (!cs) continue;
+        const csBefore = this.shapes.filter((sh) => sh.sheet_id === cs.key);
+        composites.push({
+          sheet_id: cs.key,
+          upp: cs.upp,
+          source: cs.scaleSource,
+          confirmed: cs.scaleConfirmed,
+          seam_check: st.seam_check,
+          shapes: structuredClone(csBefore),
+        });
+        const memberSheets = st.members.map((m) => this.sheets.get(m.key));
+        const allMatch = memberSheets.length === st.members.length && memberSheets.every((ms) => {
+          if (!ms) return false;
+          const mUpp = ms.key === s.key ? upp : ms.upp;
+          return mUpp != null && Math.abs(mUpp - upp) < 1e-6;
+        });
+        st.seam_check = undefined;
+        cs.mask = undefined;
+        cs.rmask = undefined;
+        if (allMatch) {
+          const csDims = { w: cs.widthPx, h: cs.heightPx };
+          for (const sh of recalibrateShapes(csBefore, csDims, upp, this.conditions)) byId.set(sh.id, sh);
+          cs.upp = upp;
+          cs.scaleSource = nextSource;
+          cs.scaleConfirmed = false;
+        } else {
+          cs.upp = null;
+          cs.scaleSource = undefined;
+          cs.scaleConfirmed = undefined;
+        }
+      }
+
+      if (isComposite) {
+        this.stitches.get(s.key)!.seam_check = undefined;
+      }
+
       // Initial calibration without geometry has nothing to undo. A changed
       // calibration and its quantities restore together before older edits.
-      if (s.upp !== null || before.length) this.record({
+      if (s.upp !== null || before.length || composites.length) this.record({
         op: "scale", tool: "set_scale", sheet_id: s.key,
-        upp: s.upp, source: s.scaleSource, confirmed: s.scaleConfirmed, shapes: structuredClone(before)
+        upp: s.upp, source: s.scaleSource, confirmed: s.scaleConfirmed, shapes: structuredClone(before),
+        ...(composites.length ? { composites } : {}),
       });
-      const byId = new Map(repriced.map((sh) => [sh.id, sh]));
       this.shapes = this.shapes.map((sh) => byId.get(sh.id) ?? sh);
     }
     // Mask-cache eviction on recalibration — canvas parity (rescaleSheet):
@@ -1520,7 +1638,7 @@ export class Session {
     // the tool reply keeps this session's source vocabulary; the stored value
     // uses the canvas's report vocabulary so export_report's scale_source
     // reads the same as an app-side report.v1
-    s.scaleSource = source === "label" ? "standard" : source === "calibrate" ? "calibrated" : source;
+    s.scaleSource = nextSource;
     // Scale gate: this is the agent surface, so the scale lands UNCONFIRMED —
     // quantities still flow (the gate is a flag, never a refusal), but every
     // scaled reply carries the caveat and the canvas asks the estimator to
@@ -2029,6 +2147,7 @@ export class Session {
       if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
     }
     const clips = seamClips(st.members, dims);
+    const boxes = memberBoxes(st.members, dims);
     const memberIndices = new Set<number>();
     for (const [x, y] of points) {
       for (let i = 0; i < clips.length; i++) {
@@ -2044,13 +2163,26 @@ export class Session {
       if (y < minY) minY = y; if (y > maxY) maxY = y;
     }
     let crossesSeam = memberIndices.size > 1;
-    if (!crossesSeam && clips.length >= 2) {
-      for (let i = 0; i < clips.length - 1; i++) {
-        const seamX = (clips[i].x1 + clips[i + 1].x0) / 2;
-        const seamY = (clips[i].y1 + clips[i + 1].y0) / 2;
-        if ((minX < seamX && maxX > seamX) || (minY < seamY && maxY > seamY)) {
-          crossesSeam = true;
-          break;
+    if (!crossesSeam && clips.length >= 2 && boxes.length === clips.length) {
+      const cxs = boxes.map((b) => (b.x0 + b.x1) / 2);
+      const cys = boxes.map((b) => (b.y0 + b.y1) / 2);
+      const spread = (a: number[]) => Math.max(...a) - Math.min(...a);
+      const horizontal = spread(cxs) >= spread(cys);
+      const order = boxes.map((_, i) => i).sort((a, b) => (horizontal ? boxes[a].x0 - boxes[b].x0 : boxes[a].y0 - boxes[b].y0));
+      for (let i = 0; i < order.length - 1; i++) {
+        const ai = order[i], bi = order[i + 1];
+        if (horizontal) {
+          const seamX = (clips[ai].x1 + clips[bi].x0) / 2;
+          if (minX < seamX && maxX > seamX) {
+            crossesSeam = true;
+            break;
+          }
+        } else {
+          const seamY = (clips[ai].y1 + clips[bi].y0) / 2;
+          if (minY < seamY && maxY > seamY) {
+            crossesSeam = true;
+            break;
+          }
         }
       }
     }
@@ -2245,6 +2377,7 @@ export class Session {
         height = r.height_ft ?? (Number(existing?.height_ft) || 0);
         if (!(height > 0)) throw new UserError(`shapes[${i}]: a surface_area shape needs a height — pass height_ft, or set it on ${tag} with edit_condition. Nothing was revised.`);
       }
+      if (r.role !== "count") this.checkStitchMeasurement(s, r.verts);
       return { s, tag, role: r.role, verts: r.verts, label: r.label?.trim() || undefined, height };
     });
     const removed = this.proposalPending(id);
@@ -4187,6 +4320,9 @@ export class Session {
     if (vertsPx.length < minPts) {
       throw new UserError(`A ${role === "count" ? "count marker needs at least 1 point" : role === "linear" || role === "surface_area" ? `${role} shape needs at least 2 points` : "closed shape needs at least 3 vertices"} — got ${vertsPx.length}.`);
     }
+    if (role !== "count" && (patch.verts !== undefined || patch.role !== undefined)) {
+      this.checkStitchMeasurement(s, vertsPx);
+    }
 
     // Quantities are always recomputed from the resulting geometry AND role, so
     // a role flip alone re-measures correctly (open length vs closed area).
@@ -4611,9 +4747,25 @@ export class Session {
         s.scaleConfirmed = e.confirmed;
         s.mask = undefined;
         s.rmask = undefined;
+        if (this.stitches.has(e.sheet_id)) {
+          this.stitches.get(e.sheet_id)!.seam_check = undefined;
+        }
         const before = new Map(e.shapes.map((sh) => [sh.id, sh]));
+        for (const comp of e.composites || []) {
+          const cs = this.sheets.get(comp.sheet_id);
+          if (cs) {
+            cs.upp = comp.upp;
+            cs.scaleSource = comp.source;
+            cs.scaleConfirmed = comp.confirmed;
+            cs.mask = undefined;
+            cs.rmask = undefined;
+          }
+          const cst = this.stitches.get(comp.sheet_id);
+          if (cst) cst.seam_check = comp.seam_check;
+          for (const sh of comp.shapes) before.set(sh.id, sh);
+        }
         this.shapes = this.shapes.map((sh) => before.get(sh.id) ?? sh);
-        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.shapes.length });
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: before.size });
       } else if (e.op === "commit") {
         const dead = new Set(e.ids);
         this.shapes = this.shapes.filter((x) => !dead.has(x.id));
@@ -5428,7 +5580,7 @@ export class Session {
     };
     this.stitches.set(id, st);
 
-    this.sheets.set(id, {
+    const compositeSheet: SheetState = {
       key: id,
       ord: this.nextOrd++,
       pageNum: 0,
@@ -5442,7 +5594,9 @@ export class Session {
       scaleSource: inheritedScaleSource,
       scaleConfirmed: inheritedConfirmed,
       text: [],
-    });
+    };
+    this.sheets.set(id, compositeSheet);
+    this.syncStitchText(st, compositeSheet);
 
     return {
       stitch_id: id,
@@ -5464,10 +5618,78 @@ export class Session {
     };
   }
 
+  private stitchDims(st: Stitch): Record<string, Dim> {
+    const dims: Record<string, Dim> = {};
+    for (const m of st.members) {
+      const ms = this.sheets.get(m.key);
+      if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
+    }
+    return dims;
+  }
+
+  private syncStitchText(st: Stitch, s: SheetState): void {
+    const dims = this.stitchDims(st);
+    const clips = seamClips(st.members, dims);
+    const text: { str: string; x: number; y: number }[] = [];
+    const spans: TextSpan[] = [];
+    for (let i = 0; i < st.members.length; i++) {
+      const m = st.members[i];
+      const ms = this.sheets.get(m.key);
+      if (!ms) continue;
+      const c = clips[i];
+      for (const t of ms.text) {
+        const x = +(t.x + m.dx).toFixed(1);
+        const y = +(t.y + m.dy).toFixed(1);
+        if (x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1) {
+          text.push({ str: t.str, x, y });
+        }
+      }
+      if (!ms.spans) ms.spans = ms.page ? textSpans(ms.page) : [];
+      for (const sp of ms.spans) {
+        const cx = (sp.x0 + sp.x1) / 2 + m.dx;
+        const cy = (sp.y0 + sp.y1) / 2 + m.dy;
+        if (cx >= c.x0 && cx <= c.x1 && cy >= c.y0 && cy <= c.y1) {
+          spans.push({
+            str: sp.str,
+            x0: +(sp.x0 + m.dx).toFixed(1),
+            y0: +(sp.y0 + m.dy).toFixed(1),
+            x1: +(sp.x1 + m.dx).toFixed(1),
+            y1: +(sp.y1 + m.dy).toFixed(1),
+            ...(sp.rot ? { rot: sp.rot } : {}),
+          });
+        }
+      }
+    }
+    s.text = text;
+    s.spans = spans;
+  }
+
+  private refreshStitches(): void {
+    for (const [id, st] of this.stitches) {
+      const s = this.sheets.get(id);
+      if (!s) continue;
+      const extent = stitchExtent(st.members, this.stitchDims(st));
+      s.widthPx = extent.w;
+      s.heightPx = extent.h;
+      s.widthPt = extent.w / 2.0;
+      s.heightPt = extent.h / 2.0;
+      s.geo = undefined;
+      s.snap = undefined;
+      s.mask = undefined;
+      s.rmask = undefined;
+      s.png = undefined;
+      s.hatch = undefined;
+      s.layers = undefined;
+      s.spans = undefined;
+      this.syncStitchText(st, s);
+    }
+    this.syncImportedStitchScales();
+  }
+
   async alignStitch(opts: {
     stitch: string;
-    anchor: [number, number];
-    moving: [number, number];
+    anchor?: [number, number];
+    moving?: [number, number];
     tolerance_in?: number;
     rot_tolerance_deg?: number;
   }) {
@@ -5475,37 +5697,58 @@ export class Session {
     const st = this.stitch(opts.stitch);
     const s = this.sheet(st.id);
     const resolvedSheets = st.members.map((m) => this.sheet(m.key));
-    const dims: Record<string, Dim> = {};
-    for (const ms of resolvedSheets) {
-      dims[ms.key] = { w: ms.widthPx, h: ms.heightPx };
+    const dims = this.stitchDims(st);
+
+    const hasAnchor = opts.anchor !== undefined;
+    const hasMoving = opts.moving !== undefined;
+    if (hasAnchor !== hasMoving) {
+      throw new UserError("Provide both anchor and moving points to realign, or omit both to verify the existing placement.");
     }
 
-    if (!Number.isFinite(opts.anchor[0]) || !Number.isFinite(opts.anchor[1]) ||
-      !Number.isFinite(opts.moving[0]) || !Number.isFinite(opts.moving[1])) {
-      throw new UserError("align anchor and moving coordinates must be finite numbers.");
+    const realigning = hasAnchor && hasMoving;
+    if (realigning) {
+      const hasWork = this.shapes.some((sh) => sh.sheet_id === st.id) || this.markups.some((m) => m.sheet_id === st.id);
+      if (hasWork) {
+        throw new UserError(`Cannot realign stitch "${st.id}" after shapes or annotations exist on it. Start a fresh stitch if realignment is required.`);
+      }
+      const anchor = opts.anchor!;
+      const moving = opts.moving!;
+      if (!Number.isFinite(anchor[0]) || !Number.isFinite(anchor[1]) ||
+        !Number.isFinite(moving[0]) || !Number.isFinite(moving[1])) {
+        throw new UserError("align anchor and moving coordinates must be finite numbers.");
+      }
+
+      const aligned = alignMembers(
+        st.members,
+        dims,
+        anchor,
+        moving,
+      );
+      if ("error" in aligned) {
+        throw new UserError(aligned.error);
+      }
+
+      st.members = aligned.members;
+      const extent = stitchExtent(st.members, dims);
+      s.widthPx = extent.w;
+      s.heightPx = extent.h;
+      s.widthPt = extent.w / 2.0;
+      s.heightPt = extent.h / 2.0;
+      s.geo = undefined;
+      s.snap = undefined;
+      s.mask = undefined;
+      s.rmask = undefined;
+      s.png = undefined;
+      s.hatch = undefined;
+      s.layers = undefined;
+      this.syncStitchText(st, s);
     }
 
-    const aligned = alignMembers(
-      st.members,
-      dims,
-      opts.anchor,
-      opts.moving,
-    );
-    if ("error" in aligned) {
-      throw new UserError(aligned.error);
+    if (s.upp == null) {
+      throw new UserError(this.scaleGate(s));
     }
 
-    st.members = aligned.members;
     st.aligned = true;
-
-    const extent = stitchExtent(st.members, dims);
-    s.widthPx = extent.w;
-    s.heightPx = extent.h;
-    s.widthPt = extent.w / 2.0;
-    s.heightPt = extent.h / 2.0;
-    s.geo = undefined;
-    s.snap = undefined;
-    s.mask = undefined;
 
     const memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array }> = {};
     for (const ms of resolvedSheets) {
@@ -5517,11 +5760,12 @@ export class Session {
       st.members,
       dims,
       memberSegs,
-      s.upp ?? 0.05,
+      s.upp,
       { tolerance_in: opts.tolerance_in, rot_tolerance_deg: opts.rot_tolerance_deg },
     );
     st.seam_check = seamCheck;
 
+    const extent = stitchExtent(st.members, dims);
     return {
       stitch_id: st.id,
       name: st.name,
@@ -5533,8 +5777,8 @@ export class Session {
       members: st.members.map((m) => ({ key: m.key, dx: m.dx, dy: m.dy })),
       seam_check: seamCheck,
       note: seamCheck.passed
-        ? `Stitch "${st.name}" aligned and verified. Seam check passed: linework mismatch max ${seamCheck.max_in.toFixed(2)}" (p95 ${seamCheck.p95_in.toFixed(2)}", median ${seamCheck.median_in.toFixed(2)}"), leftover rotation ${seamCheck.leftover_rotation_deg.toFixed(2)}°.`
-        : `Stitch "${st.name}" aligned, but seam check was WITHHELD (${seamCheck.withheld_reasons.join(" ")}). View discrepancies with view_sheet. Measuring across seam is refused until alignment is within tolerance.`,
+        ? `Stitch "${st.name}" ${realigning ? "aligned and verified" : "seam verified"}. Seam check passed: linework mismatch max ${seamCheck.max_in.toFixed(2)}" (p95 ${seamCheck.p95_in.toFixed(2)}", median ${seamCheck.median_in.toFixed(2)}"), leftover rotation ${seamCheck.leftover_rotation_deg.toFixed(2)}°.`
+        : `Stitch "${st.name}" ${realigning ? "aligned, but seam check was WITHHELD" : "seam check was WITHHELD"} (${seamCheck.withheld_reasons.join(" ")}). View discrepancies with view_sheet. Measuring across seam is refused until alignment is within tolerance.`,
     };
   }
 
@@ -5565,23 +5809,78 @@ export class Session {
     };
   }
 
-  importStitches(raw: unknown): void {
+  validateStitchesImport(raw: unknown, sheetRows: unknown): void {
+    const stitches = sanitizeStitches(raw, 4);
+    const incomingScales = new Map<string, number>();
+    if (Array.isArray(sheetRows)) {
+      for (const r of sheetRows as { sheet_id?: unknown; units_per_px?: unknown }[]) {
+        if (r && typeof r.sheet_id === "string" && typeof r.units_per_px === "number" && r.units_per_px > 0) {
+          if (!incomingScales.has(r.sheet_id)) incomingScales.set(r.sheet_id, r.units_per_px);
+        }
+      }
+    }
+    const effectiveUpp = (key: string): number | null => {
+      const s = this.sheets.get(key);
+      if (s?.upp != null) return s.upp;
+      return incomingScales.get(key) ?? null;
+    };
+    for (const st of stitches) {
+      const existing = this.stitches.get(st.id);
+      if (existing && !stitchPlacementsMatch(existing, st)) {
+        throw new UserError(`Import conflict: stitch "${st.id}" already exists with a different member placement.`);
+      }
+      const compUpp = effectiveUpp(st.id);
+      const memberUpps = st.members.map((m) => ({ key: m.key, upp: effectiveUpp(m.key) })).filter((x): x is { key: string; upp: number } => x.upp != null);
+      if (memberUpps.length > 0) {
+        const ref = memberUpps[0];
+        for (const m of memberUpps.slice(1)) {
+          if (Math.abs(m.upp - ref.upp) > 1e-6) {
+            throw new UserError(`Import scale conflict on stitch "${st.id}": member "${ref.key}" (${ref.upp} ft/px) disagrees with member "${m.key}" (${m.upp} ft/px).`);
+          }
+        }
+        if (compUpp != null && Math.abs(compUpp - ref.upp) > 1e-6) {
+          throw new UserError(`Import scale conflict on stitch "${st.id}": composite scale (${compUpp} ft/px) disagrees with member "${ref.key}" (${ref.upp} ft/px).`);
+        }
+      }
+    }
+  }
+
+  syncImportedStitchScales(): void {
+    for (const [id, st] of this.stitches) {
+      const sh = this.sheets.get(id);
+      if (!sh || sh.upp != null) continue;
+      const memberSheets = st.members.map((m) => this.sheets.get(m.key));
+      const calibratedMembers = memberSheets.filter((s): s is SheetState => !!s && s.upp != null);
+      if (calibratedMembers.length > 0 && calibratedMembers.length === memberSheets.filter(Boolean).length) {
+        const firstUpp = calibratedMembers[0].upp as number;
+        if (calibratedMembers.every((s) => Math.abs((s.upp as number) - firstUpp) < 1e-6)) {
+          sh.upp = firstUpp;
+          sh.scaleSource = calibratedMembers[0].scaleSource ?? "inherited";
+          sh.scaleConfirmed = calibratedMembers[0].scaleConfirmed;
+        }
+      }
+    }
+  }
+
+  importStitches(raw: unknown, opts?: { deferInherit?: boolean }): void {
     const stitches = sanitizeStitches(raw, 4);
     for (const st of stitches) {
-      if (this.stitches.has(st.id)) continue;
+      const existing = this.stitches.get(st.id);
+      if (existing) {
+        if (!stitchPlacementsMatch(existing, st)) {
+          throw new UserError(`Import conflict: stitch "${st.id}" already exists with a different member placement.`);
+        }
+        continue;
+      }
       this.stitches.set(st.id, {
         ...st,
         ...(st.aligned !== undefined ? { aligned: st.aligned } : {}),
         ...(st.seam_check ? { seam_check: st.seam_check } : {}),
       });
-      const dims: Record<string, Dim> = {};
-      for (const m of st.members) {
-        const ms = this.sheets.get(m.key);
-        if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
-      }
-      const extent = stitchExtent(st.members, dims);
-      if (!this.sheets.has(st.id)) {
-        this.sheets.set(st.id, {
+      const extent = stitchExtent(st.members, this.stitchDims(st));
+      let cs = this.sheets.get(st.id);
+      if (!cs) {
+        cs = {
           key: st.id,
           ord: this.nextOrd++,
           pageNum: 0,
@@ -5593,22 +5892,13 @@ export class Session {
           detected: null,
           upp: null,
           text: [],
-        });
+        };
+        this.sheets.set(st.id, cs);
       }
-      if (this.sheets.get(st.id)?.upp == null) {
-        const calibratedMembers = st.members
-          .map((m) => this.sheets.get(m.key))
-          .filter((s): s is SheetState => !!s && s.upp != null);
-        if (calibratedMembers.length > 0) {
-          const firstUpp = calibratedMembers[0].upp as number;
-          if (calibratedMembers.every((s) => Math.abs((s.upp as number) - firstUpp) < 1e-6)) {
-            const sh = this.sheets.get(st.id)!;
-            sh.upp = firstUpp;
-            sh.scaleSource = calibratedMembers[0].scaleSource ?? "inherited";
-            sh.scaleConfirmed = calibratedMembers[0].scaleConfirmed;
-          }
-        }
-      }
+      this.syncStitchText(st, cs);
+    }
+    if (!opts?.deferInherit) {
+      this.syncImportedStitchScales();
     }
   }
 

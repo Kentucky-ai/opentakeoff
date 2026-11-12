@@ -4,14 +4,11 @@ import { fileURLToPath } from "node:url";
 import { mkdtemp, copyFile, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
+import { PDFDocument } from "pdf-lib";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../server.ts";
 import { Session } from "../src/session.ts";
-
-const require = createRequire(import.meta.url);
-const { PDFDocument } = require("../../web/node_modules/pdf-lib/cjs/index.js");
 
 const SAMPLE_PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const SAMPLE_FINISH_PLAN = fileURLToPath(new URL("../../demo/sample-finish-plan.pdf", import.meta.url));
@@ -403,4 +400,145 @@ test("stitch_sheets: imported stitch without aligned or seam_check refuses cross
   });
   assert.equal(crossSeam.isError, true);
   assert.match(crossSeam.data.error, /Align the stitch across match lines/);
+});
+
+test("stitch_sheets: seam gate enforced on edit_shape/revise_proposal, align_stitch verify-only + work guard, scale consistency, text/spans, and merge refresh", async () => {
+  const client = await pair();
+  const { dir, p1, p2, k1, k2 } = await setupSplitFixture();
+  await call(client, "load_plan", { path: p1 });
+  await call(client, "load_plan", { path: p2, merge: true });
+  await call(client, "set_scale", { sheet: k1, label: '1/8" = 1\'-0"' });
+  await call(client, "set_scale", { sheet: k2, label: '1/8" = 1\'-0"' });
+
+  const unaligned = await call(client, "stitch_sheets", { sheets: [k1, k2], name: "VA Split" });
+  assert.equal(unaligned.isError, false);
+  const stitchId = unaligned.data.stitch_id;
+
+  // Vertical (top/bottom) unaligned stitch allows single-member polygon straddling x = mid (no false vertical-seam block)
+  const s1Info = await call(client, "sheet_info", { sheet: k1 });
+  const w1 = s1Info.data.width_px;
+  const h1 = s1Info.data.height_px;
+  const vertUnaligned = await call(client, "stitch_sheets", {
+    sheets: [k1, k2],
+    members: [{ key: k1, dx: 0, dy: 0 }, { key: k2, dx: 0, dy: h1 }],
+    name: "Top Bottom",
+  });
+  assert.equal(vertUnaligned.isError, false);
+  const topPoly = await call(client, "measure_polygon", {
+    sheet: vertUnaligned.data.stitch_id,
+    verts: [[w1 / 2 - 40, 100], [w1 / 2 + 40, 100], [w1 / 2 + 40, 200], [w1 / 2 - 40, 200]],
+    condition: "CPT-1",
+  });
+  assert.equal(topPoly.isError, false);
+
+  // Measure a single-member shape on unaligned horizontal stitch, then try edit_shape across seam -> refused
+  const leftPoly = await call(client, "measure_polygon", {
+    sheet: stitchId,
+    verts: [[100, 100], [200, 100], [200, 200], [100, 200]],
+    condition: "CPT-1",
+  });
+  assert.equal(leftPoly.isError, false);
+  const crossEdit = await call(client, "edit_shape", {
+    shape_id: leftPoly.data.shape_id,
+    verts: [[w1 - 50, 1500], [w1 + 50, 1500], [w1 + 50, 1600], [w1 - 50, 1600]],
+  });
+  assert.equal(crossEdit.isError, true);
+  assert.match(crossEdit.data.error, /Align the stitch across match lines/);
+
+  // revise_proposal crossing seam on unaligned stitch refuses atomically
+  const prop = await call(client, "propose_takeoff", { label: "P1", rationale: "Test" });
+  assert.equal(prop.isError, false);
+  const rev = await call(client, "revise_proposal", {
+    proposal_id: prop.data.proposal_id,
+    shapes: [{
+      sheet: stitchId,
+      condition: "CPT-1",
+      role: "floor_area",
+      verts: [[w1 - 50, 1500], [w1 + 50, 1500], [w1 + 50, 1600], [w1 - 50, 1600]],
+    }],
+  });
+  assert.equal(rev.isError, true);
+  assert.match(rev.data.error, /Align the stitch across match lines/);
+
+  // Realigning when shapes exist is refused, while verify-only align_stitch (no anchor/moving) is allowed
+  const blockedRealign = await call(client, "align_stitch", {
+    stitch: stitchId,
+    anchor: [2900, 1000],
+    moving: [3900, 1000],
+  });
+  assert.equal(blockedRealign.isError, true);
+  assert.match(blockedRealign.data.error, /after shapes or annotations exist/);
+
+  // Create clean correctly aligned stitch to test read_sheet_text, find_text, scale consistency, and verify-only
+  const valid = await call(client, "stitch_sheets", {
+    sheets: [k1, k2],
+    members: [{ key: k1, dx: 0, dy: 0 }, { key: k2, dx: 2400, dy: 0 }],
+    name: "Valid Align",
+  });
+  assert.equal(valid.isError, false);
+  const vId = valid.data.stitch_id;
+
+  const verifyOnly = await call(client, "align_stitch", { stitch: vId });
+  assert.equal(verifyOnly.isError, false);
+  assert.equal(verifyOnly.data.seam_check.passed, true);
+
+  const compText = await call(client, "read_sheet_text", { sheet: vId });
+  assert.equal(compText.isError, false);
+  assert.ok(compText.data.items.length > 0);
+  const sampleNeedle = compText.data.items.find((it: any) => String(it.str || "").trim().length >= 2)?.str.trim().slice(0, 4);
+  assert.ok(sampleNeedle);
+  const found = await call(client, "find_text", { q: sampleNeedle, sheet: vId });
+  assert.equal(found.isError, false);
+  assert.ok(found.data.hits.length >= 1);
+
+  // Conflicting scale directly on composite is refused
+  const badCompScale = await call(client, "set_scale", { sheet: vId, label: '1/4" = 1\'-0"' });
+  assert.equal(badCompScale.isError, true);
+  assert.match(badCompScale.data.error, /member sheet/);
+
+  // Recalibrating member k1 invalidates composite scale & seam_check; recalibrating k2 restores composite scale
+  const recal1 = await call(client, "set_scale", { sheet: k1, label: '1/4" = 1\'-0"' });
+  assert.equal(recal1.isError, false);
+  const listedMid = await call(client, "list_stitches");
+  const stMid = listedMid.data.stitches.find((x: any) => x.id === vId);
+  assert.equal(stMid.scale.upp, null);
+  assert.equal(stMid.seam_check, undefined);
+
+  const recal2 = await call(client, "set_scale", { sheet: k2, label: '1/4" = 1\'-0"' });
+  assert.equal(recal2.isError, false);
+  const listedSynced = await call(client, "list_stitches");
+  const stSynced = listedSynced.data.stitches.find((x: any) => x.id === vId);
+  assert.ok(stSynced.scale.upp > 0);
+  assert.equal(stSynced.seam_check, undefined); // still requires re-verification at new scale
+
+  // Export valid takeoff and verify partial-load + load_plan merge refresh + composite scale adoption
+  const expPath = path.join(dir, "valid-stitch.json");
+  await call(client, "export_takeoff", { path: expPath });
+
+  const clientMerge = await pair();
+  await call(clientMerge, "load_plan", { path: p1 });
+  const impPartial = await call(clientMerge, "import_takeoff", { path: expPath });
+  assert.equal(impPartial.isError, false);
+  const beforeMergeList = await call(clientMerge, "list_stitches");
+  const wPartial = beforeMergeList.data.stitches.find((x: any) => x.id === vId).extent.width_px;
+
+  await call(clientMerge, "load_plan", { path: p2, merge: true });
+  const afterMergeList = await call(clientMerge, "list_stitches");
+  const stAfterMerge = afterMergeList.data.stitches.find((x: any) => x.id === vId);
+  assert.ok(stAfterMerge.extent.width_px > wPartial);
+  const verifyImported = await call(clientMerge, "align_stitch", { stitch: vId });
+  assert.equal(verifyImported.isError, false);
+  assert.equal(verifyImported.data.seam_check.passed, true);
+
+  // Conflicting composite vs member scale in import_takeoff refuses cleanly without partial state
+  const badExpPath = path.join(dir, "bad-scale-stitch.json");
+  const badRaw = JSON.parse(await readFile(expPath, "utf8"));
+  badRaw.sheets = badRaw.sheets.map((row: any) => (row.sheet_id === vId ? { ...row, units_per_px: 0.0999 } : row));
+  await writeFile(badExpPath, JSON.stringify(badRaw, null, 2));
+  const clientBad = await pair();
+  await call(clientBad, "load_plan", { path: p1 });
+  await call(clientBad, "load_plan", { path: p2, merge: true });
+  const badImp = await call(clientBad, "import_takeoff", { path: badExpPath });
+  assert.equal(badImp.isError, true);
+  assert.match(badImp.data.error, /Import scale conflict on stitch/);
 });

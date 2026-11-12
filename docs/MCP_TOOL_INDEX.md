@@ -10,7 +10,7 @@ Default build: **65 tools**. Coordinates, where present, are full-sheet image pi
 
 | Tool | Stage | Availability | Required arguments |
 |---|---|---|---|
-| `align_stitch` | setup | Default | `stitch`, `anchor`, `moving` |
+| `align_stitch` | setup | Default | `stitch` |
 | `annotate` | revise | Default | `sheet`, `type` |
 | `apply_rules` | handoff | Default | None |
 | `assistant_listen` | setup | Default | None |
