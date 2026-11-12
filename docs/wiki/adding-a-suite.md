@@ -43,10 +43,11 @@ Add an entry to `TRADE_SUITES` in
   label: "Toilet accessories",
   prefixes: ["TA-"],
   divisions: ["10"],
-  summary: "grab bars, dispensers, mirrors and partitions counted by schedule mark: core tools",
+  summary: "grab bars, dispensers and mirrors counted by schedule mark: core tools",
   tools: [],
   method: [
     "find_schedule for the toilet accessory schedule; its marks (TA-1, TA-2) become the condition tags.",
+    "Read the schedule's furnished-by column: owner-furnished accessories are install only.",
     "sweep_schedule_row per mark without commit first, and read every match, withheld and text_only result.",
     "When each accessory shows on one plan only, sweep again with commit:true. When a restroom shows on a floor plan and again on its enlarged plan, place_count the occurrences you keep under the mark, so each accessory counts once.",
     "A mark on the schedule but on no plan is reported, never counted: create_rfi.",
