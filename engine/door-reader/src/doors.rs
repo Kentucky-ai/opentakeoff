@@ -373,6 +373,27 @@ impl BoxGrid {
     }
 }
 
+/// Two leaves back to back in one opening (a communicating pair, one swinging into each room): each piece has its own leaf
+/// ending at its outer end, and the pieces meet at the strike, away from both leaves. A swing cut in two by a 45-degree leaf has
+/// the leaf at the cut, where the pieces meet. Off: development rulers mostly count a communicating pair as one door (the joined
+/// find), and splitting it cost far more false finds than it found (round 4, E9).
+const BACK_TO_BACK: bool = false;
+const BACK_TO_BACK_R: f64 = 0.25;
+fn back_to_back(u: &Arc, q: &Arc) -> bool {
+    let mut best = (u.ends[0], q.ends[0]);
+    let mut bd = f64::INFINITY;
+    for e in u.ends {
+        for f in q.ends {
+            if dist(e, f) < bd {
+                bd = dist(e, f);
+                best = (e, f);
+            }
+        }
+    }
+    let leafed = |a: &Arc| !a.leafless && dist(a.leaf_far, a.hinge) > 0.5 * a.r;
+    leafed(u) && leafed(q) && dist(u.leaf_far, best.0) > BACK_TO_BACK_R * u.r && dist(q.leaf_far, best.1) > BACK_TO_BACK_R * q.r
+}
+
 /// A 45-degree leaf cuts one swing into two pieces; doubled strokes and nested clearance arcs draw it twice.
 pub fn one_per_swing(arcs: Vec<Arc>) -> Vec<Arc> {
     let mut order: Vec<Arc> = arcs;
@@ -386,6 +407,7 @@ pub fn one_per_swing(arcs: Vec<Arc>) -> Vec<Arc> {
                 && q.sweep <= 80.0
                 && u.sweep + q.sweep <= 110.0
                 && u.ends.iter().flat_map(|e| q.ends.iter().map(move |f| dist(*e, *f))).fold(f64::INFINITY, f64::min) < 0.6 * u.r
+                && !(BACK_TO_BACK && back_to_back(u, &q))
         });
         match host {
             None => joined.push(q),
