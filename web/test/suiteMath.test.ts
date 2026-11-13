@@ -15,6 +15,8 @@ test("parsePitch reads what roof plans print and refuses the rest", () => {
   assert.equal(parsePitch("6/12"), 6);
   assert.equal(parsePitch("4:12"), 4);
   assert.equal(parsePitch("8 in 12"), 8);
+  assert.equal(parsePitch("6in12"), 6);              // no spaces, as main reads it
+  assert.equal(parsePitch("0.25in12"), 0.25);
   assert.equal(parsePitch(7), 7);
   assert.equal(parsePitch("2"), 2);                  // ambiguous integer keeps rise per 12
   assert.equal(parsePitch(0), 0);
