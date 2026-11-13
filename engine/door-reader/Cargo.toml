@@ -1,0 +1,21 @@
+[package]
+name = "door-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "OpenTakeoff door reader: every door swing on a plan page, read from the page's own vector linework."
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+strip = true
