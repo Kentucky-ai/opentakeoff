@@ -125,6 +125,28 @@ test("roof_takeoff: a 40 × 25 gable at 6/12 — true totals, accessories, idemp
   const refused = await call(client, "roof_takeoff", { pitch: "steep" });
   assert.equal(refused.isError, true);
   assert.match(refused.data.error, /Cannot read pitch/);
+  assert.match(refused.data.error, /2%/);
+  assert.match(refused.data.error, /22\.5 deg/);
+  assert.match(refused.data.error, /1:48/);
+  assert.match(refused.data.error, /1\/4:12/);
+
+  // Pitch printed as percent, degrees, or ratio reads in report mode
+  const rPct = await call(client, "roof_takeoff", { pitch: "2%", apply: false });
+  assert.equal(rPct.isError, false);
+  assert.equal(rPct.data.pitch, "0.24/12");
+  near(rPct.data.slope_factor, 1.0002);
+
+  const rDeg = await call(client, "roof_takeoff", { pitch: "22.5 deg", apply: false });
+  assert.equal(rDeg.isError, false);
+  assert.equal(rDeg.data.pitch, "4.97/12");
+
+  const rRatio = await call(client, "roof_takeoff", { pitch: "1:48", apply: false });
+  assert.equal(rRatio.isError, false);
+  assert.equal(rRatio.data.pitch, "0.25/12");
+
+  const rFracRatio = await call(client, "roof_takeoff", { pitch: "1/4:12", apply: false });
+  assert.equal(rFracRatio.isError, false);
+  assert.equal(rFracRatio.data.pitch, "0.25/12");
 
   const r = await call(client, "roof_takeoff", { pitch: "6/12", ice_water: { eave_ft: 3 } });
   assert.equal(r.isError, false, JSON.stringify(r.data));
