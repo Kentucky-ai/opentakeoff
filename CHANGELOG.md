@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-13 — door reader
+
+A door reader that runs in the browser and in the MCP server: every door swing drawn on a plan page, read from the page's own vector linework. It is written in Rust (`engine/door-reader`, no dependencies) and committed as a WebAssembly module, so nothing needs a Rust toolchain to run it. Each door comes back with its box, single or pair, each leaf's hinge, radius and tip, a confidence, and the reasons for any doubt, so a caller can count the confident doors and list the rest for review. `npm run check` proves the embedded module is the committed one; `npm run check:door-reader:source` rebuilds it from source and compares bytes.
+
 ## 2026-10-10 — relicensed to AGPL-3.0
 
 OpenTakeoff is now licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only). Commit `84c7f48e` and everything before it stay under Apache-2.0, so existing forks and copies keep their rights. Outside contributions made before this change stay Apache-2.0 and keep their notices (`LICENSES/Apache-2.0.txt`). New contributions are accepted under `CLA.md`. If you run a modified copy for other people, including as a hosted service, you must publish your changes under the same license.
