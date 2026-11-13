@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-13 — door reader: split curves and chord doors
+
+- **A curve sent in two pieces is read as one.** Some PDFs hand pdf.js a swing as a move in one path op and the curve in the next. The door reader's extractor reset the current point per op, so the curve started at its first control point and a 3 ft swing fit at 4.7 ft and was dropped. Consecutive unpainted legacy path ops are now read as one path (`web/src/lib/doorVectors.ts`).
+- **Doors drawn with no arc.** A solid leaf standing open off a jamb, with a dashed straight chord from the far jamb to the leaf tip, is read as a door (`drawn: "chord"`). It needs a wall running on at both jambs, a free leaf tip and no hatch beside the dashes.
+- Communicating pairs (two leaves back to back in one opening) stay one record; splitting them is behind a flag that is off.
+
 ## 2026-11-13 — Doors suite
 
 Pick **Doors, frames & hardware** on the status bar's **Trade** menu. Every door on the open sheet is read from its own linework by the door reader (Rust compiled to WebAssembly, in the browser): each swing and leaf is traced on the plan in its hardware set's color, and a pair is one opening with two leaves. Doors are matched to the door schedule by their tags, and the hardware sets are read from specification section 08 71 00 when the project manual PDF is loaded too. **To review** lists only what the documents leave open (a swing the reader isn't sure is a door, a door with no number, a schedule row with no door, a door on a hardware set the spec lists for other doors, a pair drawn against a single scheduled), each answered in one click and saved with the project. **Compare with schedule** opens the schedule sheet below the plan with every row boxed in its door's color; a row and its door select each other, and rows are checked off as you go. **Add to estimate** counts openings (frames), door leaves and hardware sets separately.
