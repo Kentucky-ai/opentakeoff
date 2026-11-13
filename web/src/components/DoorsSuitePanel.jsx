@@ -122,6 +122,8 @@ export default function DoorsSuitePanel({
         {opening && (() => {
           const r = opening.row;
           const color = setColor(r?.hwSet, setOrder);
+          // a question still open on this door: the card shows it, not a verdict
+          const pendingQ = view.questions.find((q) => q.door === opening.door && !answers[q.id]) || null;
           const set = r?.hwSet ? setMap.get(String(r.hwSet).toUpperCase()) : null;
           return (
             <section className="ds-card" aria-label="Door details">
@@ -129,9 +131,19 @@ export default function DoorsSuitePanel({
               <div className="ds-card-title">
                 <span className="ds-dot" style={{ background: color }} />
                 <h3>{opening.mark ? `Door ${opening.mark}` : "Door with no number"}</h3>
-                <span className="ds-muted">{opening.withheld ? "Not sure it's a door" : r ? "On the plan, in the schedule" : "On the plan, not in the schedule"}</span>
+                <span className="ds-muted">{pendingQ ? "Needs your answer" : opening.withheld ? "Not sure it's a door" : r ? "On the plan, in the schedule" : "On the plan, not in the schedule"}</span>
               </div>
-              <p className="ds-counts-as">Counts as: <b>1 opening · 1 frame · {opening.leaves === 2 ? "2 door leaves" : "1 door leaf"}</b>{opening.leftOut ? " (left out by your answer)" : ""}</p>
+              <p className="ds-counts-as">Counts as: <b>1 opening · 1 frame · {opening.leaves === 2 ? "2 door leaves" : "1 door leaf"}</b>{pendingQ ? " · not counted until you answer below" : opening.leftOut ? " · left out by your answer" : ""}</p>
+              {pendingQ && (
+                <div className="ds-q ds-q-inline">
+                  <p>{pendingQ.text}</p>
+                  <p className="ds-why">{pendingQ.why}</p>
+                  <div className="ds-actions">
+                    <Btn kind="primary" onClick={() => onAnswer(pendingQ.id, pendingQ.answers[0])}>{pendingQ.answers[0]}</Btn>
+                    <Btn onClick={() => onAnswer(pendingQ.id, pendingQ.answers[1])}>{pendingQ.answers[1]}</Btn>
+                  </div>
+                </div>
+              )}
               <div className="ds-card-grid">
                 <Elevation opening={opening} color={color} />
                 <dl>
