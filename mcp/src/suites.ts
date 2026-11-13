@@ -193,7 +193,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       if (items.length) { session.suiteCommit("roof_takeoff", items); committed = items.length; steps++; }
     }
     return {
-      ...q, committed, undo_steps: steps, ...(a.apply ? { multipliers_set: applied } : {}),
+      ...q, pitch_as_given: a.pitch, committed, undo_steps: steps, ...(a.apply ? { multipliers_set: applied } : {}),
       next: a.apply
         ? "view_sheet overlay:true on the roof to check the derived runs; count penetrations under RF-PEN-<type>; export_report carries the true totals."
         : "Report only — call again with apply:true to write the slope factors and commit the accessory runs.",

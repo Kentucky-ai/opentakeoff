@@ -143,6 +143,7 @@ test("roof_takeoff: a 40 × 25 gable at 6/12 — true totals, accessories, idemp
   const rRatio = await call(client, "roof_takeoff", { pitch: "1:48", apply: false });
   assert.equal(rRatio.isError, false);
   assert.equal(rRatio.data.pitch, "0.25/12");
+  assert.equal(rRatio.data.pitch_as_given, "1:48");   // the reply shows the pitch as passed
 
   const rFracRatio = await call(client, "roof_takeoff", { pitch: "1/4:12", apply: false });
   assert.equal(rFracRatio.isError, false);

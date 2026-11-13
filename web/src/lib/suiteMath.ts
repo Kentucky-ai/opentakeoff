@@ -85,7 +85,7 @@ export function parsePitch(raw: unknown): number | null {
   }
 
   // Ratio with fraction rise: "1/4:12", "1/4 in 12", "1/4 / 12"
-  m = s.match(/^(\d+)\s*\/\s*(\d+)\s*(?::|\/|\bin\b)\s*(\d+(?:\.\d+)?)$/);
+  m = s.match(/^(\d+)\s*\/\s*(\d+)\s*(?::|\/|in)\s*(\d+(?:\.\d+)?)$/);
   if (m && Number(m[2]) > 0 && Number(m[3]) > 0) {
     const rise = Number(m[1]) / Number(m[2]);
     const run = Number(m[3]);
@@ -100,7 +100,7 @@ export function parsePitch(raw: unknown): number | null {
   if (m) return parsePitch(Number(m[1]));
 
   // Ratio: "1:48", "6:12", "4:12" or "1 in 48", "6 in 12"
-  m = s.match(/^(\d+(?:\.\d+)?)\s*(?::|\bin\b)\s*(\d+(?:\.\d+)?)$/);
+  m = s.match(/^(\d+(?:\.\d+)?)\s*(?::|in)\s*(\d+(?:\.\d+)?)$/);
   if (m && Number(m[2]) > 0) {
     const rise = Number(m[1]);
     const run = Number(m[2]);
