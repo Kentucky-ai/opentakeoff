@@ -59,7 +59,7 @@ fn family(d: Drawn) -> Option<u8> {
     match d {
         Drawn::Curve => Some(0),
         Drawn::Polyline | Drawn::Strokes => Some(1),
-        Drawn::Coarse => None,
+        Drawn::Coarse | Drawn::Chord => None,
     }
 }
 

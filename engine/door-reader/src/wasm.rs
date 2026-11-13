@@ -75,7 +75,7 @@ pub fn encode(paths: &[Path], fpp: Option<f64>) -> Vec<f64> {
         for k in 0..2 {
             match d.leaves.get(k) {
                 Some(a) => {
-                    let drawn = match a.drawn { Drawn::Curve => 0.0, Drawn::Polyline => 1.0, Drawn::Strokes => 2.0, Drawn::Coarse => 3.0 };
+                    let drawn = match a.drawn { Drawn::Curve => 0.0, Drawn::Polyline => 1.0, Drawn::Strokes => 2.0, Drawn::Coarse => 3.0, Drawn::Chord => 4.0 };
                     let leaf = if a.leafless { 2.0 } else if a.leaf_dashes { 1.0 } else if a.drawn == Drawn::Coarse { 3.0 } else { 0.0 };
                     o.extend_from_slice(&[a.hinge.x, a.hinge.y, a.r, a.leaf_far.x, a.leaf_far.y, drawn, a.sweep, a.misfit, a.jamb, a.strike as u8 as f64, leaf]);
                 }

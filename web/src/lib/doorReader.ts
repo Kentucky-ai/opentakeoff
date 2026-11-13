@@ -16,7 +16,7 @@ export interface DoorLeaf {
   /** far end of the leaf as drawn (for a leafless swing: the open end of its arc) */
   tip: [number, number];
   /** how the swing's arc is drawn */
-  drawn: "curve" | "polyline" | "strokes" | "coarse";
+  drawn: "curve" | "polyline" | "strokes" | "coarse" | "chord";
   sweepDeg: number;
   /** mean distance of the arc's points off its circle, page points */
   misfitPt: number;
@@ -80,7 +80,7 @@ interface Exports {
 }
 
 const HEAD_F64 = 4, LEAF_F64 = 11, DOOR_F64 = 10 + 2 * LEAF_F64;
-const DRAWN = ["curve", "polyline", "strokes", "coarse"] as const;
+const DRAWN = ["curve", "polyline", "strokes", "coarse", "chord"] as const;
 const LEAF = ["drawn", "dashed", "none", "part-open"] as const;
 let ready: Promise<Exports> | null = null;
 let loaded: Exports | null = null;
