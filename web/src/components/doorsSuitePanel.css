@@ -1,8 +1,8 @@
 /* Doors suite side panel — tokens only, so light and dark both follow the app. */
 .ds-panel {
-  position: fixed; right: 12px; top: calc(var(--topbar-h) + 12px); bottom: 56px; width: 392px; max-width: calc(100vw - 24px);
-  display: flex; flex-direction: column; background: var(--paper-cream); color: var(--ink);
-  border: 1px solid var(--ink-faint); box-shadow: var(--shadow-pop); font-family: var(--f-body); font-size: var(--fs-m);
+  order: 30; flex: 0 0 var(--ds-w, 392px); width: var(--ds-w, 392px); min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; overflow: hidden; background: var(--paper-cream); color: var(--ink);
+  border-left: 1px solid var(--ink-faint); font-family: var(--f-body); font-size: var(--fs-m);
 }
 .ds-head { padding: 14px 16px 12px; border-bottom: 1px solid var(--ink-faint); display: flex; flex-direction: column; gap: 8px; }
 .ds-title-row { display: flex; align-items: center; gap: 8px; }
@@ -30,7 +30,7 @@
 .ds-tag { align-self: flex-start; padding: 2px 8px; border: 1px solid currentColor; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
 .ds-tag-withheld { color: var(--ink-secondary); }
 .ds-tag-untagged, .ds-tag-unplaced { color: var(--cobalt); }
-.ds-tag-hardware, .ds-tag-pair { color: var(--c-warning); }
+.ds-tag-hardware, .ds-tag-pair, .ds-tag-ambiguous { color: var(--c-warning); }
 .ds-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ds-btn { min-height: 32px; padding: 6px 10px; border: 1px solid var(--ink-faint); background: var(--paper-bright); color: var(--ink); font: inherit; font-size: var(--fs-s); cursor: pointer; }
 .ds-btn:disabled { opacity: .5; cursor: default; }

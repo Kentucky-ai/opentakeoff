@@ -196,23 +196,92 @@ export function doorCenter(d: ReadDoor): { x: number; y: number; r: number } {
   return { x: (d.box[0] + d.box[2]) / 2, y: (d.box[1] + d.box[3]) / 2, r };
 }
 
+export type TagKind = "symbol" | "room" | "plain";
+
 /**
- * Which schedule mark each plan door carries: the nearest run that reads as
- * a scheduled mark, within a few swing radii, each mark used once (the
- * closest door wins). Returns one mark (or null) per door.
+ * What a run that reads as a door mark is, from the drawing around it:
+ * - "room": a room-number label (a room name sits right above it), never a door tag;
+ * - "symbol": enclosed by drawn ink on all sides (the hexagon, circle or box of a door tag);
+ * - "plain": loose text.
+ * `segs` is the sheet's linework as flat [x0, y0, x1, y1, …] in the runs' frame.
  */
-export function matchDoorTags(doors: ReadDoor[], runs: TextRun[], marks: Set<string>, reach = 2.6): (string | null)[] {
-  const cand: Array<{ d: number; i: number; mark: string }> = [];
+export function classifyTagRun(t: TextRun, runs: TextRun[], segs: ArrayLike<number> | null): TagKind {
+  const h = Math.max(1, Math.min(t.w, t.h) > 0 ? Math.min(t.w, t.h) : t.h);
+  const tc = [cx(t), cy(t)];
+  // a room label: a wordy run stacked just above (or the name and number in one box)
+  for (const r of runs) {
+    if (r === t || !/[A-Z]{3,}/i.test(r.str) || MARK_RE.test(up(r.str))) continue;
+    const dy = tc[1] - cy(r);
+    const overlap = Math.min(r.x + r.w, t.x + t.w) - Math.max(r.x, t.x);
+    if (dy > h * 0.4 && dy < h * 3.2 && overlap > -h * 0.5) return "room";
+  }
+  if (!segs || segs.length < 4) return "plain";
+  // enclosure: rays from the run's centre in 8 directions each meet ink
+  // between the text's own edge and a symbol's reach
+  const half = Math.max(t.w, t.h) / 2;
+  const reach = half + h * 2.2;
+  const x0 = tc[0] - reach, x1 = tc[0] + reach, y0 = tc[1] - reach, y1 = tc[1] + reach;
+  const near: number[] = [];
+  for (let i = 0; i + 3 < segs.length; i += 4) {
+    const ax = segs[i], ay = segs[i + 1], bx = segs[i + 2], by = segs[i + 3];
+    if (Math.max(ax, bx) < x0 || Math.min(ax, bx) > x1 || Math.max(ay, by) < y0 || Math.min(ay, by) > y1) continue;
+    near.push(ax, ay, bx, by);
+  }
+  let hits = 0;
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4, dx = Math.cos(a), dy = Math.sin(a);
+    // the text box's own extent along this ray: ink inside it is the glyphs' neighbourhood, not a border
+    const inner = Math.min(Math.abs(dx) > 1e-9 ? t.w / 2 / Math.abs(dx) : Infinity, Math.abs(dy) > 1e-9 ? t.h / 2 / Math.abs(dy) : Infinity) * 0.95;
+    let hit = false;
+    for (let i = 0; i + 3 < near.length && !hit; i += 4) {
+      const ex = near[i + 2] - near[i], ey = near[i + 3] - near[i + 1];
+      const den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const qx = near[i] - tc[0], qy = near[i + 1] - tc[1];
+      const tt = (qx * ey - qy * ex) / den, u = (qx * dy - qy * dx) / den;
+      if (u >= 0 && u <= 1 && tt >= inner && tt <= reach) hit = true;
+    }
+    if (hit) hits++;
+  }
+  return hits >= 7 ? "symbol" : "plain";
+}
+
+export interface TagMatch {
+  /** one mark (or null) per door */
+  marks: (string | null)[];
+  /** doors whose nearest tags read as two different marks: asked, not guessed */
+  ambiguous: Record<number, [string, string]>;
+}
+
+/**
+ * Which schedule mark each plan door carries. A tag inside a door-tag symbol
+ * beats loose text; a room-number label is never a door tag. The nearest
+ * candidate within a few swing radii wins, each mark used once (the closest
+ * door takes it). When a door's two best candidates are different marks of
+ * the same kind at nearly the same distance, the door is left unmatched and
+ * reported as ambiguous.
+ */
+export function matchDoorTags(doors: ReadDoor[], runs: TextRun[], marks: Set<string>, opts: { segs?: ArrayLike<number> | null; reach?: number } = {}): TagMatch {
+  const reach = opts.reach ?? 2.6;
   const tagRuns = runs.filter((r) => marks.has(up(r.str)));
+  const kind = new Map(tagRuns.map((t) => [t, classifyTagRun(t, runs, opts.segs ?? null)]));
+  const usable = tagRuns.filter((t) => kind.get(t) !== "room");
+  const cand: Array<{ d: number; i: number; mark: string; strong: boolean }> = [];
+  const ambiguous: Record<number, [string, string]> = {};
   doors.forEach((door, i) => {
     const c = doorCenter(door);
-    for (const t of tagRuns) {
-      const dx = cx(t) - c.x, dy = cy(t) - c.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist <= c.r * reach) cand.push({ d: dist, i, mark: up(t.str) });
+    const mine: Array<{ d: number; mark: string; strong: boolean }> = [];
+    for (const t of usable) {
+      const dist = Math.hypot(cx(t) - c.x, cy(t) - c.y);
+      if (dist <= c.r * reach) mine.push({ d: dist, mark: up(t.str), strong: kind.get(t) === "symbol" });
     }
+    // symbol tags first, then distance
+    mine.sort((a, b) => Number(b.strong) - Number(a.strong) || a.d - b.d);
+    const [p, q] = mine;
+    if (p && q && p.mark !== q.mark && p.strong === q.strong && q.d < p.d * 1.15) { ambiguous[i] = [p.mark, q.mark]; return; }
+    for (const m of mine) cand.push({ ...m, i });
   });
-  cand.sort((a, b) => a.d - b.d);
+  cand.sort((a, b) => Number(b.strong) - Number(a.strong) || a.d - b.d);
   const out: (string | null)[] = doors.map(() => null);
   const used = new Set<string>();
   for (const c of cand) {
@@ -220,7 +289,42 @@ export function matchDoorTags(doors: ReadDoor[], runs: TextRun[], marks: Set<str
     out[c.i] = c.mark;
     used.add(c.mark);
   }
-  return out;
+  return { marks: out, ambiguous };
+}
+
+/** Where a door's swing actually sweeps: per leaf, its hinge, the open leaf's tip and the closed end. */
+export function swingPoints(d: ReadDoor): Array<{ hinge: [number, number]; tip: [number, number]; closed: [number, number]; r: number }> {
+  return d.leaves.map((l) => {
+    const h = l.hinge, t = l.tip, r = l.radiusPt, sw = ((l.sweepDeg || 90) * Math.PI) / 180;
+    const a0 = Math.atan2(t[1] - h[1], t[0] - h[0]);
+    const ends = [1, -1].map((sg) => [h[0] + r * Math.cos(a0 + sg * sw), h[1] + r * Math.sin(a0 + sg * sw)] as [number, number]);
+    const inBox = (q: [number, number]) => q[0] >= d.box[0] - r * 0.15 && q[0] <= d.box[2] + r * 0.15 && q[1] >= d.box[1] - r * 0.15 && q[1] <= d.box[3] + r * 0.15;
+    const closed = inBox(ends[0]) || !inBox(ends[1]) ? ends[0] : ends[1];
+    return { hinge: h, tip: t, closed, r };
+  });
+}
+
+/**
+ * Where a door's count marks go: inside its swing (the open side), never on
+ * the tag. `frame` sits a little past the middle of the sweep, `hardware`
+ * nearer the hinge, and one `leaves` mark per leaf at the leaf's midpoint;
+ * any mark that would land on a tag run slides out along the swing.
+ */
+export function countMarkPoints(d: ReadDoor, avoid: TextRun[] = []): { frame: [number, number]; hardware: [number, number]; leaves: Array<[number, number]> } {
+  const sp = swingPoints(d);
+  const s0 = sp[0];
+  const onTag = (p: [number, number]) => avoid.some((t) => p[0] >= t.x - 2 && p[0] <= t.x + t.w + 2 && p[1] >= t.y - 2 && p[1] <= t.y + t.h + 2);
+  const inSwing = (frac: number, s = s0): [number, number] => {
+    const mx = (s.tip[0] + s.closed[0]) / 2 - s.hinge[0], my = (s.tip[1] + s.closed[1]) / 2 - s.hinge[1];
+    const L = Math.hypot(mx, my) || 1;
+    return [s.hinge[0] + (mx / L) * s.r * frac, s.hinge[1] + (my / L) * s.r * frac];
+  };
+  const place = (fracs: number[], s = s0) => { for (const f of fracs) { const p = inSwing(f, s); if (!onTag(p)) return p; } return inSwing(fracs[0], s); };
+  return {
+    frame: place([0.62, 0.8, 0.45]),
+    hardware: place([0.34, 0.5, 0.22]),
+    leaves: sp.map((s) => { const m: [number, number] = [(s.hinge[0] + s.tip[0]) / 2, (s.hinge[1] + s.tip[1]) / 2]; return onTag(m) ? place([0.5, 0.7], s) : m; }),
+  };
 }
 
 // ── openings and questions ────────────────────────────────────────────────────
@@ -241,7 +345,7 @@ export function scheduledPair(row: ScheduleRow | undefined | null): boolean {
   return w != null && w >= 5 - 1e-6;
 }
 
-export type QuestionKind = "withheld" | "untagged" | "unplaced" | "hardware" | "pair";
+export type QuestionKind = "withheld" | "untagged" | "unplaced" | "hardware" | "pair" | "ambiguous";
 
 export interface DoorQuestion {
   id: string;
@@ -277,7 +381,7 @@ export interface DoorSuiteView {
 
 export const ANSWERS = {
   withheld: ["It's a door, count it", "Not a door, leave it out"] as [string, string],
-  untagged: ["Existing, leave it out", "Count it as a new door"] as [string, string],
+  untagged: (gray: boolean): [string, string] => (gray ? ["Existing, leave it out", "Count it as a new door"] : ["Count it as a new door", "Existing, leave it out"]),
   unplaced: ["Not on this sheet, check another", "Not in this scope, leave it out"] as [string, string],
   hardware: (set: string): [string, string] => [`Keep set ${set}, as scheduled`, "Ask the architect"],
   pair: (plan: boolean): [string, string] => (plan ? ["Count it as a pair, as drawn", "Count it as a single, as scheduled"] : ["Count it as a single, as drawn", "Count it as a pair, as scheduled"]),
@@ -300,8 +404,19 @@ export function buildDoorSuite(input: {
   sheetLabel: string;
   /** schedule marks found on OTHER sheets of the set (never asked about here) */
   placedElsewhere?: Set<string>;
+  /** per door: its swing drawn gray (lighter than the plan's other doors), dark, or unknown */
+  tone?: Array<"gray" | "dark" | null>;
+  /** doors whose tag reads two ways (matchDoorTags) */
+  ambiguous?: Record<number, [string, string]>;
 }): DoorSuiteView {
-  const { doors, withheld, marks, schedule, sets, answers, sheetLabel } = input;
+  const { doors, withheld, schedule, sets, answers, sheetLabel } = input;
+  // an ambiguous tag, once answered, is the mark the person picked
+  const marks = input.marks.map((m, i) => {
+    const amb = input.ambiguous?.[i];
+    if (!amb) return m;
+    const a = answers[`tag:${i}`];
+    return a ? (/^It's (.+)$/.exec(a)?.[1] ?? null) : null;
+  });
   const byMark = new Map((schedule?.rows || []).map((r) => [r.mark, r]));
   const questions: DoorQuestion[] = [];
   const openings: Opening[] = doors.map((d, i) => {
@@ -321,15 +436,25 @@ export function buildDoorSuite(input: {
         why: d.doubts.length ? `Why: ${d.doubts.slice(0, 3).join(", ")}` : "The drawing doesn't settle it",
         answers: ANSWERS.withheld,
       });
+    } else if (input.ambiguous?.[i] && !answers[`tag:${i}`]) {
+      const [a, b] = input.ambiguous[i];
+      questions.push({
+        id: `tag:${i}`, kind: "ambiguous", door: i,
+        text: `This door's tag could read ${a} or ${b}: the two tags sit about the same distance from it.`,
+        why: `Pick the one the drawing means; the door is left out of the count until you do.`,
+        answers: [`It's ${a}`, `It's ${b}`],
+      });
+      leftOut = true;
     } else if (!mark && schedule) {
       const id = `untagged:${i}`;
-      // not counted until answered: the recommended answer leaves it out
-      if (answers[id] !== ANSWERS.untagged[1]) leftOut = true;
+      const gray = input.tone?.[i] === "gray";
+      // not counted until answered
+      if (answers[id] !== "Count it as a new door") leftOut = true;
       questions.push({
         id, kind: "untagged", door: i,
         text: `A door on ${sheetLabel} has no door number and no schedule row. It's left out of the count until you answer.`,
-        why: `${planPair ? "Pair" : "Single"} swing, ${d.dashed ? "drawn dashed (existing or to be removed)" : "drawn as new work"}`,
-        answers: ANSWERS.untagged,
+        why: gray ? "Drawn gray, likely existing" : "No door number or schedule row",
+        answers: ANSWERS.untagged(gray),
       });
     }
     if (row && !isWithheld) {

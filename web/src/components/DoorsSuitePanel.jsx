@@ -5,7 +5,6 @@
 // Stateless about the takeoff: the canvas owns the reading (lib/doorSuite.ts)
 // and the answers; this renders them and reports clicks.
 import React from "react";
-import { Z } from "../lib/ui.js";
 import { countLine, doorSetColor as setColor } from "../lib/doorSuite.ts";
 import "./doorsSuitePanel.css";
 
@@ -71,7 +70,7 @@ export default function DoorsSuitePanel({
     ...(rows.length ? [{ id: "schedule", label: `Schedule (${checkedN}/${rows.length})` }] : []),
   ];
   return (
-    <section className="ds-panel" aria-label="Doors suite" style={{ zIndex: Z.drawer }}
+    <aside className="ds-panel" aria-label="Doors suite" data-doors-dock=""
       onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       <header className="ds-head">
         <div className="ds-title-row">
@@ -85,6 +84,12 @@ export default function DoorsSuitePanel({
         </p>}
         {c && <div className="ds-bar" aria-hidden="true"><div style={{ width: `${pct}%` }} /></div>}
         {status && status.note && <p className="ds-note">{status.note}</p>}
+        {c && (
+          <div className="ds-compare">
+            <Btn kind="primary" disabled={!c.openings} onClick={onAdd}>{added ? "Update estimate" : `Add ${c.openings} opening${c.openings === 1 ? "" : "s"} to estimate`}</Btn>
+            <span className="ds-muted">{open.length ? `answer ${open.length} more to finish` : `${countLine(c)} ready`}</span>
+          </div>
+        )}
         {canCompare && (
           <div className="ds-compare">
             <Btn kind={compareOn ? "ghost" : "plain"} aria-pressed={!!compareOn} onClick={() => { onCompare(); if (!compareOn) onTab("schedule"); }}>
@@ -156,7 +161,7 @@ export default function DoorsSuitePanel({
             {!busy && !status?.docsBusy && view && open.length === 0 && <p className="ds-done">Nothing left to review on this sheet. Add the doors to your estimate below.</p>}
             {open.map((q) => (
               <article key={q.id} className="ds-q">
-                <span className={`ds-tag ds-tag-${q.kind}`}>{({ withheld: "Not sure it's a door", untagged: "Door with no number", unplaced: "Scheduled, not found", hardware: "Hardware set", pair: "Pair or single" })[q.kind]}</span>
+                <span className={`ds-tag ds-tag-${q.kind}`}>{({ withheld: "Not sure it's a door", untagged: "Door with no number", unplaced: "Scheduled, not found", hardware: "Hardware set", pair: "Pair or single", ambiguous: "Which tag?" })[q.kind]}</span>
                 <p>{q.text}</p>
                 <p className="ds-why">{q.why}</p>
                 <div className="ds-actions">
@@ -170,7 +175,7 @@ export default function DoorsSuitePanel({
               <h4 className="ds-sub">Answered</h4>
               {done.map((q) => (
                 <div key={q.id} className="ds-answered">
-                  <span>{q.mark ? `Door ${q.mark}` : q.kind === "withheld" ? "Unsure swing" : "Door with no number"}: <b>{answers[q.id]}</b></span>
+                  <span>{q.mark ? `Door ${q.mark}` : q.kind === "withheld" ? "Unsure swing" : q.kind === "ambiguous" ? "Door tag" : "Door with no number"}: <b>{answers[q.id]}</b></span>
                   <Btn onClick={() => onUndo(q.id)}>Undo</Btn>
                 </div>
               ))}
@@ -257,12 +262,6 @@ export default function DoorsSuitePanel({
         )}
       </div>
 
-      {c && (
-        <footer className="ds-foot">
-          <span>{open.length ? `${countLine(c)} counted · answer ${open.length} more to finish` : `${countLine(c)} ready`}</span>
-          <Btn kind="primary" disabled={!c.openings} onClick={onAdd}>{added ? "Add again (updates)" : "Add to estimate"}</Btn>
-        </footer>
-      )}
-    </section>
+    </aside>
   );
 }

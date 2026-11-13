@@ -164,7 +164,7 @@ import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 import DoorsSuitePanel from "../components/DoorsSuitePanel.jsx";
-import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL } from "../lib/doorSuite.ts";
+import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL, countMarkPoints } from "../lib/doorSuite.ts";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
@@ -6942,6 +6942,7 @@ export default function TakeoffCanvas() {
   // "Add to estimate".
   const doorSuiteOn = viewTrade === "doors" && view === "canvas";
   const doorRunsRef = useRef(new Map());            // sheet key → text runs in the door frame (unrotated page points)
+  const doorSegsRef = useRef(new Map());            // sheet key → the sheet's linework, flat [x0,y0,x1,y1,…], same frame
   const [doorReads, setDoorReads] = useState({});   // sheet key → { status, doors, withheld, rot, w0, h0 }
   const [doorDocs, setDoorDocs] = useState(null);   // { status, schedule, sets } read once per loaded set
   const [doorSel, setDoorSel] = useState(null);     // { key, i } — the door open in the card
@@ -7016,7 +7017,7 @@ export default function TakeoffCanvas() {
         doorReadBusyRef.current.add(p.key);
         setDoorReads((prev) => ({ ...prev, [p.key]: { status: "reading" } }));
         try {
-          const [{ extractDoorVectors }, { readDoors, splitDoors, DOOR_CUTOFFS }, { textRuns }] = await Promise.all([import("../lib/doorVectors.ts"), import("../lib/doorReader.ts"), import("../lib/doorSuite.ts")]);
+          const [{ extractDoorVectors }, { readDoors, splitDoors, DOOR_CUTOFFS }, { textRuns }, { extractVectorGeometry, SEG_CURVE }] = await Promise.all([import("../lib/doorVectors.ts"), import("../lib/doorReader.ts"), import("../lib/doorSuite.ts"), import("../lib/oneclick.ts")]);
           const t = parseSheetKey(p.key);
           const out = await docCache.withDoc(t.file, async (pdf) => {
             const pg = pageObjsRef.current.get(p.key) || await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
@@ -7025,7 +7026,24 @@ export default function TakeoffCanvas() {
             const reading = await readDoors(extractDoorVectors(ol, vp0.transform, pdfjsLib.OPS));
             const { withheld } = splitDoors(reading, DOOR_CUTOFFS.foundFirst);
             doorRunsRef.current.set(p.key, textRuns(tc.items, vp0.transform));
-            return { status: "done", doors: reading.doors, withheld: reading.doors.map((d) => withheld.includes(d)), rot: ((pg.rotate || 0) % 360 + 360) % 360, w0: vp0.width, h0: vp0.height, fpp: reading.fpp };
+            // the sheet's linework in the same frame: door-tag symbols around
+            // tag text, and each swing's stroke tone (gray = likely existing)
+            const geo = extractVectorGeometry(ol, vp0.transform, pdfjsLib.OPS);
+            doorSegsRef.current.set(p.key, geo.segs);
+            const lums = reading.doors.map((d) => {
+              const v = [];
+              for (let i = 0, n = 0; i + 3 < geo.segs.length; i += 4, n++) {
+                if (!(geo.meta[n] & SEG_CURVE) || !geo.lum) continue;
+                const x = (geo.segs[i] + geo.segs[i + 2]) / 2, y = (geo.segs[i + 1] + geo.segs[i + 3]) / 2;
+                if (x >= d.box[0] - 1 && x <= d.box[2] + 1 && y >= d.box[1] - 1 && y <= d.box[3] + 1) v.push(geo.lum[n]);
+              }
+              v.sort((a, b) => a - b);
+              return v.length ? v[v.length >> 1] : null;
+            });
+            const known = lums.filter((x) => x != null).sort((a, b) => a - b);
+            const typical = known.length ? known[known.length >> 1] : null;
+            const tone = lums.map((l) => (l == null || typical == null ? null : l >= 100 && l >= typical + 45 ? "gray" : "dark"));
+            return { status: "done", doors: reading.doors, withheld: reading.doors.map((d) => withheld.includes(d)), tone, rot: ((pg.rotate || 0) % 360 + 360) % 360, w0: vp0.width, h0: vp0.height, fpp: reading.fpp };
           });
           setDoorReads((prev) => ({ ...prev, [p.key]: out }));
         } catch (e) {
@@ -7058,7 +7076,7 @@ export default function TakeoffCanvas() {
     if (!sp?.img?.w || !el) { doorFlyRef.current = { key, rect, fill, tries: 0 }; if (!panelKeySet.has(key)) openSheets([key], false); return; }
     doorFlyRef.current = null;
     const r = el.getBoundingClientRect();
-    const visibleW = Math.max(160, Math.min(r.right, window.innerWidth - 416) - r.left);
+    const visibleW = r.width;
     const [[x0, y0], [x1, y1]] = rect;
     const w = Math.max(1, (x1 - x0) * sp.img.w), h = Math.max(1, (y1 - y0) * sp.img.h);
     const scale = Math.min(8, Math.max(tfRef.current.scale, Math.min((visibleW * fill) / w, (r.height * fill) / h)));
@@ -7077,8 +7095,8 @@ export default function TakeoffCanvas() {
     const rd = doorKey && doorReads[doorKey];
     if (!doorSuiteOn || !rd || rd.status !== "done") return null;
     const schedule = doorDocs?.schedule ? { rows: doorDocs.schedule.rows, box: doorDocs.schedule.box } : null;
-    const marks = matchDoorTags(rd.doors, doorRunsRef.current.get(doorKey) || [], new Set((schedule?.rows || []).map((r) => r.mark)));
-    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, marks, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
+    const tm = matchDoorTags(rd.doors, doorRunsRef.current.get(doorKey) || [], new Set((schedule?.rows || []).map((r) => r.mark)), { segs: doorSegsRef.current.get(doorKey) || null });
+    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, marks: tm.marks, ambiguous: tm.ambiguous, tone: rd.tone, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doorSuiteOn, doorKey, doorReads, doorDocs, doorAnswers]);
   const doorSetOrder = useMemo(() => {
@@ -7111,32 +7129,49 @@ export default function TakeoffCanvas() {
     const h = lab.h * 22;
     flyDoorRect(s.key, [[(lab.x - lab.h * 8) / s.w, (lab.y - h) / s.h], [(lab.x + lab.w + lab.h * 8) / s.w, (lab.y + lab.h * 1.5) / s.h]], 0.6);
   };
+  // Add (or update) the doors in the estimate: frames per opening, door leaves
+  // per leaf, hardware sets per opening, as count marks placed inside each
+  // swing (never on the tag). An update replaces the marks the last add made
+  // on this sheet, so a second press never double-counts.
   function addDoorsToEstimate() {
     const v = doorView, rd = doorReads[doorKey], p = panelByKey(doorKey);
     if (!v || !rd || !p?.img?.w) return;
     const groups = estimateGroups(v.openings);
     const cs = agentStateRef.current.conditions;
     const condFor = (tag) => cs.find((c) => c.finish_tag === tag) || mintCondition(tag);
-    const center = (d) => doorToImg(rd, p, [(d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2]);
-    const shapes = [];
-    const origin = { method: "door_reader" };
+    const markSet = new Set((doorDocs?.schedule?.rows || []).map((r) => r.mark));
+    const tags = (doorRunsRef.current.get(doorKey) || []).filter((r) => markSet.has(r.str.trim().toUpperCase()) || /^[A-Z]?\d{2,4}[A-Z]{0,2}$/.test(r.str.trim()));
+    const norm = ([x, y]) => { const [ix, iy] = doorToImg(rd, p, [x, y]); return [ix / p.img.w, iy / p.img.h]; };
+    const add = [];
     for (const g of groups) {
       const label = `${g.type} ${g.size}`.trim();
       const frame = condFor(`DR FRAME ${label}`), leaf = condFor(`DR LEAF ${label}`);
       for (const o of g.openings) {
         const d = rd.doors[o.door];
-        const [x, y] = center(d);
-        shapes.push({ sheet_id: doorKey, condition_id: frame.id, measure_role: "count", verts_norm: [[x / p.img.w, y / p.img.h]], computed: { count: 1 }, origin });
-        const hinges = d.leaves.length >= o.leaves ? d.leaves.slice(0, o.leaves).map((l) => doorToImg(rd, p, l.hinge)) : Array.from({ length: o.leaves }, () => [x, y]);
-        for (const [hx, hy] of hinges) shapes.push({ sheet_id: doorKey, condition_id: leaf.id, measure_role: "count", verts_norm: [[hx / p.img.w, hy / p.img.h]], computed: { count: 1 }, origin });
+        const origin = { method: "door_reader", door: o.mark || `door-${o.door}` };
+        const pts = countMarkPoints(d, tags);
+        add.push({ sheet_id: doorKey, condition_id: frame.id, measure_role: "count", verts_norm: [norm(pts.frame)], computed: { count: 1 }, origin });
+        const leafPts = pts.leaves.length >= o.leaves ? pts.leaves.slice(0, o.leaves) : Array.from({ length: o.leaves }, (_, k) => pts.leaves[k] || pts.frame);
+        for (const lp of leafPts) add.push({ sheet_id: doorKey, condition_id: leaf.id, measure_role: "count", verts_norm: [norm(lp)], computed: { count: 1 }, origin });
         const set = o.row?.hwSet;
-        if (set) shapes.push({ sheet_id: doorKey, condition_id: condFor(`HW SET ${set}`).id, measure_role: "count", verts_norm: [[x / p.img.w, y / p.img.h]], computed: { count: 1 }, origin });
+        if (set) add.push({ sheet_id: doorKey, condition_id: condFor(`HW SET ${set}`).id, measure_role: "count", verts_norm: [norm(pts.hardware)], computed: { count: 1 }, origin });
       }
     }
-    if (!shapes.length) return;
-    dispatchShape({ type: "add", shapes });
+    if (!add.length) return;
+    const prior = shapes.filter((s) => s.sheet_id === doorKey && s.origin?.method === "door_reader").map((s) => s.id);
+    // one base for both steps (dispatchShape reads the render's `shapes`, so two
+    // dispatches in a row would have the second undo the first)
+    let base = shapes;
+    const step = (cmd) => {
+      const res = applyShapeCommand(base, cmd);
+      base = res.shapes;
+      if (res.inverse) { const st = recordCommand(undoStackRef.current, { cmd, inverse: res.inverse }); undoStackRef.current = st.undo; redoStackRef.current = st.redo; }
+    };
+    if (prior.length) step({ type: "delete", ids: prior, noCount: true });
+    step({ type: "add", shapes: add });
+    setShapes(base);
     setDoorAnswers((prev) => ({ ...prev, [`added:${doorKey}`]: nowIso() }));
-    setCommitMsg(`Added ${v.counts.openings} openings (frames), ${v.counts.leaves} door leaves and their hardware sets to the estimate · one undo step (${keyText("⌘Z")}).`);
+    setCommitMsg(`${prior.length ? "Updated" : "Added"} ${v.counts.openings} openings (frames), ${v.counts.leaves} door leaves and their hardware sets in the estimate · ${prior.length ? "two undo steps" : "one undo step"} (${keyText("⌘Z")}).`);
   }
 
   // ── Compare with schedule: the real door schedule sheet beside the plan ──
@@ -7164,9 +7199,9 @@ export default function TakeoffCanvas() {
   const focusDoorRow = (mark) => {
     const r = doorDocs?.schedule?.rows.find((x) => x.mark === mark);
     if (!r) return;
-    // the row plus its check box, centred in the part of the pane the doors panel leaves visible
+    // the row plus its check box, centred in the schedule pane
     const rect = doorRowRect(r, 4);
-    if (doorCompareOn && rect) setDoorRefFocus({ rect: [rect[0], [rect[1][0] + 30 / doorDocs.schedule.w, rect[1][1]]], token: ++doorRefSeqRef.current, fill: 0.92, clipRight: window.innerWidth - 416 });
+    if (doorCompareOn && rect) setDoorRefFocus({ rect: [rect[0], [rect[1][0] + 30 / doorDocs.schedule.w, rect[1][1]]], token: ++doorRefSeqRef.current, fill: 0.92 });
   };
   // a row picked (panel list or the sheet): its door is selected and the plan flies there
   const pickDoorRow = (mark) => {
@@ -11865,7 +11900,38 @@ export default function TakeoffCanvas() {
             exactly as it did as canvas state. Collapse/expand keeps the current
             transform — the stage is anchored top-left, so a re-fit would be a
             jarring jump. */}
-        {workspaceLayout && !focusMode && (
+      {/* ── Doors suite panel — DOCKED in the layout row while the trade is Doors
+              (takes the Conditions dock's place, so the canvas and the reference
+              pane reflow around it instead of sitting under it) ── */}
+        {doorSuiteOn && (() => {
+          const rd = doorKey ? doorReads[doorKey] : null;
+          const reading = !rd || rd.status === "reading";
+          const docsBusy = !doorDocs || doorDocs.status === "reading";
+          const status = rd?.status === "failed" ? { busy: true, text: `Couldn't read this sheet's doors: ${rd.error}` }
+            : reading ? { busy: true, text: "Reading the doors on this sheet…" }
+            : docsBusy ? { busy: false, docsBusy: true, note: "Reading the door schedule and the hardware spec in the loaded files…" }
+            : { busy: false, note: !doorDocs.schedule ? "No door schedule found in the loaded files: doors are counted from the plan alone." : !doorDocs.sets.length ? "No spec section 08 71 00 loaded: hardware sets come from the schedule. Drop the project manual PDF in to add their items." : null };
+          return (
+            <DoorsSuitePanel
+              sheetLabel={doorKey ? sheetBaseLabel(doorKey) : "this sheet"} status={status} view={doorView}
+              schedule={doorDocs?.schedule ? { ...doorDocs.schedule, label: sheetBaseLabel(doorDocs.schedule.key) } : null}
+              sets={doorDocs?.sets || []} setOrder={doorSetOrder} answers={doorAnswers}
+              sel={doorSel && doorSel.key === doorKey ? doorSel.i : null}
+              coach={doorCoach} onDismissCoach={() => { setDoorCoach(false); try { localStorage.setItem("opentakeoff_doors_coach", "seen"); } catch { /* private mode */ } }}
+              tab={doorTab} onTab={(t) => { setDoorTab(t); setDoorSel(null); }}
+              onAnswer={answerDoor} onUndo={undoDoor}
+              onSelect={(i) => { setDoorSel(i == null ? null : { key: doorKey, i }); if (i == null) setDoorTab("doors"); }}
+              onShowDoor={(i) => showDoor(i)} onShowRow={showScheduleRow} onShowElevation={showElevation}
+              onShowSet={(m) => { const o = doorView?.openings.find((x) => x.mark === m); if (o) showDoor(o.door); else showScheduleRow(m); }}
+              onAdd={addDoorsToEstimate} added={!!doorAnswers[`added:${doorKey}`]}
+              compareOn={doorCompareOn} canCompare={!!doorSchedKey} onCompare={toggleDoorCompare}
+              selMark={doorSelMark} hoverMark={doorHover} onHoverRow={setDoorHover} onPickRow={pickDoorRow}
+              placed={doorPlaced} checks={doorAnswers} onCheck={setDoorCheck} onNote={setDoorNote}
+              onClose={() => pickViewTrade(ALL_TRADES)}
+            />
+          );
+        })()}
+        {!doorSuiteOn && workspaceLayout && !focusMode && (
           <ConditionsDock
             open={condDockOpen && !fullTableOpen} onClose={() => setCondDockOpen(false)}
             sheetLabel={(() => { const l = tabLabel(treeCurrent || sheetKey); const m = /^\s*([A-Z]{1,3}-?\d{1,4}(?:\.\d{1,3})?[A-Z]?)\b/i.exec(l); return m ? m[1] : l; })()}
@@ -12026,35 +12092,6 @@ export default function TakeoffCanvas() {
           commitMsg text lives here now (the old floating pill is gone — the
           rule banner still floats, it has buttons). Print: the report-only
           visibility rules already hide this. */}
-      {/* ── Doors suite panel — shown while the trade is Doors & Windows ── */}
-      {doorSuiteOn && (() => {
-        const rd = doorKey ? doorReads[doorKey] : null;
-        const reading = !rd || rd.status === "reading";
-        const docsBusy = !doorDocs || doorDocs.status === "reading";
-        const status = rd?.status === "failed" ? { busy: true, text: `Couldn't read this sheet's doors: ${rd.error}` }
-          : reading ? { busy: true, text: "Reading the doors on this sheet…" }
-          : docsBusy ? { busy: false, docsBusy: true, note: "Reading the door schedule and the hardware spec in the loaded files…" }
-          : { busy: false, note: !doorDocs.schedule ? "No door schedule found in the loaded files: doors are counted from the plan alone." : !doorDocs.sets.length ? "No spec section 08 71 00 loaded: hardware sets come from the schedule. Drop the project manual PDF in to add their items." : null };
-        return (
-          <DoorsSuitePanel
-            sheetLabel={doorKey ? sheetBaseLabel(doorKey) : "this sheet"} status={status} view={doorView}
-            schedule={doorDocs?.schedule ? { ...doorDocs.schedule, label: sheetBaseLabel(doorDocs.schedule.key) } : null}
-            sets={doorDocs?.sets || []} setOrder={doorSetOrder} answers={doorAnswers}
-            sel={doorSel && doorSel.key === doorKey ? doorSel.i : null}
-            coach={doorCoach} onDismissCoach={() => { setDoorCoach(false); try { localStorage.setItem("opentakeoff_doors_coach", "seen"); } catch { /* private mode */ } }}
-            tab={doorTab} onTab={(t) => { setDoorTab(t); setDoorSel(null); }}
-            onAnswer={answerDoor} onUndo={undoDoor}
-            onSelect={(i) => { setDoorSel(i == null ? null : { key: doorKey, i }); if (i == null) setDoorTab("doors"); }}
-            onShowDoor={(i) => showDoor(i)} onShowRow={showScheduleRow} onShowElevation={showElevation}
-            onShowSet={(m) => { const o = doorView?.openings.find((x) => x.mark === m); if (o) showDoor(o.door); else showScheduleRow(m); }}
-            onAdd={addDoorsToEstimate} added={!!doorAnswers[`added:${doorKey}`]}
-            compareOn={doorCompareOn} canCompare={!!doorSchedKey} onCompare={toggleDoorCompare}
-            selMark={doorSelMark} hoverMark={doorHover} onHoverRow={setDoorHover} onPickRow={pickDoorRow}
-            placed={doorPlaced} checks={doorAnswers} onCheck={setDoorCheck} onNote={setDoorNote}
-            onClose={() => pickViewTrade(ALL_TRADES)}
-          />
-        );
-      })()}
       {/* ── Symbol sweep review panel (#264) — floats while a sweep is live ── */}
       {sweep && view === "canvas" && (() => {
         const seedTag = sweep.seed.label?.label || null;

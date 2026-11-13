@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   readDoorSchedule, readHardwareSets, matchDoorTags, buildDoorSuite, scheduledPair, feetOf, estimateGroups, countLine, textRuns,
+  classifyTagRun, countMarkPoints,
   type TextRun,
 } from "../src/lib/doorSuite.ts";
 import type { ReadDoor } from "../src/lib/doorReader.ts";
@@ -67,7 +68,58 @@ const door = (x: number, y: number, leaves = 1, extra: Partial<ReadDoor> = {}): 
 test("matchDoorTags: nearest scheduled tag, each mark once", () => {
   const doors = [door(0, 0), door(500, 0)];
   const runs = [run("101", 40, 10, 15), run("101", 300, 10, 15), run("112", 530, 50, 15), run("999", 10, 10, 15)];
-  assert.deepEqual(matchDoorTags(doors, runs, new Set(["101", "112"])), ["101", "112"]);
+  assert.deepEqual(matchDoorTags(doors, runs, new Set(["101", "112"])).marks, ["101", "112"]);
+});
+
+// a closed hexagon of ink around a point: a door-tag symbol
+function hexagon(cx0: number, cy0: number, r: number): number[] {
+  const out: number[] = [];
+  for (let k = 0; k < 6; k++) {
+    const a = (k * Math.PI) / 3, b = ((k + 1) * Math.PI) / 3;
+    out.push(cx0 + r * Math.cos(a), cy0 + r * Math.sin(a), cx0 + r * Math.cos(b), cy0 + r * Math.sin(b));
+  }
+  return out;
+}
+
+test("matchDoorTags: a room number is never a door tag, a tag in its symbol wins", () => {
+  // door at (0,0)–(36,36). Room "OFFICE" with room number 101 in its box sits
+  // closest; the door's own tag 102 is in a hexagon a little farther off.
+  const doors = [door(0, 0)];
+  const runs = [run("OFFICE", 30, 40, 30, 8), run("101", 38, 52, 15, 8), run("102", 70, 30, 15, 8)];
+  const segs = [...hexagon(77.5, 34, 14), 30, 50, 60, 50, 60, 50, 60, 62, 60, 62, 30, 62, 30, 62, 30, 50];
+  assert.equal(classifyTagRun(runs[1], runs, segs), "room");
+  assert.equal(classifyTagRun(runs[2], runs, segs), "symbol");
+  const m = matchDoorTags(doors, runs, new Set(["101", "102"]), { segs });
+  assert.deepEqual(m.marks, ["102"]);
+  assert.deepEqual(m.ambiguous, {});
+  // without the room-label rule the room number would have won on distance
+  const loose = matchDoorTags(doors, [runs[1], runs[2]], new Set(["101", "102"]));
+  assert.equal(loose.marks[0], "101");
+});
+
+test("matchDoorTags: two tags of the same kind at the same distance are asked, not guessed", () => {
+  const doors = [door(0, 0)];
+  const runs = [run("103", 50, 10, 15), run("104", 10, 50, 15)];
+  const m = matchDoorTags(doors, runs, new Set(["103", "104"]));
+  assert.deepEqual(m.marks, [null]);
+  assert.deepEqual(m.ambiguous[0].slice().sort(), ["103", "104"]);
+  const v = buildDoorSuite({ doors, withheld: [false], marks: m.marks, ambiguous: m.ambiguous, schedule: null, sets: [], answers: {}, sheetLabel: "A101" });
+  assert.equal(v.questions[0].kind, "ambiguous");
+  assert.equal(v.counts.openings, 0);
+  const picked = buildDoorSuite({ doors, withheld: [false], marks: m.marks, ambiguous: m.ambiguous, schedule: null, sets: [], answers: { "tag:0": "It's 104" }, sheetLabel: "A101" });
+  assert.equal(picked.openings[0].mark, "104");
+  assert.equal(picked.counts.openings, 1);
+});
+
+test("countMarkPoints: marks sit inside the swing and never on the tag", () => {
+  const d = door(0, 0);   // hinge (0,0), tip (0,36), closes to (36,0): the swing fills the box
+  const tag = run("101", 18, 18, 12, 8);   // a tag right in the swing
+  const p = countMarkPoints(d, [tag]);
+  for (const q of [p.frame, p.hardware, ...p.leaves]) {
+    assert.ok(q[0] >= -1 && q[0] <= 37 && q[1] >= -1 && q[1] <= 37, `inside the swing: ${q}`);
+    assert.ok(!(q[0] >= tag.x - 2 && q[0] <= tag.x + tag.w + 2 && q[1] >= tag.y - 2 && q[1] <= tag.y + tag.h + 2), `off the tag: ${q}`);
+  }
+  assert.equal(countMarkPoints(door(0, 0, 2)).leaves.length, 2);
 });
 
 test("buildDoorSuite: pairs, hardware conflicts, untagged and withheld doors, counts", () => {
@@ -82,6 +134,9 @@ test("buildDoorSuite: pairs, hardware conflicts, untagged and withheld doors, co
   // 100A pair, 101, 112 counted; the untagged and the withheld door wait for an answer
   assert.deepEqual(v.counts, { openings: 3, frames: 3, leaves: 4, matched: 3, open: 3 });
   assert.equal(countLine(v.counts), "3 openings · 4 door leaves");
+  // a gray swing recommends leaving it out; otherwise counting it comes first
+  assert.equal(buildDoorSuite({ ...base, tone: [null, null, null, "gray", null], answers: {} }).questions.find((q) => q.kind === "untagged")!.answers[0], "Existing, leave it out");
+  assert.equal(v.questions.find((q) => q.kind === "untagged")!.why, "No door number or schedule row");
   const answered = buildDoorSuite({ ...base, answers: { "untagged:3": "Count it as a new door", "withheld:4": "It's a door, count it", "hardware:112": "Keep set 8, as scheduled" } });
   assert.deepEqual(answered.counts, { openings: 5, frames: 5, leaves: 6, matched: 3, open: 0 });
   const groups = estimateGroups(answered.openings);

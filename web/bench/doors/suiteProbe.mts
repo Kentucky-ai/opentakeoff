@@ -7,6 +7,7 @@ import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { extractDoorVectors } from "../../src/lib/doorVectors.ts";
 import { readDoors, splitDoors, DOOR_CUTOFFS } from "../../src/lib/doorReader.ts";
 import { readDoorSchedule, readHardwareSets, matchDoorTags, textRuns, buildDoorSuite, countLine } from "../../src/lib/doorSuite.ts";
+import { extractVectorGeometry } from "../../src/lib/oneclick.ts";
 
 const [plans, planPage, schedPage, specs] = process.argv.slice(2);
 const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(plans)) }).promise;
@@ -24,7 +25,10 @@ const { committed, withheld } = splitDoors(reading, DOOR_CUTOFFS.foundFirst);
 console.log("doors", reading.doors.length, "committed", committed.length, "withheld", withheld.length, "ms", Date.now() - t0, "fpp", reading.fpp);
 const runs = textRuns((await pp.getTextContent()).items as never, vp0.transform);
 const marks = new Set((sched?.rows || []).map((r) => r.mark));
-const tags = matchDoorTags(reading.doors, runs, marks);
+const geo = extractVectorGeometry(await pp.getOperatorList() as never, vp0.transform, pdfjs.OPS as never);
+const tm = matchDoorTags(reading.doors, runs, marks, { segs: geo.segs });
+const tags = tm.marks;
+console.log("ambiguous", JSON.stringify(tm.ambiguous));
 let sets: ReturnType<typeof readHardwareSets> = [];
 if (specs) {
   const sdoc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(specs)) }).promise;
@@ -38,6 +42,6 @@ if (specs) {
 }
 console.log("hardware sets", sets.map((s) => `${s.set}:[${s.marks.join(",")}]`).join(" "));
 reading.doors.forEach((d, i) => console.log(" door", i, tags[i] ?? "-", d.pair ? "PAIR" : "", d.leaves.length, "leaves conf", d.confidence, d.doubts.join("; ")));
-const view = buildDoorSuite({ doors: reading.doors, withheld: reading.doors.map((d) => withheld.includes(d)), marks: tags, schedule: sched, sets, answers: {}, sheetLabel: "A101" });
+const view = buildDoorSuite({ doors: reading.doors, withheld: reading.doors.map((d) => withheld.includes(d)), marks: tags, ambiguous: tm.ambiguous, schedule: sched, sets, answers: {}, sheetLabel: "A101" });
 console.log(countLine(view.counts), "matched", view.counts.matched, "questions", view.questions.length);
 for (const q of view.questions) console.log(" Q", q.kind, q.text);
