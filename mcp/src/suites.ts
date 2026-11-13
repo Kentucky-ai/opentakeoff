@@ -22,6 +22,7 @@ import type { Session, MeasureRole } from "./session.ts";
 import {
   TRADE_SUITES, DIVISIONS, SUITE_TOOL_NAMES, suiteById, suitesForDivision, suiteOfTool, suiteCatalogLines, type TradeSuite,
 } from "../../web/src/lib/tradeSuites.ts";
+import { M_PER_FT, MM_PER_IN, SUITE_UNIT_PAIRS, suiteMetricName, suiteMetricReply } from "../../web/src/lib/units.ts";
 import {
   parsePitch, roofQuantities, slopeFactor, hipValleyFactor, sidingQuantities, bottomEdges, starterRuns, soffitQuantities,
   glazingOpening, electricalRollup, plumbingRollup, ringPerimeter, type Pt,
@@ -45,6 +46,59 @@ const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
   };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// ── units (#620) ─────────────────────────────────────────────────────────────
+// Inside, every suite tool works in feet, inches and SF. `units: "metric"`
+// changes only the edges: arguments named in mm, m and m², and a reply in m²
+// and m (web/src/lib/units.ts holds the one table). Stored quantities are the
+// same either way. The server holds no project unit setting (exportPayload
+// writes imperial), so a call that names none is imperial, as before.
+type Units = "imperial" | "metric";
+const unitsArg = z.enum(["imperial", "metric"]).optional()
+  .describe('"metric": arguments in mm, mm², m and m² (overhang_mm, piece_length_m) and a reply in the same units, without roofing or siding squares. Absent = imperial');
+
+/** The imperial value of a unit-bearing argument, given under its imperial name or, with units "metric",
+ *  its metric one. A name from the other system is refused, naming the right one. */
+function unitArg(args: Record<string, unknown> | undefined, name: string, units: Units, path = ""): number | undefined {
+  const metric = suiteMetricName(name)!;
+  const factor = SUITE_UNIT_PAIRS.find((p) => name.endsWith(p.imperial))!.factor;
+  if (units === "metric" && args?.[name] !== undefined) throw new UserError(`${path}${name} is imperial; with units "metric" pass ${path}${metric}.`);
+  if (units === "imperial" && args?.[metric] !== undefined) throw new UserError(`${path}${metric} is metric; pass units: "metric" with it, or use ${path}${name}.`);
+  const v = args?.[units === "metric" ? metric : name];
+  return typeof v === "number" ? (units === "metric" ? v / factor : v) : undefined;
+}
+
+/** The arguments a tool's schema does not name, with their paths ("vent.attic_sqft"). */
+function unknownArgs(value: unknown, schema: z.ZodType, path = ""): string[] {
+  let s: any = schema;
+  while (["optional", "default", "nullable", "prefault"].includes(s?.def?.type)) s = s.def.innerType;
+  if (s?.def?.type === "array" && Array.isArray(value)) return value.flatMap((v, i) => unknownArgs(v, s.def.element, `${path}[${i}]`));
+  if (s?.def?.type !== "object" || !value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.entries(value).flatMap(([k, v]) => {
+    const at = path ? `${path}.${k}` : k;
+    return Object.hasOwn(s.def.shape, k) ? unknownArgs(v, s.def.shape[k], at) : [at];
+  });
+}
+
+/** A suite tool's handler: the reply in the caller's units, which it always names, and the arguments it
+ *  ignored named back instead of dropped, in a refusal too (a misplaced argument often causes one). */
+const suiteRun = (tool: string, schema: z.ZodType, fn: (args: any, units: Units) => Record<string, unknown>) =>
+  run(tool, (a: any) => {
+    const units: Units = a.units ?? "imperial";
+    const ignored = unknownArgs(a, schema);
+    const note = `Not ${tool} arguments, so ignored: ${ignored.join(", ")}.`;
+    let reply: Record<string, unknown>;
+    try { reply = fn(a, units); } catch (e) {
+      if (ignored.length && e instanceof UserError) e.message += ` ${note}`;
+      throw e;
+    }
+    const out = (units === "metric" ? suiteMetricReply(reply) : reply) as Record<string, unknown>;
+    if (!ignored.length) return { ...out, units };
+    return { ...out, units, unknown_args: ignored, next: `${note} ${out.next}` };
+  });
+
+/** A length for a material row's note, in the units the caller named it in. */
+const noteLen = (ft: number, units: Units) => (units === "metric" ? `${r2(ft * M_PER_FT)} m` : `${ft} LF`);
 const lenPx = (pts: Pt[]) => { let n = 0; for (let i = 1; i < pts.length; i++) n += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return n; };
 /** A linear shape's plan length (its legs left out). */
 const planLf = (c: { plan_lf?: number; perimeter_lf?: number }) => c.plan_lf ?? c.perimeter_lf ?? 0;
@@ -67,6 +121,8 @@ const openSuiteOutput = {
   next: z.string(),
 };
 const deriveOutput = {
+  units: z.enum(["imperial", "metric"]).describe("The unit system of the arguments and this reply"),
+  unknown_args: z.array(z.string()).optional().describe("Arguments this tool does not take, ignored"),
   committed: z.number().int().describe("Shapes this call committed (0 for a preview)"),
   undo_steps: z.number().int().describe("undo_last {n} that takes this whole call back"),
   next: z.string(),
@@ -144,20 +200,25 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
   };
 
   // ── roofing ───────────────────────────────────────────────────────────────
+  const roofInput = z.looseObject({
+    pitch: z.union([z.string(), z.number()]).describe('Slope from the drawings: "6/12", 6, or low-slope "1/4 per ft"'),
+    field: z.string().default("RF-FIELD").describe("Condition holding the roof planes (plan view)"),
+    eave: z.string().default("RF-EAVE"), rake: z.string().default("RF-RAKE"), ridge: z.string().default("RF-RIDGE"),
+    hip: z.string().default("RF-HIP"), valley: z.string().default("RF-VALLEY"),
+    waste_pct: z.number().min(0).max(50).optional().describe("Field waste; absent = suite allowance (10, or 15 with hips/valleys), reported as an allowance"),
+    ice_water: z.looseObject({
+      eave_ft: z.number().positive().optional(), valley_ft: z.number().positive().optional(),
+      eave_m: z.number().positive().optional(), valley_m: z.number().positive().optional(),
+    }).optional().describe("Self-adhered underlayment band widths up the slope, from the spec or code (feet, or metres with units metric)"),
+    buildings: z.number().int().positive().default(1).describe("Identical buildings: folded into the multipliers"),
+    apply: z.boolean().default(true).describe("false = report only"),
+    units: unitsArg,
+  });
   reg("roof_takeoff", {
     description: "Roofing suite. Turns the traced plan-view roof into true quantities for ONE pitch: sloped SF and squares (with waste), true rake / hip / valley LF, drip edge, starter, ridge cap, underlayment, ice & water when band widths are given. apply (default true) puts the slope factor on the field and rake conditions and the hip/valley factor on hip and valley so every total reads true, sets the field waste, and commits drip edge (RF-DRIP), starter (RF-STARTER) and ridge cap (RF-CAP) runs at true length. Re-running skips runs it already derived. pitch must come from the drawings.",
-    inputSchema: {
-      pitch: z.union([z.string(), z.number()]).describe('Slope from the drawings: "6/12", 6, or low-slope "1/4 per ft"'),
-      field: z.string().default("RF-FIELD").describe("Condition holding the roof planes (plan view)"),
-      eave: z.string().default("RF-EAVE"), rake: z.string().default("RF-RAKE"), ridge: z.string().default("RF-RIDGE"),
-      hip: z.string().default("RF-HIP"), valley: z.string().default("RF-VALLEY"),
-      waste_pct: z.number().min(0).max(50).optional().describe("Field waste; absent = suite allowance (10, or 15 with hips/valleys), reported as an allowance"),
-      ice_water: z.object({ eave_ft: z.number().positive().optional(), valley_ft: z.number().positive().optional() }).optional().describe("Self-adhered underlayment band widths up the slope, from the spec or code"),
-      buildings: z.number().int().positive().default(1).describe("Identical buildings: folded into the multipliers"),
-      apply: z.boolean().default(true).describe("false = report only"),
-    },
-    outputSchema: { ...deriveOutput, sloped_sf: z.number(), squares: z.number() },
-  }, run("roof_takeoff", (a) => {
+    inputSchema: roofInput,
+    outputSchema: { ...deriveOutput, sloped_sf: z.number().optional(), sloped_m2: z.number().optional(), squares: z.number().optional() },
+  }, suiteRun("roof_takeoff", roofInput, (a, units) => {
     const pitch = parsePitch(a.pitch);
     if (pitch === null) throw new UserError(`Cannot read pitch ${JSON.stringify(a.pitch)} — pass "6/12", 6, or "1/4 per ft" as printed on the roof plan.`);
     conditionOrError(a.field, "roof field");
@@ -167,7 +228,11 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     const edgeTags = { eave: a.eave, rake: a.rake, ridge: a.ridge, hip: a.hip, valley: a.valley } as Record<string, string>;
     const edgeShapes = Object.fromEntries(Object.entries(edgeTags).map(([k, t]) => [k, session.suiteShapes(t, ["linear"])]));
     const edges = Object.fromEntries(Object.entries(edgeShapes).map(([k, list]) => [k, list.reduce((n, { shape }) => n + planLf(shape.computed), 0)])) as { eave: number; rake: number; ridge: number; hip: number; valley: number };
-    const q = roofQuantities({ pitch, plan_sf: planSf, edges, waste_pct: a.waste_pct, ice_water: a.ice_water });
+    const iceWater = a.ice_water && {
+      eave_ft: unitArg(a.ice_water, "eave_ft", units, "ice_water."),
+      valley_ft: unitArg(a.ice_water, "valley_ft", units, "ice_water."),
+    };
+    const q = roofQuantities({ pitch, plan_sf: planSf, edges, waste_pct: a.waste_pct, ice_water: iceWater });
     let committed = 0, steps = 0;
     const applied: Record<string, number> = {};
     if (a.apply) {
@@ -201,19 +266,23 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
   }));
 
   // ── siding ────────────────────────────────────────────────────────────────
+  const sidingInput = z.looseObject({
+    walls: z.string().default("SD-WALL"), openings: z.string().default("SD-OPEN"),
+    outside_corners: z.string().default("SD-OSC"), inside_corners: z.string().default("SD-ISC"),
+    door_openings: z.array(z.string()).default([]).describe("Shape ids of DOOR openings (trimmed on 3 sides)"),
+    waste_pct: z.number().min(0).max(50).optional().describe("Absent = 10 % suite allowance, reported as an allowance"),
+    exposure_in: z.number().positive().optional().describe("Lap reveal, inches"),
+    piece_length_ft: z.number().positive().optional().describe("Piece length, feet"),
+    exposure_mm: z.number().positive().optional().describe("Lap reveal, mm (units metric)"),
+    piece_length_m: z.number().positive().optional().describe("Piece length, m (units metric)"),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
   reg("siding_takeoff", {
     description: "Siding suite. From elevation shapes: gross and net wall SF, squares with waste, opening trim LF (doors 3 sides, windows 4), starter LF along each wall's bottom edge, corner LF, and lap pieces when exposure_in and piece_length_ft are given. Openings are deduct shapes on the wall condition and/or shapes on the openings condition. apply (default true) sets the wall waste, adds a deduct on the wall condition for each opening traced under the openings condition (so the estimate is net), and commits opening trim (SD-TRIM) and starter (SD-STARTER) runs. Re-running skips what it already derived.",
-    inputSchema: {
-      walls: z.string().default("SD-WALL"), openings: z.string().default("SD-OPEN"),
-      outside_corners: z.string().default("SD-OSC"), inside_corners: z.string().default("SD-ISC"),
-      door_openings: z.array(z.string()).default([]).describe("Shape ids of DOOR openings (trimmed on 3 sides)"),
-      waste_pct: z.number().min(0).max(50).optional().describe("Absent = 10 % suite allowance, reported as an allowance"),
-      exposure_in: z.number().positive().optional().describe("Lap reveal, inches"),
-      piece_length_ft: z.number().positive().optional().describe("Piece length, feet"),
-      apply: z.boolean().default(true),
-    },
-    outputSchema: { ...deriveOutput, net_sf: z.number(), squares: z.number() },
-  }, run("siding_takeoff", (a) => {
+    inputSchema: sidingInput,
+    outputSchema: { ...deriveOutput, net_sf: z.number().optional(), net_m2: z.number().optional(), squares: z.number().optional() },
+  }, suiteRun("siding_takeoff", sidingInput, (a, units) => {
     conditionOrError(a.walls, "wall");
     const walls = session.suiteShapes(a.walls, ["floor_area"]);
     if (!walls.length) throw new UserError(`${a.walls} has no wall faces — measure_polygon each elevation face under it.`);
@@ -232,7 +301,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       openings: openings.map((o) => ({ id: o.shape.id, ring: o.ft, sides: doors.has(o.shape.id) ? 3 : 4, sheet: o.shape.sheet_id })),
       outside_corner_lf: session.suiteTotals(a.outside_corners)?.lf,
       inside_corner_lf: session.suiteTotals(a.inside_corners)?.lf,
-      waste_pct: a.waste_pct, exposure_in: a.exposure_in, piece_length_ft: a.piece_length_ft,
+      waste_pct: a.waste_pct, exposure_in: unitArg(a, "exposure_in", units), piece_length_ft: unitArg(a, "piece_length_ft", units),
     });
     let committed = 0, steps = 0;
     if (a.apply) {
@@ -258,29 +327,40 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       }
       if (items.length) { session.suiteCommit("siding_takeoff", items); committed = items.length; steps++; }
     }
-    return { ...q, committed, undo_steps: steps,
+    // the piece text quotes the reveal and length; in metric, as the caller gave them
+    const piece = units === "metric" && q.piece ? { piece: `${a.exposure_mm} mm reveal × ${a.piece_length_m} m piece, waste included` } : {};
+    return { ...q, ...piece, committed, undo_steps: steps,
       next: "view_sheet overlay:true on each elevation: starter must sit on wall bottoms and trim around every opening. Corners not measured read 0 — measure_line them under the corner tags." };
   }));
 
   // ── soffit & fascia ───────────────────────────────────────────────────────
+  const soffitInput = z.looseObject({
+    eave: z.string().default("RF-EAVE"), rake: z.string().default("RF-RAKE"),
+    overhang_in: z.number().positive().optional().describe("Eave soffit depth, inches, wall face to fascia (wall section / eave detail); required, or overhang_mm with units metric"),
+    rake_overhang_in: z.number().positive().optional().describe("Rake soffit depth, inches; absent = rake soffit not figured"),
+    overhang_mm: z.number().positive().optional().describe("Eave soffit depth, mm (units metric)"),
+    rake_overhang_mm: z.number().positive().optional().describe("Rake soffit depth, mm (units metric)"),
+    pitch: z.union([z.string(), z.number()]).optional().describe("Roof pitch for true rake length"),
+    outside_corners: z.number().int().min(0).optional(),
+    waste_pct: z.number().min(0).max(50).optional().describe("Absent = 10 % suite allowance"),
+    vent: z.looseObject({
+      attic_sf: z.number().positive().optional(), attic_m2: z.number().positive().optional(),
+      attic_condition: z.string().optional().describe("Condition whose floor SF is the attic area"),
+      ratio: z.number().positive().describe("150 or 300, per code/spec"), intake_share: z.number().min(0).max(1).optional(),
+      nfa_in2_per_lf: z.number().positive().optional().describe("Vented soffit net free area per LF, from the product data"),
+      nfa_mm2_per_m: z.number().positive().optional().describe("Vented soffit net free area per m (units metric)"),
+    }).optional(),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
   reg("soffit_takeoff", {
     description: "Soffit & fascia suite. From eave and rake runs (the roofing tags by default) and the soffit depth from the wall section: soffit SF (eave LF × depth, rake soffit when rake_overhang_in is given, outside-corner squares), fascia LF (true rake length with pitch), wall receiver LF, and the attic intake vent area when vent is given. apply (default true) commits the soffit as surface shapes (run × depth) under SF-SOFFIT with its waste and the fascia runs under SF-FASCIA. Re-running skips what it already derived.",
-    inputSchema: {
-      eave: z.string().default("RF-EAVE"), rake: z.string().default("RF-RAKE"),
-      overhang_in: z.number().positive().describe("Eave soffit depth, inches, wall face to fascia (wall section / eave detail)"),
-      rake_overhang_in: z.number().positive().optional().describe("Rake soffit depth, inches; absent = rake soffit not figured"),
-      pitch: z.union([z.string(), z.number()]).optional().describe("Roof pitch for true rake length"),
-      outside_corners: z.number().int().min(0).optional(),
-      waste_pct: z.number().min(0).max(50).optional().describe("Absent = 10 % suite allowance"),
-      vent: z.object({
-        attic_sf: z.number().positive().optional(), attic_condition: z.string().optional().describe("Condition whose floor SF is the attic area"),
-        ratio: z.number().positive().describe("150 or 300, per code/spec"), intake_share: z.number().min(0).max(1).optional(),
-        nfa_in2_per_lf: z.number().positive().optional().describe("Vented soffit net free area per LF, from the product data"),
-      }).optional(),
-      apply: z.boolean().default(true),
-    },
-    outputSchema: { ...deriveOutput, soffit_sf: z.number(), fascia_lf: z.number() },
-  }, run("soffit_takeoff", (a) => {
+    inputSchema: soffitInput,
+    outputSchema: { ...deriveOutput, soffit_sf: z.number().optional(), soffit_m2: z.number().optional(), fascia_lf: z.number().optional(), fascia_m: z.number().optional() },
+  }, suiteRun("soffit_takeoff", soffitInput, (a, units) => {
+    const overhangIn = unitArg(a, "overhang_in", units);
+    if (overhangIn === undefined) throw new UserError(`soffit_takeoff needs the eave soffit depth: ${units === "metric" ? "overhang_mm" : "overhang_in"}, from the wall section or eave detail.`);
+    const rakeOverhangIn = unitArg(a, "rake_overhang_in", units);
     conditionOrError(a.eave, "eave");
     const eaves = session.suiteShapes(a.eave, ["linear"]);
     const rakes = session.suiteShapes(a.rake, ["linear"]);
@@ -292,27 +372,27 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     }
     let vent: { attic_sf: number; ratio: number; intake_share?: number; nfa_in2_per_lf?: number } | undefined;
     if (a.vent) {
-      const attic = a.vent.attic_sf ?? (a.vent.attic_condition ? session.suiteTotals(a.vent.attic_condition)?.floor_sf : undefined);
-      if (!attic) throw new UserError("vent needs attic_sf or an attic_condition with floor area.");
-      vent = { attic_sf: attic, ratio: a.vent.ratio, intake_share: a.vent.intake_share, nfa_in2_per_lf: a.vent.nfa_in2_per_lf };
+      const attic = unitArg(a.vent, "attic_sf", units, "vent.") ?? (a.vent.attic_condition ? session.suiteTotals(a.vent.attic_condition)?.floor_sf : undefined);
+      if (!attic) throw new UserError(`vent needs ${units === "metric" ? "attic_m2" : "attic_sf"} or an attic_condition with floor area.`);
+      vent = { attic_sf: attic, ratio: a.vent.ratio, intake_share: a.vent.intake_share, nfa_in2_per_lf: unitArg(a.vent, "nfa_in2_per_lf", units, "vent.") };
     }
     const eaveLf = eaves.reduce((n, { shape }) => n + planLf(shape.computed), 0);
     const rakeLf = rakes.reduce((n, { shape }) => n + planLf(shape.computed), 0);
-    const q = soffitQuantities({ eave_lf: eaveLf, rake_plan_lf: rakeLf, overhang_in: a.overhang_in, rake_overhang_in: a.rake_overhang_in, pitch, outside_corners: a.outside_corners, waste_pct: a.waste_pct, vent });
+    const q = soffitQuantities({ eave_lf: eaveLf, rake_plan_lf: rakeLf, overhang_in: overhangIn, rake_overhang_in: rakeOverhangIn, pitch, outside_corners: a.outside_corners, waste_pct: a.waste_pct, vent });
     let committed = 0, steps = 0;
     if (a.apply) {
       const rf = pitch !== undefined ? slopeFactor(pitch) : 1;
       const done = derivedFrom("soffit_takeoff", ["SF-SOFFIT", "SF-FASCIA"]);
       const items: Parameters<Session["suiteCommit"]>[1] = [];
-      const d = a.overhang_in / 12, rd = (a.rake_overhang_in ?? 0) / 12;
+      const d = overhangIn / 12, rd = (rakeOverhangIn ?? 0) / 12;
       for (const { shape, px } of eaves) {
         const lf = planLf(shape.computed);
-        if (!done.has(`SF-SOFFIT|${shape.id}`)) items.push({ sheet_id: shape.sheet_id, tag: "SF-SOFFIT", role: "surface_area", px, computed: { area_sf: r2(lf * d), perimeter_lf: r2(lf) }, height_ft: r2c(d), derived: { from_shape_id: shape.id, depth_in: a.overhang_in } });
+        if (!done.has(`SF-SOFFIT|${shape.id}`)) items.push({ sheet_id: shape.sheet_id, tag: "SF-SOFFIT", role: "surface_area", px, computed: { area_sf: r2(lf * d), perimeter_lf: r2(lf) }, height_ft: r2c(d), derived: { from_shape_id: shape.id, depth_in: overhangIn } });
         if (!done.has(`SF-FASCIA|${shape.id}`)) items.push({ sheet_id: shape.sheet_id, tag: "SF-FASCIA", role: "linear", px, computed: { area_sf: 0, perimeter_lf: r2(lf) }, derived: { from_shape_id: shape.id } });
       }
       for (const { shape, px } of rakes) {
         const lf = planLf(shape.computed) * rf;
-        if (rd > 0 && !done.has(`SF-SOFFIT|${shape.id}`)) items.push({ sheet_id: shape.sheet_id, tag: "SF-SOFFIT", role: "surface_area", px, computed: { area_sf: r2(lf * rd), perimeter_lf: r2(lf) }, height_ft: r2c(rd), derived: { from_shape_id: shape.id, depth_in: a.rake_overhang_in, rake: true } });
+        if (rd > 0 && !done.has(`SF-SOFFIT|${shape.id}`)) items.push({ sheet_id: shape.sheet_id, tag: "SF-SOFFIT", role: "surface_area", px, computed: { area_sf: r2(lf * rd), perimeter_lf: r2(lf) }, height_ft: r2c(rd), derived: { from_shape_id: shape.id, depth_in: rakeOverhangIn, rake: true } });
         if (!done.has(`SF-FASCIA|${shape.id}`)) items.push({ sheet_id: shape.sheet_id, tag: "SF-FASCIA", role: "linear", px, computed: { area_sf: 0, perimeter_lf: r2(lf) }, derived: { from_shape_id: shape.id, rake: true, factor: r2c(rf) } });
       }
       if (items.length) { session.suiteCommit("soffit_takeoff", items); committed = items.length; steps++; }
@@ -323,19 +403,23 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
   }));
 
   // ── glazing ───────────────────────────────────────────────────────────────
+  const glazingInput = z.looseObject({
+    condition: z.string().describe("The frame condition, e.g. GL-SF1"),
+    grid: z.array(z.looseObject({ shape_id: z.string(), bays: z.number().int().positive(), rows: z.number().int().positive() })).default([]),
+    default_bays: z.number().int().positive().default(1), default_rows: z.number().int().positive().default(1),
+    sightline_in: z.number().min(0).optional().describe("Mullion face width, inches (spec section); absent = 2"),
+    sightline_mm: z.number().min(0).optional().describe("Mullion face width, mm (units metric); absent = 50.8"),
+    sealant_sides: z.number().int().min(1).max(2).default(2).describe("Perimeter beads: 1 exterior only, 2 both sides"),
+    mullion_condition: z.string().default("GL-MULLION"),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
   reg("glazing_takeoff", {
     description: "Glazing suite. Per storefront / curtain-wall frame traced on an elevation: width, height, lites, lite size (daylight opening), glass SF, vertical and horizontal mullion LF and perimeter sealant LF, plus totals. The grid (bays across, rows up) is read off the elevation per shape; unlisted shapes use default_bays/default_rows. apply (default true) commits equal-spaced mullion lines under mullion_condition so they show on the marked set (fix unequal spacing with edit_shape). Re-running skips frames it already derived.",
-    inputSchema: {
-      condition: z.string().describe("The frame condition, e.g. GL-SF1"),
-      grid: z.array(z.object({ shape_id: z.string(), bays: z.number().int().positive(), rows: z.number().int().positive() })).default([]),
-      default_bays: z.number().int().positive().default(1), default_rows: z.number().int().positive().default(1),
-      sightline_in: z.number().min(0).default(2).describe("Mullion face width, inches (spec section)"),
-      sealant_sides: z.number().int().min(1).max(2).default(2).describe("Perimeter beads: 1 exterior only, 2 both sides"),
-      mullion_condition: z.string().default("GL-MULLION"),
-      apply: z.boolean().default(true),
-    },
+    inputSchema: glazingInput,
     outputSchema: { ...deriveOutput, totals: anyRecord },
-  }, run("glazing_takeoff", (a) => {
+  }, suiteRun("glazing_takeoff", glazingInput, (a, units) => {
+    const sightlineIn = unitArg(a, "sightline_in", units) ?? 2;
     conditionOrError(a.condition, "frame");
     const frames = session.suiteShapes(a.condition, ["floor_area"]);
     if (!frames.length) throw new UserError(`${a.condition} has no frames — measure_polygon each frame opening on the elevation under it.`);
@@ -344,7 +428,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     if (bad.length) throw new UserError(`grid names ${bad.join(", ")}, which are not frames of ${a.condition} — list_shapes for the ids.`);
     const rows = frames.map((f) => {
       const g = byId.get(f.shape.id) ?? { bays: a.default_bays, rows: a.default_rows };
-      return { f, o: glazingOpening({ id: f.shape.id, ring: f.ft, bays: g.bays, rows: g.rows, sightline_in: a.sightline_in, sealant_sides: a.sealant_sides }) };
+      return { f, o: glazingOpening({ id: f.shape.id, ring: f.ft, bays: g.bays, rows: g.rows, sightline_in: sightlineIn, sealant_sides: a.sealant_sides }) };
     });
     let committed = 0, steps = 0;
     if (a.apply) {
@@ -359,7 +443,9 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       }
       if (items.length) { session.suiteCommit("glazing_takeoff", items); committed = items.length; steps++; }
     }
-    const openings = rows.map(({ o }) => { const { mullions: _m, ...rest } = o; return rest; });
+    // the daylight opening is text in inches; in metric, in mm
+    const dlo = (t: string) => (units === "metric" ? t.replace(/(\d+(?:\.\d+)?)"/g, (_m, n) => `${Math.round(Number(n) * MM_PER_IN)} mm`) : t);
+    const openings = rows.map(({ o }) => { const { mullions: _m, ...rest } = o; return { ...rest, lite_dlo: dlo(rest.lite_dlo) }; });
     const sum = (k: keyof (typeof openings)[number]) => r2(openings.reduce((n, o) => n + Number(o[k]), 0));
     return {
       openings,
@@ -371,21 +457,32 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
   }));
 
   // ── electrical ────────────────────────────────────────────────────────────
+  const electricalInput = z.looseObject({
+    runs: z.array(z.looseObject({
+      condition: z.string(), conductors: z.number().int().positive().default(3).describe("Conductors per set incl. neutral and ground (default 3)"),
+      sets: z.number().int().positive().default(1), slack_pct: z.number().min(0).max(50).default(10).describe("Makeup and slack allowance"),
+    })).default([]),
+    devices: z.array(z.string()).default([]).describe("Count conditions that get a box and plate each"),
+    fixtures: z.array(z.looseObject({
+      condition: z.string(),
+      whip_ft: z.number().positive().optional().describe("Whip per fixture, feet; absent = 6"),
+      whip_m: z.number().positive().optional().describe("Whip per fixture, m (units metric); absent = 1.83"),
+    })).default([]),
+    coupling_every_ft: z.number().positive().optional().describe("Conduit stick length, feet; absent = 10"),
+    strap_every_ft: z.number().positive().optional().describe("Support spacing (spec / code), feet; absent = 10"),
+    coupling_every_m: z.number().positive().optional().describe("Conduit stick length, m (units metric); absent = 3.05"),
+    strap_every_m: z.number().positive().optional().describe("Support spacing, m (units metric); absent = 3.05"),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
   reg("electrical_rollup", {
     description: "Electrical suite. From committed runs, device counts and fixture counts: wire LF per run (conduit LF incl. rise/drop × conductors × sets × slack), couplings and straps, a box and plate per device, fixture whip LF. apply (default true) writes these as material rows on each condition (updating rows it wrote before, never duplicating), so they land in the report and estimate. Conductors, slack, whip length and spacing are arguments with stated defaults; take them from the drawings and spec.",
-    inputSchema: {
-      runs: z.array(z.object({
-        condition: z.string(), conductors: z.number().int().positive().default(3).describe("Conductors per set incl. neutral and ground (default 3)"),
-        sets: z.number().int().positive().default(1), slack_pct: z.number().min(0).max(50).default(10).describe("Makeup and slack allowance"),
-      })).default([]),
-      devices: z.array(z.string()).default([]).describe("Count conditions that get a box and plate each"),
-      fixtures: z.array(z.object({ condition: z.string(), whip_ft: z.number().positive().default(6) })).default([]),
-      coupling_every_ft: z.number().positive().default(10).describe("Conduit stick length"),
-      strap_every_ft: z.number().positive().default(10).describe("Support spacing (spec / code)"),
-      apply: z.boolean().default(true),
-    },
+    inputSchema: electricalInput,
     outputSchema: { ...deriveOutput, totals: anyRecord },
-  }, run("electrical_rollup", (a) => {
+  }, suiteRun("electrical_rollup", electricalInput, (a, units) => {
+    const couplingEvery = unitArg(a, "coupling_every_ft", units) ?? 10;
+    const strapEvery = unitArg(a, "strap_every_ft", units) ?? 10;
+    const whips = a.fixtures.map((x: Record<string, unknown>, i: number) => unitArg(x, "whip_ft", units, `fixtures[${i}].`) ?? 6);
     if (!a.runs.length && !a.devices.length && !a.fixtures.length) throw new UserError("Nothing to roll up — pass runs, devices and/or fixtures (condition tags).");
     for (const r of a.runs) conditionOrError(r.condition, "run");
     for (const d of a.devices) conditionOrError(d, "device");
@@ -393,17 +490,17 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     const q = electricalRollup({
       runs: a.runs.map((r: { condition: string; conductors: number; sets: number; slack_pct: number }) => ({ tag: r.condition, conduit_lf: session.suiteTotals(r.condition)!.lf, conductors: r.conductors, sets: r.sets, slack_pct: r.slack_pct })),
       devices: a.devices.map((d: string) => ({ tag: d, ea: session.suiteTotals(d)!.ea })),
-      fixtures: a.fixtures.map((x: { condition: string; whip_ft: number }) => ({ tag: x.condition, ea: session.suiteTotals(x.condition)!.ea, whip_ft: x.whip_ft })),
-      coupling_every_ft: a.coupling_every_ft, strap_every_ft: a.strap_every_ft,
+      fixtures: a.fixtures.map((x: { condition: string }, i: number) => ({ tag: x.condition, ea: session.suiteTotals(x.condition)!.ea, whip_ft: whips[i] })),
+      coupling_every_ft: couplingEvery, strap_every_ft: strapEvery,
     });
     let steps = 0;
     if (a.apply) {
       for (const r of a.runs) {
         const n = r.conductors * r.sets;
         steps += upsertRows(session, r.condition, [
-          { name: `Wire, ${r.conductors} conductors${r.sets > 1 ? ` × ${r.sets} sets` : ""}`, basis: "linear", per: 1 / (n * (1 + r.slack_pct / 100)), unit: "LF", round: false, note: `conduit LF × ${n} × ${1 + r.slack_pct / 100} slack (electrical_rollup)` },
-          { name: "Conduit couplings", basis: "linear", per: a.coupling_every_ft, unit: "EA", round: true, note: `1 per ${a.coupling_every_ft} LF (electrical_rollup)` },
-          { name: "Conduit straps", basis: "linear", per: a.strap_every_ft, unit: "EA", round: true, note: `1 per ${a.strap_every_ft} LF (electrical_rollup)` },
+          { name: `Wire, ${r.conductors} conductors${r.sets > 1 ? ` × ${r.sets} sets` : ""}`, basis: "linear", per: 1 / (n * (1 + r.slack_pct / 100)), unit: "LF", round: false, note: `conduit ${units === "metric" ? "length" : "LF"} × ${n} × ${1 + r.slack_pct / 100} slack (electrical_rollup)` },
+          { name: "Conduit couplings", basis: "linear", per: couplingEvery, unit: "EA", round: true, note: `1 per ${noteLen(couplingEvery, units)} (electrical_rollup)` },
+          { name: "Conduit straps", basis: "linear", per: strapEvery, unit: "EA", round: true, note: `1 per ${noteLen(strapEvery, units)} (electrical_rollup)` },
         ]);
       }
       for (const d of a.devices) {
@@ -412,43 +509,54 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
           { name: "Cover plate", basis: "count", per: 1, unit: "EA", round: true, note: "1 per device (electrical_rollup)" },
         ]);
       }
-      for (const x of a.fixtures) {
+      a.fixtures.forEach((x: { condition: string }, i: number) => {
         steps += upsertRows(session, x.condition, [
-          { name: "Fixture whip", basis: "count", per: 1 / x.whip_ft, unit: "LF", round: false, note: `${x.whip_ft} LF per fixture (electrical_rollup)` },
+          { name: "Fixture whip", basis: "count", per: 1 / whips[i], unit: "LF", round: false, note: `${noteLen(whips[i], units)} per fixture (electrical_rollup)` },
         ]);
-      }
+      });
     }
     return { ...q, committed: 0, undo_steps: steps,
       next: a.apply ? "export_report shows the rows in each condition's buy list; set_pricing prices them." : "Report only — apply:true writes the material rows." };
   }));
 
   // ── plumbing ──────────────────────────────────────────────────────────────
+  const plumbingInput = z.looseObject({
+    fixtures: z.array(z.looseObject({ condition: z.string(), schedule_qty: z.number().int().min(0).optional().describe("QTY column of the fixture schedule") })).default([]),
+    pipes: z.array(z.looseObject({
+      condition: z.string(),
+      hanger_every_ft: z.number().positive().optional(), hanger_every_m: z.number().positive().optional().describe("Hanger spacing, m (units metric)"),
+      fittings_per_100_lf: z.number().positive().optional().describe("Fittings allowance per 100 LF"),
+      fittings_per_100_m: z.number().positive().optional().describe("Fittings allowance per 100 m (units metric)"),
+      insulate: z.boolean().optional(),
+    })).default([]),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
   reg("plumbing_rollup", {
     description: "Plumbing suite. Fixture counts checked against the fixture schedule's QTY (carries the plan count; the schedule QTY only when no tag was counted; every difference listed in needs_you), and per pipe run: LF, hangers at the spec spacing, a fittings allowance, insulation LF. apply (default true) writes hangers / fittings / insulation as material rows on each pipe condition (updating rows it wrote before). Hanger spacing and insulation come from the spec: a run without hanger_every_ft is reported as not figured.",
-    inputSchema: {
-      fixtures: z.array(z.object({ condition: z.string(), schedule_qty: z.number().int().min(0).optional().describe("QTY column of the fixture schedule") })).default([]),
-      pipes: z.array(z.object({
-        condition: z.string(), hanger_every_ft: z.number().positive().optional(),
-        fittings_per_100_lf: z.number().positive().optional().describe("Fittings allowance per 100 LF"),
-        insulate: z.boolean().optional(),
-      })).default([]),
-      apply: z.boolean().default(true),
-    },
+    inputSchema: plumbingInput,
     outputSchema: { ...deriveOutput, totals: anyRecord },
-  }, run("plumbing_rollup", (a) => {
+  }, suiteRun("plumbing_rollup", plumbingInput, (a, units) => {
+    const pipes = a.pipes.map((p: { condition: string; insulate?: boolean }, i: number) => ({
+      condition: p.condition, insulate: p.insulate,
+      hanger_every_ft: unitArg(p, "hanger_every_ft", units, `pipes[${i}].`),
+      fittings_per_100_lf: unitArg(p, "fittings_per_100_lf", units, `pipes[${i}].`),
+      // the allowance as the caller gave it, for the row's note
+      fittings_note: units === "metric" ? `${(p as Record<string, unknown>).fittings_per_100_m} per 100 m` : `${(p as Record<string, unknown>).fittings_per_100_lf} per 100 LF`,
+    }));
     if (!a.fixtures.length && !a.pipes.length) throw new UserError("Nothing to roll up — pass fixtures and/or pipes (condition tags).");
     for (const x of a.fixtures) conditionOrError(x.condition, "fixture");
-    for (const p of a.pipes) conditionOrError(p.condition, "pipe");
+    for (const p of pipes) conditionOrError(p.condition, "pipe");
     const q = plumbingRollup({
       fixtures: a.fixtures.map((x: { condition: string; schedule_qty?: number }) => ({ tag: x.condition, counted: session.suiteTotals(x.condition)!.ea, schedule_qty: x.schedule_qty })),
-      pipes: a.pipes.map((p: { condition: string; hanger_every_ft?: number; fittings_per_100_lf?: number; insulate?: boolean }) => ({ tag: p.condition, lf: session.suiteTotals(p.condition)!.lf, hanger_every_ft: p.hanger_every_ft, fittings_per_100_lf: p.fittings_per_100_lf, insulate: p.insulate })),
+      pipes: pipes.map((p: { condition: string; hanger_every_ft?: number; fittings_per_100_lf?: number; insulate?: boolean }) => ({ tag: p.condition, lf: session.suiteTotals(p.condition)!.lf, hanger_every_ft: p.hanger_every_ft, fittings_per_100_lf: p.fittings_per_100_lf, insulate: p.insulate })),
     });
     let steps = 0;
     if (a.apply) {
-      for (const p of a.pipes) {
+      for (const p of pipes) {
         const rows: MatRow[] = [];
-        if (p.hanger_every_ft) rows.push({ name: "Pipe hangers", basis: "linear", per: p.hanger_every_ft, unit: "EA", round: true, note: `1 per ${p.hanger_every_ft} LF (plumbing_rollup)` });
-        if (p.fittings_per_100_lf) rows.push({ name: "Fittings allowance", basis: "linear", per: 100 / p.fittings_per_100_lf, unit: "EA", round: true, note: `${p.fittings_per_100_lf} per 100 LF (plumbing_rollup)` });
+        if (p.hanger_every_ft) rows.push({ name: "Pipe hangers", basis: "linear", per: p.hanger_every_ft, unit: "EA", round: true, note: `1 per ${noteLen(p.hanger_every_ft, units)} (plumbing_rollup)` });
+        if (p.fittings_per_100_lf) rows.push({ name: "Fittings allowance", basis: "linear", per: 100 / p.fittings_per_100_lf, unit: "EA", round: true, note: `${p.fittings_note} (plumbing_rollup)` });
         if (p.insulate) rows.push({ name: "Pipe insulation", basis: "linear", per: 1, unit: "LF", round: false, note: "full run (plumbing_rollup)" });
         if (rows.length) steps += upsertRows(session, p.condition, rows);
       }
