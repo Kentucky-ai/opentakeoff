@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-13 — Doors suite
+
+Pick **Doors, frames & hardware** on the status bar's **Trade** menu. Every door on the open sheet is read from its own linework by the door reader (Rust compiled to WebAssembly, in the browser): each swing and leaf is traced on the plan in its hardware set's color, and a pair is one opening with two leaves. Doors are matched to the door schedule by their tags, and the hardware sets are read from specification section 08 71 00 when the project manual PDF is loaded too. **To review** lists only what the documents leave open (a swing the reader isn't sure is a door, a door with no number, a schedule row with no door, a door on a hardware set the spec lists for other doors, a pair drawn against a single scheduled), each answered in one click and saved with the project. **Compare with schedule** opens the schedule sheet below the plan with every row boxed in its door's color; a row and its door select each other, and rows are checked off as you go. **Add to estimate** counts openings (frames), door leaves and hardware sets separately.
+
 ## 2026-11-13 — door reader
 
 A door reader that runs in the browser and in the MCP server: every door swing drawn on a plan page, read from the page's own vector linework. It is written in Rust (`engine/door-reader`, no dependencies) and committed as a WebAssembly module, so nothing needs a Rust toolchain to run it. Each door comes back with its box, single or pair, each leaf's hinge, radius and tip, a confidence, and the reasons for any doubt, so a caller can count the confident doors and list the rest for review. `npm run check` proves the embedded module is the committed one; `npm run check:door-reader:source` rebuilds it from source and compares bytes.

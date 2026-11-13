@@ -163,6 +163,8 @@ import { assemblyRows } from "../lib/assemblies.js";
 import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
+import DoorsSuitePanel from "../components/DoorsSuitePanel.jsx";
+import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL } from "../lib/doorSuite.ts";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
@@ -417,6 +419,8 @@ export default function TakeoffCanvas() {
   // Stitches (#161): persisted match-line composites (lib/stitches.ts) — a
   // stitch opens as ONE panel; its members are a render-time concern only.
   const [stitches, setStitches] = useState([]);
+  // Doors suite answers (lib/doorSuite.ts question id → the answer picked), saved with the project
+  const [doorAnswers, setDoorAnswers] = useState({});
   const [alignPt, setAlignPt] = useState(null);       // stitch-align first click (stage px) — ephemeral, never persisted
   const [zoneCheck, setZoneCheck] = useState(null);   // ephemeral zone-check region {key, pts (norm)} — never persisted (buildPayload doesn't read it)
   const [zoneExpand, setZoneExpand] = useState(null); // zone panel: condition id with materials expanded
@@ -2310,6 +2314,9 @@ export default function TakeoffCanvas() {
     // legitimate group of one while its stitch actually exists.
     const loadedStitches = sanitizeStitches(a.stitches, MAX_GROUP);
     setStitches(loadedStitches);
+    // additive `door_answers`: string answers only; else-clear like stitches
+    setDoorAnswers(a.door_answers && typeof a.door_answers === "object" && !Array.isArray(a.door_answers)
+      ? Object.fromEntries(Object.entries(a.door_answers).filter(([k, v]) => typeof k === "string" && typeof v === "string").slice(0, 5000)) : {});
     setAlignPt(null);
     // else-clear matters at runtime (snapshot load): a payload without groups/
     // tabs must not inherit the pre-load ones — autosave would persist a hybrid.
@@ -3336,7 +3343,7 @@ export default function TakeoffCanvas() {
     // additive `split_view` (read-only reference pane): the writer omits it when
     // null, so a project that never split persists byte-identical to before.
     split_view: serializeSplitView(splitView),
-    sheet_levels: sheetLevels, layer_overrides: layerOverrides, provenance_counters: provCounters,
+    sheet_levels: sheetLevels, layer_overrides: layerOverrides, provenance_counters: provCounters, door_answers: doorAnswers,
   });
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -3569,7 +3576,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, bidProposal, units, splitView]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, bidProposal, units, splitView, doorAnswers]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -6926,6 +6933,296 @@ export default function TakeoffCanvas() {
     openSheets([src], false);
   }
 
+  // ── Doors suite (Trade: Doors & Windows) ──────────────────────────────────
+  // Picking the doors trade reads every door on the open sheet from its own
+  // linework (lib/doorReader.ts, WebAssembly), matches each to the door
+  // schedule by its tag and to the hardware sets in spec 08 71 00
+  // (lib/doorSuite.ts), and asks only what the documents leave open. Reads are
+  // cached per sheet and run off the paint path; nothing is a quantity until
+  // "Add to estimate".
+  const doorSuiteOn = viewTrade === "doors" && view === "canvas";
+  const doorRunsRef = useRef(new Map());            // sheet key → text runs in the door frame (unrotated page points)
+  const [doorReads, setDoorReads] = useState({});   // sheet key → { status, doors, withheld, rot, w0, h0 }
+  const [doorDocs, setDoorDocs] = useState(null);   // { status, schedule, sets } read once per loaded set
+  const [doorSel, setDoorSel] = useState(null);     // { key, i } — the door open in the card
+  const [doorTab, setDoorTab] = useState("review");
+  const [doorCoach, setDoorCoach] = useState(() => { try { return localStorage.getItem("opentakeoff_doors_coach") !== "seen"; } catch { return true; } });
+  const doorFileSig = sheets.map((s) => s.name).join("|");
+  // the set-wide read: the door schedule (first sheet that has one) and the 08 71 00 hardware sets
+  // Reads finish even if the view changes underneath them: a result is keyed by
+  // what it read (the file list / the sheet), so it is never stale, and an
+  // abandoned read would otherwise leave the suite "reading" for good.
+  const doorDocsBusyRef = useRef(null);
+  const doorReadBusyRef = useRef(new Set());
+  useEffect(() => {
+    if (!doorSuiteOn || !sheets.length) return;
+    if ((doorDocs && doorDocs.sig === doorFileSig && doorDocs.status === "done") || doorDocsBusyRef.current === doorFileSig) return;
+    const sig = doorFileSig;
+    doorDocsBusyRef.current = sig;
+    setDoorDocs({ sig, status: "reading", schedule: null, sets: [] });
+    (async () => {
+      const { readDoorSchedule, readHardwareSets, textRuns } = await import("../lib/doorSuite.ts");
+      // every page of every loaded file, counted from the documents themselves
+      const keys = [];
+      for (const f of sheets.map((x) => x.name)) {
+        try {
+          const n = await docCache.withDoc(f, async (pdf) => pdf.numPages || 1);
+          for (let i = 0; i < n; i++) keys.push(i ? `${f}#${i + 1}` : f);
+        } catch { /* an image or a file that won't open has no text to read */ }
+      }
+      let schedule = null, sets = [], setsKey = null;
+      for (const k of keys) {
+        if (schedule && sets.length) break;
+        const t = parseSheetKey(k);
+        try {
+          await docCache.withDoc(t.file, async (pdf) => {
+            const pg = await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+            const tc = await pg.getTextContent();
+            const raw = tc.items.map((it) => it.str).join(" ");
+            if (!schedule && /DOOR\s+SCHEDULE/i.test(raw)) {
+              const vp = pg.getViewport({ scale: 1 });
+              const s = readDoorSchedule(textRuns(tc.items, vp.transform));
+              if (s) {
+                // the door-type elevations' labels ("F", "FG 2") on the same sheet, for "Show source elevation"
+                const runs = textRuns(tc.items, vp.transform);
+                const hs = runs.map((r) => r.h).sort((a, b) => a - b);
+                const big = hs[Math.floor(hs.length * 0.9)] || 0;
+                const types = runs.filter((r) => r.h >= big && r.h > 0 && /^[A-Z]{1,3}\s?\d?$/.test(r.str.trim()));
+                schedule = { key: k, rows: s.rows, box: s.box, w: vp.width, h: vp.height, types };
+              }
+            }
+            if (!sets.length && /08\s?71\s?00/.test(raw) && /\bSET\b/i.test(raw)) {
+              let text = "", lastY = null;
+              for (const it of tc.items) { if (lastY != null && Math.abs(it.transform[5] - lastY) > 2) text += "\n"; text += it.str; lastY = it.transform[5]; if (it.hasEOL) { text += "\n"; lastY = null; } }
+              const got = readHardwareSets(text);
+              if (got.length) { sets = got; setsKey = k; }
+            }
+          });
+        } catch { /* a page that can't be read is skipped; the suite still runs */ }
+      }
+      if (doorDocsBusyRef.current === sig) doorDocsBusyRef.current = null;
+      setDoorDocs((prev) => (prev && prev.sig !== sig && prev.status === "done" ? prev : { sig, status: "done", schedule, sets, setsKey }));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorFileSig]);
+  // per open sheet: the doors themselves
+  const doorPanelSig = panels.map((p) => p.key).join("|");
+  useEffect(() => {
+    if (!doorSuiteOn) return;
+    (async () => {
+      for (const p of panels) {
+        const have = doorReads[p.key]?.status;
+        if (isStitchKey(p.key) || have === "done" || have === "failed" || doorReadBusyRef.current.has(p.key)) continue;
+        doorReadBusyRef.current.add(p.key);
+        setDoorReads((prev) => ({ ...prev, [p.key]: { status: "reading" } }));
+        try {
+          const [{ extractDoorVectors }, { readDoors, splitDoors, DOOR_CUTOFFS }, { textRuns }] = await Promise.all([import("../lib/doorVectors.ts"), import("../lib/doorReader.ts"), import("../lib/doorSuite.ts")]);
+          const t = parseSheetKey(p.key);
+          const out = await docCache.withDoc(t.file, async (pdf) => {
+            const pg = pageObjsRef.current.get(p.key) || await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+            const vp0 = pg.getViewport({ scale: 1, rotation: 0 });
+            const [ol, tc] = await Promise.all([pg.getOperatorList(), pg.getTextContent()]);
+            const reading = await readDoors(extractDoorVectors(ol, vp0.transform, pdfjsLib.OPS));
+            const { withheld } = splitDoors(reading, DOOR_CUTOFFS.foundFirst);
+            doorRunsRef.current.set(p.key, textRuns(tc.items, vp0.transform));
+            return { status: "done", doors: reading.doors, withheld: reading.doors.map((d) => withheld.includes(d)), rot: ((pg.rotate || 0) % 360 + 360) % 360, w0: vp0.width, h0: vp0.height, fpp: reading.fpp };
+          });
+          setDoorReads((prev) => ({ ...prev, [p.key]: out }));
+        } catch (e) {
+          setDoorReads((prev) => ({ ...prev, [p.key]: { status: "failed", error: String(e?.message || e) } }));
+        } finally {
+          doorReadBusyRef.current.delete(p.key);
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorPanelSig]);
+  // unrotated page point → this panel's image pixels (the frame shapes and overlays draw in)
+  const doorToImg = (rd, p, [x, y]) => {
+    const { rot, w0, h0 } = rd;
+    const [X, Y, W, H] = rot === 90 ? [h0 - y, x, h0, w0] : rot === 180 ? [w0 - x, h0 - y, w0, h0] : rot === 270 ? [y, w0 - x, h0, w0] : [x, y, w0, h0];
+    return [(X / W) * p.img.w, (Y / H) * p.img.h];
+  };
+  // The suite works on the PLAN sheet: a sheet with no doors of its own (the
+  // schedule sheet, opened by "Show schedule row") keeps the last plan.
+  const [doorPlanKey, setDoorPlanKey] = useState(null);
+  const hereKey = panels.find((p) => doorReads[p.key]?.status === "done" && doorReads[p.key].doors.length)?.key || null;
+  useEffect(() => { if (hereKey && hereKey !== doorPlanKey) setDoorPlanKey(hereKey); }, [hereKey, doorPlanKey]);
+  const doorKey = hereKey || (doorPlanKey && doorReads[doorPlanKey] ? doorPlanKey : null) || panels[0]?.key || null;
+  // Fly to a region of any sheet and flash it: centred in the canvas left of
+  // the doors panel, zoomed so the region is plainly visible.
+  const doorFlyRef = useRef(null);
+  const flyDoorRect = (key, rect, fill = 0.35) => {
+    const sp = panels.find((p) => p.key === key);
+    const el = containerRef.current;
+    if (!sp?.img?.w || !el) { doorFlyRef.current = { key, rect, fill, tries: 0 }; if (!panelKeySet.has(key)) openSheets([key], false); return; }
+    doorFlyRef.current = null;
+    const r = el.getBoundingClientRect();
+    const visibleW = Math.max(160, Math.min(r.right, window.innerWidth - 416) - r.left);
+    const [[x0, y0], [x1, y1]] = rect;
+    const w = Math.max(1, (x1 - x0) * sp.img.w), h = Math.max(1, (y1 - y0) * sp.img.h);
+    const scale = Math.min(8, Math.max(tfRef.current.scale, Math.min((visibleW * fill) / w, (r.height * fill) / h)));
+    const sx = ((x0 + x1) / 2) * sp.img.w + sp.xOffset, sy = ((y0 + y1) / 2) * sp.img.h;
+    setTfNow({ x: visibleW / 2 - sx * scale, y: r.height / 2 - sy * scale, scale });
+    flashSource(key, rect, ++sourceTraceSeqRef.current);
+  };
+  useEffect(() => {
+    const f = doorFlyRef.current;
+    if (!f) return;
+    if (++f.tries > 40) { doorFlyRef.current = null; return; }
+    if (panels.find((p) => p.key === f.key)?.img?.w) flyDoorRect(f.key, f.rect, f.fill);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelImgs, groupSig]);
+  const doorView = useMemo(() => {
+    const rd = doorKey && doorReads[doorKey];
+    if (!doorSuiteOn || !rd || rd.status !== "done") return null;
+    const schedule = doorDocs?.schedule ? { rows: doorDocs.schedule.rows, box: doorDocs.schedule.box } : null;
+    const marks = matchDoorTags(rd.doors, doorRunsRef.current.get(doorKey) || [], new Set((schedule?.rows || []).map((r) => r.mark)));
+    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, marks, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorKey, doorReads, doorDocs, doorAnswers]);
+  const doorSetOrder = useMemo(() => {
+    const fromSpec = (doorDocs?.sets || []).map((s) => s.set);
+    const fromSched = (doorDocs?.schedule?.rows || []).map((r) => String(r.hwSet || "").toUpperCase()).filter(Boolean);
+    return [...new Set([...fromSpec, ...fromSched])].sort((a, b) => (parseFloat(a) - parseFloat(b)) || a.localeCompare(b));
+  }, [doorDocs]);
+  const answerDoor = (id, a) => setDoorAnswers((prev) => ({ ...prev, [id]: a }));
+  const undoDoor = (id) => setDoorAnswers((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  const showDoor = (i, key = doorKey) => {
+    const rd = doorReads[key]; const p = panelByKey(key);
+    if (!rd?.doors?.[i] || !p?.img?.w) return;
+    const d = rd.doors[i];
+    const a = doorToImg(rd, p, [d.box[0], d.box[1]]), b = doorToImg(rd, p, [d.box[2], d.box[3]]);
+    const pad = 0.01;
+    flyDoorRect(key, [[Math.min(a[0], b[0]) / p.img.w - pad, Math.min(a[1], b[1]) / p.img.h - pad], [Math.max(a[0], b[0]) / p.img.w + pad, Math.max(a[1], b[1]) / p.img.h + pad]], 0.18);
+    setDoorSel({ key, i });
+  };
+  const showScheduleRow = (mark) => {
+    const s = doorDocs?.schedule; const r = s?.rows.find((x) => x.mark === mark);
+    if (!s || !r) return;
+    flyDoorRect(s.key, [[r.box[0] / s.w - 0.004, r.box[1] / s.h - 0.003], [r.box[2] / s.w + 0.004, r.box[3] / s.h + 0.003]], 0.85);
+  };
+  const showElevation = (type) => {
+    const s = doorDocs?.schedule; if (!s) return;
+    const want = String(type).replace(/\s+/g, "").toUpperCase().split(",")[0];
+    const lab = s.types.find((r) => r.str.replace(/\s+/g, "").toUpperCase() === want);
+    if (!lab) { setCommitMsg(`No door-type elevation labeled ${type} found on the schedule sheet.`); return; }
+    // the elevation sits above its label
+    const h = lab.h * 22;
+    flyDoorRect(s.key, [[(lab.x - lab.h * 8) / s.w, (lab.y - h) / s.h], [(lab.x + lab.w + lab.h * 8) / s.w, (lab.y + lab.h * 1.5) / s.h]], 0.6);
+  };
+  function addDoorsToEstimate() {
+    const v = doorView, rd = doorReads[doorKey], p = panelByKey(doorKey);
+    if (!v || !rd || !p?.img?.w) return;
+    const groups = estimateGroups(v.openings);
+    const cs = agentStateRef.current.conditions;
+    const condFor = (tag) => cs.find((c) => c.finish_tag === tag) || mintCondition(tag);
+    const center = (d) => doorToImg(rd, p, [(d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2]);
+    const shapes = [];
+    const origin = { method: "door_reader" };
+    for (const g of groups) {
+      const label = `${g.type} ${g.size}`.trim();
+      const frame = condFor(`DR FRAME ${label}`), leaf = condFor(`DR LEAF ${label}`);
+      for (const o of g.openings) {
+        const d = rd.doors[o.door];
+        const [x, y] = center(d);
+        shapes.push({ sheet_id: doorKey, condition_id: frame.id, measure_role: "count", verts_norm: [[x / p.img.w, y / p.img.h]], computed: { count: 1 }, origin });
+        const hinges = d.leaves.length >= o.leaves ? d.leaves.slice(0, o.leaves).map((l) => doorToImg(rd, p, l.hinge)) : Array.from({ length: o.leaves }, () => [x, y]);
+        for (const [hx, hy] of hinges) shapes.push({ sheet_id: doorKey, condition_id: leaf.id, measure_role: "count", verts_norm: [[hx / p.img.w, hy / p.img.h]], computed: { count: 1 }, origin });
+        const set = o.row?.hwSet;
+        if (set) shapes.push({ sheet_id: doorKey, condition_id: condFor(`HW SET ${set}`).id, measure_role: "count", verts_norm: [[x / p.img.w, y / p.img.h]], computed: { count: 1 }, origin });
+      }
+    }
+    if (!shapes.length) return;
+    dispatchShape({ type: "add", shapes });
+    setDoorAnswers((prev) => ({ ...prev, [`added:${doorKey}`]: nowIso() }));
+    setCommitMsg(`Added ${v.counts.openings} openings (frames), ${v.counts.leaves} door leaves and their hardware sets to the estimate · one undo step (${keyText("⌘Z")}).`);
+  }
+
+  // ── Compare with schedule: the real door schedule sheet beside the plan ──
+  // A read-only reference pane (SplitLayout) frames the schedule; each row is
+  // boxed in its door's hardware-set colour (dashed amber: no door found on
+  // the plan), and a row and its door select each other. Rows are checked off
+  // with one click; checks and notes ride `door_answers` with the project.
+  const doorSchedKey = doorDocs?.schedule?.key || null;
+  const doorCompareOn = !!(splitView && doorSchedKey && splitView.refKey === doorSchedKey);
+  const [doorRefFocus, setDoorRefFocus] = useState(null);
+  const [doorHover, setDoorHover] = useState(null);   // a schedule mark hovered in the panel or on the sheet
+  const doorRefSeqRef = useRef(0);
+  const toggleDoorCompare = () => {
+    if (doorCompareOn) { setSplitView(null); return; }
+    if (!doorSchedKey) return;
+    if (splitView) { setSplitView((s) => ({ ...s, refKey: doorSchedKey, refSet: [...new Set([...(s.refSet || [s.refKey]), doorSchedKey])] })); return; }
+    if (refuseIfOverCap(1)) return;
+    // plan above, schedule below: a schedule is a wide, short table
+    setSplitView({ orientation: "h", ratio: 0.58, refKey: doorSchedKey, refSet: [doorSchedKey] });
+  };
+  const doorRowRect = (r, pad = 1) => {
+    const s = doorDocs?.schedule;
+    return s ? [[(r.box[0] - 3 * pad) / s.w, (r.box[1] - 1.5 * pad) / s.h], [(r.box[2] + 3 * pad) / s.w, (r.box[3] + 1.5 * pad) / s.h]] : null;
+  };
+  const focusDoorRow = (mark) => {
+    const r = doorDocs?.schedule?.rows.find((x) => x.mark === mark);
+    if (!r) return;
+    // the row plus its check box, centred in the part of the pane the doors panel leaves visible
+    const rect = doorRowRect(r, 4);
+    if (doorCompareOn && rect) setDoorRefFocus({ rect: [rect[0], [rect[1][0] + 30 / doorDocs.schedule.w, rect[1][1]]], token: ++doorRefSeqRef.current, fill: 0.92, clipRight: window.innerWidth - 416 });
+  };
+  // a row picked (panel list or the sheet): its door is selected and the plan flies there
+  const pickDoorRow = (mark) => {
+    const o = doorView?.openings.find((x) => x.mark === mark);
+    if (o) showDoor(o.door); else if (!doorCompareOn) showScheduleRow(mark);
+    focusDoorRow(mark);
+  };
+  // a door picked on the plan: its row follows in the schedule pane
+  const doorSelMark = doorSel && doorView && doorSel.key === doorKey ? doorView.openings.find((o) => o.door === doorSel.i)?.mark || null : null;
+  useEffect(() => {
+    if (doorSelMark && doorCompareOn) focusDoorRow(doorSelMark);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- follow the selection only; focusDoorRow is a fresh closure every render
+  }, [doorSelMark, doorCompareOn]);
+  const doorCheck = (mark) => doorAnswers[`check:${mark}`] || null;
+  const setDoorCheck = (mark, v) => setDoorAnswers((prev) => {
+    const n = { ...prev };
+    if (!v || n[`check:${mark}`] === v) { delete n[`check:${mark}`]; if (v === "Needs a look" || !v) delete n[`note:${mark}`]; } else n[`check:${mark}`] = v;
+    return n;
+  });
+  const setDoorNote = (mark, text) => setDoorAnswers((prev) => { const n = { ...prev }; if (text) n[`note:${mark}`] = text.slice(0, 500); else delete n[`note:${mark}`]; return n; });
+  const doorPlaced = useMemo(() => new Set((doorView?.openings || []).filter((o) => o.mark && !o.leftOut).map((o) => o.mark)), [doorView]);
+  // the schedule rows, boxed — drawn on the schedule sheet wherever it is shown
+  // (the reference pane, or the main canvas when it's the open sheet)
+  const doorRowBoxes = (img, scale, xOffset = 0) => {
+    const s = doorDocs?.schedule;
+    if (!s || !img?.w) return null;
+    const k = 1 / scale;
+    return s.rows.map((r) => {
+      const placed = doorPlaced.has(r.mark);
+      const color = placed ? doorSetColor(r.hwSet, doorSetOrder) : "#d97706";
+      const sel = r.mark === doorSelMark, hot = r.mark === doorHover;
+      const x = (r.box[0] / s.w) * img.w + xOffset - 3 * k, y = (r.box[1] / s.h) * img.h - 1.5 * k;
+      const w = ((r.box[2] - r.box[0]) / s.w) * img.w + 6 * k, h = ((r.box[3] - r.box[1]) / s.h) * img.h + 3 * k;
+      const chk = doorCheck(r.mark);
+      const g = Math.min(h * 0.9, 14 * k);
+      return (
+        <g key={`drow-${r.mark}`}>
+          <rect x={x} y={y} width={w} height={h} fill={color} fillOpacity={sel ? 0.28 : hot ? 0.2 : 0.1}
+            stroke={color} strokeWidth={(sel ? 3 : 1.6) * k} strokeOpacity={0.9} strokeDasharray={placed ? undefined : `${5 * k} ${3 * k}`}
+            style={{ pointerEvents: "all", cursor: "pointer" }}
+            onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); pickDoorRow(r.mark); }}
+            onPointerEnter={() => setDoorHover(r.mark)} onPointerLeave={() => setDoorHover((m) => (m === r.mark ? null : m))}>
+            <title>{`Door ${r.mark}${placed ? "" : " — not found on the plan"}${chk ? ` · ${chk}` : ""}`}</title>
+          </rect>
+          <g transform={`translate(${x + w + 3 * k},${y + (h - g) / 2})`} style={{ pointerEvents: "all", cursor: "pointer" }}
+            onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setDoorCheck(r.mark, "Checked"); }}>
+            <title>{chk === "Checked" ? `Row ${r.mark} checked — click to clear` : `Mark row ${r.mark} checked`}</title>
+            <rect width={g} height={g} rx={2 * k} fill={chk === "Checked" ? "#0f9d8a" : chk ? "#d97706" : darkMode ? "#1b1f22" : "#ffffff"} stroke={chk ? "none" : color} strokeWidth={1.4 * k} />
+            {chk === "Checked" && <path d={`M${g * 0.22},${g * 0.52} L${g * 0.42},${g * 0.72} L${g * 0.8},${g * 0.3}`} fill="none" stroke="#fff" strokeWidth={2 * k} strokeLinecap="round" strokeLinejoin="round" />}
+            {chk === "Needs a look" && <text x={g / 2} y={g * 0.78} textAnchor="middle" fontSize={g * 0.8} fontWeight={800} fill="#fff">!</text>}
+          </g>
+        </g>
+      );
+    });
+  };
+
   function finishShape() {
     if (tool === "zone") {
       // ephemeral: classify, show, never save. Belongs to the panel of its first point.
@@ -9871,6 +10168,55 @@ export default function TakeoffCanvas() {
                   </g>
                 );
               })()}
+              {/* Doors suite overlay: each door's own swing and leaf, coloured by
+                  hardware set; dashed = needs an answer; the schedule's rows boxed
+                  in the same colours on the schedule sheet. Screen-constant widths. */}
+              {doorSuiteOn && panels.map((p) => {
+                const k = 1 / tf.scale;
+                const out = [];
+                const rd = doorReads[p.key];
+                if (rd?.status === "done") {
+                  const marks = p.key === doorKey && doorView ? doorView.openings : null;
+                  rd.doors.forEach((d, i) => {
+                    const o = marks ? marks[i] : null;
+                    const color = o?.row ? doorSetColor(o.row.hwSet, doorSetOrder) : DOOR_NEUTRAL;
+                    const asked = rd.withheld[i] || (doorView && p.key === doorKey && doorView.questions.some((q) => q.door === i && !doorAnswers[q.id]));
+                    const faded = o?.leftOut && !rd.withheld[i];
+                    const sel = (doorSel && doorSel.key === p.key && doorSel.i === i) || (!!o?.mark && o.mark === doorHover);
+                    const paths = d.leaves.map((l, j) => {
+                      const h = l.hinge, t = l.tip, r = l.radiusPt, sw = (l.sweepDeg || 90) * Math.PI / 180;
+                      const a0 = Math.atan2(t[1] - h[1], t[0] - h[0]);
+                      const ends = [1, -1].map((sg) => [h[0] + r * Math.cos(a0 + sg * sw), h[1] + r * Math.sin(a0 + sg * sw)]);
+                      const inBox = (q) => q[0] >= d.box[0] - r * 0.15 && q[0] <= d.box[2] + r * 0.15 && q[1] >= d.box[1] - r * 0.15 && q[1] <= d.box[3] + r * 0.15;
+                      const sg = inBox(ends[0]) || !inBox(ends[1]) ? 0 : 1;
+                      const e = ends[sg];
+                      const H = doorToImg(rd, p, h), T = doorToImg(rd, p, t), E = doorToImg(rd, p, e);
+                      const R = Math.hypot(T[0] - H[0], T[1] - H[1]);
+                      // sweep direction survives the page rotation: decide it in image space
+                      const cross = (T[0] - H[0]) * (E[1] - H[1]) - (T[1] - H[1]) * (E[0] - H[0]);
+                      return <path key={j} d={`M${H[0] + p.xOffset},${H[1]} L${T[0] + p.xOffset},${T[1]} A${R},${R} 0 0 ${cross > 0 ? 1 : 0} ${E[0] + p.xOffset},${E[1]}`} />;
+                    });
+                    const c = doorCenter(d);
+                    const C = doorToImg(rd, p, [c.x, c.y]);
+                    const rPx = Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[0] - C[0]) + Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[1] - C[1]);
+                    out.push(
+                      <g key={`door-${p.key}-${i}`} opacity={faded ? 0.3 : 1}>
+                        <g fill="none" stroke={color} strokeWidth={(sel ? 4 : 2.6) * k} strokeOpacity={0.9} strokeDasharray={asked ? `${6 * k} ${4 * k}` : undefined} strokeLinecap="round">{paths}</g>
+                        <circle cx={C[0] + p.xOffset} cy={C[1]} r={Math.max(rPx * 0.75, 10 * k)} fill="transparent" stroke="none" style={{ pointerEvents: "all", cursor: "pointer" }}
+                          onPointerDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); setDoorSel({ key: p.key, i }); }}>
+                          <title>{o?.mark ? `Door ${o.mark}` : "Door with no number"}</title>
+                        </circle>
+                        {o?.mark && rPx * tf.scale > 16 && (
+                          <text x={C[0] + p.xOffset} y={C[1] - rPx * 0.9} textAnchor="middle" fontSize={11 * k} fontWeight={700} fontFamily="JetBrains Mono, monospace"
+                            fill={color} stroke={darkMode ? "#0b0e14" : "#ffffff"} strokeWidth={3 * k} paintOrder="stroke" style={{ pointerEvents: "none" }}>{o.mark}</text>
+                        )}
+                      </g>,
+                    );
+                  });
+                }
+                if (doorDocs?.schedule && doorDocs.schedule.key === p.key) out.push(<g key="drows">{doorRowBoxes(p.img, tf.scale, p.xOffset)}</g>);
+                return out.length ? <g key={`doors-${p.key}`}>{out}</g> : null;
+              })}
               {/* casing under-stroke (Site Glass): a JSX twin BEHIND each draft
                   stroke, tracing the SAME geometry (arc-flattened where a bow is
                   set). Width ownership is DUAL like the rubber core — this twin
@@ -11443,7 +11789,9 @@ export default function TakeoffCanvas() {
            <ReferencePane refKey={effectiveRefKey} panelImg={refPanelImg} paintBase={paintReferenceBase} paintDetail={paintReferenceDetail} epoch={refEpoch}
              shapes={refStackedShapes} conditions={conditions} condById={condById} darkMode={darkMode} patId={patId}
              markups={refMarkups} rfis={rfis} noteQtyLabels={noteQtyLabels} sheetBaseLabel={sheetBaseLabel}
-             refSet={refSet} activeKey={rawRefKey} tabLabel={tabLabel} onSelectRef={selectRefTab} onRemoveRef={removeRefTab} onDropSheet={dropOntoReference} />
+             refSet={refSet} activeKey={rawRefKey} tabLabel={tabLabel} onSelectRef={selectRefTab} onRemoveRef={removeRefTab} onDropSheet={dropOntoReference}
+             overlay={doorSuiteOn && doorSchedKey && effectiveRefKey === doorSchedKey ? (img, sc) => doorRowBoxes(img, sc) : null}
+             focus={doorCompareOn ? doorRefFocus : null} />
          ) : null}
        />
         {/* Work and review panel — DOCKED right-rail sibling (reflows the canvas
@@ -11678,6 +12026,35 @@ export default function TakeoffCanvas() {
           commitMsg text lives here now (the old floating pill is gone — the
           rule banner still floats, it has buttons). Print: the report-only
           visibility rules already hide this. */}
+      {/* ── Doors suite panel — shown while the trade is Doors & Windows ── */}
+      {doorSuiteOn && (() => {
+        const rd = doorKey ? doorReads[doorKey] : null;
+        const reading = !rd || rd.status === "reading";
+        const docsBusy = !doorDocs || doorDocs.status === "reading";
+        const status = rd?.status === "failed" ? { busy: true, text: `Couldn't read this sheet's doors: ${rd.error}` }
+          : reading ? { busy: true, text: "Reading the doors on this sheet…" }
+          : docsBusy ? { busy: false, docsBusy: true, note: "Reading the door schedule and the hardware spec in the loaded files…" }
+          : { busy: false, note: !doorDocs.schedule ? "No door schedule found in the loaded files: doors are counted from the plan alone." : !doorDocs.sets.length ? "No spec section 08 71 00 loaded: hardware sets come from the schedule. Drop the project manual PDF in to add their items." : null };
+        return (
+          <DoorsSuitePanel
+            sheetLabel={doorKey ? sheetBaseLabel(doorKey) : "this sheet"} status={status} view={doorView}
+            schedule={doorDocs?.schedule ? { ...doorDocs.schedule, label: sheetBaseLabel(doorDocs.schedule.key) } : null}
+            sets={doorDocs?.sets || []} setOrder={doorSetOrder} answers={doorAnswers}
+            sel={doorSel && doorSel.key === doorKey ? doorSel.i : null}
+            coach={doorCoach} onDismissCoach={() => { setDoorCoach(false); try { localStorage.setItem("opentakeoff_doors_coach", "seen"); } catch { /* private mode */ } }}
+            tab={doorTab} onTab={(t) => { setDoorTab(t); setDoorSel(null); }}
+            onAnswer={answerDoor} onUndo={undoDoor}
+            onSelect={(i) => { setDoorSel(i == null ? null : { key: doorKey, i }); if (i == null) setDoorTab("doors"); }}
+            onShowDoor={(i) => showDoor(i)} onShowRow={showScheduleRow} onShowElevation={showElevation}
+            onShowSet={(m) => { const o = doorView?.openings.find((x) => x.mark === m); if (o) showDoor(o.door); else showScheduleRow(m); }}
+            onAdd={addDoorsToEstimate} added={!!doorAnswers[`added:${doorKey}`]}
+            compareOn={doorCompareOn} canCompare={!!doorSchedKey} onCompare={toggleDoorCompare}
+            selMark={doorSelMark} hoverMark={doorHover} onHoverRow={setDoorHover} onPickRow={pickDoorRow}
+            placed={doorPlaced} checks={doorAnswers} onCheck={setDoorCheck} onNote={setDoorNote}
+            onClose={() => pickViewTrade(ALL_TRADES)}
+          />
+        );
+      })()}
       {/* ── Symbol sweep review panel (#264) — floats while a sweep is live ── */}
       {sweep && view === "canvas" && (() => {
         const seedTag = sweep.seed.label?.label || null;
