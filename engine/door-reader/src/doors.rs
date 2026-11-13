@@ -302,6 +302,41 @@ pub fn judge_all(arcs: &[Arc], fpp: f64, paths: &[Path], segs: &Segments) -> Vec
     arcs.iter().enumerate().map(|(ai, a)| judge(ai, a)).collect()
 }
 
+/// Doors drawn without an arc (a solid leaf open square off a wall gap, a dashed chord from the far jamb to its tip), as swings
+/// beside the arcs already kept: a quarter turn about the hinge, `Drawn::Chord`. One per opening; none where a kept swing is.
+const CHORDS: bool = true;
+pub fn chord_swings(kept: &[Arc], segs: &Segments, fpp: f64) -> Vec<Arc> {
+    if !CHORDS {
+        return vec![];
+    }
+    let mut out: Vec<Arc> = vec![];
+    for (h, st, t) in segs.chord_doors(MIN_R_FT / fpp, MAX_R_FT / fpp) {
+        let r = dist(h, t);
+        let (u, n) = (P::new((t.x - h.x) / r, (t.y - h.y) / r), P::new((st.x - h.x) / r, (st.y - h.y) / r));
+        let mut b = [h.x, h.y, h.x, h.y];
+        for k in 0..=8 {
+            let th = std::f64::consts::FRAC_PI_2 * k as f64 / 8.0;
+            let p = P::new(h.x + r * (th.cos() * u.x + th.sin() * n.x), h.y + r * (th.cos() * u.y + th.sin() * n.y));
+            b = [b[0].min(p.x), b[1].min(p.y), b[2].max(p.x), b[3].max(p.y)];
+        }
+        let mut a = crate::arcs::make_arc(h, r, 90.0, 0.0, [t, st], b, Drawn::Chord, vec![]);
+        a.leaf_far = t;
+        a.jamb = segs.jamb_ft(&a, fpp).unwrap_or(f64::NAN);
+        a.strike = segs.wall_beyond(&a, st);
+        let ab = a.swing_box();
+        let c = ((ab[0] + ab[2]) / 2.0, (ab[1] + ab[3]) / 2.0);
+        let taken = |q: &Arc| {
+            let qb = q.swing_box();
+            iou(&ab, &qb) > 0.3 || (qb[0] <= c.0 && c.0 <= qb[2] && qb[1] <= c.1 && c.1 <= qb[3])
+        };
+        if kept.iter().any(taken) || out.iter().any(taken) {
+            continue;
+        }
+        out.push(a);
+    }
+    out
+}
+
 /// Swings filed by the grid cells their boxes cover.
 struct BoxGrid {
     cells: HashMap<(i64, i64), Vec<usize>>,
@@ -338,6 +373,27 @@ impl BoxGrid {
     }
 }
 
+/// Two leaves back to back in one opening (a communicating pair, one swinging into each room): each piece has its own leaf
+/// ending at its outer end, and the pieces meet at the strike, away from both leaves. A swing cut in two by a 45-degree leaf has
+/// the leaf at the cut, where the pieces meet. Off: development rulers mostly count a communicating pair as one door (the joined
+/// find), and splitting it cost far more false finds than it found (round 4, E9).
+const BACK_TO_BACK: bool = false;
+const BACK_TO_BACK_R: f64 = 0.25;
+fn back_to_back(u: &Arc, q: &Arc) -> bool {
+    let mut best = (u.ends[0], q.ends[0]);
+    let mut bd = f64::INFINITY;
+    for e in u.ends {
+        for f in q.ends {
+            if dist(e, f) < bd {
+                bd = dist(e, f);
+                best = (e, f);
+            }
+        }
+    }
+    let leafed = |a: &Arc| !a.leafless && dist(a.leaf_far, a.hinge) > 0.5 * a.r;
+    leafed(u) && leafed(q) && dist(u.leaf_far, best.0) > BACK_TO_BACK_R * u.r && dist(q.leaf_far, best.1) > BACK_TO_BACK_R * q.r
+}
+
 /// A 45-degree leaf cuts one swing into two pieces; doubled strokes and nested clearance arcs draw it twice.
 pub fn one_per_swing(arcs: Vec<Arc>) -> Vec<Arc> {
     let mut order: Vec<Arc> = arcs;
@@ -351,6 +407,7 @@ pub fn one_per_swing(arcs: Vec<Arc>) -> Vec<Arc> {
                 && q.sweep <= 80.0
                 && u.sweep + q.sweep <= 110.0
                 && u.ends.iter().flat_map(|e| q.ends.iter().map(move |f| dist(*e, *f))).fold(f64::INFINITY, f64::min) < 0.6 * u.r
+                && !(BACK_TO_BACK && back_to_back(u, &q))
         });
         match host {
             None => joined.push(q),

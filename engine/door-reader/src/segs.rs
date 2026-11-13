@@ -35,6 +35,21 @@ const JAMB_REACH_FT: f64 = 3.0;
 const BOX_CELL: f64 = 40.0;
 const BOX_CELLS_MAX: i64 = 400;
 const END_CELL: f64 = 40.0;
+/// Arcless doors (a solid leaf plus a dashed chord): how near the jamb ends the wall lines must end, their least length, the chord's
+/// dashes' offset from its line, their count, longest dash, the share of the chord they cover, how near its ends they reach.
+const CHORD_JAMB_R: f64 = 0.12;
+const CHORD_WALL_MIN_R: f64 = 0.3;
+const CHORD_OFF_R: f64 = 0.04;
+const CHORD_DASHES: usize = 2;
+const CHORD_DASH_MAX: f64 = 0.45;
+const CHORD_PAST_R: f64 = 0.08;
+const CHORD_COVER: (f64, f64) = (0.3, 0.92);
+const CHORD_ENDS_R: f64 = 0.15;
+/// The leaf's tip is free: nothing lies on its line this share of it past the tip. This many strokes parallel to the chord within this share of its
+/// length beside it make it a hatch.
+const CHORD_TIP_FREE_R: f64 = 0.3;
+const CHORD_HATCH_R: f64 = 0.3;
+const CHORD_HATCH_MIN: usize = 2;
 pub const COARSE_LEAF_R: (f64, f64) = (0.08, 0.08);
 pub const COARSE_JAMB_R: (f64, f64) = (0.08, 0.1);
 
@@ -339,6 +354,144 @@ impl Segments {
             }
         }
         None
+    }
+
+    /// Doors drawn with no arc: a solid leaf standing open square off a wall gap, and a dashed straight line (the swing's chord)
+    /// from the far jamb to the leaf's tip. Leaves `lo..=hi` points long; returns (hinge, strike jamb, leaf tip) per find.
+    pub fn chord_doors(&self, lo: f64, hi: f64) -> Vec<(P, P, P)> {
+        let mut out: Vec<(P, P, P)> = vec![];
+        for k in 0..self.a.len() {
+            let w = self.len[k];
+            if !(lo..=hi).contains(&w) || self.styled[k] {
+                continue;
+            }
+            let s = self.a[k];
+            let (p0, p1) = (P::new(s[0], s[1]), P::new(s[2], s[3]));
+            for (h, t) in [(p0, p1), (p1, p0)] {
+                let u = P::new((t.x - h.x) / w, (t.y - h.y) / w);
+                for sg in [1.0, -1.0] {
+                    let n = P::new(-u.y * sg, u.x * sg); // hinge -> strike, along the wall
+                    let st = P::new(h.x + w * n.x, h.y + w * n.y);
+                    // the wall runs on behind the hinge and on past the strike jamb, along the opening
+                    let wall = |p: P, beyond: &dyn Fn(f64) -> bool| {
+                        self.ends_near(p, CHORD_JAMB_R * w, |j, _near, far| {
+                            self.d[j].dot(n).abs() >= 0.97 * self.len[j] && self.len[j] >= CHORD_WALL_MIN_R * w && beyond(far.sub(h).dot(n))
+                        })
+                    };
+                    if !wall(h, &|x| x < -LEAFLESS_RUN_R * w) || !wall(st, &|x| x > (1.0 + LEAFLESS_RUN_R) * w) {
+                        continue;
+                    }
+                    // the leaf ends in the room: no line runs on along it past its tip (a wall face read as a leaf does)
+                    let past = P::new(t.x + CHORD_TIP_FREE_R * w * u.x, t.y + CHORD_TIP_FREE_R * w * u.y);
+                    if self.covered(t, past, CHORD_OFF_R * w) > 0.0 {
+                        continue;
+                    }
+                    // the gap is no figure's side: no one stroke runs from hinge to strike jamb (a line running on through
+                    // the opening is a boundary drawn over it and is fine)
+                    let tol = CHORD_JAMB_R * w;
+                    let side = self.ends_near(h, tol, |_j, _near, far| dist(far, st) <= tol);
+                    // and nothing stands square off the leaf at its tip (a box's corner)
+                    let corner = self.ends_near(t, tol, |j, _near, _far| self.len[j] >= CHORD_WALL_MIN_R * w && self.d[j].dot(u).abs() <= 0.26 * self.len[j]);
+                    if side || corner {
+                        continue;
+                    }
+                    if self.dashed_between(st, t) {
+                        out.push((h, st, t));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// How much of the line from `a` to `b` (between a tenth and nine tenths along) strokes lying on it cover.
+    pub fn covered(&self, a: P, b: P, tol: f64) -> f64 {
+        let v = b.sub(a);
+        let l = v.norm();
+        if l <= 0.0 {
+            return 0.0;
+        }
+        let u = P::new(v.x / l, v.y / l);
+        let n = P::new(-u.y, u.x);
+        let mid = P::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+        let mut spans: Vec<(f64, f64)> = vec![];
+        for k in self.around(mid, 0.6 * l) {
+            let s = self.a[k];
+            let (p0, p1) = (P::new(s[0], s[1]), P::new(s[2], s[3]));
+            if self.d[k].dot(u).abs() < 0.97 * self.len[k] || p0.sub(a).dot(n).abs() > tol || p1.sub(a).dot(n).abs() > tol {
+                continue;
+            }
+            let (t0, t1) = (p0.sub(a).dot(u), p1.sub(a).dot(u));
+            let (x0, x1) = (t0.min(t1).max(0.1 * l), t0.max(t1).min(0.9 * l));
+            if x1 > x0 {
+                spans.push((x0, x1));
+            }
+        }
+        spans.sort_by(|p, q| p.partial_cmp(q).unwrap());
+        let (mut cover, mut reach) = (0.0, 0.0f64);
+        for &(x0, x1) in &spans {
+            let x0 = x0.max(reach);
+            if x1 > x0 {
+                cover += x1 - x0;
+                reach = x1;
+            }
+        }
+        cover
+    }
+
+    /// Short strokes in a line from `a` to `b` with gaps between them: a dashed line, no solid run along it.
+    pub fn dashed_between(&self, a: P, b: P) -> bool {
+        let v = b.sub(a);
+        let l = v.norm();
+        if l <= 0.0 {
+            return false;
+        }
+        let u = P::new(v.x / l, v.y / l);
+        let n = P::new(-u.y, u.x);
+        let mid = P::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+        let tol = CHORD_OFF_R * l;
+        let mut spans: Vec<(f64, f64)> = vec![];
+        let mut beside = 0usize;
+        for k in self.around(mid, 0.6 * l) {
+            let s = self.a[k];
+            let (p0, p1) = (P::new(s[0], s[1]), P::new(s[2], s[3]));
+            if self.d[k].dot(u).abs() < 0.97 * self.len[k] {
+                continue;
+            }
+            let (t0, t1) = (p0.sub(a).dot(u), p1.sub(a).dot(u));
+            let (x0, x1) = (t0.min(t1), t0.max(t1));
+            let (o0, o1) = (p0.sub(a).dot(n).abs(), p1.sub(a).dot(n).abs());
+            if o0 > tol || o1 > tol {
+                // short strokes parallel to the chord just beside it, over its span: a hatch, not a dashed line (a hatch of long lines
+                // across a whole area is the room's, drawn over the door)
+                if o0.min(o1) <= CHORD_HATCH_R * l && x1 > 0.1 * l && x0 < 0.9 * l && self.len[k] <= l {
+                    beside += 1;
+                }
+                continue;
+            }
+            if x1 < -tol || x0 > l + tol {
+                continue;
+            }
+            if self.len[k] > CHORD_DASH_MAX * l || x0 < -CHORD_PAST_R * l || x1 > (1.0 + CHORD_PAST_R) * l {
+                return false; // a solid line along it, or one running on past it
+            }
+            spans.push((x0.max(0.0), x1.min(l)));
+        }
+        if spans.len() < CHORD_DASHES || beside >= CHORD_HATCH_MIN {
+            return false;
+        }
+        spans.sort_by(|p, q| p.partial_cmp(q).unwrap());
+        let (mut cover, mut reach) = (0.0, 0.0f64);
+        for &(x0, x1) in &spans {
+            let x0 = x0.max(reach);
+            if x1 > x0 {
+                cover += x1 - x0;
+                reach = x1;
+            }
+        }
+        let first = spans[0].0;
+        let last = spans.iter().map(|s| s.1).fold(f64::NEG_INFINITY, f64::max);
+        (CHORD_COVER.0 * l..=CHORD_COVER.1 * l).contains(&cover) && first <= CHORD_ENDS_R * l && last >= (1.0 - CHORD_ENDS_R) * l
     }
 
     /// A stroke from the hinge, of the radius to within 8%, ending on `end` to within 8% of the radius (a coarse arc's leaf).
