@@ -44,9 +44,9 @@ what's missing where rendering isn't available.
 engine is re-validated against a wider plan corpus: `tools/list` never names them, the
 initialize `instructions` say so and point at `measure_polygon`, and no other tool's
 description sends an agent to a verb that is not there. A default build registers
-**<!--tool-count-->65<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
+**<!--tool-count-->69<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
 exports — is unchanged. Set `OPENTAKEOFF_ONE_CLICK=1` in the server's environment to
-register both verbs (<!--tool-count-all-->67<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
+register both verbs (<!--tool-count-all-->71<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
 `test/gate.test.ts` pins both surfaces. The rows and examples below that use `one_click`
 describe the lifted build. Design note: [`docs/design/ONE_CLICK_GATE.md`](../docs/design/ONE_CLICK_GATE.md).
 
@@ -123,7 +123,7 @@ includes document text, shape vertices, or result payload content.
 
 ### Staged tool exposure (opt-in)
 
-By default every client gets all <!--tool-count-->65<!--/tool-count--> tool schemas on `tools/list`—the flat
+By default every client gets all <!--tool-count-->69<!--/tool-count--> tool schemas on `tools/list`—the flat
 contract every published client already expects. Fifty-two descriptions is real
 token weight for an agent session that may never touch half of them, so the
 server can instead stage the surface along the workflow it already teaches:
@@ -132,7 +132,7 @@ server can instead stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage (load, scale, read the set—<!--tool-count-setup-->18<!--/tool-count-setup--> tools) starts
+Staged, only the **setup** stage (load, scale, read the set—<!--tool-count-setup-->22<!--/tool-count-setup--> tools) starts
 enabled, plus one opener: `open_tool_stage`. Calling it with `"measure"`,
 `"revise"`, or `"handoff"` enables that stage's tools and fires
 `tools/list_changed`, so any client that supports dynamic tool lists (Claude
@@ -212,6 +212,10 @@ The [generated tool index](../docs/MCP_TOOL_INDEX.md) lists stages and required 
 | `stitch_sheets` | Stitch 2–4 plan sheets together into a composite working surface across match-lines (#161)—the browser canvas's Stitched Sheets feature. Shapes traced on the returned stitch reference bind to the composite key (`stitch:<uid>`) and measure continuously across seam boundaries once aligned. By default sheets create in auto-butt layout (`aligned: false`). Member sheets must have calibrated, matching scales. |
 | `align_stitch` | Align member sheets of a composite stitch surface using anchor and moving reference points across a match line. Performs automated seam linework analysis, calculating displacement and leftover rotation across the seam, and withholds the stitch if tolerances are exceeded (0.50" / 0.25°). |
 | `list_stitches` | List all existing composite stitched sheet surfaces in the current session, including dimensions, member sheet placements, inherited scale, alignment status, seam check results, and shape counts. |
+| `rotate_page` | Rotate a sheet's page in the PDF (90, 180, or 270 degrees clockwise) before measuring. Transforms all existing takeoff shapes, markups, and calibrations on that sheet to remain locked to the drawing. |
+| `reorder_pages` | Reorder pages in a loaded PDF document. Remaps all takeoff sheet keys so measurements and annotations follow their pages. |
+| `extract_pages` | Extract a subset of pages from a loaded PDF into a new PDF file on disk. Carries all takeoff shapes and annotations on those pages into the new document (mapped to pages 1..N). |
+| `merge_documents` | Merge multiple PDF files into one combined PDF document on disk. Combines the pages and remaps takeoff keys from all source documents. |
 
 ### The Assistant window — talk to your AI from inside the canvas
 
@@ -248,7 +252,9 @@ The suite tools are derives: they read what is already committed and commit
 what follows as unreviewed shapes or material rows, one `undo_last` step per
 write (each reply says how many). They never measure the drawing themselves and
 never invent a document value: pitch, soffit depth, grid and hanger spacing are
-arguments, and every allowance is reported as an allowance.
+arguments, and every allowance is reported as an allowance. Each takes
+`units: "metric"` for arguments and a reply in mm, mm², m and m², and names
+any argument it does not take, in `unknown_args` or in its refusal.
 
 A client that reads the tool list only once can pre-open suites:
 

@@ -8,7 +8,19 @@ const base = (file) => file.replace(/\.pdf$/i, "");
 // shows today's label at once; a sheet number from the namer replaces it in
 // place when it arrives, and nothing reorders. Notes about the tree sit
 // after it, outside role=tree (a tree holds only its rows).
-export function SheetTree({ items, current, onSelect, namer, countKnown, query, hold, onSearchAll }) {
+export function SheetTree({
+  items,
+  current,
+  onSelect,
+  namer,
+  countKnown,
+  query,
+  hold,
+  onSearchAll,
+  onReorderPages,
+  onRotatePage,
+  onDeletePage,
+}) {
   // numbers arrive batched per frame (sheetNamer's signal)
   const [version, bump] = useState(0);
   useEffect(() => namer?.subscribe(() => bump((n) => n + 1)), [namer]);
@@ -18,6 +30,7 @@ export function SheetTree({ items, current, onSelect, namer, countKnown, query, 
     [items, countKnown, namer, version]);
   const { nodes, open: searchOpen } = useMemo(() => filterTree(tree, query), [tree, query]);
   const [expanded, setExpanded] = useState(() => new Set());
+  const [dragOverKey, setDragOverKey] = useState(null);
   const isOpen = (f) => searchOpen.has(f) || expanded.has(f);
   const rows = visibleRows(nodes, isOpen);
   const rowIds = rows.map((r) => r.id).join("\n");
@@ -97,14 +110,49 @@ export function SheetTree({ items, current, onSelect, namer, countKnown, query, 
           "aria-posinset": place.get(r.id)[0], "aria-setsize": place.get(r.id)[1],
           tabIndex: r.id === tabRow ? 0 : -1,
           onFocus: () => setFocusId(r.id),
-          onMouseDown: noFocus,
         };
         if (n.kind === "folder") {
-          return <div key={r.id} {...common} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={`${n.file} · ${n.pages} sheets`} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
+          return <div key={r.id} {...common} onMouseDown={noFocus} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={`${n.file} · ${n.pages} sheets`} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
             <Icon name="chevronRight" size={14} /><span><strong>{base(n.file)}</strong></span><small>{n.pages} sheets</small>{n.shapes > 0 && <em>{n.shapes}</em>}
           </div>;
         }
-        return <div key={r.id} {...common} className={`calm-tree-sheet${r.depth === 2 ? " is-child" : ""}`} aria-current={n.key === current ? "page" : undefined} title={rowTitle(n)} onClick={() => { setFocusId(r.id); pick(n.key); }}>
+        const isPage = n.kind === "sheet";
+        return <div
+          key={r.id}
+          {...common}
+          className={`calm-tree-sheet${r.depth === 2 ? " is-child" : ""}${dragOverKey === n.key ? " is-drag-over" : ""}`}
+          aria-current={n.key === current ? "page" : undefined}
+          title={rowTitle(n)}
+          draggable={isPage}
+          onDragStart={(e) => {
+            if (!isPage) return;
+            e.dataTransfer.setData("application/x-opentakeoff-page", JSON.stringify({ file: n.file, page: n.page, key: n.key }));
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragOver={(e) => {
+            if (!isPage) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            if (dragOverKey !== n.key) setDragOverKey(n.key);
+          }}
+          onDragLeave={() => {
+            if (dragOverKey === n.key) setDragOverKey(null);
+          }}
+          onDrop={(e) => {
+            if (!isPage) return;
+            e.preventDefault();
+            setDragOverKey(null);
+            try {
+              const raw = e.dataTransfer.getData("application/x-opentakeoff-page");
+              if (!raw) return;
+              const data = JSON.parse(raw);
+              if (data && data.file === n.file && data.page !== n.page) {
+                onReorderPages?.(n.file, data.page, n.page);
+              }
+            } catch { /* ignore invalid drag data */ }
+          }}
+          onClick={() => { setFocusId(r.id); pick(n.key); }}
+        >
           <Icon name="document" size={17} />
           <span>
             <strong className={n.number ? "calm-sheet-number" : undefined}>{n.number ?? n.label}</strong>
@@ -113,6 +161,32 @@ export function SheetTree({ items, current, onSelect, namer, countKnown, query, 
           {/* an unnumbered row's label already starts with its level */}
           {n.level && n.number && <i className="calm-level-chip">{n.level}</i>}
           {n.shapes > 0 && <em>{n.shapes}</em>}
+          {(onRotatePage || onDeletePage) && (
+            <span className="calm-sheet-row-tools" onClick={(e) => e.stopPropagation()}>
+              {onRotatePage && (
+                <button
+                  type="button"
+                  title="Rotate page 90° clockwise"
+                  onClick={() => onRotatePage(n.key, 90)}
+                  aria-label={`Rotate ${n.label} 90°`}
+                  className="calm-tree-action-btn"
+                >
+                  ↻
+                </button>
+              )}
+              {onDeletePage && isPage && (
+                <button
+                  type="button"
+                  title="Delete page"
+                  onClick={() => onDeletePage(n.key)}
+                  aria-label={`Delete ${n.label}`}
+                  className="calm-tree-action-btn"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          )}
         </div>;
       })}
     </div>
