@@ -404,17 +404,45 @@ export function applyShapeCommand(shapes, cmd) {
         // the same shape again — restore rows of the CURRENT origins, so
         // redo-of-undo re-accepts (accepted_ts included) without re-stamping.
         const byId = new Map(cmd.restore.map((r) => [r.id, r]));
-        const inverse = { type: "review", restore: shapes.filter((s) => byId.has(s.id)).map((s) => ({ id: s.id, origin: s.origin })) };
-        const next = shapes.map((s) => (byId.has(s.id) ? { ...s, origin: byId.get(s.id).origin } : s));
+        const inverse = {
+          type: "review",
+          restore: shapes.filter((s) => byId.has(s.id)).map((s) => ({
+            id: s.id,
+            origin: s.origin,
+            ...("flagged_for_revision" in s ? { flagged_for_revision: s.flagged_for_revision } : {}),
+          })),
+        };
+        const next = shapes.map((s) => {
+          if (!byId.has(s.id)) return s;
+          const rec = byId.get(s.id);
+          const res = { ...s, origin: rec.origin };
+          if ("flagged_for_revision" in rec) {
+            res.flagged_for_revision = rec.flagged_for_revision;
+          } else if ("flagged_for_revision" in res) {
+            delete res.flagged_for_revision;
+          }
+          return res;
+        });
         return { shapes: next, inverse };
       }
       const idSet = new Set(cmd.ids);
       const ts = nowIso();
       const restore = [];
       const next = shapes.map((s) => {
-        if (!idSet.has(s.id) || s.origin?.reviewed !== false) return s;
-        restore.push({ id: s.id, origin: s.origin });
-        return { ...s, origin: { ...s.origin, reviewed: true, accepted_ts: ts } };
+        const isFlagged = s.flagged_for_revision === true || s.origin?.flagged_for_revision === true;
+        if (!idSet.has(s.id) || (s.origin?.reviewed !== false && !isFlagged)) return s;
+        restore.push({
+          id: s.id,
+          origin: s.origin,
+          ...("flagged_for_revision" in s ? { flagged_for_revision: s.flagged_for_revision } : {}),
+        });
+        const orig = s.origin || {};
+        const { flagged_for_revision: _fl, ...restOrigin } = orig;
+        const res = { ...s, origin: { ...restOrigin, reviewed: true, accepted_ts: ts } };
+        if ("flagged_for_revision" in res) {
+          delete res.flagged_for_revision;
+        }
+        return res;
       });
       return { shapes: next, inverse: { type: "review", restore } };
     }

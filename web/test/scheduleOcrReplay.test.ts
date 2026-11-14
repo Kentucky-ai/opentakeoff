@@ -35,7 +35,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { pageSpans, spansInRect, graphSpans } from "../src/lib/pageSpans.ts";
 import { readScheduleSpans, type ScheduleRead } from "../src/lib/scheduleRead.ts";
 import { wordsToSpans, type OcrWord } from "../src/lib/ocr/types.ts";
@@ -58,7 +58,7 @@ const req = createRequire(import.meta.url);
 const DEMO = fileURLToPath(new URL("../public/demo/sample-finish-plan.pdf", import.meta.url));
 /** The vector read of `rect` on the demo PDF, as the canvas reads a box. */
 async function vectorKey(fx: Fixture): Promise<ScheduleRow[]> {
-  const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
+  const pdfjs = await import(pathToFileURL(req.resolve("pdfjs-dist/legacy/build/pdf.mjs")).href);
   const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(DEMO)), useSystemFonts: true }).promise;
   try {
     const page = await doc.getPage(fx.source.page);
