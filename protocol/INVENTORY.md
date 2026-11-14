@@ -20,6 +20,7 @@ fields modeled by this draft, including nested definitions.
 | `sheet_group`, `last_group`, `sheet_tabs`, `sheet_levels`, `layer_overrides` | Browser working state and sheet interpretation from `buildPayload`; MCP emits empty group/tab/level fields and omits layer overrides. | Preserve known shapes, but no claim that an MCP round trip retains workspace state. [Sheet groups](../web/src/lib/sheetGroups.ts), [import tests](../web/test/importTakeoff.test.ts). |
 | `stitches[]` | Browser creates `{id, name, members:[{key,dx,dy}], created_at?}`; ID starts `stitch:`. Member offsets use logical image pixels. | [Stitch schema](v1/stitch.schema.json); MCP cannot operate on it and omits it from export. [Stitch tests](../web/test/stitches.test.ts), [archive check](test/current-records.test.mjs). |
 | `provenance_counters` | Browser aggregate deletion counts by origin method; contribution export selects its own counters. | Preserved object, not per-event history. [Shape command tests](../web/test/shapeCommands.test.ts), [contribution tests](../web/test/contribute.test.ts). |
+| `door_answers` | Doors suite (browser): question id → the answer picked (`withheld:<n>`, `untagged:<n>`, `pair:<mark>`, `hardware:<mark>`), plus schedule-row checks (`check:<mark>` = "Checked" or "Needs a look", `note:<mark>`) and `added:<sheet>` stamps. Omitted when empty. | Preserved object of strings; not yet in the draft schema. [Document tests](../web/test/takeoffDocument.test.ts), [Doors suite tests](../web/test/doorSuite.test.ts). |
 
 ## Measurement, calibration, and authorship
 

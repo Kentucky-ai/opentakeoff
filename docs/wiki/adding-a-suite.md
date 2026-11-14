@@ -127,6 +127,19 @@ Both kinds call the pure functions from step 3, report `undo_steps` (the
 `undo_last {n}` that takes the whole call back) and pass `not_figured`
 through, so a missing document value reaches the person instead of a guess.
 
+Both kinds also take `units: "metric"`. Declare the input schema as a
+`z.looseObject` const with `units: unitsArg` and both names of every argument
+that carries a unit (`overhang_in` and `overhang_mm`), since `suiteRun` reports
+any name the schema leaves out as ignored. Wrap the handler in `suiteRun` with
+that schema, and read each of those arguments through `unitArg`, which takes
+the metric name and hands the handler inches or feet. The math stays in feet,
+inches and SF. Give each reply quantity a unit ending (`_sf`, `_lf`, `_ft`,
+`_in`), and `suiteRun` converts it for a metric caller, says which units it
+used, and names the arguments the tool ignored. Two reply keys that would
+share a metric name, like `whip_ft` (each) and `whip_lf` (all of them), make a
+metric reply fail: give one of them its own name in `SUITE_REPLY_NAMES` in
+`web/src/lib/units.ts`.
+
 Two texts in the same file name the suites and no test checks them: the
 `SUITE_INSTRUCTIONS` line every client reads at initialize lists the trades
 with a tool, and `open_suite`'s description gives what division 07 opens.
@@ -201,7 +214,7 @@ Paste this into the pull request description:
 - [ ] The trade questions are answered: what is traced, which values come from the documents, what is ordered
 - [ ] Registered in web/src/lib/tradeSuites.ts (and DIVISIONS for a new division); prefixes do not collide
 - [ ] Tool suites only: pure math in web/src/lib/suiteMath.ts, every expected number worked by hand in the test comments
-- [ ] Tool suites only: the tool in mcp/src/suites.ts reads committed shapes, reports undo_steps, is safe to re-run, lists missing values under not_figured
+- [ ] Tool suites only: the tool in mcp/src/suites.ts reads committed shapes, reports undo_steps, is safe to re-run, lists missing values under not_figured, and runs through suiteRun with unitArg for every argument that carries a unit
 - [ ] No measuring the drawing, no invented document value, every allowance labeled, no prices, manufacturers or products
 - [ ] npm test --prefix web and npm test --prefix mcp pass
 - [ ] The MCP version is raised to an unused number in all seven fields, and the wiki bundle is regenerated after it
