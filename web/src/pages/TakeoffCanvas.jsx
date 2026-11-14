@@ -8973,7 +8973,7 @@ export default function TakeoffCanvas() {
   // routes through the `review` command (ONE undo entry), which flips reviewed
   // + stamps accepted_ts and nothing else: affirmation, not an edit. Rejecting
   // one is just deleting it — select and Delete, like any shape.
-  const pendingCommitted = useMemo(() => visibleShapes.filter((s) => s.origin?.reviewed === false), [visibleShapes]);
+  const pendingCommitted = useMemo(() => visibleShapes.filter((s) => s.origin?.reviewed === false || s.flagged_for_revision || s.origin?.flagged_for_revision), [visibleShapes]);
   // proposals (#365): the visible pending shapes grouped by batch — one pill
   // per proposal on the Accept surface, the un-batched remainder as its own
   // pill. Accept is the SAME review command as the single pill (one undo
@@ -8988,6 +8988,15 @@ export default function TakeoffCanvas() {
     return p ? { w: p.img.w, h: p.img.h, upp: uppFor(key) || 0 } : null;
   }), [shapes, conditions, panels, scales]);   // eslint-disable-line react-hooks/exhaustive-deps -- uppFor reads scales + the render-scale ref
   const scopeByCond = useMemo(() => collisionsByCondition(scopeResult), [scopeResult]);
+  const revisionFlaggedByCond = useMemo(() => {
+    const set = new Set();
+    for (const s of shapes) {
+      if (s.flagged_for_revision || s.origin?.flagged_for_revision) {
+        set.add(s.condition_id);
+      }
+    }
+    return set;
+  }, [shapes]);
   function acceptProposalGroup(g) {
     if (!g?.ids.length) return;
     dispatchShape({ type: "review", ids: g.ids });
@@ -12896,6 +12905,7 @@ export default function TakeoffCanvas() {
           conditions={conditions}
           conditionEditProposals={conditionEditProposals} onAcceptConditionEdit={acceptConditionEdit} onRejectConditionEdit={rejectConditionEdit}
           collisionsByCond={scopeByCond} onLookAtCollision={lookAtCollision}
+          revisionFlaggedByCond={revisionFlaggedByCond}
           activeCond={activeCond}
           visRowById={visRowById} projRowById={projRowById}
           conditionColumns={conditionColumns}

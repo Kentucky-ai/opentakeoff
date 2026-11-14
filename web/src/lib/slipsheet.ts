@@ -34,13 +34,15 @@ export interface TakeoffShape {
   measure_role?: string;
   verts_norm?: Array<[number, number]>;
   computed?: Record<string, any>;
+  flagged_for_revision?: boolean;
   origin?: {
     method?: string;
     actor?: string;
     reviewed?: boolean;
     flagged_for_revision?: boolean;
     review_reason?: string;
-    intersected_change_regions?: string[];
+    proposal_id?: string;
+    intersected_change_regions?: Array<{ id: string; type: string; bounds: [number, number, number, number] }> | string[];
     [key: string]: any;
   };
   label?: string;
@@ -219,6 +221,7 @@ export function carryTakeoffShapes(
 
     let touchesChange = false;
     const intersectedRegionIds: string[] = [];
+    const intersectedRegions: Array<{ id: string; type: string; bounds: [number, number, number, number] }> = [];
 
     if (vertsPx.length >= 3 && changedRegions.length > 0) {
       // Shape bounding box
@@ -236,6 +239,11 @@ export function carryTakeoffShapes(
         if (polygonsIntersect(vertsPx, region.hull)) {
           touchesChange = true;
           intersectedRegionIds.push(region.id);
+          intersectedRegions.push({
+            id: region.id,
+            type: region.type,
+            bounds: region.bounds,
+          });
         }
       }
     }
@@ -245,12 +253,15 @@ export function carryTakeoffShapes(
       shapes.push({
         ...shape,
         sheet_id: targetSheetKey,
+        flagged_for_revision: true,
         origin: {
           ...shape.origin,
           reviewed: false, // Flag for human review
           flagged_for_revision: true,
           review_reason: "Check after revision",
+          proposal_id: "revision-check",
           intersected_change_regions: intersectedRegionIds,
+          intersected_change_details: intersectedRegions,
         },
       });
     } else {

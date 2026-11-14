@@ -14,6 +14,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError } from "../lib/store.js";
 import { diffTakeoffs, diffToCsv, revSheetLabel } from "../lib/revisions.js";
+import { matchSheetSets } from "../lib/slipsheet.ts";
+import { parseSheetKey } from "../lib/sheetKey";
 import RevisionOverlay from "./RevisionOverlay.jsx";
 import { downloadText } from "../lib/totals.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
@@ -65,6 +67,94 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
   const sideA = baseId && baseId !== "current" ? payloads[baseId] : baseId === "current" ? current : null;
   const sideB = compareId === "current" ? current : payloads[compareId];
   const diff = useMemo(() => (sideA && sideB ? diffTakeoffs(sideA, sideB) : null), [sideA, sideB]);
+
+  const availableSheets = useMemo(() => {
+    return (current?.sheets || []).map((s) => {
+      const key = s.sheet_id || s.name || s.key || "";
+      const parsed = parseSheetKey(key);
+      return {
+        key,
+        file: parsed.file,
+        page: parsed.page,
+        sheetNumber: s.sheet_number || s.label || null,
+        label: s.label || null,
+      };
+    });
+  }, [current?.sheets]);
+
+  const baseSheetEntries = useMemo(() => {
+    const list = sideA?.sheets || current?.sheets || [];
+    return list.map((s) => {
+      const key = s.sheet_id || s.name || s.key || "";
+      const parsed = parseSheetKey(key);
+      return {
+        key,
+        file: parsed.file,
+        page: parsed.page,
+        sheetNumber: s.sheet_number || s.label || null,
+        label: s.label || null,
+      };
+    });
+  }, [sideA?.sheets, current?.sheets]);
+
+  const incomingSheetEntries = useMemo(() => {
+    const list = sideB?.sheets || current?.sheets || [];
+    return list.map((s) => {
+      const key = s.sheet_id || s.name || s.key || "";
+      const parsed = parseSheetKey(key);
+      return {
+        key,
+        file: parsed.file,
+        page: parsed.page,
+        sheetNumber: s.sheet_number || s.label || null,
+        label: s.label || null,
+      };
+    });
+  }, [sideB?.sheets, current?.sheets]);
+
+  const matchResult = useMemo(() => {
+    return matchSheetSets(baseSheetEntries, incomingSheetEntries);
+  }, [baseSheetEntries, incomingSheetEntries]);
+
+  const handleApplyCarriedShapes = (carriedTargetShapes, baseKey, targetKey) => {
+    if (!onRestore) return;
+    const allShapes = current?.shapes || [];
+    const otherShapes = allShapes.filter(
+      (s) => s.sheet_id !== baseKey && s.sheet_id !== targetKey
+    );
+    onRestore({
+      ...current,
+      shapes: [...otherShapes, ...carriedTargetShapes],
+    });
+  };
+
+  const handleApplySetSlipSheet = () => {
+    if (!onRestore || !matchResult.matched.length) return;
+    const allShapes = current?.shapes || [];
+    const matchedBaseKeys = new Set(matchResult.matched.map((m) => m.baseSheet.key));
+    const matchedTargetKeys = new Set(matchResult.matched.map((m) => m.incomingSheet.key));
+
+    const untouchedShapes = allShapes.filter(
+      (s) => !matchedBaseKeys.has(s.sheet_id) && !matchedTargetKeys.has(s.sheet_id)
+    );
+
+    const carriedAll = [];
+    for (const m of matchResult.matched) {
+      const baseShapes = allShapes.filter((s) => s.sheet_id === m.baseSheet.key);
+      for (const sh of baseShapes) {
+        carriedAll.push({
+          ...sh,
+          sheet_id: m.incomingSheet.key,
+        });
+      }
+    }
+
+    onRestore({
+      ...current,
+      shapes: [...untouchedShapes, ...carriedAll],
+    });
+    setActiveTab("quantities");
+  };
 
   const nameOf = (id) => (id === "current" ? "Current takeoff" : revs?.find((r) => r.id === id)?.name || "Revision");
   const defaultName = () => `Rev ${(revs?.length || 0) + 1} — ${new Date().toLocaleDateString()}`;
@@ -212,6 +302,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                 <input type="checkbox" checked={showUnchanged} onChange={(e) => setShowUnchanged(e.target.checked)} name="show-unchanged" />show unchanged
               </label>
               <button className="btn-ghost" onClick={() => setActiveTab("overlay")} title="Show what moved on the drawing: removed ink in red, added in blue"><Icon name="revisions" size={13} />Visual drawing overlay</button>
+              <button className="btn-ghost" onClick={() => setActiveTab("slipsheet")} title="Match revision sheets 1-to-1 by title-block number and carry takeoffs forward"><Icon name="revisions" size={13} />Slip-sheet set ({matchResult.matched.length} matched)</button>
               <button className="btn-ghost" onClick={exportCsv} disabled={!diff}><Icon name="document" size={13} />Export compare CSV</button>
             </div>
 
@@ -330,16 +421,160 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
 
       {activeTab === "overlay" && (
         <RevisionOverlay
-          fileName={current?.sheets?.[0]?.name || "sample-finish-plan.pdf"}
-          pageNumber={1}
+          sheets={availableSheets}
+          initialSheetKey={availableSheets[0]?.key || "sample-finish-plan.pdf#1"}
           shapes={current?.shapes || []}
-          onApplyCarriedShapes={(newShapes) => {
-            if (onRestore) {
-              onRestore({ ...current, shapes: newShapes });
-            }
-          }}
+          onApplyCarriedShapes={handleApplyCarriedShapes}
           onClose={() => setActiveTab("quantities")}
         />
+      )}
+
+      {activeTab === "slipsheet" && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 1000,
+          backgroundColor: "rgba(13, 21, 38, 0.8)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          fontFamily: "var(--f-body, sans-serif)",
+          color: "var(--ink)",
+        }}>
+          <div style={{
+            backgroundColor: "var(--paper-bright, #fafcfe)",
+            borderRadius: 6,
+            width: "100%",
+            maxWidth: 720,
+            maxHeight: "90vh",
+            display: "flex",
+            flexDirection: "column",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+            border: "1px solid var(--ink-faint)",
+            overflow: "hidden",
+          }}>
+            <header style={{
+              padding: "16px 20px",
+              borderBottom: "1px solid var(--ink-faint)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              background: "var(--paper-cream)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Icon name="revisions" size={18} />
+                <strong style={{ fontSize: 16 }}>Slip-Sheet Revision Set</strong>
+              </div>
+              <button
+                onClick={() => setActiveTab("quantities")}
+                style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18 }}
+              >
+                ✕
+              </button>
+            </header>
+
+            <div style={{ padding: "18px 20px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.5 }}>
+                Matched sheets carry takeoffs forward. <strong>Strict zero-guessing policy:</strong> sheets without an unambiguous 1-to-1 title-block sheet number match are never paired automatically.
+              </p>
+
+              {/* Matched sheets table */}
+              <div>
+                <h4 style={{ fontSize: 13, margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--cobalt)" }}>
+                  ✓ Matched Sheets ({matchResult.matched.length})
+                </h4>
+                {matchResult.matched.length > 0 ? (
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, border: "1px solid var(--ink-faint)" }}>
+                    <thead>
+                      <tr style={{ background: "var(--paper-cream)", borderBottom: "1px solid var(--ink-faint)" }}>
+                        <th style={{ textAlign: "left", padding: "6px 10px" }}>Sheet Number</th>
+                        <th style={{ textAlign: "left", padding: "6px 10px" }}>Baseline (Old)</th>
+                        <th style={{ textAlign: "left", padding: "6px 10px" }}>Incoming (New)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matchResult.matched.map((m, idx) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid var(--ink-faint)" }}>
+                          <td style={{ padding: "6px 10px", fontWeight: 700 }}>{m.sheetNumber}</td>
+                          <td style={{ padding: "6px 10px", color: "var(--ink-muted)" }}>{m.baseSheet.key}</td>
+                          <td style={{ padding: "6px 10px", color: "var(--cobalt)", fontWeight: 600 }}>{m.incomingSheet.key}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div style={{ padding: 12, background: "var(--paper-cream)", fontSize: 12, color: "var(--ink-muted)" }}>
+                    No 1-to-1 title-block sheet number matches found.
+                  </div>
+                )}
+              </div>
+
+              {/* Unmatched / Ambiguous sheets */}
+              {(matchResult.unmatchedBase.length > 0 || matchResult.unmatchedIncoming.length > 0 || matchResult.ambiguous.length > 0) && (
+                <div>
+                  <h4 style={{ fontSize: 13, margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-warning)" }}>
+                    ⚠ Unmatched / Ambiguous Sheets (Kept separate)
+                  </h4>
+                  <div style={{ fontSize: 12, color: "var(--ink-muted)", display: "flex", flexDirection: "column", gap: 4 }}>
+                    {matchResult.unmatchedBase.length > 0 && (
+                      <div>Old sheets with no match: {matchResult.unmatchedBase.map((s) => s.key).join(", ")}</div>
+                    )}
+                    {matchResult.unmatchedIncoming.length > 0 && (
+                      <div>New sheets with no match: {matchResult.unmatchedIncoming.map((s) => s.key).join(", ")}</div>
+                    )}
+                    {matchResult.ambiguous.length > 0 && (
+                      <div style={{ color: "var(--c-danger)" }}>
+                        Ambiguous duplicate sheet numbers: {matchResult.ambiguous.map((a) => a.sheetNumber).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <footer style={{
+              padding: "12px 20px",
+              borderTop: "1px solid var(--ink-faint)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 12,
+              background: "var(--paper-cream)",
+            }}>
+              <button
+                onClick={() => setActiveTab("quantities")}
+                style={{
+                  padding: "6px 12px",
+                  background: "transparent",
+                  border: "1px solid var(--ink-faint)",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontSize: 12.5,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplySetSlipSheet}
+                disabled={!matchResult.matched.length}
+                style={{
+                  padding: "6px 16px",
+                  background: "var(--cobalt, #0e636b)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 4,
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  cursor: matchResult.matched.length ? "pointer" : "default",
+                  opacity: matchResult.matched.length ? 1 : 0.5,
+                }}
+              >
+                Carry Takeoffs to Matched Sheets ({matchResult.matched.length})
+              </button>
+            </footer>
+          </div>
+        </div>
       )}
     </div>
   );
