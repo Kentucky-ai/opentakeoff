@@ -31,6 +31,11 @@ export interface DoorLeaf {
 export interface ReadDoor {
   /** x0, y0, x1, y1 in page points (the frame the vectors were extracted in) */
   box: [number, number, number, number];
+  /**
+   * The opening's jamb-to-jamb line, page points: hinge to hinge for a pair; for one leaf, hinge to the swing's closed end,
+   * or hinge to the leaf's tip where the wall runs on past that line instead (a door drawn shut).
+   */
+  jambLine: [[number, number], [number, number]];
   /** two leaves hung in one opening */
   pair: boolean;
   /** a toilet-partition stall door (Division 10, never the door schedule's) */
@@ -79,7 +84,7 @@ interface Exports {
   dr_out_ptr(): number;
 }
 
-const HEAD_F64 = 4, LEAF_F64 = 11, DOOR_F64 = 10 + 2 * LEAF_F64;
+const HEAD_F64 = 4, LEAF_F64 = 11, DOOR_HEAD_F64 = 14, DOOR_F64 = DOOR_HEAD_F64 + 2 * LEAF_F64;
 const DRAWN = ["curve", "polyline", "strokes", "coarse", "chord"] as const;
 const LEAF = ["drawn", "dashed", "none", "part-open"] as const;
 let ready: Promise<Exports> | null = null;
@@ -118,7 +123,7 @@ function run(x: Exports, v: DoorVectors, fpp: number | null | undefined): DoorRe
       const b = HEAD_F64 + k * DOOR_F64;
       const leaves: DoorLeaf[] = [];
       for (let l = 0; l < o[b + 7]; l++) {
-        const q = b + 10 + l * LEAF_F64;
+        const q = b + DOOR_HEAD_F64 + l * LEAF_F64;
         leaves.push({
           hinge: [o[q], o[q + 1]], radiusPt: o[q + 2], tip: [o[q + 3], o[q + 4]], drawn: DRAWN[o[q + 5]], sweepDeg: o[q + 6], misfitPt: o[q + 7],
           jambFt: Number.isFinite(o[q + 8]) ? o[q + 8] : null, strike: o[q + 9] === 1, leaf: LEAF[o[q + 10]],
@@ -126,7 +131,7 @@ function run(x: Exports, v: DoorVectors, fpp: number | null | undefined): DoorRe
       }
       const bits = o[b + 9];
       doors.push({
-        box: [o[b], o[b + 1], o[b + 2], o[b + 3]], pair: o[b + 4] === 1, stall: o[b + 5] === 1, dashed: o[b + 6] === 1, leaves,
+        box: [o[b], o[b + 1], o[b + 2], o[b + 3]], jambLine: [[o[b + 10], o[b + 11]], [o[b + 12], o[b + 13]]], pair: o[b + 4] === 1, stall: o[b + 5] === 1, dashed: o[b + 6] === 1, leaves,
         confidence: Math.round(o[b + 8] * 1e6) / 1e6, doubts: DOOR_DOUBTS.filter((_, k) => (bits >> k) & 1),
       });
     }

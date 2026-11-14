@@ -5,7 +5,8 @@ WebAssembly and committed as `web/src/lib/doorReader.wasm` (plus `doorReaderWasm
 app and the MCP server run it with no Rust toolchain.
 
 - Input: the page's painted paths as flat `f64` arrays (`web/src/lib/doorVectors.ts` extracts them with pdf.js). Layout in `src/wasm.rs`.
-- Output: one record per door (box, single or pair, stall, dashed, each leaf's hinge, radius and tip), the scale used, and how it was found.
+- Output: one record per door (box, jamb-to-jamb line, single or pair, stall, dashed, each leaf's hinge, radius and tip), the scale used, and how it was found.
+- Jamb line: hinge to hinge for a pair; for one leaf, hinge to the swing's closed end, or hinge to the leaf's tip where the wall's linework runs on past that line instead (a door drawn shut, or a leaf and closed end told apart wrongly).
 - Method: arcs from Bezier curves, polylines and loose or dashed strokes; a door keeps its arc when it has a leaf (drawn,
   dashed, or a quarter arc spanning a wall opening) and a wall at the hinge. Circles, revision-cloud scallops, logos and
   casework doors are left out; toilet-partition stalls are marked; two leaves meeting in one opening are a pair. With no

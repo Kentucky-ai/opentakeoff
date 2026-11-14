@@ -86,5 +86,5 @@ pub fn read(paths: &[Path], fpp: Option<f64>) -> Reading {
     let chords = doors::chord_swings(&kept, &segs, f);
     kept.extend(chords);
     doors::stalls(&mut kept, &segs, f);
-    Reading { doors: doors::doors(&kept, f), fpp: Some(f), scale_source: source, arcs: n_found }
+    Reading { doors: doors::doors(&kept, f, &segs), fpp: Some(f), scale_source: source, arcs: n_found }
 }

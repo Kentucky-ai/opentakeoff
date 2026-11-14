@@ -60,7 +60,7 @@ test("readHardwareSets: label words and door marks out of the parenthesis", () =
 });
 
 const door = (x: number, y: number, leaves = 1, extra: Partial<ReadDoor> = {}): ReadDoor => ({
-  box: [x, y, x + 36 * leaves, y + 36], pair: leaves > 1, stall: false, dashed: false, confidence: 1, doubts: [],
+  box: [x, y, x + 36 * leaves, y + 36], jambLine: [[x, y], [x + 36 * leaves, y]], pair: leaves > 1, stall: false, dashed: false, confidence: 1, doubts: [],
   leaves: Array.from({ length: leaves }, (_, k) => ({ hinge: [x + k * 72, y] as [number, number], radiusPt: 36, tip: [x + k * 72, y + 36] as [number, number], drawn: "curve" as const, sweepDeg: 90, misfitPt: 0, jambFt: 0.4, strike: true, leaf: "drawn" as const })),
   ...extra,
 });

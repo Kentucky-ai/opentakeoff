@@ -529,10 +529,30 @@ pub fn stalls(arcs: &mut [Arc], segs: &Segments, fpp: f64) {
 
 pub struct Door {
     pub bbox: [f64; 4],
+    /// the opening's jamb-to-jamb line (see `jamb_line`)
+    pub jamb: [P; 2],
     pub pair: bool,
     pub stall: bool,
     pub dashed: bool,
     pub leaves: Vec<Arc>,
+}
+
+/// The wall must run on past the leaf line this much more surely than past the closed line for the leaf line to be the jamb line.
+const JAMB_TIP_MARGIN: f64 = 0.15;
+
+/// The opening's jamb-to-jamb line. A pair: hinge to hinge. One leaf: hinge to the swing's closed end, unless the wall runs on
+/// past the line from the hinge to the leaf's tip instead (the door is drawn shut, or its leaf and closed end were told apart wrongly).
+pub fn jamb_line(leaves: &[Arc], segs: &Segments, fpp: f64) -> [P; 2] {
+    if leaves.len() == 2 {
+        return [leaves[0].hinge, leaves[1].hinge];
+    }
+    let a = &leaves[0];
+    let (closed, tip) = (closed_end(a), a.leaf_far);
+    if segs.ink_beyond(a.hinge, tip, fpp) > segs.ink_beyond(a.hinge, closed, fpp) + JAMB_TIP_MARGIN {
+        [a.hinge, tip]
+    } else {
+        [a.hinge, closed]
+    }
 }
 
 fn leaf_along(a: &Arc, h1: P, h2: P) -> bool {
@@ -542,7 +562,7 @@ fn leaf_along(a: &Arc, h1: P, h2: P) -> bool {
 }
 
 /// One entry per door: two leaves hinged one door apart, drawn alike, meeting in the middle, are one pair.
-pub fn doors(arcs: &[Arc], fpp: f64) -> Vec<Door> {
+pub fn doors(arcs: &[Arc], fpp: f64, segs: &Segments) -> Vec<Door> {
     let mut used = vec![false; arcs.len()];
     let mut out: Vec<Door> = vec![];
     let row = ROW_FT / fpp;
@@ -606,7 +626,8 @@ pub fn doors(arcs: &[Arc], fpp: f64) -> Vec<Door> {
             let b = a.swing_box();
             bbox = [bbox[0].min(b[0]), bbox[1].min(b[1]), bbox[2].max(b[2]), bbox[3].max(b[3])];
         }
-        out.push(Door { bbox, pair: leaves.len() == 2, stall: leaves.len() == 1 && p.stall, dashed: leaves.iter().all(|a| a.dashed), leaves });
+        let jamb = jamb_line(&leaves, segs, fpp);
+        out.push(Door { bbox, jamb, pair: leaves.len() == 2, stall: leaves.len() == 1 && p.stall, dashed: leaves.iter().all(|a| a.dashed), leaves });
     }
     // one door, one find: a find centred inside an earlier one is the same door
     let mut fin: Vec<Door> = vec![];
@@ -616,6 +637,69 @@ pub fn doors(arcs: &[Arc], fpp: f64) -> Vec<Door> {
             fin.push(d);
         }
     }
-    let _ = fpp;
     fin
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::arcs::make_arc;
+    use crate::geom::{Drawn, Item, Path};
+
+    const FPP: f64 = 1.0 / 9.0; // 1/8" = 1'-0"
+
+    /// A 6-in wall along y = 0 (faces at y = 0 and y = -4.5) with a 3-ft opening from x = 0 to x = 27, its two jamb ends drawn.
+    fn wall() -> Segments {
+        let l = |x0: f64, y0: f64, x1: f64, y1: f64| Item::Line(P::new(x0, y0), P::new(x1, y1));
+        let items = vec![
+            l(-100.0, 0.0, 0.0, 0.0), l(-100.0, -4.5, 0.0, -4.5), l(0.0, -4.5, 0.0, 0.0),
+            l(27.0, 0.0, 130.0, 0.0), l(27.0, -4.5, 130.0, -4.5), l(27.0, -4.5, 27.0, 0.0),
+        ];
+        Segments::new(&[Path { items, dashed: false, dark_fill: false }])
+    }
+
+    /// A swing hinged at the origin whose arc runs from the far jamb (27, 0) out to (0, 27).
+    fn swing(leaf_far: P) -> Arc {
+        let mut a = make_arc(P::new(0.0, 0.0), 27.0, 90.0, 0.0, [P::new(27.0, 0.0), P::new(0.0, 27.0)], [0.0, 0.0, 27.0, 27.0], Drawn::Curve, vec![]);
+        a.leaf_far = leaf_far;
+        a
+    }
+
+    #[test]
+    fn wall_ink_runs_on_past_a_jamb_line_only() {
+        let segs = wall();
+        let along = segs.ink_beyond(P::new(0.0, 0.0), P::new(27.0, 0.0), FPP);
+        let across = segs.ink_beyond(P::new(0.0, 0.0), P::new(0.0, 27.0), FPP);
+        assert!(along > 0.3, "along the wall {along}");
+        assert!(across < 0.15, "across the wall {across}");
+        assert_eq!(segs.ink_beyond(P::new(5.0, 5.0), P::new(5.0, 5.0), FPP), 0.0);
+    }
+
+    #[test]
+    fn open_door_jamb_line_is_hinge_to_closed_end() {
+        let j = jamb_line(&[swing(P::new(0.0, 27.0))], &wall(), FPP);
+        assert_eq!(j, [P::new(0.0, 0.0), P::new(27.0, 0.0)]);
+    }
+
+    #[test]
+    fn door_drawn_shut_jamb_line_is_its_leaf() {
+        // the leaf lies in the opening, so the "closed end" of the arc is out in the room: the leaf line is the jamb line
+        let j = jamb_line(&[swing(P::new(27.0, 0.0))], &wall(), FPP);
+        assert_eq!(j, [P::new(0.0, 0.0), P::new(27.0, 0.0)]);
+    }
+
+    #[test]
+    fn no_wall_keeps_the_closed_end() {
+        let none = Segments::new(&[]);
+        let j = jamb_line(&[swing(P::new(0.0, 27.0))], &none, FPP);
+        assert_eq!(j, [P::new(0.0, 0.0), P::new(27.0, 0.0)]);
+    }
+
+    #[test]
+    fn pair_jamb_line_is_hinge_to_hinge() {
+        let mut b = swing(P::new(54.0, 27.0));
+        b.hinge = P::new(54.0, 0.0);
+        let j = jamb_line(&[swing(P::new(0.0, 27.0)), b], &wall(), FPP);
+        assert_eq!(j, [P::new(0.0, 0.0), P::new(54.0, 0.0)]);
+    }
 }
