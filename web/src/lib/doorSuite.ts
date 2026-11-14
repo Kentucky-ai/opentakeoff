@@ -192,7 +192,9 @@ export function readHardwareSets(text: string): HardwareSet[] {
 
 /** The door's centre and swing radius in its page frame. */
 export function doorCenter(d: ReadDoor): { x: number; y: number; r: number } {
-  const r = Math.max(...d.leaves.map((l) => l.radiusPt), 1);
+  // a door with no leaves (one the detector added: a cased opening, a slider) reaches as far as its opening is wide
+  const j = d.jambLine;
+  const r = d.leaves.length ? Math.max(...d.leaves.map((l) => l.radiusPt), 1) : Math.max(j ? Math.hypot(j[1][0] - j[0][0], j[1][1] - j[0][1]) : 0, 1);
   return { x: (d.box[0] + d.box[2]) / 2, y: (d.box[1] + d.box[3]) / 2, r };
 }
 
@@ -261,7 +263,7 @@ export interface TagMatch {
  * the same kind at nearly the same distance, the door is left unmatched and
  * reported as ambiguous.
  */
-export function matchDoorTags(doors: ReadDoor[], runs: TextRun[], marks: Set<string>, opts: { segs?: ArrayLike<number> | null; reach?: number } = {}): TagMatch {
+export function matchDoorTags(doors: ReadDoor[], runs: TextRun[], marks: Set<string>, opts: { segs?: ArrayLike<number> | null; reach?: number; skip?: boolean[] } = {}): TagMatch {
   const reach = opts.reach ?? 2.6;
   const tagRuns = runs.filter((r) => marks.has(up(r.str)));
   const kind = new Map(tagRuns.map((t) => [t, classifyTagRun(t, runs, opts.segs ?? null)]));
@@ -269,6 +271,7 @@ export function matchDoorTags(doors: ReadDoor[], runs: TextRun[], marks: Set<str
   const cand: Array<{ d: number; i: number; mark: string; strong: boolean }> = [];
   const ambiguous: Record<number, [string, string]> = {};
   doors.forEach((door, i) => {
+    if (opts.skip?.[i]) return;   // a second find of an opening already listed takes no tag
     const c = doorCenter(door);
     const mine: Array<{ d: number; mark: string; strong: boolean }> = [];
     for (const t of usable) {
@@ -350,6 +353,12 @@ export function swingPoints(d: ReadDoor): Array<{ hinge: [number, number]; tip: 
  */
 export function countMarkPoints(d: ReadDoor, avoid: TextRun[] = []): { frame: [number, number]; hardware: [number, number]; leaves: Array<[number, number]> } {
   const sp = swingPoints(d);
+  if (!sp.length) {
+    // no swing (a cased opening, a slider): the marks sit on the opening line, a quarter, a half and three quarters along
+    const [a, b] = openingLine(d);
+    const at = (f: number): [number, number] => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+    return { frame: at(0.5), hardware: at(0.25), leaves: [at(0.75)] };
+  }
   const s0 = sp[0];
   const onTag = (p: [number, number]) => avoid.some((t) => p[0] >= t.x - 2 && p[0] <= t.x + t.w + 2 && p[1] >= t.y - 2 && p[1] <= t.y + t.h + 2);
   const inSwing = (frac: number, s = s0): [number, number] => {
@@ -409,6 +418,10 @@ export interface Opening {
   withheld: boolean;
   /** an answer has taken it out of the count */
   leftOut: boolean;
+  /** the same opening as another door in the list (Find more doors): never shown, counted or asked about */
+  hidden?: boolean;
+  /** found by the door detector, not the linework reader: the kind of door it saw ("opening", "sliding", "swing", …) */
+  added?: string;
 }
 
 export interface DoorSuiteView {
@@ -450,6 +463,8 @@ export function buildDoorSuite(input: {
   ambiguous?: Record<number, [string, string]>;
   /** feet per page point the doors were read at (for each opening's drawn width) */
   fpp?: number | null;
+  /** per door: the same opening as another door in the list (lib/doorDetect/apply.ts) */
+  hidden?: boolean[];
 }): DoorSuiteView {
   const { doors, withheld, schedule, sets, answers, sheetLabel } = input;
   // an ambiguous tag, once answered, is the mark the person picked
@@ -462,9 +477,12 @@ export function buildDoorSuite(input: {
   const byMark = new Map((schedule?.rows || []).map((r) => [r.mark, r]));
   const questions: DoorQuestion[] = [];
   const openings: Opening[] = doors.map((d, i) => {
+    if (input.hidden?.[i]) return { door: i, mark: null, row: null, pair: false, leaves: 0, drawnFt: null, withheld: false, leftOut: true, hidden: true };
     const mark = marks[i];
     const row = mark ? byMark.get(mark) || null : null;
     const planPair = d.pair || d.leaves.length > 1;
+    // a cased opening has a frame and no door leaf
+    const cased = d.added?.kind === "opening";
     let pair = planPair;
     let leftOut = false;
     const isWithheld = withheld[i];
@@ -527,7 +545,7 @@ export function buildDoorSuite(input: {
         }
       }
     }
-    return { door: i, mark, row, pair, leaves: pair ? 2 : 1, drawnFt: openingWidthFt(d, input.fpp), withheld: isWithheld, leftOut };
+    return { door: i, mark, row, pair, leaves: cased ? 0 : pair ? 2 : 1, drawnFt: openingWidthFt(d, input.fpp), withheld: isWithheld, leftOut, ...(d.added ? { added: d.added.kind } : {}) };
   });
   const placed = new Set(openings.filter((o) => o.mark).map((o) => o.mark as string));
   const unplaced = (schedule?.rows || []).filter((r) => !placed.has(r.mark) && !input.placedElsewhere?.has(r.mark));
@@ -547,6 +565,12 @@ export function buildDoorSuite(input: {
   };
 }
 
+/** What the door detector calls a kind of door, in an estimator's words. */
+export const DOOR_KIND_LABEL: Record<string, string> = {
+  opening: "Cased opening", sliding: "Sliding door", pocket: "Pocket door", bifold: "Bifold door", overhead: "Overhead door",
+  swing: "Swing door", "swing doorway strip": "Swing door",
+};
+
 /** "9 openings · 10 door leaves" */
 export function countLine(c: { openings: number; leaves: number }): string {
   return `${c.openings} opening${c.openings === 1 ? "" : "s"} · ${leafWord(c.leaves)}`;
@@ -557,7 +581,7 @@ export function estimateGroups(openings: Opening[]): Array<{ key: string; type: 
   const g = new Map<string, { key: string; type: string; size: string; openings: Opening[]; leaves: number }>();
   for (const o of openings) {
     if (o.leftOut) continue;
-    const type = o.row?.doorType || (o.pair ? "Pair" : "Single");
+    const type = o.row?.doorType || (o.added && o.added !== "swing" && o.added !== "swing doorway strip" ? DOOR_KIND_LABEL[o.added] : null) || (o.pair ? "Pair" : "Single");
     const size = o.row ? `${o.row.width} × ${o.row.height}`.trim() : "size not scheduled";
     const key = `${type}|${size}|${o.pair ? 2 : 1}`;
     const e = g.get(key) || { key, type, size, openings: [], leaves: 0 };

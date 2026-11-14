@@ -1,0 +1,43 @@
+{
+  "version": "v6-retuned-2026-11-14",
+  "note": "Every cutoff of the in-browser door detector and its fusion with the door reader. Chosen on development sheets; swap this file to change them, no code change needed.",
+  "model": {
+    "repo": "Kentucky-ai/opentakeoff-door-detector",
+    "revision": "1ea0a850a52cfe9ef19931b37fcc2c2a69981465",
+    "file": "onnx/door-detector-r4-medium-fp32.onnx",
+    "bytes": 122154402,
+    "sha256": "7626ef625206c0ef1ee7cd89e4b027599e0cee05d5dc56d4c2f6e58047e7b0a5",
+    "classes": ["swing", "sliding", "pocket", "bifold", "overhead", "elevator", "opening", "swing doorway strip"]
+  },
+  "detect": {
+    "px_per_ft": 20,
+    "tile": 640,
+    "stride": 480,
+    "input": 768,
+    "blank_min": 240,
+    "floor": 0.2,
+    "top_k": 300,
+    "merge_overlap": 0.4,
+    "strip_separate": []
+  },
+  "fusion": {
+    "strip_pick_min": 0.3,
+    "veto": 0.4,
+    "veto_any_det": 0.3,
+    "rescue": 0.5,
+    "merge": true,
+    "class_minimums": { "7": 0.45, "6": 0.5, "1": 0.7, "3": 0.6, "4": 0.9 },
+    "pads_ft": { "6": 0.3, "7": 0.3 },
+    "swing_box": { "min": 0.7, "strip_min": 0.2, "arc_sweep_deg": [76, 104], "margin": 0.15, "fallback": 0.9 }
+  },
+  "tags": {
+    "dup_drop": false, "near_ft": 3.0, "style_share": 0.55, "style_min_n": 4, "style_uniq": 0.6, "reach_ft": 4.0,
+    "orphan_reach_ft": 3.5, "det_floor": 0.2, "drop_share": 0.65, "drop_conf": 0.6, "drop_det": true, "drop_min_tags": 8, "orphan_skip_repeats": true
+  },
+  "filters": {
+    "stall": { "wmax": 33, "wmin": 18, "near_ft": 10, "hs_min": 0.45, "heavy_in": 10, "useA": true, "useB": true, "row_n": 4, "pitch_ft": 4 },
+    "stall2": { "min_share": 0.8, "wmin": 18, "wmax": 33.5, "thin_in": 3.2, "ov_ft": 6.0, "rd_ft": 12.0, "nb": 2, "thin2_in": 4.0, "acc_max": 37.0, "prop_ft": 12.0, "prop_n": 2, "useS2": true, "useS3": true, "useS4": true },
+    "legend2": { "labels": 3, "lab_ft": 20.0, "others": 2, "others_ft": 30.0 },
+    "dedupe": { "across_ft": 1.0, "wider": 1.6, "useA": true, "useB": true }
+  }
+}
