@@ -3549,6 +3549,7 @@ export default function TakeoffCanvas() {
       await store.addPdf(new File([rotatedBytes], file, { type: "application/pdf" }));
       evictDoc(file);
       forgetPages([file]);
+      dropDoorReads(file);
 
       setShapes(rotated.shapes);
       setMarkups(rotated.markups);
@@ -3563,6 +3564,7 @@ export default function TakeoffCanvas() {
             await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
             evictDoc(file);
             forgetPages([file]);
+            dropDoorReads(file);
             setShapes(prevShapes);
             setMarkups(prevMarkups);
             setApprovals(prevApprovals);
@@ -3649,6 +3651,7 @@ export default function TakeoffCanvas() {
       const prevScaleSources = scaleSources;
       const prevScaleUnconfirmed = scaleUnconfirmed;
       const prevDetectedScales = detectedScales;
+      const prevDoorAnswers = doorAnswers;
       const prevSheetLevels = sheetLevels;
       const prevSheetGroup = sheetGroup;
       const prevLastGroup = lastGroup;
@@ -3667,7 +3670,7 @@ export default function TakeoffCanvas() {
         {
           shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
-          sheetRotations: prevRotations,
+          sheetRotations: prevRotations, doorAnswers,
         },
         remap
       );
@@ -3675,6 +3678,7 @@ export default function TakeoffCanvas() {
       await store.addPdf(new File([newBytes], file, { type: "application/pdf" }));
       evictDoc(file);
       forgetPages([file]);
+      dropDoorReads(file);
 
       setShapes(remapped.shapes);
       setMarkups(remapped.markups);
@@ -3683,6 +3687,7 @@ export default function TakeoffCanvas() {
       setScaleSources(remapped.scaleSources);
       setScaleUnconfirmed(remapped.scaleUnconfirmed);
       setDetectedScales(remapped.detectedScales || {});
+      setDoorAnswers(remapped.doorAnswers || {});
       setSheetLevels(remapped.sheetLevels);
       setSheetGroup(remapped.sheetGroup);
       setLastGroup(remapped.lastGroup);
@@ -3704,6 +3709,7 @@ export default function TakeoffCanvas() {
             await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
             evictDoc(file);
             forgetPages([file]);
+            dropDoorReads(file);
             setShapes(prevShapes);
             setMarkups(prevMarkups);
             setApprovals(prevApprovals);
@@ -3711,6 +3717,7 @@ export default function TakeoffCanvas() {
             setScaleSources(prevScaleSources);
             setScaleUnconfirmed(prevScaleUnconfirmed);
             setDetectedScales(prevDetectedScales);
+            setDoorAnswers(prevDoorAnswers);
             setSheetLevels(prevSheetLevels);
             setSheetGroup(prevSheetGroup);
             setLastGroup(prevLastGroup);
@@ -3761,6 +3768,7 @@ export default function TakeoffCanvas() {
       const prevScaleSources = scaleSources;
       const prevScaleUnconfirmed = scaleUnconfirmed;
       const prevDetectedScales = detectedScales;
+      const prevDoorAnswers = doorAnswers;
       const prevSheetLevels = sheetLevels;
       const prevSheetGroup = sheetGroup;
       const prevLastGroup = lastGroup;
@@ -3777,7 +3785,7 @@ export default function TakeoffCanvas() {
         {
           shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
-          sheetRotations: prevRotations,
+          sheetRotations: prevRotations, doorAnswers,
         },
         remap
       );
@@ -3785,6 +3793,7 @@ export default function TakeoffCanvas() {
       await store.addPdf(new File([reorderedBytes], file, { type: "application/pdf" }));
       evictDoc(file);
       forgetPages([file]);
+      dropDoorReads(file);
 
       setShapes(remapped.shapes);
       setMarkups(remapped.markups);
@@ -3793,6 +3802,7 @@ export default function TakeoffCanvas() {
       setScaleSources(remapped.scaleSources);
       setScaleUnconfirmed(remapped.scaleUnconfirmed);
       setDetectedScales(remapped.detectedScales || {});
+      setDoorAnswers(remapped.doorAnswers || {});
       setSheetLevels(remapped.sheetLevels);
       setSheetGroup(remapped.sheetGroup);
       setLastGroup(remapped.lastGroup);
@@ -3811,6 +3821,7 @@ export default function TakeoffCanvas() {
             await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
             evictDoc(file);
             forgetPages([file]);
+            dropDoorReads(file);
             setShapes(prevShapes);
             setMarkups(prevMarkups);
             setApprovals(prevApprovals);
@@ -3818,6 +3829,7 @@ export default function TakeoffCanvas() {
             setScaleSources(prevScaleSources);
             setScaleUnconfirmed(prevScaleUnconfirmed);
             setDetectedScales(prevDetectedScales);
+            setDoorAnswers(prevDoorAnswers);
             setSheetLevels(prevSheetLevels);
             setSheetGroup(prevSheetGroup);
             setLastGroup(prevLastGroup);
@@ -3902,7 +3914,7 @@ export default function TakeoffCanvas() {
       const carriedState = remapWorkspaceState(
         {
           shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
-          sheetLevels, layerOverrides, rfis, stitches,
+          sheetLevels, layerOverrides, rfis, stitches, doorAnswers,
         },
         remap
       );
@@ -3926,6 +3938,7 @@ export default function TakeoffCanvas() {
         sheet_group: [],
         sheet_tabs: [outName],
         stitches: carriedState.stitches || [],
+        door_answers: carriedState.doorAnswers || carriedState.door_answers || {},
       });
 
       const otkData = await buildProjectArchive({
@@ -3993,6 +4006,7 @@ export default function TakeoffCanvas() {
       const prevScaleSources = scaleSources;
       const prevScaleUnconfirmed = scaleUnconfirmed;
       const prevDetectedScales = detectedScales;
+      const prevDoorAnswers = doorAnswers;
       const prevSheetLevels = sheetLevels;
       const prevSheetGroup = sheetGroup;
       const prevLastGroup = lastGroup;
@@ -4008,7 +4022,7 @@ export default function TakeoffCanvas() {
         {
           shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
           sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
-          sheetRotations: prevRotations,
+          sheetRotations: prevRotations, doorAnswers,
         },
         remap
       );
@@ -4021,6 +4035,7 @@ export default function TakeoffCanvas() {
       await store.addPdf(new File([mergedBytes], outName, { type: "application/pdf" }));
       evictDoc(outName);
       forgetPages([...sourceDocs.map((s) => s.name), outName]);
+      dropDoorReads([...sourceDocs.map((s) => s.name), outName]);
 
       setShapes(remapped.shapes);
       setMarkups(remapped.markups);
@@ -4029,6 +4044,7 @@ export default function TakeoffCanvas() {
       setScaleSources(remapped.scaleSources);
       setScaleUnconfirmed(remapped.scaleUnconfirmed);
       setDetectedScales(remapped.detectedScales || {});
+      setDoorAnswers(remapped.doorAnswers || {});
       setSheetLevels(remapped.sheetLevels);
       setSheetGroup(remapped.sheetGroup);
       setLastGroup(remapped.lastGroup);
@@ -4051,6 +4067,7 @@ export default function TakeoffCanvas() {
               evictDoc(s.name);
             }
             forgetPages([...sourceDocs.map((s) => s.name), outName]);
+            dropDoorReads([...sourceDocs.map((s) => s.name), outName]);
             setShapes(prevShapes);
             setMarkups(prevMarkups);
             setApprovals(prevApprovals);
@@ -4058,6 +4075,7 @@ export default function TakeoffCanvas() {
             setScaleSources(prevScaleSources);
             setScaleUnconfirmed(prevScaleUnconfirmed);
             setDetectedScales(prevDetectedScales);
+            setDoorAnswers(prevDoorAnswers);
             setSheetLevels(prevSheetLevels);
             setSheetGroup(prevSheetGroup);
             setLastGroup(prevLastGroup);
@@ -4114,6 +4132,7 @@ export default function TakeoffCanvas() {
         const prevScaleSources = scaleSources;
         const prevScaleUnconfirmed = scaleUnconfirmed;
         const prevDetectedScales = detectedScales;
+        const prevDoorAnswers = doorAnswers;
         const prevSheetLevels = sheetLevels;
         const prevSheetGroup = sheetGroup;
         const prevLastGroup = lastGroup;
@@ -4132,7 +4151,7 @@ export default function TakeoffCanvas() {
           {
             shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
             sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
-            sheetRotations: prevRotations,
+            sheetRotations: prevRotations, doorAnswers,
           },
           remap
         );
@@ -4140,6 +4159,7 @@ export default function TakeoffCanvas() {
         await store.addPdf(new File([res.pdfBytes], active, { type: "application/pdf" }));
         evictDoc(active);
         forgetPages([active]);
+        dropDoorReads(active);
 
         setShapes(remapped.shapes);
         setMarkups(remapped.markups);
@@ -4148,6 +4168,7 @@ export default function TakeoffCanvas() {
         setScaleSources(remapped.scaleSources);
         setScaleUnconfirmed(remapped.scaleUnconfirmed);
         setDetectedScales(remapped.detectedScales || {});
+        setDoorAnswers(remapped.doorAnswers || {});
         setSheetLevels(remapped.sheetLevels);
         setSheetGroup(remapped.sheetGroup);
         setLastGroup(remapped.lastGroup);
@@ -4166,6 +4187,7 @@ export default function TakeoffCanvas() {
               await store.addPdf(new File([curBytes], active, { type: "application/pdf" }));
               evictDoc(active);
               forgetPages([active]);
+              dropDoorReads(active);
               setShapes(prevShapes);
               setMarkups(prevMarkups);
               setApprovals(prevApprovals);
@@ -4173,6 +4195,7 @@ export default function TakeoffCanvas() {
               setScaleSources(prevScaleSources);
               setScaleUnconfirmed(prevScaleUnconfirmed);
               setDetectedScales(prevDetectedScales);
+              setDoorAnswers(prevDoorAnswers);
               setSheetLevels(prevSheetLevels);
               setSheetGroup(prevSheetGroup);
               setLastGroup(prevLastGroup);
@@ -7760,6 +7783,31 @@ export default function TakeoffCanvas() {
   const doorRunsRef = useRef(new Map());            // sheet key → text runs in the door frame (unrotated page points)
   const doorSegsRef = useRef(new Map());            // sheet key → the sheet's linework, flat [x0,y0,x1,y1,…], same frame
   const [doorReads, setDoorReads] = useState({});   // sheet key → { status, doors, withheld, rot, w0, h0 }
+  // Drop cached door linework and positions for a file after a page mutation (reorder, rotate, delete, merge).
+  // The suite reads the sheet again on its own.
+  const dropDoorReads = (fileOrFiles) => {
+    const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
+    for (const f of files) {
+      for (const k of Array.from(doorRunsRef.current.keys())) {
+        if (k === f || k.startsWith(`${f}#`)) doorRunsRef.current.delete(k);
+      }
+      for (const k of Array.from(doorSegsRef.current.keys())) {
+        if (k === f || k.startsWith(`${f}#`)) doorSegsRef.current.delete(k);
+      }
+    }
+    setDoorReads((prev) => {
+      let changed = false;
+      const next = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (files.some((f) => k === f || k.startsWith(`${f}#`))) {
+          changed = true;
+        } else {
+          next[k] = v;
+        }
+      }
+      return changed ? next : prev;
+    });
+  };
   const [doorDocs, setDoorDocs] = useState(null);   // { status, schedule, sets } read once per loaded set
   const [doorSel, setDoorSel] = useState(null);     // { key, i } — the door open in the card
   const [doorTab, setDoorTab] = useState("review");

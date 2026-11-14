@@ -296,6 +296,8 @@ export interface WorkspaceSheetState {
   rfis?: any[];
   sheets?: any[];
   sheetRotations?: Record<string, { angle: number; hash: string }>;
+  doorAnswers?: Record<string, any>;
+  door_answers?: Record<string, any>;
   sheet_tabs?: string[];
   sheet_group?: string[];
   last_group?: string[];
@@ -440,6 +442,24 @@ export function remapWorkspaceState<T extends WorkspaceSheetState>(
     }
   }
 
+  // Doors suite answers (#638/#639): questions are keyed by id, but added-to-estimate status
+  // is keyed as `added:<sheetKey>` — remap those keys along with the other per-sheet maps.
+  const doorAnswers: Record<string, any> = {};
+  const rawDoorAnswers = state.doorAnswers || state.door_answers;
+  if (rawDoorAnswers) {
+    for (const [k, v] of Object.entries(rawDoorAnswers)) {
+      if (k.startsWith("added:")) {
+        const sheetKey = k.slice("added:".length);
+        const nextKey = remapKey(sheetKey);
+        if (nextKey) {
+          doorAnswers[`added:${nextKey}`] = v;
+        }
+      } else {
+        doorAnswers[k] = v;
+      }
+    }
+  }
+
   return {
     ...state,
     shapes,
@@ -458,6 +478,8 @@ export function remapWorkspaceState<T extends WorkspaceSheetState>(
     rfis,
     sheets,
     sheetRotations,
+    doorAnswers,
+    door_answers: doorAnswers,
     sheet_tabs: openTabs,
     sheet_group: sheetGroup,
     last_group: lastGroup,

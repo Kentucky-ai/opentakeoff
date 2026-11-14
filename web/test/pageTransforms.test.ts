@@ -369,3 +369,28 @@ test("remapWorkspaceState: the scale read off the plan follows its page on reord
   const del = remapWorkspaceState(remapped, buildKeyRemap("doc.pdf", (p) => (p === 2 ? null : p), 2));
   assert.deepEqual(del.detectedScales, {});
 });
+
+test("remapWorkspaceState: doorAnswers added:<sheetKey> entries follow remapped sheet keys and drop deleted keys", () => {
+  const state = {
+    doorAnswers: {
+      "added:doc.pdf": "2026-11-13T12:00:00.000Z",
+      "added:doc.pdf#2": "2026-11-13T12:05:00.000Z",
+      "check:101": "ok",
+      "note:102": "Verify hinge set",
+      "question_1": "answer_a",
+    },
+  };
+  const remap = buildKeyRemap("doc.pdf", { 1: 2, 2: 1 }, 2);
+  const remapped = remapWorkspaceState(state, remap);
+  assert.equal(remapped.doorAnswers["added:doc.pdf#2"], "2026-11-13T12:00:00.000Z");
+  assert.equal(remapped.doorAnswers["added:doc.pdf"], "2026-11-13T12:05:00.000Z");
+  assert.equal(remapped.doorAnswers["check:101"], "ok");
+  assert.equal(remapped.doorAnswers["note:102"], "Verify hinge set");
+  assert.equal(remapped.doorAnswers["question_1"], "answer_a");
+
+  // Deleting page 2 (which was page 1) drops its added entry
+  const del = remapWorkspaceState(remapped, buildKeyRemap("doc.pdf", (p) => (p === 2 ? null : p), 2));
+  assert.equal(del.doorAnswers["added:doc.pdf#2"], undefined);
+  assert.equal(del.doorAnswers["added:doc.pdf"], "2026-11-13T12:05:00.000Z");
+  assert.equal(del.doorAnswers["check:101"], "ok");
+});
