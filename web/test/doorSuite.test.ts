@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   readDoorSchedule, readHardwareSets, matchDoorTags, buildDoorSuite, scheduledPair, feetOf, estimateGroups, countLine, textRuns,
-  classifyTagRun, countMarkPoints,
+  classifyTagRun, countMarkPoints, openingLine, openingWidthFt, feetInches, heldBack,
   type TextRun,
 } from "../src/lib/doorSuite.ts";
 import type { ReadDoor } from "../src/lib/doorReader.ts";
@@ -167,4 +167,41 @@ test("textRuns: a rotated run keeps its true box", () => {
   const [r] = textRuns([{ str: "101", transform: [0, 10, -10, 0, 50, 50], width: 20, height: 10 }], [1, 0, 0, -1, 0, 100]);
   assert.ok(r.w < r.h, "vertical text is tall, not wide");
   assert.equal(r.str, "101");
+});
+
+test("openingLine: the reader's jamb line; a read without one falls back to the swing", () => {
+  // a door drawn shut: the reader put the jamb line on the leaf (hinge to tip), not on the swing's closed end
+  const shut = door(100, 100, 1, { jambLine: [[100, 100], [100, 136]] });
+  assert.deepEqual(openingLine(shut), [[100, 100], [100, 136]]);
+  // no jamb line (zero length): one leaf runs hinge to the swing's closed end, a pair hinge to hinge
+  const one = openingLine(door(100, 100, 1, { jambLine: [[0, 0], [0, 0]] }));
+  assert.deepEqual(one[0], [100, 100]);
+  assert.ok(Math.abs(Math.hypot(one[1][0] - 100, one[1][1] - 100) - 36) < 1e-6, "one leaf wide");
+  assert.ok(Math.abs(one[1][1] - 100) < 1e-6, "along the wall, not along the open leaf");
+  assert.deepEqual(openingLine(door(100, 100, 2, { jambLine: [[NaN, NaN], [NaN, NaN]] })), [[100, 100], [172, 100]]);
+});
+
+test("openingWidthFt: jamb to jamb at the sheet's scale; a pair is one opening, two leaves wide", () => {
+  const fpp = 1 / 12;   // 12 pt per foot
+  assert.equal(openingWidthFt(door(0, 0), fpp), 3);
+  assert.equal(openingWidthFt(door(0, 0, 2), fpp), 6);
+  assert.equal(openingWidthFt(door(0, 0), null), null);
+  assert.equal(feetInches(3), "3'-0\"");
+  assert.equal(feetInches(2.6667), "2'-8\"");
+  assert.equal(feetInches(2.999), "3'-0\"");
+});
+
+test("a toilet-partition stall door is held out of the count until answered, with its own question", () => {
+  const doors = [door(0, 0), door(200, 0, 1, { stall: true }), door(400, 0, 1, { confidence: 0.2 })];
+  assert.deepEqual(heldBack(doors), [false, true, false]);
+  assert.deepEqual(heldBack(doors, 0.3), [false, true, true]);
+  const base = { doors, withheld: heldBack(doors), marks: [null, null, null], schedule: null, sets: [], sheetLabel: "A101", fpp: 1 / 12 };
+  const v = buildDoorSuite({ ...base, answers: {} });
+  assert.equal(v.counts.openings, 2);
+  assert.equal(v.openings[1].leftOut, true);
+  assert.match(v.questions[0].text, /toilet-partition stall/);
+  assert.equal(v.openings[0].drawnFt, 3);
+  // the person can still count it
+  const yes = buildDoorSuite({ ...base, answers: { "withheld:1": "It's a door, count it" } });
+  assert.equal(yes.counts.openings, 3);
 });

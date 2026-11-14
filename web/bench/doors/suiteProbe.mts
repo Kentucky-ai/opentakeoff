@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { extractDoorVectors } from "../../src/lib/doorVectors.ts";
 import { readDoors, splitDoors, DOOR_CUTOFFS } from "../../src/lib/doorReader.ts";
-import { readDoorSchedule, readHardwareSets, matchDoorTags, textRuns, buildDoorSuite, countLine } from "../../src/lib/doorSuite.ts";
+import { readDoorSchedule, readHardwareSets, matchDoorTags, textRuns, buildDoorSuite, countLine, heldBack, feetInches } from "../../src/lib/doorSuite.ts";
 import { extractVectorGeometry } from "../../src/lib/oneclick.ts";
 
 const [plans, planPage, schedPage, specs] = process.argv.slice(2);
@@ -42,6 +42,7 @@ if (specs) {
 }
 console.log("hardware sets", sets.map((s) => `${s.set}:[${s.marks.join(",")}]`).join(" "));
 reading.doors.forEach((d, i) => console.log(" door", i, tags[i] ?? "-", d.pair ? "PAIR" : "", d.leaves.length, "leaves conf", d.confidence, d.doubts.join("; ")));
-const view = buildDoorSuite({ doors: reading.doors, withheld: reading.doors.map((d) => withheld.includes(d)), marks: tags, ambiguous: tm.ambiguous, schedule: sched, sets, answers: {}, sheetLabel: "A101" });
+const view = buildDoorSuite({ doors: reading.doors, withheld: heldBack(reading.doors, DOOR_CUTOFFS.foundFirst), fpp: reading.fpp, marks: tags, ambiguous: tm.ambiguous, schedule: sched, sets, answers: {}, sheetLabel: "A101" });
+for (const o of view.openings) console.log(" opening", o.door, o.mark ?? "-", "drawn", o.drawnFt == null ? "-" : feetInches(o.drawnFt), "scheduled", o.row?.width ?? "-", reading.doors[o.door].stall ? "STALL" : "");
 console.log(countLine(view.counts), "matched", view.counts.matched, "questions", view.questions.length);
 for (const q of view.questions) console.log(" Q", q.kind, q.text);

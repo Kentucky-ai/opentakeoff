@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-14 — door reader: the opening's jamb line; stall doors held out of the count
+
+- **Each door comes back with its opening line.** The door reader now reports the jamb-to-jamb line across the wall (`ReadDoor.jambLine`): hinge to hinge for a pair, and for one leaf hinge to the swing's closed end, or hinge to the leaf's tip where the wall linework runs on past that line (a door drawn shut). A wall cut off at the closed end settles it.
+- **More pairs read as one opening.** Two leaves drawn a little short of closed, or with one leaf line lying along the opening, join as one pair.
+- **The Doors suite draws and measures the opening.** Each door's opening line is drawn with its swing, and the door card shows the width as drawn, jamb to jamb, beside the scheduled size (`openingLine`, `openingWidthFt` in `web/src/lib/doorSuite.ts`). On a public demo set (Baker County EOC, sheet A101), all 18 scheduled doors on the plan read the scheduled width to the inch; the scale there is read from the swings themselves, so this checks the pairs and odd sizes (3'-6", 6'-0") more than the common 3'-0" door.
+- **Toilet-partition stall doors are not counted until you say so.** A swing the reader marks as a stall door (it comes with the partitions, Division 10, and is never on the door schedule) is listed under **To review** with its own question and left out of the count until answered (`heldBack`). Before, a stall door on a sheet with no schedule loaded was counted as an opening.
+
 ## 2026-11-13 — stitched sheets over MCP (MCP 0.9.110)
 
 - **An agent can join sheets split at a match line.** `stitch_sheets` makes one composite surface from 2–4 sheets, `align_stitch` places them from a point both sheets draw, and `list_stitches` lists them. `view_sheet` renders the composite, every measuring tool takes its `stitch:<uid>` key, and `export_takeoff` / `import_takeoff` / `export_marked_pdf` carry it (#575).

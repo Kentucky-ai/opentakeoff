@@ -292,6 +292,44 @@ export function matchDoorTags(doors: ReadDoor[], runs: TextRun[], marks: Set<str
   return { marks: out, ambiguous };
 }
 
+/**
+ * The opening a door hangs in, as a line across the wall from jamb to jamb
+ * (page points): the reader's own jamb line. A read without one (a zero-length
+ * or non-finite line) falls back to hinge to hinge for a pair, and hinge to
+ * the swing's closed end for one leaf.
+ */
+export function openingLine(d: ReadDoor): [[number, number], [number, number]] {
+  const j = d.jambLine;
+  if (j && j.flat().every(Number.isFinite) && Math.hypot(j[1][0] - j[0][0], j[1][1] - j[0][1]) > 1e-6) return [[j[0][0], j[0][1]], [j[1][0], j[1][1]]];
+  const sp = swingPoints(d);
+  if (sp.length > 1) return [sp[0].hinge, sp[1].hinge];
+  if (sp.length === 1) return [sp[0].hinge, sp[0].closed];
+  return [[d.box[0], d.box[1]], [d.box[2], d.box[3]]];
+}
+
+/** The opening's drawn width in feet (jamb to jamb), or null when the sheet's scale is unknown. `fpp`: feet per page point. */
+export function openingWidthFt(d: ReadDoor, fpp: number | null | undefined): number | null {
+  if (!fpp || !(fpp > 0)) return null;
+  const [a, b] = openingLine(d);
+  const ft = Math.hypot(b[0] - a[0], b[1] - a[1]) * fpp;
+  return Number.isFinite(ft) && ft > 0 ? ft : null;
+}
+
+/** Feet as the drawings write them, to the nearest inch: 3 -> 3'-0", 2.67 -> 2'-8". */
+export function feetInches(ft: number): string {
+  const inches = Math.round(ft * 12);
+  return `${Math.floor(inches / 12)}'-${inches % 12}"`;
+}
+
+/**
+ * Doors kept out of the count until the person answers: a swing the reader is
+ * not sure of (confidence under the cutoff), and a toilet-partition stall door,
+ * which comes with the partitions (Division 10) and is never on the door schedule.
+ */
+export function heldBack(doors: ReadDoor[], cutoff = 0): boolean[] {
+  return doors.map((d) => d.stall || d.confidence < cutoff - 1e-9);
+}
+
 /** Where a door's swing actually sweeps: per leaf, its hinge, the open leaf's tip and the closed end. */
 export function swingPoints(d: ReadDoor): Array<{ hinge: [number, number]; tip: [number, number]; closed: [number, number]; r: number }> {
   return d.leaves.map((l) => {
@@ -366,6 +404,8 @@ export interface Opening {
   row: ScheduleRow | null;
   pair: boolean;
   leaves: number;
+  /** the opening's width as drawn, jamb to jamb, in feet; null without a scale */
+  drawnFt: number | null;
   withheld: boolean;
   /** an answer has taken it out of the count */
   leftOut: boolean;
@@ -408,6 +448,8 @@ export function buildDoorSuite(input: {
   tone?: Array<"gray" | "dark" | null>;
   /** doors whose tag reads two ways (matchDoorTags) */
   ambiguous?: Record<number, [string, string]>;
+  /** feet per page point the doors were read at (for each opening's drawn width) */
+  fpp?: number | null;
 }): DoorSuiteView {
   const { doors, withheld, schedule, sets, answers, sheetLabel } = input;
   // an ambiguous tag, once answered, is the mark the person picked
@@ -432,8 +474,9 @@ export function buildDoorSuite(input: {
       else if (!answers[id]) leftOut = true;   // not counted until answered
       questions.push({
         id, kind: "withheld", door: i,
-        text: mark ? `Door ${mark}: not sure this swing is a door. It's left out of the count until you answer.` : "Not sure this swing is a door. It's left out of the count until you answer.",
-        why: d.doubts.length ? `Why: ${d.doubts.slice(0, 3).join(", ")}` : "The drawing doesn't settle it",
+        text: d.stall ? "This swing looks like a toilet-partition stall door, which comes with the partitions and not the door schedule. It's left out of the count until you answer."
+          : mark ? `Door ${mark}: not sure this swing is a door. It's left out of the count until you answer.` : "Not sure this swing is a door. It's left out of the count until you answer.",
+        why: d.stall ? "Why: it hangs on a thin partition panel, or closes in line with a row of stall doors" : d.doubts.length ? `Why: ${d.doubts.slice(0, 3).join(", ")}` : "The drawing doesn't settle it",
         answers: ANSWERS.withheld,
       });
     } else if (input.ambiguous?.[i] && !answers[`tag:${i}`]) {
@@ -484,7 +527,7 @@ export function buildDoorSuite(input: {
         }
       }
     }
-    return { door: i, mark, row, pair, leaves: pair ? 2 : 1, withheld: isWithheld, leftOut };
+    return { door: i, mark, row, pair, leaves: pair ? 2 : 1, drawnFt: openingWidthFt(d, input.fpp), withheld: isWithheld, leftOut };
   });
   const placed = new Set(openings.filter((o) => o.mark).map((o) => o.mark as string));
   const unplaced = (schedule?.rows || []).filter((r) => !placed.has(r.mark) && !input.placedElsewhere?.has(r.mark));

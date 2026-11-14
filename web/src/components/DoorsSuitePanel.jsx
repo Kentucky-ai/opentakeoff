@@ -5,7 +5,7 @@
 // Stateless about the takeoff: the canvas owns the reading (lib/doorSuite.ts)
 // and the answers; this renders them and reports clicks.
 import React from "react";
-import { countLine, doorSetColor as setColor } from "../lib/doorSuite.ts";
+import { countLine, doorSetColor as setColor, feetInches } from "../lib/doorSuite.ts";
 import "./doorsSuitePanel.css";
 
 function Elevation({ opening, color }) {
@@ -149,6 +149,7 @@ export default function DoorsSuitePanel({
                 <dl>
                   <dt>Door</dt><dd>{opening.pair ? "Pair (2 leaves)" : "Single"}{r?.doorType ? ` · type ${r.doorType}` : ""}</dd>
                   <dt>Size</dt><dd className="ds-mono">{r ? `${r.width} × ${r.height}` : "Not scheduled"}</dd>
+                  {opening.drawnFt != null && <><dt>Drawn width</dt><dd className="ds-mono">about {feetInches(opening.drawnFt)} on the plan</dd></>}
                   <dt>Material</dt><dd>{r ? [r.material, r.finish].filter(Boolean).join(", ") || "Not stated" : "Not scheduled"}</dd>
                   <dt>Glass</dt><dd>{r ? (r.glass && r.glass !== "-" ? r.glass : "None") : "Not scheduled"}</dd>
                   <dt>Frame</dt><dd>{r ? [r.frameType, r.frameMaterial, r.frameFinish].filter((x) => x && x !== "-").join(", ") || "Not stated" : "Not scheduled"}</dd>
