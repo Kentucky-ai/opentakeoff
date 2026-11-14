@@ -14,6 +14,7 @@ import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { buildMarkedSetPdf as buildMarkedSetPdfJs } from "../../web/src/lib/markedset.js";
 import { pointInPoly } from "../../web/src/lib/geometry.js";
+import { isStitchKey } from "../../web/src/lib/stitches.ts";
 import { RENDER_SCALE } from "../../web/src/lib/sheets.ts";
 import { UserError } from "./format.ts";
 import { assertWritable } from "./safewrite.ts";
@@ -82,14 +83,37 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   await assertWritable(outPath, "pdf", opts.overwrite);
 
   const sheetStates = session.sheetList();
+  const plainStates = sheetStates.filter((s) => !isStitchKey(s.key));
+  const stitchStates = sheetStates.filter((s) => isStitchKey(s.key));
   // #152: the working set can span documents — pages resolve per (file, page)
-  const byFilePage = new Map(sheetStates.map((s) => [`${session.fileFor(s.key)}#${s.pageNum}`, s.page]));
-  const sheets = sheetStates.map((s) => ({
+  const byFilePage = new Map(plainStates.map((s) => [`${session.fileFor(s.key)}#${s.pageNum}`, s.page]));
+  const plainSheets = plainStates.map((s) => ({
     key: s.key,
     file: session.fileFor(s.key),
     page: s.pageNum,
     label: s.sheetNumber ? `${s.sheetNumber} · p${s.pageNum}` : s.key,
   }));
+  const stitchSheets = stitchStates.map((s) => {
+    const st = session.stitch(s.key);
+    return {
+      key: s.key,
+      label: st.name || "Stitched sheets",
+      stitch: {
+        members: st.members.map((m) => {
+          const ms = session.sheet(m.key);
+          return {
+            key: m.key,
+            file: session.fileFor(m.key),
+            page: ms.pageNum,
+            label: ms.sheetNumber ? `${ms.sheetNumber} · p${ms.pageNum}` : m.key,
+            dx: m.dx,
+            dy: m.dy,
+          };
+        }),
+      },
+    };
+  });
+  const sheets = [...plainSheets, ...stitchSheets];
 
   // markedset.js speaks pdf.js pages; serve it a shim over the PageHandle. The
   // stored viewport is at RENDER_SCALE and every entry of a pdf.js viewport

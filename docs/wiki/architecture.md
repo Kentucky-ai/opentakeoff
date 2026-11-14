@@ -18,8 +18,8 @@ use full-sheet image pixels; storage uses per-sheet normalized vertices. Scale
 converts pixels to stored SF/LF; changing display units does not rewrite shapes.
 See [MCP coordinates](mcp.md).
 
-Shared modules do not imply every record or detector path is identical. Browser
-stitches are not preserved by the MCP import/export path. Browser and MCP
+Shared modules do not imply every record or detector path is identical. Stitches
+are preserved by the MCP import/export path. Browser and MCP
 origins also have different actors and review authority. Consult the
 [compatibility matrix](../../protocol/COMPATIBILITY.md) before promising a
 lossless interchange.

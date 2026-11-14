@@ -23,6 +23,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
     // enables are NOT in this table — they are hidden until a suite opens
     "open_suite",
     "rotate_page", "reorder_pages", "extract_pages", "merge_documents",
+    "stitch_sheets", "align_stitch", "list_stitches",
   ],
   measure: [
     "propose_takeoff",

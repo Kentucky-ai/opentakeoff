@@ -284,16 +284,13 @@ Two rules carry over from the app unchanged:
   fields appear on the tool replies, so an agent can triage before it
   commits.
 
-And one capability deliberately does **not** carry over: **stitching**. The
-canvas can join sheets split at a match line into one composite surface, but
-there is no agent verb for it—aligning the match line means clicking the
-same drawn wall junction on both halves, a human-judgment act whose failure
-mode (a subtly sloppy join) silently skews every quantity that crosses the
-seam. Same doctrine as the scale gate, taken one step further: here the agent
-doesn't even propose. A human stitches and aligns in the canvas; an agent
-works the member sheets individually and leaves seam-crossing rooms to the
-person at the screen. See the Limits section of
-[`mcp/README.md`](../mcp/README.md) for the round-trip caveat that follows.
+**Stitching** carries over with a gate. An agent joins sheets split at a match
+line with `stitch_sheets` and `align_stitch`, and the server compares the two
+sheets' linework at the seam after every alignment. A subtly sloppy join would
+skew every quantity that crosses the seam, so measuring across a seam is
+refused until that check passes. Same doctrine as the scale gate: the agent
+proposes the join, the drawing has to agree. See
+[Stitching sheets over MCP](MCP_STITCHING.md).
 
 ## An example session
 
@@ -398,7 +395,7 @@ New agent measurements, including `measure_polygon` and `measure_line`, explicit
 
 The [generated tool index](MCP_TOOL_INDEX.md) gives each tool's stage and required
 arguments directly from the running server's schemas. The default surface has
-<!--tool-count-->66<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
+<!--tool-count-->69<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
 
 Use `list_annotations` → `edit_annotation {annotation_id, text}` to shorten or clear
 a note. One `undo_last` restores the text. Geometry, dimension length, links and
