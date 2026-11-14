@@ -168,7 +168,7 @@ import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 import DoorsSuitePanel from "../components/DoorsSuitePanel.jsx";
-import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL, countMarkPoints } from "../lib/doorSuite.ts";
+import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL, countMarkPoints, openingLine, heldBack } from "../lib/doorSuite.ts";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
@@ -7885,14 +7885,15 @@ export default function TakeoffCanvas() {
         doorReadBusyRef.current.add(p.key);
         setDoorReads((prev) => ({ ...prev, [p.key]: { status: "reading" } }));
         try {
-          const [{ extractDoorVectors }, { readDoors, splitDoors, DOOR_CUTOFFS }, { textRuns }, { extractVectorGeometry, SEG_CURVE }] = await Promise.all([import("../lib/doorVectors.ts"), import("../lib/doorReader.ts"), import("../lib/doorSuite.ts"), import("../lib/oneclick.ts")]);
+          const [{ extractDoorVectors }, { readDoors, DOOR_CUTOFFS }, { textRuns }, { extractVectorGeometry, SEG_CURVE }] = await Promise.all([import("../lib/doorVectors.ts"), import("../lib/doorReader.ts"), import("../lib/doorSuite.ts"), import("../lib/oneclick.ts")]);
           const t = parseSheetKey(p.key);
           const out = await docCache.withDoc(t.file, async (pdf) => {
             const pg = pageObjsRef.current.get(p.key) || await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
             const vp0 = pg.getViewport({ scale: 1, rotation: 0 });
             const [ol, tc] = await Promise.all([pg.getOperatorList(), pg.getTextContent()]);
             const reading = await readDoors(extractDoorVectors(ol, vp0.transform, pdfjsLib.OPS));
-            const { withheld } = splitDoors(reading, DOOR_CUTOFFS.foundFirst);
+            // not counted until answered: unsure swings, and toilet-partition stall doors (Division 10)
+            const held = heldBack(reading.doors, DOOR_CUTOFFS.foundFirst);
             doorRunsRef.current.set(p.key, textRuns(tc.items, vp0.transform));
             // the sheet's linework in the same frame: door-tag symbols around
             // tag text, and each swing's stroke tone (gray = likely existing)
@@ -7911,7 +7912,7 @@ export default function TakeoffCanvas() {
             const known = lums.filter((x) => x != null).sort((a, b) => a - b);
             const typical = known.length ? known[known.length >> 1] : null;
             const tone = lums.map((l) => (l == null || typical == null ? null : l >= 100 && l >= typical + 45 ? "gray" : "dark"));
-            return { status: "done", doors: reading.doors, withheld: reading.doors.map((d) => withheld.includes(d)), tone, rot: ((pg.rotate || 0) % 360 + 360) % 360, w0: vp0.width, h0: vp0.height, fpp: reading.fpp };
+            return { status: "done", doors: reading.doors, withheld: held, tone, rot: ((pg.rotate || 0) % 360 + 360) % 360, w0: vp0.width, h0: vp0.height, fpp: reading.fpp };
           });
           setDoorReads((prev) => ({ ...prev, [p.key]: out }));
         } catch (e) {
@@ -7964,7 +7965,7 @@ export default function TakeoffCanvas() {
     if (!doorSuiteOn || !rd || rd.status !== "done") return null;
     const schedule = doorDocs?.schedule ? { rows: doorDocs.schedule.rows, box: doorDocs.schedule.box } : null;
     const tm = matchDoorTags(rd.doors, doorRunsRef.current.get(doorKey) || [], new Set((schedule?.rows || []).map((r) => r.mark)), { segs: doorSegsRef.current.get(doorKey) || null });
-    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, marks: tm.marks, ambiguous: tm.ambiguous, tone: rd.tone, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
+    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, marks: tm.marks, ambiguous: tm.ambiguous, tone: rd.tone, fpp: rd.fpp, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doorSuiteOn, doorKey, doorReads, doorDocs, doorAnswers]);
   const doorSetOrder = useMemo(() => {
@@ -11163,6 +11164,9 @@ export default function TakeoffCanvas() {
                       const cross = (T[0] - H[0]) * (E[1] - H[1]) - (T[1] - H[1]) * (E[0] - H[0]);
                       return <path key={j} d={`M${H[0] + p.xOffset},${H[1]} L${T[0] + p.xOffset},${T[1]} A${R},${R} 0 0 ${cross > 0 ? 1 : 0} ${E[0] + p.xOffset},${E[1]}`} />;
                     });
+                    // the opening itself: the jamb-to-jamb line across the wall
+                    const [ja, jb] = openingLine(d).map((q) => doorToImg(rd, p, q));
+                    paths.push(<path key="jamb" d={`M${ja[0] + p.xOffset},${ja[1]} L${jb[0] + p.xOffset},${jb[1]}`} />);
                     const c = doorCenter(d);
                     const C = doorToImg(rd, p, [c.x, c.y]);
                     const rPx = Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[0] - C[0]) + Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[1] - C[1]);

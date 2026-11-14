@@ -32,6 +32,19 @@ const CLIP_LEN_R: (f64, f64) = (0.85, 1.15);
 const CLIP_GAP_DEG: f64 = 35.0;
 const CLIP_TURN_DEG: (f64, f64) = (82.0, 98.0);
 const JAMB_REACH_FT: f64 = 3.0;
+// the jamb-line test: probes from 3 to 15 in past each end of a candidate line, on it and 2 in to either side; linework within 1.1 in counts
+const JAMB_PROBE_FT: (f64, f64) = (0.25, 1.25);
+const JAMB_PROBE_STEPS: usize = 11;
+const JAMB_PROBE_SIDE_FT: f64 = 0.156;
+const JAMB_PROBE_TOL_FT: f64 = 0.09;
+// wall faces cut off at a jamb: strokes along the candidate line within 1 ft sideways, at least 3 in long, starting 4 in short of the
+// line's end to 6 in past it and running on a foot; two strokes less than half an inch apart sideways are one face
+const FACE_SIDE_FT: f64 = 1.0;
+const FACE_MIN_FT: f64 = 0.25;
+const FACE_START_FT: (f64, f64) = (-0.33, 0.5);
+const FACE_RUN_FT: f64 = 1.0;
+const FACE_APART_FT: f64 = 0.04;
+const FACE_BAND_FT: f64 = 0.1;
 const BOX_CELL: f64 = 40.0;
 const BOX_CELLS_MAX: i64 = 400;
 const END_CELL: f64 = 40.0;
@@ -518,6 +531,85 @@ impl Segments {
             }
             far.sub(h).dot(u) > (1.0 + COARSE_JAMB_R.1) * r
         })
+    }
+
+    /// Share of probe points with linework on them, just past both ends of the line from `a` to `b`: a wall runs on beyond a
+    /// jamb line's ends; a leaf ends in open floor. Probes sit 3 to 15 in out along the line, on it and 2 in to either side.
+    pub fn ink_beyond(&self, a: P, b: P, fpp: f64) -> f64 {
+        let ft = 1.0 / fpp;
+        let v = b.sub(a);
+        let l = v.norm();
+        if l < 1e-6 {
+            return 0.0;
+        }
+        let u = P::new(v.x / l, v.y / l);
+        let n = P::new(-u.y, u.x);
+        let mid = P::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+        let near = self.around(mid, l / 2.0 + (JAMB_PROBE_FT.1 + JAMB_PROBE_SIDE_FT + JAMB_PROBE_TOL_FT) * ft);
+        let tol = JAMB_PROBE_TOL_FT * ft;
+        let (mut hit, mut tot) = (0usize, 0usize);
+        for (base, sign) in [(b, 1.0), (a, -1.0)] {
+            for k in 0..JAMB_PROBE_STEPS {
+                let t = (JAMB_PROBE_FT.0 + (JAMB_PROBE_FT.1 - JAMB_PROBE_FT.0) * k as f64 / JAMB_PROBE_STEPS as f64) * ft * sign;
+                for w in [-JAMB_PROBE_SIDE_FT, 0.0, JAMB_PROBE_SIDE_FT] {
+                    let p = P::new(base.x + u.x * t + n.x * w * ft, base.y + u.y * t + n.y * w * ft);
+                    tot += 1;
+                    if near.iter().any(|&k| self.off(k, p) <= tol) {
+                        hit += 1;
+                    }
+                }
+            }
+        }
+        hit as f64 / tot.max(1) as f64
+    }
+
+    /// Wall faces cut off at the far end of the line from `a` to `b`: strokes along the line, within a foot to either side of it,
+    /// that begin about at `b` (4 in short of it to 6 in past) and run on at least a foot. Strokes at one sideways offset count once.
+    /// None count unless the line lies on one of them or between two.
+    pub fn faces_from(&self, a: P, b: P, fpp: f64) -> usize {
+        let ft = 1.0 / fpp;
+        let v = b.sub(a);
+        let l = v.norm();
+        if l < 1e-6 {
+            return 0;
+        }
+        let u = P::new(v.x / l, v.y / l);
+        let n = P::new(-u.y, u.x);
+        let mut offs: Vec<f64> = vec![];
+        for k in self.around(b, (FACE_RUN_FT + FACE_START_FT.1 + FACE_SIDE_FT) * ft) {
+            let s = self.a[k];
+            let ln = self.len[k];
+            if ln < FACE_MIN_FT * ft || self.d[k].dot(u).abs() < 0.97 * ln {
+                continue;
+            }
+            let (p0, p1) = (P::new(s[0], s[1]).sub(a), P::new(s[2], s[3]).sub(a));
+            let (t0, t1) = (p0.dot(u), p1.dot(u));
+            let off = (p0.dot(n) + p1.dot(n)) / 2.0;
+            let (lo, hi) = (t0.min(t1), t0.max(t1));
+            if off.abs() <= FACE_SIDE_FT * ft && lo >= l + FACE_START_FT.0 * ft && lo <= l + FACE_START_FT.1 * ft && hi >= l + FACE_RUN_FT * ft {
+                offs.push(off);
+            }
+        }
+        offs.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        // the line lies in the wall it runs into: on one of its faces or between them, not beside a wall that only passes by
+        if offs.is_empty() || offs[0] > FACE_BAND_FT * ft || offs[offs.len() - 1] < -FACE_BAND_FT * ft {
+            return 0;
+        }
+        let mut count = 0;
+        for (i, o) in offs.iter().enumerate() {
+            if i == 0 || o - offs[i - 1] > FACE_APART_FT * ft {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Distance from p to segment k.
+    fn off(&self, k: usize, p: P) -> f64 {
+        let s = self.a[k];
+        let (d, l) = (self.d[k], self.len[k]);
+        let t = (((p.x - s[0]) * d.x + (p.y - s[1]) * d.y) / (l * l)).clamp(0.0, 1.0);
+        dist(p, P::new(s[0] + d.x * t, s[1] + d.y * t))
     }
 
     /// A toilet-partition door: at its hinge or closed end a thin panel ends, running across the closed leaf for a stall's depth.

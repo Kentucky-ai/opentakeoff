@@ -7,7 +7,8 @@
 //! - paths: `n_paths` records of 2 f64 `[dashed, dark_fill]` (0 or 1).
 //!
 //! Output (`dr_out_ptr`, `dr_read`'s return value f64s long): `[n_doors, fpp (NaN = none), scale source (0 none, 1 given,
-//! 2 arcs), arcs read]`, then per door 32 f64: `bbox x0 y0 x1 y1, pair, stall, dashed, leaves, confidence, doubt bits` (confidence.rs),
+//! 2 arcs), arcs read]`, then per door 36 f64: `bbox x0 y0 x1 y1, pair, stall, dashed, leaves, confidence, doubt bits` (confidence.rs),
+//! the jamb-to-jamb line `x0 y0 x1 y1` (doors.rs `jamb_line`),
 //! then two leaves of 11:
 //! `hinge x, hinge y, radius pt, leaf tip x, leaf tip y, drawn (0 curve, 1 polyline, 2 strokes, 3 coarse), sweep deg, misfit pt,
 //! jamb ft (NaN: no wall at the hinge), strike (wall runs on from the closed end), leaf (0 drawn, 1 dashed, 2 none, 3 part-open)`
@@ -19,7 +20,7 @@ use std::cell::RefCell;
 
 pub const ITEM_F64: usize = 10;
 pub const PATH_F64: usize = 2;
-pub const DOOR_F64: usize = 10 + 2 * LEAF_F64;
+pub const DOOR_F64: usize = 14 + 2 * LEAF_F64;
 pub const LEAF_F64: usize = 11;
 pub const HEAD_F64: usize = 4;
 
@@ -72,6 +73,7 @@ pub fn encode(paths: &[Path], fpp: Option<f64>) -> Vec<f64> {
         let bits = crate::confidence::doubts(d, got.fpp.unwrap_or(1.0), style, &radii);
         o.push(crate::confidence::score(bits));
         o.push(bits as f64);
+        o.extend_from_slice(&[d.jamb[0].x, d.jamb[0].y, d.jamb[1].x, d.jamb[1].y]);
         for k in 0..2 {
             match d.leaves.get(k) {
                 Some(a) => {

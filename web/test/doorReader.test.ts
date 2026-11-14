@@ -30,6 +30,16 @@ test("door reader reads the demo plan's swings at its 1/8\" scale", async () => 
     for (const l of d.leaves) assert.ok(l.radiusPt * (got.fpp as number) >= 1.45 && l.radiusPt * (got.fpp as number) <= 4.6);
   }
   assert.equal(got.doors.filter((d) => d.pair).length, 2);
+  // the jamb-to-jamb line: hinge to hinge for a pair; for one leaf, from its hinge and one leaf long (to the closed end or the leaf's tip)
+  for (const d of got.doors) {
+    const [p, q] = d.jambLine, len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    assert.deepEqual(p, d.leaves[0].hinge);
+    if (d.pair) assert.deepEqual(q, d.leaves[1].hinge);
+    else assert.ok(Math.abs(len - d.leaves[0].radiusPt) <= 0.25 * d.leaves[0].radiusPt, `jamb line ${len} pt for a ${d.leaves[0].radiusPt} pt leaf`);
+  }
+  // measured 2026-11-14: on this plan the wall runs on past the leaf line, not the closed line, for this many single doors
+  const onTip = got.doors.filter((d) => !d.pair && d.jambLine[1][0] === d.leaves[0].tip[0] && d.jambLine[1][1] === d.leaves[0].tip[1]).length;
+  assert.equal(onTip, 16);
   // committed / withheld at the frozen cutoffs (round 2): every withheld door keeps its reasons
   assert.equal(splitDoors(got, DOOR_CUTOFFS.foundFirst).committed.length, 81);
   const p = splitDoors(got, DOOR_CUTOFFS.precisionFirst);
