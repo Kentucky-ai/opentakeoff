@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-13 — pitch as percent, degrees or ratio (MCP 0.9.109)
+
+- `roof_takeoff` and `soffit_takeoff` read the pitch the way the drawings print it: `"2%"`, `"22.5 deg"` or `"22.5°"`, `"1:48"` and `"1/4:12"`, next to `"6/12"`, `6` and `"1/4 per ft"`. The `roof_takeoff` reply has `pitch_as_given` beside the rise in 12 it was read as (#618).
+
 ## 2026-11-13 — suite tools in metric (MCP 0.9.108)
 
 - The six suite tools (`roof_takeoff`, `siding_takeoff`, `soffit_takeoff`, `glazing_takeoff`, `electrical_rollup`, `plumbing_rollup`) take `units: "metric"`: arguments and replies in mm, mm², m and m², without roofing or siding squares. Every reply states its `units`. Imperial calls return what they returned before (#620).

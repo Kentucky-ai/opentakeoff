@@ -201,7 +201,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
 
   // ── roofing ───────────────────────────────────────────────────────────────
   const roofInput = z.looseObject({
-    pitch: z.union([z.string(), z.number()]).describe('Slope from the drawings: "6/12", 6, or low-slope "1/4 per ft"'),
+    pitch: z.union([z.string(), z.number()]).describe('Slope from the drawings: "6/12", 6, "1/4 per ft", "2%", "22.5 deg", "1:48", or "1/4:12"'),
     field: z.string().default("RF-FIELD").describe("Condition holding the roof planes (plan view)"),
     eave: z.string().default("RF-EAVE"), rake: z.string().default("RF-RAKE"), ridge: z.string().default("RF-RIDGE"),
     hip: z.string().default("RF-HIP"), valley: z.string().default("RF-VALLEY"),
@@ -220,7 +220,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     outputSchema: { ...deriveOutput, sloped_sf: z.number().optional(), sloped_m2: z.number().optional(), squares: z.number().optional() },
   }, suiteRun("roof_takeoff", roofInput, (a, units) => {
     const pitch = parsePitch(a.pitch);
-    if (pitch === null) throw new UserError(`Cannot read pitch ${JSON.stringify(a.pitch)} — pass "6/12", 6, or "1/4 per ft" as printed on the roof plan.`);
+    if (pitch === null) throw new UserError(`Cannot read pitch ${JSON.stringify(a.pitch)} — pass "6/12", 6, "1/4 per ft", "2%", "22.5 deg", "1:48", or "1/4:12" as printed on the roof plan.`);
     conditionOrError(a.field, "roof field");
     const field = session.suiteShapes(a.field, ["floor_area", "deduct"]);
     const planSf = field.reduce((n, { shape }) => n + (shape.measure_role === "deduct" ? (shape.cuts_shape_id ? 0 : -1) : 1) * (shape.computed.area_sf ?? 0), 0);
@@ -258,7 +258,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       if (items.length) { session.suiteCommit("roof_takeoff", items); committed = items.length; steps++; }
     }
     return {
-      ...q, committed, undo_steps: steps, ...(a.apply ? { multipliers_set: applied } : {}),
+      ...q, pitch_as_given: a.pitch, committed, undo_steps: steps, ...(a.apply ? { multipliers_set: applied } : {}),
       next: a.apply
         ? "view_sheet overlay:true on the roof to check the derived runs; count penetrations under RF-PEN-<type>; export_report carries the true totals."
         : "Report only — call again with apply:true to write the slope factors and commit the accessory runs.",
@@ -340,7 +340,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     rake_overhang_in: z.number().positive().optional().describe("Rake soffit depth, inches; absent = rake soffit not figured"),
     overhang_mm: z.number().positive().optional().describe("Eave soffit depth, mm (units metric)"),
     rake_overhang_mm: z.number().positive().optional().describe("Rake soffit depth, mm (units metric)"),
-    pitch: z.union([z.string(), z.number()]).optional().describe("Roof pitch for true rake length"),
+    pitch: z.union([z.string(), z.number()]).optional().describe('Roof pitch for true rake length: "6/12", 6, "1/4 per ft", "2%", "22.5 deg", "1:48", or "1/4:12"'),
     outside_corners: z.number().int().min(0).optional(),
     waste_pct: z.number().min(0).max(50).optional().describe("Absent = 10 % suite allowance"),
     vent: z.looseObject({
@@ -367,7 +367,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     let pitch: number | undefined;
     if (a.pitch !== undefined) {
       const p = parsePitch(a.pitch);
-      if (p === null) throw new UserError(`Cannot read pitch ${JSON.stringify(a.pitch)}.`);
+      if (p === null) throw new UserError(`Cannot read pitch ${JSON.stringify(a.pitch)} — pass "6/12", 6, "1/4 per ft", "2%", "22.5 deg", "1:48", or "1/4:12" as printed on the roof plan.`);
       pitch = p;
     }
     let vent: { attic_sf: number; ratio: number; intake_share?: number; nfa_in2_per_lf?: number } | undefined;

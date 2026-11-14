@@ -15,6 +15,7 @@
 export type Pt = [number, number];
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const r4 = (n: number) => Math.round(n * 10000) / 10000;
 const ceil = (n: number) => Math.ceil(n - 1e-9);
 
@@ -61,21 +62,59 @@ export function bbox(pts: Pt[]): { x0: number; y0: number; x1: number; y1: numbe
 
 /**
  * A roof pitch as rise per 12 of run. Accepts 6, "6", "6/12", "6:12",
- * "6 in 12", and a low-slope "1/4 per ft" / "1/4\" per foot" (= 0.25/12).
+ * "6 in 12", low-slope "1/4 per ft" / "1/4\" per foot" (= 0.25/12),
+ * percent ("2%" = 0.24/12), degrees ("22.5 deg", "22.5°"), and
+ * ratios ("1:48" = 0.25/12, "1/4:12").
  * Returns null for anything it cannot read — never a guess.
  */
 export function parsePitch(raw: unknown): number | null {
   if (typeof raw === "number") return Number.isFinite(raw) && raw >= 0 && raw <= 48 ? raw : null;
   if (typeof raw !== "string") return null;
   const s = raw.trim().toLowerCase().replace(/["”″]/g, "");
-  let m = s.match(/^(\d+(?:\.\d+)?)\s*(?:\/|:|in)\s*12$/);
-  if (m) return parsePitch(Number(m[1]));
+
+  // Percent: "2%" -> 2 units rise per 100 run -> rise per 12 is 0.24
+  let m = s.match(/^(\d+(?:\.\d+)?)\s*(?:%|pct|percent)$/);
+  if (m) return parsePitch(r4(12 * (Number(m[1]) / 100)));
+
+  // Degrees: "22.5 deg", "22.5°" -> rise per 12 is 12 * tan(angle)
+  m = s.match(/^(\d+(?:\.\d+)?)\s*(?:°|deg(?:ree)?s?\.?)$/);
+  if (m) {
+    const deg = Number(m[1]);
+    if (deg < 0 || deg >= 90) return null;
+    return parsePitch(r3(12 * Math.tan((deg * Math.PI) / 180)));
+  }
+
+  // Ratio with fraction rise: "1/4:12", "1/4 in 12", "1/4 / 12"
+  m = s.match(/^(\d+)\s*\/\s*(\d+)\s*(?::|\/|in)\s*(\d+(?:\.\d+)?)$/);
+  if (m && Number(m[2]) > 0 && Number(m[3]) > 0) {
+    const rise = Number(m[1]) / Number(m[2]);
+    const run = Number(m[3]);
+    return parsePitch(r4(12 * (rise / run)));
+  }
+
+  // Low-slope per foot: "1/4 per ft" (= 0.25/12), "1/4\" per foot"
   m = s.match(/^(\d+)\s*\/\s*(\d+)\s*(?:in(?:ch)?\s*)?(?:per|\/)\s*(?:ft|foot|')$/);
   if (m && Number(m[2]) > 0) return parsePitch(Number(m[1]) / Number(m[2]));   // inches of rise per foot = rise per 12
+
   m = s.match(/^(\d+(?:\.\d+)?)\s*(?:in(?:ch)?\s*)?(?:per|\/)\s*(?:ft|foot|')$/);
   if (m) return parsePitch(Number(m[1]));
+
+  // Ratio: "1:48", "6:12", "4:12" or "1 in 48", "6 in 12"
+  m = s.match(/^(\d+(?:\.\d+)?)\s*(?::|in)\s*(\d+(?:\.\d+)?)$/);
+  if (m && Number(m[2]) > 0) {
+    const rise = Number(m[1]);
+    const run = Number(m[2]);
+    return parsePitch(r4(12 * (rise / run)));
+  }
+
+  // Standard rise over 12: "6/12", "0.25/12"
+  m = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*12$/);
+  if (m) return parsePitch(Number(m[1]));
+
+  // Plain number: "6", "0" (already rise per 12)
   m = s.match(/^\d+(?:\.\d+)?$/);
   if (m) return parsePitch(Number(s));
+
   return null;
 }
 
