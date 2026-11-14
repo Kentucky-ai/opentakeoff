@@ -32,12 +32,29 @@ export async function loadFolderLink() {
   return { handle, scope, name: handle.name };
 }
 
-/** "granted" | "prompt" | "denied" — query only (no gesture needed). */
-export async function queryFolderPermission(handle) {
+// How long boot waits for the browser to answer a permission query before it
+// stops waiting. A healthy query answers in a few milliseconds.
+export const PERMISSION_QUERY_TIMEOUT_MS = 3000;
+
+/**
+ * "granted" | "prompt" | "denied" | "unresponsive" — query only (no gesture
+ * needed). The browser can leave queryPermission pending forever on a
+ * persisted handle whose folder no longer answers (observed in Chrome with a
+ * moved folder), so the query is raced against a timer: "unresponsive" means
+ * the browser never replied, and the caller treats the folder as unreachable
+ * instead of waiting on it.
+ */
+export async function queryFolderPermission(handle, { timeoutMs = PERMISSION_QUERY_TIMEOUT_MS } = {}) {
+  let timer;
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => resolve("unresponsive"), timeoutMs);
+  });
   try {
-    return await handle.queryPermission({ mode: "readwrite" });
+    return await Promise.race([handle.queryPermission({ mode: "readwrite" }), timedOut]);
   } catch {
     return "denied";
+  } finally {
+    clearTimeout(timer);
   }
 }
 
