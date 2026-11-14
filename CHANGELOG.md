@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-13 — suite tools in metric (MCP 0.9.108)
+
+- The six suite tools (`roof_takeoff`, `siding_takeoff`, `soffit_takeoff`, `glazing_takeoff`, `electrical_rollup`, `plumbing_rollup`) take `units: "metric"`: arguments and replies in mm, mm², m and m², without roofing or siding squares. Every reply states its `units`. Imperial calls return what they returned before (#620).
+- A name from the other system is refused with the right one named, and arguments a tool does not take are listed in `unknown_args` instead of dropped.
+
 ## 2026-11-13 — door reader: split curves and chord doors
 
 - **A curve sent in two pieces is read as one.** Some PDFs hand pdf.js a swing as a move in one path op and the curve in the next. The door reader's extractor reset the current point per op, so the curve started at its first control point and a 3 ft swing fit at 4.7 ft and was dropped. Consecutive unpainted legacy path ops are now read as one path (`web/src/lib/doorVectors.ts`).

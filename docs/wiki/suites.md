@@ -54,6 +54,13 @@ browser, not in the project.
 - They never measure the drawing and never invent a document value. Pitch,
   soffit depth, the storefront grid, sightline and hanger spacing are
   arguments. When the drawings do not give one, raise it with `create_rfi`.
+- One argument switches a suite tool to metric. With `units: "metric"`, it
+  takes its arguments in mm, mm², m and m² (`overhang_mm`, `hanger_every_m`)
+  and replies in the same units, without roofing or siding squares. A name
+  from the other system is refused, and the error names the right one. An
+  argument the tool does not take is named instead of being dropped: in
+  `unknown_args`, or at the end of a refusal. Without `units`, everything
+  stays imperial.
 - Allowances are labelled. When no waste is stated, the reply says it carried
   the suite allowance (roofing 10 %, or 15 % with hips or valleys; siding and
   soffit 10 %) so the estimator can override it with their own standard.

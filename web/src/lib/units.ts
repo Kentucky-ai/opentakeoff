@@ -8,6 +8,109 @@ export const M_PER_FT = 0.3048;
 export const M2_PER_SF = 0.09290304;
 export const MM_PER_IN = 25.4;
 export const M3_PER_CF = 0.028316846592;
+export const MM2_PER_IN2 = 645.16;
+
+// ── trade-suite tools: names and values in either system (#620) ─────────────
+// The suite tools work in feet, inches and SF inside, like everything else.
+// A metric caller names its arguments in mm, m and m² and gets m² and m back;
+// these pairs are the one table for both directions. A pair is the imperial
+// and metric ending of a name, and `factor` takes an imperial value to metric.
+// Longest endings first, so `_in2_per_lf` is not read as `_lf`.
+export const SUITE_UNIT_PAIRS: readonly { imperial: string; metric: string; factor: number }[] = [
+  { imperial: "_in2_per_lf", metric: "_mm2_per_m", factor: MM2_PER_IN2 / M_PER_FT },
+  { imperial: "_per_100_lf", metric: "_per_100_m", factor: 1 / M_PER_FT },
+  { imperial: "_in2", metric: "_mm2", factor: MM2_PER_IN2 },
+  { imperial: "_sf", metric: "_m2", factor: M2_PER_SF },
+  { imperial: "_lf", metric: "_m", factor: M_PER_FT },
+  { imperial: "_ft", metric: "_m", factor: M_PER_FT },
+  { imperial: "_in", metric: "_mm", factor: MM_PER_IN },
+];
+/** Bare keys that name a quantity: a pipe run's `lf`, an opening's `sf`. */
+const SUITE_BARE_KEYS: Readonly<Record<string, { metric: string; factor: number }>> = {
+  lf: { metric: "m", factor: M_PER_FT },
+  sf: { metric: "m2", factor: M2_PER_SF },
+};
+
+/** The metric name of an imperial suite name, or null when it carries no unit. */
+export function suiteMetricName(name: string): string | null {
+  if (SUITE_BARE_KEYS[name]) return SUITE_BARE_KEYS[name].metric;
+  const pair = SUITE_UNIT_PAIRS.find((p) => name.endsWith(p.imperial));
+  return pair ? name.slice(0, -pair.imperial.length) + pair.metric : null;
+}
+
+/** Reply keys whose metric name is not the plain pair: a fixture row carries both `whip_ft` (each) and
+ *  `whip_lf` (all of them), which would both be `whip_m`. */
+const SUITE_REPLY_NAMES: Readonly<Record<string, string>> = { whip_lf: "whip_total_m" };
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const scale = (v: unknown, factor: number): unknown =>
+  typeof v === "number" ? r2(v * factor)
+    : Array.isArray(v) ? v.map((x) => scale(x, factor))
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scale(x, factor)]))
+    : v;
+
+/** The caller's own names in a reply: condition tags (`tag` values and the keys of `multipliers_set`)
+ *  and shape ids. A tag such as `roof_sf`, or an imported id such as `wall_1_sf`, is never read as a unit. */
+function replyTags(value: unknown, tags = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) for (const x of value) replyTags(x, tags);
+  else if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value)) {
+      if ((k === "tag" || k === "id") && typeof v === "string") tags.add(v);
+      else if (k === "multipliers_set" && v && typeof v === "object") for (const t of Object.keys(v)) tags.add(t);
+      else replyTags(v, tags);
+    }
+  }
+  return tags;
+}
+
+/** Tags longest first, so `pl.gas_lf` is kept whole before a tag `pl` could split it. */
+const longestFirst = (tags: Set<string>) => new Set([...tags].sort((a, b) => b.length - a.length));
+
+/** Where `tag` stands as a whole word in `text`, or -1: not `valley` inside `valley_ft`, and not a tag
+ *  `valley_ft` that is the last part of the argument `ice_water.valley_ft`. */
+function wholeTagAt(text: string, tag: string): number {
+  for (let i = text.indexOf(tag); i >= 0; i = text.indexOf(tag, i + 1)) {
+    if (!/[\w.]/.test(text[i - 1] ?? "") && !/\w/.test(text[i + tag.length] ?? "")) return i;
+  }
+  return -1;
+}
+
+/** Text with each snake_case name that carries a unit given its metric name ("pass ice_water.eave_ft"
+ *  → "pass ice_water.eave_m"), so a hint names the argument a metric caller passes. A tag the reply
+ *  names, whatever its separators, and a name inside a hyphenated tag are left alone. */
+function suiteMetricText(text: string, keep: Set<string>): string {
+  for (const tag of keep) {
+    const i = tag ? wholeTagAt(text, tag) : -1;
+    if (i >= 0) return suiteMetricText(text.slice(0, i), keep) + tag + suiteMetricText(text.slice(i + tag.length), keep);
+  }
+  // the prefix is captured, not a lookbehind: Safari before 16.4 cannot load a module with one
+  return text.replace(/(^|[^\w-])([a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?![\w-])/g,
+    (_m, pre: string, name: string) => pre + (suiteMetricName(name) ?? name));
+}
+
+/** A suite reply in metric: each quantity key renamed (`sloped_sf` → `sloped_m2`, `edges_true_lf` →
+ *  `edges_true_m`) with its value converted, and squares left out (a roofing or siding square has no
+ *  metric meaning). Unit-bearing names inside text are renamed too; nested objects and lists are
+ *  walked. Condition tags and the slope factors set on them stay as they are. */
+export function suiteMetricReply(value: unknown, keep: Set<string> = longestFirst(replyTags(value))): unknown {
+  if (typeof value === "string") return keep.has(value) ? value : suiteMetricText(value, keep);
+  if (Array.isArray(value)) return value.map((x) => suiteMetricReply(x, keep));
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (/(^|_)squares(_|$)/.test(k)) continue;
+    const bare = SUITE_BARE_KEYS[k];
+    const pair = bare ? null : SUITE_UNIT_PAIRS.find((p) => k.endsWith(p.imperial));
+    const name = SUITE_REPLY_NAMES[k] ?? (bare && typeof v === "number" ? bare.metric : pair ? k.slice(0, -pair.imperial.length) + pair.metric : k);
+    // two imperial keys landing on one metric name would hide a number
+    if (Object.prototype.hasOwnProperty.call(out, name)) throw new Error(`suite reply: ${k} and another key are both ${name} in metric`);
+    if (k === "multipliers_set") out[k] = v;
+    else if (bare && typeof v === "number") out[name] = r2(v * bare.factor);
+    else if (pair) out[name] = scale(v, pair.factor);
+    else out[name] = suiteMetricReply(v, keep);
+  }
+  return out;
+}
 
 /** area for display: SF in, SF or m² out */
 export const areaVal = (sf: number, units: UnitSystem): number =>

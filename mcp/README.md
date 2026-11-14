@@ -249,7 +249,9 @@ The suite tools are derives: they read what is already committed and commit
 what follows as unreviewed shapes or material rows, one `undo_last` step per
 write (each reply says how many). They never measure the drawing themselves and
 never invent a document value: pitch, soffit depth, grid and hanger spacing are
-arguments, and every allowance is reported as an allowance.
+arguments, and every allowance is reported as an allowance. Each takes
+`units: "metric"` for arguments and a reply in mm, mm², m and m², and names
+any argument it does not take, in `unknown_args` or in its refusal.
 
 A client that reads the tool list only once can pre-open suites:
 
