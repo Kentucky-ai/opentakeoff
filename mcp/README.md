@@ -431,19 +431,17 @@ sheet number (`A-101`) wherever a sheet is named.
   has nothing for `detect_rooms`/`sheet_graph`/`resolve_tag` to read: seeds
   come from you (`view_sheet`, then `one_click`). The raster path needs the
   same optional `@napi-rs/canvas` as `view_sheet`.
-- **Stitching is human-only—deliberately, not a gap.** The canvas can join
-  2–4 sheets split at a match line into one composite surface (#200), but no
-  MCP verb creates, aligns, or addresses a stitch. Joining the match line
-  means clicking the same drawn wall junction on both halves—a judgment
-  call with a worse blast radius than a bad scale, because a sloppy align
-  silently skews every quantity that crosses the seam. That stays behind
-  human eyes; it is not staged for later exposure. For a split floor: a
-  human stitches and aligns in the canvas, and over MCP you work each member
-  sheet as its own surface—a seam-crossing room belongs to the canvas.
-  This server also doesn't read the app's additive `stitches` payload field,
-  so a stitched takeoff round-tripped through `import_takeoff` →
-  `export_takeoff` comes back without its stitches—when a stitch is in
-  play, the app's own save is the one to keep.
+- **Stitching is gated by a seam check.** `stitch_sheets` joins 2–4 sheets
+  split at a match line into one composite surface (`stitch:<uid>`), and
+  `align_stitch` places them from a point both sheets draw. A sloppy join
+  skews every quantity that crosses the seam, so the server compares the two
+  sheets' linework after each alignment and refuses to measure across a seam
+  while the stitch is unaligned or the check is withheld (maximum miss over
+  0.5 in by default, any leftover rotation, or no linework at the seam).
+  When it withholds, measure each member sheet on its own and tell the user.
+  `export_takeoff` and `import_takeoff` carry stitch records. The steps,
+  the numbers in the check and a run on a real split pair are in
+  [Stitching sheets over MCP](../docs/MCP_STITCHING.md).
 - `load_plan` replaces the session by default; `merge: true` builds a multi-document working set (#152). Reloading a merged file is refused—reload = replace, deliberately.
 - The takeoff lives in memory. `export_takeoff` (the app's exact save payload,
   nothing lost in translation) and `export_marked_pdf` (the reviewable marked

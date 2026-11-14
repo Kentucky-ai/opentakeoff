@@ -29,7 +29,7 @@ or approval authenticity. Evidence, provenance, and review fields remain
 records and claims, not authentication. Unknown extension fields remain opaque.
 Secondary families such as markups, RFIs, rules, and layout/workspace data are
 not fully semantically validated. `exportPayload()` is a projection: it omits
-rules and browser stitches, strips RFI tombstones, and does not represent the
+rules, strips RFI tombstones, and does not represent the
 complete browser workspace or project document.
 
 | Contract concern | Canonical source |

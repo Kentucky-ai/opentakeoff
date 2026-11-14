@@ -154,14 +154,11 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
 
 ## 5. What has no agent verb, and why
 
-- **Stitching.** The canvas joins 2–4 sheets split at a match line into one composite surface. No
-  MCP verb creates, aligns, or addresses a stitch, and this is not staged for later exposure.
-  Aligning a match line means clicking the same drawn wall junction on both halves—judgment
-  whose failure mode is a subtly sloppy join that silently skews every quantity crossing the seam.
-  On a split floor: measure each member sheet as its own surface, and tell the user a
-  seam-crossing room needs their stitch in the app. Never approximate one by combining sheets
-  yourself. (A stitched takeoff round-tripped through `import_takeoff` → `export_takeoff` comes
-  back without its stitches; when a stitch is in play, the app's own save is the one to keep.)
+- **Approving a stitch.** You can join sheets split at a match line (`stitch_sheets`,
+  `align_stitch`, `list_stitches`), and the server checks the join against the linework before it
+  lets you measure across the seam. Follow [Stitching sheets over MCP](MCP_STITCHING.md). If the
+  seam check is withheld and you cannot show why, measure each member sheet as its own surface and
+  tell the user the seam-crossing room needs their eyes. Never add two halves of a room yourself.
 - **Revision history.** MCP takeoff export is a current document, not the browser's snapshot
   store or PDF revision history. A browser `.otk` archive carries current takeoff/plan data,
   but also omits those histories. Never claim an archive or current takeoff reconstructs past

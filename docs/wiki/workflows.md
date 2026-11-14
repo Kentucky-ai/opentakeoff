@@ -23,10 +23,8 @@ via `stitch_sheets` and `align_stitch`. The agent must align the sheets across m
 lines and verify that the automated linework seam check passes before measuring across
 seams; if the seam check fails or withholds, the agent measures each sheet separately
 and informs the user. Takeoff import and export preserve composite stitch definitions
-losslessly.
-
-
-
+losslessly. The steps and the seam check's numbers are in
+[Stitching sheets over MCP](../MCP_STITCHING.md).
 
 Source: [Human stitching instructions](../USER_GUIDE.md#stitching-a-floor-split-at-a-match-line),
 [stitch records](../../web/src/lib/stitches.ts),

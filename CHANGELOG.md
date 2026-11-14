@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-13 — stitched sheets over MCP (MCP 0.9.110)
+
+- **An agent can join sheets split at a match line.** `stitch_sheets` makes one composite surface from 2–4 sheets, `align_stitch` places them from a point both sheets draw, and `list_stitches` lists them. `view_sheet` renders the composite, every measuring tool takes its `stitch:<uid>` key, and `export_takeoff` / `import_takeoff` / `export_marked_pdf` carry it (#575).
+- **The join is checked before it is used.** After each alignment the server compares the two sheets' linework at the seam and reports the maximum, 95th percentile and median miss in inches and any leftover rotation. Measuring, editing or proposing across a seam is refused while a stitch is unaligned or the check is withheld (default tolerance 0.5 in).
+- The page tools keep stitches on their pages: `reorder_pages` remaps members, `rotate_page` refuses a composite or a member whose stitch has takeoff, and `extract_pages` / `merge_documents` carry whole stitches only.
+- Guide, with a run on a real split pair and two known limits: [Stitching sheets over MCP](docs/MCP_STITCHING.md).
+
 ## 2026-11-13 — pitch as percent, degrees or ratio (MCP 0.9.109)
 
 - `roof_takeoff` and `soffit_takeoff` read the pitch the way the drawings print it: `"2%"`, `"22.5 deg"` or `"22.5°"`, `"1:48"` and `"1/4:12"`, next to `"6/12"`, `6` and `"1/4 per ft"`. The `roof_takeoff` reply has `pitch_as_given` beside the rise in 12 it was read as (#618).
