@@ -365,6 +365,7 @@ test("suite tools in imperial reply exactly as before #620, apart from units", a
   await call(client, "measure_line", { sheet: KEY, pts: [[100, 225], [500, 225]], condition: "RF-RIDGE" });
   await same("roof_takeoff", { pitch: "6/12", ice_water: { eave_ft: 3 }, waste_pct: 12 }, {
     "pitch": "6/12",
+    "pitch_as_given": "6/12", // added by #618, after the #620 pin was recorded
     "slope_factor": 1.118,
     "hip_valley_factor": 1.0607,
     "plan_sf": 1000,
