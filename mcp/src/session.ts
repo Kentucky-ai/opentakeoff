@@ -882,6 +882,18 @@ export class Session {
 
   async rotatePage(sheetName: string, angle: 90 | 180 | 270, outputPath?: string, overwrite?: boolean) {
     const s = this.sheet(sheetName);
+    // Stitches (#161) place member sheets by pixel offset, so a member that
+    // turns no longer fits its placement. Same rule as the canvas: a composite
+    // is rotated through its source sheets, and a member is not rotated while
+    // takeoff sits on the composite (that geometry cannot follow the turn).
+    if (this.stitches.has(s.key)) {
+      throw new UserError(`"${s.key}" is a stitched composite — rotate its source sheets instead.`);
+    }
+    const memberOf = [...this.stitches.values()].filter((st) => st.members.some((m) => m.key === s.key));
+    const busy = memberOf.find((st) => this.hasWorkOn(st.id));
+    if (busy) {
+      throw new UserError(`Cannot rotate "${s.key}": it belongs to stitch "${busy.id}" (${busy.name}), which carries takeoff. Remove the takeoff on the stitch first.`);
+    }
     const file = this.fileFor(s.key);
     const docEntry = this.docs.get(file);
     if (!docEntry) throw new UserError(`Document for sheet ${s.key} not found.`);
@@ -936,6 +948,19 @@ export class Session {
       if (ap.sheet_id === s.key) return rotateApproval(ap, angle);
       return ap;
     });
+
+    // An empty stitch holding this sheet keeps its record, but the alignment
+    // and seam check described the page before it turned: both are withdrawn
+    // (cross-seam measuring is refused until align_stitch runs again) and the
+    // composite's extent, text and caches are rebuilt from the new page.
+    if (memberOf.length) {
+      for (const st of memberOf) {
+        st.aligned = false;
+        st.seam_check = undefined;
+      }
+      s.spans = undefined;
+      this.refreshStitches();
+    }
 
     return {
       sheet: s.key,
@@ -1006,7 +1031,23 @@ export class Session {
       return nextKey && nextKey !== ap.sheet_id ? { ...ap, sheet_id: nextKey } : ap;
     });
 
-    const oldSheets = new Map([...this.sheets.entries()].filter(([k]) => this.fileFor(k) === base));
+    // Stitch members follow their pages, exactly as shapes do. Composite
+    // sheets are excluded from the rebuild below: fileFor() resolves a stitch
+    // key to its first member's file, and deleting that entry would strand the
+    // stitch record and every shape on it.
+    let stitchesRemapped = 0;
+    for (const st of this.stitches.values()) {
+      let touched = false;
+      st.members = st.members.map((m) => {
+        const nextKey = remap.get(m.key);
+        if (!nextKey || nextKey === m.key) return m;
+        touched = true;
+        return { ...m, key: nextKey };
+      });
+      if (touched) stitchesRemapped++;
+    }
+
+    const oldSheets = new Map([...this.sheets.entries()].filter(([k]) => !this.stitches.has(k) && this.fileFor(k) === base));
     for (const [k] of oldSheets) {
       this.sheets.delete(k);
     }
@@ -1037,6 +1078,9 @@ export class Session {
       };
       this.sheets.set(key, state as any);
     }
+
+    // the member sheet states were rebuilt above; composites re-read them
+    if (stitchesRemapped) this.refreshStitches();
 
     return {
       file: base,
@@ -1088,13 +1132,15 @@ export class Session {
     for (const k of this.sheets.keys()) {
       if (!remap.has(k)) remap.set(k, null);
     }
+    const carriedStitches = this.stitchesCarriedBy(remap);
+    const inOutput = (id: string) => id.startsWith(outBase) || carriedStitches.some((st) => st.id === id);
 
     const carriedTakeoff = remapTakeoffSheetKeys(
       { shapes: this.shapes, markups: this.markups, approvals: this.approvals },
       remap
     );
 
-    const carriedShapes = (carriedTakeoff.shapes || []).filter((s: any) => s.sheet_id.startsWith(outBase));
+    const carriedShapes = (carriedTakeoff.shapes || []).filter((s: any) => inOutput(s.sheet_id));
 
     // Write companion takeoff JSON so the takeoff is carried with the new document
     const takeoffPath = outPath.replace(/\.pdf$/i, ".takeoff.json");
@@ -1107,7 +1153,7 @@ export class Session {
       estimate_settings: this.estimateSettings,
       bid_proposal: this.bidProposal,
       sheets: [...this.sheets.values()]
-        .filter((sh) => extractedOldKeys.has(sh.key) && sh.upp != null)
+        .filter((sh) => (extractedOldKeys.has(sh.key) || carriedStitches.some((st) => st.id === sh.key)) && sh.upp != null)
         .map((sh) => {
           const nextKey = remap.get(sh.key)!;
           return sheetEntry({
@@ -1119,9 +1165,10 @@ export class Session {
         }),
       conditions: this.conditions,
       shapes: carriedShapes,
-      markups: (carriedTakeoff.markups || []).filter((m: any) => m.sheet_id.startsWith(outBase)),
-      approvals: (carriedTakeoff.approvals || []).filter((a: any) => a.sheet_id.startsWith(outBase)),
+      markups: (carriedTakeoff.markups || []).filter((m: any) => inOutput(m.sheet_id)),
+      approvals: (carriedTakeoff.approvals || []).filter((a: any) => inOutput(a.sheet_id)),
       rfis: this.liveRfis().filter((r) => r.sheet_id && extractedOldKeys.has(r.sheet_id)),
+      stitches: carriedStitches,
     });
 
     await writeFile(takeoffPath, JSON.stringify(carriedDoc, null, 2), "utf8");
@@ -1170,7 +1217,7 @@ export class Session {
 
     const outBase = path.basename(outPath);
     let curNewPage = 1;
-    const remap = new Map<string, string>();
+    const remap = new Map<string, string | null>();
 
     for (const s of sourceDocs) {
       for (let p = 1; p <= s.pageCount; p++) {
@@ -1180,6 +1227,11 @@ export class Session {
         curNewPage++;
       }
     }
+    // A stitch is carried only when every member is in the merged PDF; the
+    // takeoff on any other composite stays behind rather than landing in the
+    // companion file under a stitch key nothing there defines.
+    for (const id of this.stitches.keys()) remap.set(id, null);
+    const carriedStitches = this.stitchesCarriedBy(remap);
 
     const remappedTakeoff = remapTakeoffSheetKeys(
       { shapes: this.shapes, markups: this.markups, approvals: this.approvals },
@@ -1196,7 +1248,7 @@ export class Session {
       estimate_settings: this.estimateSettings,
       bid_proposal: this.bidProposal,
       sheets: [...this.sheets.values()]
-        .filter((sh) => remap.has(sh.key) && sh.upp != null)
+        .filter((sh) => !!remap.get(sh.key) && sh.upp != null)
         .map((sh) => {
           const nextKey = remap.get(sh.key)!;
           return sheetEntry({
@@ -1210,7 +1262,8 @@ export class Session {
       shapes: remappedTakeoff.shapes || [],
       markups: remappedTakeoff.markups || [],
       approvals: remappedTakeoff.approvals || [],
-      rfis: this.liveRfis().filter((r) => r.sheet_id && remap.has(r.sheet_id)).map((r) => ({ ...r, sheet_id: remap.get(r.sheet_id!)! })),
+      rfis: this.liveRfis().filter((r) => r.sheet_id && !!remap.get(r.sheet_id)).map((r) => ({ ...r, sheet_id: remap.get(r.sheet_id!)! })),
+      stitches: carriedStitches,
     });
 
     await writeFile(takeoffPath, JSON.stringify(mergedTakeoffDoc, null, 2), "utf8");
@@ -1223,6 +1276,29 @@ export class Session {
       shapes_remapped: remappedTakeoff.shapes?.length || 0,
       note: `Merged ${files.length} document(s) into ${outPath} (${curNewPage - 1} pages total). Takeoffs carried into ${takeoffPath}.`,
     };
+  }
+
+  /** Does any shape, markup or verdict sit on this sheet key? */
+  private hasWorkOn(sheetKey: string): boolean {
+    return this.shapes.some((x) => x.sheet_id === sheetKey)
+      || this.markups.some((x) => x.sheet_id === sheetKey)
+      || this.approvals.some((x) => x.sheet_id === sheetKey);
+  }
+
+  /** The stitches a page tool's companion takeoff file can carry: those whose
+   * EVERY member has a page in the output, with member keys rewritten through
+   * `remap`. Each carried stitch id is set to itself in `remap` so takeoff on
+   * that composite rides along; a stitch missing a member is left out and its
+   * id stays as the caller set it. */
+  private stitchesCarriedBy(remap: Map<string, string | null>): Stitch[] {
+    const out: Stitch[] = [];
+    for (const st of this.stitches.values()) {
+      const members = st.members.map((m) => ({ ...m, key: remap.get(m.key) ?? "" }));
+      if (members.some((m) => !m.key)) continue;
+      out.push({ ...st, members });
+      remap.set(st.id, st.id);
+    }
+    return out;
   }
 
   /** Every loaded document's basename, load order. */

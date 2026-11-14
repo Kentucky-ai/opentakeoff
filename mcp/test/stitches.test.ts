@@ -542,3 +542,95 @@ test("stitch_sheets: seam gate enforced on edit_shape/revise_proposal, align_sti
   assert.equal(badImp.isError, true);
   assert.match(badImp.data.error, /Import scale conflict on stitch/);
 });
+
+/** One three-page set: a filler page, then the West and East halves — so a
+ * reorder moves both stitch members to different sheet keys. */
+async function setupPagedSplitFixture() {
+  const dir = await mkdtemp(path.join(tmpdir(), "opentakeoff-stitch-pages-"));
+  const src = await PDFDocument.load(await readFile(SAMPLE_FINISH_PLAN));
+  const out = await PDFDocument.create();
+  const [filler, west, east] = await out.copyPages(src, [1, 0, 0]);
+  west.setCropBox(0, 0, 1700, 2160);
+  west.setMediaBox(0, 0, 1700, 2160);
+  east.setCropBox(1200, 0, 1824, 2160);
+  east.setMediaBox(1200, 0, 1824, 2160);
+  out.addPage(filler);
+  out.addPage(west);
+  out.addPage(east);
+  const file = path.join(dir, "set.pdf");
+  await writeFile(file, await out.save());
+  return { dir, file, base: "set.pdf" };
+}
+
+test("page tools keep stitches on their pages: reorder remaps members, rotate is gated, extract/merge carry whole stitches only", async () => {
+  const { dir, file, base } = await setupPagedSplitFixture();
+  const upp = 0.027777777777777776;
+  const session = new Session();
+  await session.loadPlan(file);
+  const west = `${base}#2`, east = `${base}#3`;
+  session.setScale(west, { upp });
+  session.setScale(east, { upp });
+
+  const made = await session.stitchSheets({ sheets: [west, east], name: "Overall" });
+  const id = made.stitch_id;
+  const aligned = await session.alignStitch({ stitch: id, anchor: [2800, 1500], moving: [3800, 1500] });
+  assert.equal(aligned.seam_check.passed, true);
+  const poly = session.measurePolygon(id, [[2800, 1550], [2920, 1550], [2920, 1630], [2800, 1630]], { condition: "CPT-1", role: "floor_area" });
+  const textCount = session.sheet(id).text.length;
+  assert.ok(textCount > 0, "composite carries member text");
+
+  // a member under a stitch that carries takeoff does not turn; neither does the composite
+  await assert.rejects(session.rotatePage(west, 90, path.join(dir, "r.pdf")), /belongs to stitch/);
+  await assert.rejects(session.rotatePage(id, 90, path.join(dir, "r.pdf")), /stitched composite/);
+
+  // reorder: West and East move from pages 2,3 to pages 1,2
+  await session.reorderPages(base, [2, 3, 1], path.join(dir, "reordered.pdf"));
+  const st = session.stitch(id);
+  assert.deepEqual(st.members.map((m) => m.key), [base, `${base}#2`], "members follow their pages");
+  assert.equal(st.aligned, true);
+  assert.equal(st.seam_check?.passed, true);
+  const comp = session.sheet(id);
+  assert.equal(comp.widthPx, 6048, "composite sheet survives the reorder with its extent");
+  assert.equal(comp.text.length, textCount, "composite text is rebuilt from the same two pages");
+  assert.equal(session.shapes.find((x) => x.id === poly.shape_id)!.sheet_id, id);
+  assert.equal(session.listStitches().stitches[0].shape_count, 1);
+  // the stitch still verifies against the pages it now names
+  const again = await session.alignStitch({ stitch: id });
+  assert.equal(again.seam_check.passed, true);
+  assert.equal(again.seam_check.max_in, 0);
+
+  // extract both members: the stitch and its shape ride along under the new keys
+  const both = await session.extractPages(base, [1, 2], path.join(dir, "both.pdf"));
+  const bothDoc = JSON.parse(await readFile(both.takeoff_file, "utf8"));
+  assert.deepEqual(bothDoc.stitches[0].members.map((m: any) => m.key), ["both.pdf", "both.pdf#2"]);
+  assert.equal(bothDoc.shapes.filter((x: any) => x.sheet_id === id).length, 1);
+  assert.ok(bothDoc.sheets.some((x: any) => x.sheet_id === id), "composite scale carried");
+
+  // extract one member: half a stitch is not carried, nor the takeoff on it
+  const one = await session.extractPages(base, [1], path.join(dir, "one.pdf"));
+  const oneDoc = JSON.parse(await readFile(one.takeoff_file, "utf8"));
+  assert.equal((oneDoc.stitches ?? []).length, 0);
+  assert.equal(oneDoc.shapes.filter((x: any) => x.sheet_id === id).length, 0);
+
+  // merge: members land at the merged page numbers
+  const merged = await session.mergeDocuments([path.join(dir, "one.pdf"), file], path.join(dir, "merged.pdf"));
+  const mergedDoc = JSON.parse(await readFile(merged.takeoff_file, "utf8"));
+  assert.deepEqual(mergedDoc.stitches[0].members.map((m: any) => m.key), ["merged.pdf#2", "merged.pdf#3"]);
+  assert.equal(mergedDoc.shapes.filter((x: any) => x.sheet_id === id).length, 1);
+
+  // an empty stitch lets its member turn, and gives up the alignment it had
+  const s2 = new Session();
+  await s2.loadPlan(file);
+  s2.setScale(west, { upp });
+  s2.setScale(east, { upp });
+  const made2 = await s2.stitchSheets({ sheets: [west, east] });
+  await s2.alignStitch({ stitch: made2.stitch_id, anchor: [2800, 1500], moving: [3800, 1500] });
+  await s2.rotatePage(west, 90, path.join(dir, "rot.pdf"));
+  const st2 = s2.stitch(made2.stitch_id);
+  assert.equal(st2.aligned, false);
+  assert.equal(st2.seam_check, undefined);
+  assert.throws(
+    () => s2.measurePolygon(made2.stitch_id, [[10, 10], [5000, 10], [5000, 60], [10, 60]], { condition: "CPT-1", role: "floor_area" }),
+    /unaligned stitch/,
+  );
+});
