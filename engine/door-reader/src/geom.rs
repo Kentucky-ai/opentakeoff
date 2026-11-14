@@ -51,6 +51,8 @@ pub enum Drawn {
     Polyline,
     Strokes,
     Coarse,
+    /// no arc: a dashed straight chord across the swing, from the far jamb to the leaf's tip
+    Chord,
 }
 
 /// A circular arc read off the page: the centre stands for a door's hinge, the radius for its leaf.

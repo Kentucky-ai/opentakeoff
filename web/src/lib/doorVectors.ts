@@ -18,6 +18,8 @@ import type { OpList, OpsTable } from "./oneclick.ts";
 export const ITEM_F64 = 10;
 export const PATH_F64 = 2;
 export const KIND_LINE = 0, KIND_CURVE = 1, KIND_EDGE = 2;
+/** Read a run of legacy constructPath ops with no paint between them as one path. */
+const SPLIT_PATHS = true;
 
 export interface DoorVectors {
   /** n × [path, kind, x0, y0, x1, y1, x2, y2, x3, y3] */
@@ -89,8 +91,20 @@ export function extractDoorVectors(opList: OpList, transform: number[], OPS: Ops
       else { const v = meanRgb(args); if (v !== null) fillMean = v; }
     }
     else if (fn === OPS.constructPath) {
-      const decoded = decodeConstructPath(args, OPS);
+      let decoded = decodeConstructPath(args, OPS);
       if (!decoded) continue;
+      // legacy shape: one path can arrive as several constructPath ops in a row (a lone moveTo, then its curve), painted
+      // once after the last; read them as one, or a curve loses its start point (the current point the moveTo set)
+      if (decoded.paintFn === null && SPLIT_PATHS) {
+        let ops = Array.from(decoded.ops), co = Array.from(decoded.co);
+        while (i + 1 < fns.length && fns[i + 1] === OPS.constructPath) {
+          const next = decodeConstructPath(A[i + 1], OPS);
+          if (!next || next.paintFn !== null) break;
+          ops = ops.concat(Array.from(next.ops)); co = co.concat(Array.from(next.co));
+          i++;
+        }
+        decoded = { ops, co, paintFn: null };
+      }
       const paint = decoded.paintFn === null ? followingPaint(i) : decoded.paintFn;
       if (paint === OPS.endPath || (!isFill(paint) && !isStroke(paint))) continue;   // clip-only: draws nothing
       const pathIdx = paths.length / PATH_F64;
