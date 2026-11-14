@@ -1,5 +1,5 @@
 name: ✨ Feature request
-description: A tool, workflow or trade the canvas or the MCP server should serve.
+description: A tool or workflow the canvas or the MCP server should serve. For a whole trade, use the Trade suite form.
 labels: [enhancement]
 body:
   - type: textarea

@@ -49,6 +49,11 @@ export default function ReferencePane({
   refKey, panelImg, paintBase, paintDetail, epoch, shapes = [], conditions = [], condById = {}, darkMode = false, patId,
   markups = [], rfis = [], noteQtyLabels, sheetBaseLabel,
   refSet = [], activeKey = null, tabLabel = (k) => k, onSelectRef, onRemoveRef, onDropSheet,
+  // Optional extras a suite can draw on the reference sheet (the Doors suite's
+  // colour-matched schedule rows): `overlay(panelImg, scale)` returns SVG drawn
+  // over the sheet in its image frame; `focus` ({ rect: [[nx0,ny0],[nx1,ny1]],
+  // token, fill }) re-centres this pane on a region whenever its token changes.
+  overlay = null, focus = null,
 }) {
   const stageRef = useRef(null);
   const tfRef = useRef({ x: 0, y: 0, scale: 1 });
@@ -127,6 +132,33 @@ export default function ReferencePane({
     tfRef.current = { scale: fitScale, x: (r.width - img.w * fitScale) / 2, y: (r.height - img.h * fitScale) / 2 };
     applyTf();
   }, [refKey, panelImg, applyTf]);
+
+  // A suite asked this pane to look at a region (a schedule row): centre it,
+  // zoomed so the region spans `fill` of the pane, never zooming back out past
+  // where the person already is.
+  useEffect(() => {
+    const vp = viewportRef.current; const img = panelImg;
+    if (!focus || !vp || !img || !Array.isArray(focus.rect)) return;
+    const box = vp.getBoundingClientRect();
+    // a floating panel over the pane's right side (clipRight, client px) narrows what can be seen
+    const r = { width: Math.max(160, Math.min(box.right, focus.clipRight || Infinity) - box.left), height: box.height };
+    const [[x0, y0], [x1, y1]] = focus.rect;
+    const w = Math.max(1, (x1 - x0) * img.w), h = Math.max(1, (y1 - y0) * img.h);
+    const fill = focus.fill || 0.8;
+    const fit = Math.min((r.width * fill) / w, (r.height * fill) / h);
+    // keep the person's zoom when the region already reads at it; only a pan
+    const cur = tfRef.current.scale;
+    const readable = w * cur <= r.width * 0.98 && h * cur >= 6;
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, readable ? cur : fit));
+    const cx = ((x0 + x1) / 2) * img.w, cy = ((y0 + y1) / 2) * img.h;
+    tfRef.current = { scale, x: r.width / 2 - cx * scale, y: r.height / 2 - cy * scale };
+    // a short glide, not a jump: the stage transform eases for this one move
+    const st = stageRef.current;
+    if (st) { st.style.transition = "transform 200ms ease-out"; setTimeout(() => { if (stageRef.current) stageRef.current.style.transition = ""; }, 240); }
+    applyTf();
+    scheduleDetailSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the request token only
+  }, [focus?.token, panelImg]);
 
   // Structural changes — sheet swap, a freshly-reopened compositor entry
   // (epoch, after the primary's resetAll wiped every `ref::` entry), a
@@ -275,6 +307,7 @@ export default function ReferencePane({
                       or drag here still pans the pane — markups are never interactive.
                       `markups` arrives already scoped to this refKey and paint-ordered
                       (TakeoffCanvas's `refMarkups`, via lib/markupPaint). */}
+                  {overlay ? overlay(panelImg, scale) : null}
                   {markups.map((m) => renderMarkupGlyph(m, {
                     img: panelImg, z: scale, darkMode, condById, rfis, noteQtyLabels, sheetBaseLabel,
                     selected: false, premiumInk: readOnlyPremiumInk,

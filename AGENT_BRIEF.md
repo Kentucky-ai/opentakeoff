@@ -22,13 +22,11 @@ A takeoff is the act of measuring quantities off a construction drawing—how mu
 much wall, how many fixtures, at what scale, on which sheet. OpenTakeoff is an open-source
 engine for doing that, with a browser canvas and an MCP server sharing geometry and quantity modules:
 
-- **A stdio MCP server** (`npx -y opentakeoff-mcp`)—<!--tool-count-->62<!--/tool-count--> tools plus browsable sheet and wiki resources (One-Click's two verbs are temporarily gated and not registered; see `docs/design/ONE_CLICK_GATE.md`).
+- **A stdio MCP server** (`npx -y opentakeoff-mcp`)—<!--tool-count-->66<!--/tool-count--> tools plus browsable sheet and wiki resources (One-Click's two verbs are temporarily gated and not registered; see `docs/design/ONE_CLICK_GATE.md`).
   An agent opens a plan, reads the title block, sets the scale, measures source-backed boundaries, checks its own
   work on a rendered overlay, and hands back a marked-up planset.
-- **A browser canvas**—client-only React. An estimator drags in a plan set and traces it. Ordinary
-  takeoffs need no account or server and keep plan files in the browser. The optional Contribute
-  flow sends a whitelisted takeoff payload and any credit text you enter to a configured endpoint
-  only after you confirm it.
+- **A browser canvas**—client-only React. An estimator drags in a plan set and traces it. No
+  backend, no database, no account, no upload.
 
 Neither wraps the other. `mcp/` imports shared web modules, so both surfaces use shared quantity
 math and exchange takeoff records. Shared modules do not guarantee identical detector boundaries:

@@ -14,7 +14,7 @@ The top **Annotate** row provides **Arrow**, **Highlighter**, **Callout**, **Clo
 Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
 
 
-OpenTakeoff is a takeoff canvas that runs in your browser. Open a plan, set the scale, trace the finishes—or let an AI agent stage the tracing while you keep the accept button—and walk away with a priced-out quantity report, a materials buy list, and a marked set you can send to a GC. A basic takeoff needs no account or install and keeps the plan file in your browser. Optional integrations can contact their configured services; Contribute sends its whitelisted takeoff payload and any optional credit text you enter after you confirm it.
+OpenTakeoff is a takeoff canvas that runs in your browser. Open a plan, set the scale, trace the finishes—or let an AI agent stage the tracing while you keep the accept button—and walk away with a priced-out quantity report, a materials buy list, and a marked set you can send to a GC. Everything happens on your machine: no account, no upload, no install.
 
 This manual takes you from a blank browser tab to a finished, exported takeoff, and covers every shipped feature along the way. Shortcuts appear inline as you meet each tool; the complete table is in [§15](#15-keyboard-reference).
 
@@ -115,7 +115,7 @@ Drag onto the canvas (or click the **Open your plans** target on the empty scree
 - **Images**—scans, screenshots, photos of a sheet. They're wrapped into PDF pages in your browser.
 - **`.zip` plan sets**—the whole download off a bid platform. Unzipped in the browser; every PDF inside opens. An unreadable image is skipped individually, without stopping the remaining plans or valid images. (Hostile-archive guards cap entry counts, sizes, and nesting, so a malformed zip fails cleanly instead of ballooning the tab.)
 
-Opening a plan reads, renders, and stores the file locally; it does not upload the plan. The separate, opt-in Contribute flow can send its whitelisted takeoff payload and any optional credit text you enter to a configured endpoint (§12).
+Nothing uploads anywhere. The file is read locally, rendered locally, and stored locally.
 
 ### The sheet gallery (`G`)
 
@@ -926,7 +926,7 @@ Team deployments can wire a Google Drive "Projects" root. Then a **project is a 
 
 ### Contribute — what's sent, what never is
 
-Every finished takeoff is a set of expert decisions: *this* region is *this* finish at *this* waste. In the Report, **Contribute** lets you send a whitelisted takeoff payload to an open flooring model, or bank it into a corpus you own. The payload includes derived takeoff data; if you enter the optional credit line, that text is sent too. Nothing is sent until you confirm in the modal, and a build with no endpoint configured can't send at all.
+Every finished takeoff is a set of expert decisions: *this* region is *this* finish at *this* waste. The **Contribute** button in the Report lets you donate that—and only that—to an open flooring model, or bank it into a corpus you own. It's a button, not a background process: **nothing is ever sent until you click it**, and a build with no endpoint configured can't send at all.
 
 What a contribution contains, in plain language:
 
@@ -954,9 +954,13 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 **Workspace layout.** Premium workspace is the default for browsers without a saved layout choice. From Classic, choose **⋯ → Premium layout — compact controls** for compact drawing controls. **Classic layout** returns immediately. Measuring tools keep their sidebar order and shortcuts; **All controls** reveals the existing toolbar for advanced settings. **Properties** opens the active condition editor. **Sheets** opens your plan set as a tree: each multi-page PDF is a folder of its pages and each one-page PDF a row. A row shows the sheet number printed in the title block's sheet-number box once that page's text has been read — when you open it, when the gallery draws its thumbnail, or when plan search reads it — and the label its tab shows until then. Numbers are saved with a local project, so it reopens with them; a Drive project reads them again each session. Search matches numbers, labels and file names. In the tree, arrow keys move, Right and Left open and close folders, and Enter opens a sheet. The sheet tabs and visual gallery remain available. **Find an action** (Cmd/Ctrl+K outside text fields) searches tools, sheets, scale choices and file actions; use arrows and Enter, or click a result.
 
-**Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
+**PDF page tools.** You can manipulate pages directly in the browser with every takeoff, markup, and approval seal staying locked to its drawing geometry:
+- **Rotate:** Press `]` to rotate the active sheet 90° clockwise, or `[` for 270° clockwise (90° counter-clockwise). You can also click the `↻` icon on any sheet row in the Sheets navigator tree, or choose *Rotate page* from the **File** menu.
+- **Reorder:** In the Sheets navigator tree, click and drag any page row up or down within a multi-page PDF to reorder pages. `⌘Z` (or `Ctrl+Z`) restores the previous page order and takeoffs.
+- **Delete with undo:** Click `×` on a sheet row in the Sheets tree, or choose **File → Delete current page…**. If the page carries takeoffs, the app prompts with the count before removing; `⌘Z` restores the deleted page and all of its measurements.
+- **Extract & Merge:** Under the **File** menu, choose **Extract pages from set…** to pull a page range into a new PDF carrying its takeoffs, or **Merge PDF sets…** to combine multiple open PDFs into one multi-page set. **Insert pages from PDF…** appends external pages behind the active sheet, and **Export edited PDF…** downloads the modified PDF.
 
-**Premium plans.** **Premium plans** in the top toolbar, the plan gallery or the Classic **⋯** menu opens the pricing section of [kentucky-ai.com](https://kentucky-ai.com/#pricing) in a new tab, so your takeoff stays open. Opening that page does not send your takeoff data. Current plans, prices and the 7-day free trial are listed there. Premium is a separate hosted workspace; integrations such as Drive and Contribute use their configured services when you choose to use them.
+**Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
 
 **One place for panel tools.** Quantities, Work, Markup list, Stamps, RFI register and Revisions live in the top toolbar. In Focus mode, the panel controls move to the right edge. **Create annotation** in the drawing toolbar creates clouds, callouts, text and highlights; **Markup list** opens existing annotations. Supporting materials remain under **Quantities → Materials** or a condition’s **Materials** button.
 
@@ -1086,7 +1090,7 @@ What's sent, and only while an agent run you started is going: your message, up 
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). **Help → Connect your AI** in the app (also on the opening screen and in the **⋯** menu) has the setup for Claude Desktop, Claude Code, Codex and Cursor with copy buttons, and a first question to ask about the sample plan; [CONNECT.md](CONNECT.md) is the same walk-through. An
-MCP client gets **<!--tool-count-->62<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **<!--tool-count-->66<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
@@ -1217,6 +1221,16 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⌫` | Delete (a picked vertex first, else the shape or markup) |
 | Double-click a markup | Edit its text in place |
 
+### Page tools
+
+| Key / action | Effect |
+|---|---|
+| `]` | Rotate current page 90° clockwise (takeoffs follow) |
+| `[` | Rotate current page 270° clockwise (90° counter-clockwise) |
+| Drag sheet row | In the Sheets sidebar tree, drag a page row up or down to reorder pages within a multi-page PDF |
+| `↻` on sheet row | Rotate page 90° clockwise |
+| `×` on sheet row | Delete page (prompts before removing takeoffs; `⌘Z` restores page and takeoffs) |
+
 ### View and navigation
 
 | Key / action | Effect |
@@ -1339,7 +1353,7 @@ those are the ones worth pinning down before you rely on a number.
 | **Zone check** | A reading, not a takeoff: trace a wing and see what's inside it, with materials scaled to the zone. Nothing is saved ([§5](#5-the-measuring-tools)). |
 | **Marked set** | The distribution-ready PDF—your work burned into the drawings behind a legend cover, with a tally of how much of it a person has approved. The deliverable a GC can check ([§10](#10-the-report-and-exports)). |
 | **Revision** | A named snapshot of the whole takeoff. Compare two and you get quantity deltas per condition, per sheet, and on the buy list ([§11](#11-revisions)). |
-| **Contribute** | The opt-in button that sends a takeoff's labels and normalized shape geometry to a configured endpoint after confirmation. It does not send the plan or names ([§12](#12-saving-your-data-and-contribute)). |
+| **Contribute** | The opt-in button that donates a takeoff's labels and normalized shapes—never the plan, the names, or absolute coordinates—to a training corpus ([§12](#12-saving-your-data-and-contribute)). |
 
 ---
 

@@ -8,7 +8,7 @@ import "./workspaceChrome.css";
 // Workspace chrome. All actions are supplied by the existing canvas;
 // this component owns only navigation, search and disclosure state.
 export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onTakeoffs, takeoffsOpen,
-  onPremium, onWork, workOpen, workButtonRef, pending, running, onReport, onEstimate, onFocus, onClassic,
+  onWork, workOpen, workButtonRef, pending, running, onReport, onEstimate, onFocus, onClassic,
   onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, helpMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
   return <>
     <header className="calm-header">
@@ -25,7 +25,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
         {panelTools}
         {onEstimate && <button type="button" onClick={onEstimate} title="Price the takeoff: material and labor per unit, markups, Excel">Estimate</button>}
         <button type="button" onClick={onReport} className="calm-report" data-tour="report"><Icon name="document" size={16} />Report</button>
-        {layoutMenu}{helpMenu}<button type="button" className="calm-premium" data-premium-trigger onClick={onPremium}>Premium plans</button><button type="button" onClick={onClassic} className="calm-classic" title="Return to the current layout without reloading the plan">Classic layout</button>
+        {layoutMenu}{helpMenu}<button type="button" onClick={onClassic} className="calm-classic" title="Return to the current layout without reloading the plan">Classic layout</button>
       </div>
     </header>
     <div className="calm-context" aria-label="Current drawing settings">
@@ -38,12 +38,12 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
   </>;
 }
 
-export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle, namer = null, countKnown = () => true, hold }) {
+export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle, namer = null, countKnown = () => true, hold, onReorderPages, onRotatePage, onDeletePage }) {
   const [query, setQuery] = useState("");
   return <aside className="calm-navigator" data-dock-side={dockSide} style={{ width, order: dockSide === "right" ? 20 : -20 }} hidden={!open} aria-label="Sheet navigator" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
     <header>{dockHandle}<strong>Sheets <small>{items.length}</small></strong><button type="button" aria-label="Close sheet navigator" onClick={onClose}>×</button></header>
     <label><Icon name="search" size={15} /><input name="workspace-sheet-search" aria-label="Find a sheet" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a sheet…" /></label>
-    <SheetTree items={items} current={current} onSelect={onSelect} namer={namer} countKnown={countKnown} query={query} hold={hold} onSearchAll={onGallery} />
+    <SheetTree items={items} current={current} onSelect={onSelect} namer={namer} countKnown={countKnown} query={query} hold={hold} onSearchAll={onGallery} onReorderPages={onReorderPages} onRotatePage={onRotatePage} onDeletePage={onDeletePage} />
     <footer><button type="button" onClick={onGallery}><Icon name="sheets" size={16} />Open visual gallery</button></footer>
   </aside>;
 }

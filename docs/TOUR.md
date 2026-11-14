@@ -30,11 +30,9 @@ OpenTakeoff is that engine, with two front ends sharing geometry and quantity mo
   [official MCP registry](https://registry.modelcontextprotocol.io). An agent opens a plan,
   reads the title block, sets the scale, traces the rooms to their wall faces (the flood engine
   stays gated), checks its own work on a rendered overlay, and hands back a marked-up planset PDF.
-- **A browser canvas**—no account or backend is required for a takeoff. Plan files stay in
-  the browser unless an estimator chooses the optional Contribute flow, which sends a
-  whitelisted takeoff payload and optional credit text to a configured endpoint. An estimator
-  drags in a plan set and traces it, using One-Click room detection, CAD hatches, roll-goods
-  seam layout, a materials buy list, and exports.
+- **A browser canvas**—no backend, no account, no upload. An estimator drags in a plan set
+  and traces it, using One-Click room detection, CAD hatches, roll-goods seam layout, a
+  materials buy list, and exports.
 
 Neither is a wrapper around the other. The MCP server imports shared web modules, so quantity math
 and takeoff records are compatible. Browser and MCP room-detection paths currently differ; shared
@@ -127,9 +125,7 @@ A plan **PDF**, an **image** (scan, screenshot, photo), or a whole **`.zip` plan
 off a bid platform. Zips are unpacked and images wrapped to PDF *in your browser*—multi-page,
 multi-file, up to **4 sheets side-by-side**, with hostile-archive guards so a malformed zip
 fails cleanly instead of ballooning the tab. An unreadable image in a zip is skipped while the
-remaining plans continue to open. You can open these plans in the browser without uploading
-them or using a conversion service or account. The separate, optional Contribute flow is described
-below.
+remaining plans continue to open. No upload step, no conversion service, no account.
 
 ### A real measuring engine
 **One-Click Area** is the headline — **temporarily gated** while the flood engine is re-validated (see the note at the top of this page); this is what it does when it is on: click inside a room, the linework bounds a flood fill, the
@@ -280,10 +276,9 @@ retuned, and exports follow it.
 
 ### Yours, locally
 Every drawing, scale, condition, markup, and RFI autosaves to **your browser** (IndexedDB +
-localStorage). Ordinary takeoffs do not require an account or server. Optional integrations can
-contact their configured services; Contribute sends its whitelisted payload only after you confirm
-it. The flip side is stated plainly in the manual: storage is per browser, per origin, and clearing
-site data clears your work.
+localStorage). Nothing is uploaded, there's no account, and there's no server in the default
+build. The flip side is stated plainly in the manual: storage is per browser, per origin, and
+clearing site data clears your work.
 
 <details>
 <summary><strong>Optional: team cloud mode (Google sign-in + Drive)</strong></summary>

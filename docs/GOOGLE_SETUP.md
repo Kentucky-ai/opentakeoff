@@ -4,11 +4,9 @@ This is the operator's guide for turning on OpenTakeoff's **optional** team-only
 cloud mode: Google sign-in plus a shared Google Drive. It's a one-time setup,
 done once for the whole team.
 
-None of this changes the default app. Anonymous visitors can use the browser
-without Google sign-in. Plan files stay in the browser unless they choose the
-optional Contribute flow, which sends a whitelisted takeoff payload and optional
-credit text to a configured endpoint. Google sign-in only unlocks the shared-Drive
-mode for your crew. All the values you produce
+None of this changes the default app. Anonymous visitors keep the local-only
+browser experience—no account, no upload, nothing here required. Signing in
+only unlocks the shared-Drive mode for your crew. All the values you produce
 below are **public** (a client id, a domain, folder/file ids) and are safe to
 ship in the bundle; the actual access boundary is enforced by Google, not by a
 secret. See the security model at the end.

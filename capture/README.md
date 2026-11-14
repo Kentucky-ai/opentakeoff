@@ -1,10 +1,8 @@
 # The capture layer (optional)
 
-**You do not need this to use OpenTakeoff.** Ordinary takeoffs run in your
-browser and keep plan files there. If Contribute is configured, it sends a
-whitelisted takeoff payload to the configured endpoint only after you confirm
-the submission. This folder is for when you want more than a takeoff out of a
-takeoff: **your own training data.**
+**You do not need this to use OpenTakeoff.** The canvas runs entirely in your
+browser and uploads nothing. This folder is for when you want more than a
+takeoff out of a takeoff: **your own training data.**
 
 Every takeoff you finish is a set of expert decisions—*this* region, *this*
 finish, *this* waste %, *these* quantities. Done once, that's a bid. Banked
