@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-14 — Doors suite: Find more doors (the door detector, in the browser)
+
+- **A switch, off by default.** The Doors suite gets **Find more doors**. Off, the suite works exactly as before, from the linework reader alone. On, it also runs the [OpenTakeoff door detector](https://huggingface.co/Kentucky-ai/opentakeoff-door-detector) (RF-DETR, round 4) over the sheet and adds what the reader has no door for: cased openings, sliding, bifold and overhead doors, and swings drawn in a way the reader could not trace. Elevator and pocket boxes are never added.
+- **Runs on your computer.** The model (117 MB) downloads once from Hugging Face on the click that turns the switch on, is checked against a pinned length and sha256, and is kept in the browser's cache. It runs on WebGPU in a worker; no plan and no result is uploaded. A browser without WebGPU says so and carries on with the reader alone.
+- **What changes on the sheet.** Added doors are listed and drawn (a door with no swing shows its opening line and a dotted box; a cased opening counts as an opening and a frame with no door leaf). A swing the reader was unsure of is counted when the detector agrees. A reader door the fusion sets aside (a weak swing with nothing near it, a toilet-partition stall, a symbol in a legend, an untagged find on a sheet whose doors are tagged) moves to **To review** with the reason. A second find of an opening already listed is hidden.
+- **Same rules as the model card.** Tiling, decoding and merging match the published `detect_onnx.py`. The fusion and filters are a TypeScript port of the prototype the cutoffs were chosen with (`web/src/lib/doorDetect/`), and every cutoff sits in one file, `doorDetectSettings.json`. One rule is new: a door number that is already on a door brings nothing else in (a room label repeating it did, on the demo set).
+- Measured on the public Baker County demo set in Chrome on an Apple laptop (WebGPU): model download 5.6 s on this connection, about 4 s per sheet after that (84 tiles on A101, 3.6 s in the model). A101 stays at 18 openings and 20 leaves with the switch on; on the overall plan A100 it adds one cased opening.
+
 ## 2026-11-14 — door reader: the opening's jamb line; stall doors held out of the count
 
 - **Each door comes back with its opening line.** The door reader now reports the jamb-to-jamb line across the wall (`ReadDoor.jambLine`): hinge to hinge for a pair, and for one leaf hinge to the swing's closed end, or hinge to the leaf's tip where the wall linework runs on past that line (a door drawn shut). A wall cut off at the closed end settles it.

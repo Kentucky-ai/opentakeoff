@@ -47,6 +47,14 @@
 # in Cache Storage, and ORT is handed the wasm as bytes, so it never reaches
 # for a CDN.
 #
+# The door detector ("Find more doors" in the Doors suite) needs no new origin
+# either. Its worker is a bundled file (worker-src 'self'), and the ORT glue
+# and wasm load from dist/assets. The one off-site request is the model itself,
+# downloaded once from huggingface.co (which redirects to its CDN) when the
+# person turns the switch on: a fetch, so the open connect-src covers it. The
+# worker checks the file's length and sha256 against the values pinned in
+# src/lib/doorDetect/doorDetectSettings.json before using or caching it.
+#
 # 'unsafe-inline' is intentionally absent from script-src — don't add it; it
 # would undo the containment the other directives still provide.
 /*
