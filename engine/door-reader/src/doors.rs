@@ -28,6 +28,14 @@ const DROP_DASHED_LEAVES: bool = true;
 const UNEQUAL_PAIRS: bool = true;
 const PAIR_ALONG_COS: f64 = 0.866;
 const PAIR_MEET_R: f64 = 0.2;
+/// Two swings drawn short of closed (leaves square to the opening) are one pair when each runs to within this of the closing point.
+const SHORT_SWING_PAIRS: bool = true;
+const PAIR_SHORT_REACH_R: f64 = 0.75;
+const PAIR_SQUARE_COS: f64 = 0.26;
+const PAIR_SHORT_TOL_R: f64 = 0.12;
+const PAIR_SWEEP_DEG: f64 = 20.0;
+/// A pair with one leaf line along the opening (that leaf and its closed end told apart wrongly, or the leaf drawn shut).
+const MISTOLD_LEAF_PAIRS: bool = true;
 const ROW_FT: f64 = 0.5;
 const NEAR_R: f64 = 0.15;
 const OVERLAP_IOU: f64 = 0.4;
@@ -547,12 +555,43 @@ pub fn jamb_line(leaves: &[Arc], segs: &Segments, fpp: f64) -> [P; 2] {
         return [leaves[0].hinge, leaves[1].hinge];
     }
     let a = &leaves[0];
-    let (closed, tip) = (closed_end(a), a.leaf_far);
-    if segs.ink_beyond(a.hinge, tip, fpp) > segs.ink_beyond(a.hinge, closed, fpp) + JAMB_TIP_MARGIN {
-        [a.hinge, tip]
+    if tip_is_jamb(a, segs, fpp) {
+        [a.hinge, a.leaf_far]
     } else {
-        [a.hinge, closed]
+        [a.hinge, closed_end(a)]
     }
+}
+
+/// Where a pair leaf hinged at `a.hinge` closes, its mate hinged at `mate`: one leaf width along the opening.
+fn closing_point(a: &Arc, mate: P) -> P {
+    let u = mate.sub(a.hinge);
+    let l = u.norm().max(1e-9);
+    P::new(a.hinge.x + u.x / l * a.r, a.hinge.y + u.y / l * a.r)
+}
+
+/// How far the swing stops short of the pair's closing point, in leaf widths (0: an end of the arc sits on it).
+fn reach(a: &Arc, mate: P) -> f64 {
+    let m = closing_point(a, mate);
+    dist(a.ends[0], m).min(dist(a.ends[1], m)) / a.r
+}
+
+/// The swing lies on its mate's side of the hinge.
+fn faces(a: &Arc, mate: P) -> bool {
+    let b = a.swing_box();
+    let c = P::new((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0);
+    c.sub(a.hinge).dot(mate.sub(a.hinge)) > 0.0
+}
+
+/// The wall runs on past the leaf line, not past the line to the swing's closed end (see `jamb_line`).
+fn tip_is_jamb(a: &Arc, segs: &Segments, fpp: f64) -> bool {
+    segs.ink_beyond(a.hinge, a.leaf_far, fpp) > segs.ink_beyond(a.hinge, closed_end(a), fpp) + JAMB_TIP_MARGIN
+}
+
+/// The leaf stands square to the line from its hinge to its mate's (within 15 degrees).
+fn leaf_square(a: &Arc, mate: P) -> bool {
+    let u = mate.sub(a.hinge);
+    let l = a.leaf_far.sub(a.hinge);
+    u.dot(l).abs() < PAIR_SQUARE_COS * u.norm() * l.norm()
 }
 
 fn leaf_along(a: &Arc, h1: P, h2: P) -> bool {
@@ -561,65 +600,92 @@ fn leaf_along(a: &Arc, h1: P, h2: P) -> bool {
     u.dot(l).abs() > PAIR_ALONG_COS * u.norm() * l.norm()
 }
 
-/// One entry per door: two leaves hinged one door apart, drawn alike, meeting in the middle, are one pair.
+/// Do two swings draw the two leaves of one pair? `Drawn::Alike`: hinged one door apart, drawn alike, their ends meeting in the
+/// middle. `Drawn::Loosely`: the same pair drawn less tidily (see the two cases below).
+#[derive(Clone, Copy, PartialEq)]
+enum PairRule {
+    Alike,
+    Loosely,
+}
+
+fn pair_fit(p: &Arc, q: &Arc, rule: PairRule) -> bool {
+    let rr = p.r + q.r;
+    // an unequal pair (an active leaf and a narrower inactive one) is allowed when the two leaves close onto one point
+    let unequal_ok = UNEQUAL_PAIRS && dist(closed_end(p), closed_end(q)) <= 0.12 * p.r.min(q.r);
+    let ratio = if unequal_ok { 0.55 } else { 0.25 };
+    if (p.r - q.r).abs() > ratio * p.r.max(q.r) || (dist(p.hinge, q.hinge) - rr).abs() > 0.12 * rr {
+        return false;
+    }
+    let (ap, aq) = (leaf_along(p, p.hinge, q.hinge), leaf_along(q, p.hinge, q.hinge));
+    let (bp, bq) = (p.swing_box(), q.swing_box());
+    let meet = p.ends.iter().flat_map(|e| q.ends.iter().map(move |f| dist(*e, *f))).fold(f64::INFINITY, f64::min);
+    let boxes = iou(&bp, &bq) < 0.3 && (bp[0].max(bq[0]) - bp[2].min(bq[2])).max(0.0) < 0.1 * rr && (bp[1].max(bq[1]) - bp[3].min(bq[3])).max(0.0) < 0.1 * rr;
+    let meets = boxes && meet <= PAIR_MEET_R * p.r.min(q.r);
+    if rule == PairRule::Alike {
+        return ap == aq && meets;
+    }
+    // a pair's leaves close on each other in mid-opening: no wall runs on from either swing's closed end
+    if p.strike || q.strike {
+        return false;
+    }
+    let (gp, gq) = (reach(p, q.hinge), reach(q, p.hinge));
+    if ap == aq {
+        // swings drawn short of closed, so their ends do not meet: both leaves stand square to the opening, each swing lies on
+        // its mate's side of its hinge and runs most of the way to the point where the two close
+        // (and no further short of it than its own sweep leaves it: two full quarter swings whose ends miss are two doors)
+        let short = |a: &Arc, g: f64| g <= PAIR_SHORT_REACH_R && (g - 2.0 * ((90.0 - a.sweep.min(90.0)).to_radians() / 2.0).sin()).abs() <= PAIR_SHORT_TOL_R;
+        SHORT_SWING_PAIRS && leaf_square(p, q.hinge) && leaf_square(q, p.hinge) && iou(&bp, &bq) < 0.3 && short(p, gp) && short(q, gq) && faces(p, q.hinge) && faces(q, p.hinge)
+    } else {
+        // one leaf line lies along the opening (that leaf and its closed end told apart wrongly, or the leaf drawn shut): both
+        // swings must end on the closing point. A neighbour's door standing open against this wall draws the same two arcs,
+        // but each of those closes on a jamb. The two swings are drawn alike (a chord swing has no arc to compare).
+        MISTOLD_LEAF_PAIRS && meets && gp.max(gq) <= PAIR_MEET_R && p.drawn != Drawn::Chord && q.drawn != Drawn::Chord && (p.sweep - q.sweep).abs() <= PAIR_SWEEP_DEG
+    }
+}
+
+/// Another swing hinged beside either leaf, on the pair's side of the hinge line: a row of doors, not a pair.
+fn crowded(arcs: &[Arc], i: usize, m: usize, row: f64) -> bool {
+    let (h1, h2) = (arcs[i].hinge, arcs[m].hinge);
+    let (bp, bq) = (arcs[i].swing_box(), arcs[m].swing_box());
+    let c = P::new((bp[0] + bp[2] + bq[0] + bq[2]) / 4.0, (bp[1] + bp[3] + bq[1] + bq[3]) / 4.0);
+    let side = |x: f64, y: f64| (h2.x - h1.x) * (y - h1.y) - (h2.y - h1.y) * (x - h1.x);
+    arcs.iter().enumerate().any(|(k, w)| {
+        let wb = w.swing_box();
+        k != i && k != m && dist(w.hinge, h1).min(dist(w.hinge, h2)) < row && side((wb[0] + wb[2]) / 2.0, (wb[1] + wb[3]) / 2.0) * side(c.x, c.y) > 0.0
+    })
+}
+
+/// One entry per door: two leaves hinged one door apart, drawn alike, meeting in the middle, are one pair. Leaves left single
+/// by that rule get a second look for pairs drawn less tidily; a pair the first rule finds is never re-matched.
 pub fn doors(arcs: &[Arc], fpp: f64, segs: &Segments) -> Vec<Door> {
-    let mut used = vec![false; arcs.len()];
+    let n = arcs.len();
+    let mut used = vec![false; n];
+    let mut mates: Vec<Option<usize>> = vec![None; n];
     let mut out: Vec<Door> = vec![];
     let row = ROW_FT / fpp;
-    for i in 0..arcs.len() {
+    for rule in [PairRule::Alike, PairRule::Loosely] {
+        for i in 0..n {
+            if used[i] || mates[i].is_some() {
+                continue;
+            }
+            let free = |j: usize| !used[j] && mates[j].is_none();
+            if let Some(m) = (i + 1..n).find(|&j| free(j) && pair_fit(&arcs[i], &arcs[j], rule)) {
+                if !crowded(arcs, i, m, row) {
+                    used[m] = true;
+                    mates[i] = Some(m);
+                }
+            }
+        }
+    }
+    for i in 0..n {
         if used[i] {
             continue;
         }
         let p = &arcs[i];
-        let mut mate: Option<usize> = None;
-        for j in i + 1..arcs.len() {
-            if used[j] {
-                continue;
-            }
-            let q = &arcs[j];
-            let rr = p.r + q.r;
-            // an unequal pair (an active leaf and a narrower inactive one) is allowed when the two leaves close onto one point
-            let unequal_ok = UNEQUAL_PAIRS && dist(closed_end(p), closed_end(q)) <= 0.12 * p.r.min(q.r);
-            let ratio = if unequal_ok { 0.55 } else { 0.25 };
-            if (p.r - q.r).abs() > ratio * p.r.max(q.r) || (dist(p.hinge, q.hinge) - rr).abs() > 0.12 * rr {
-                continue;
-            }
-            if leaf_along(p, p.hinge, q.hinge) != leaf_along(q, p.hinge, q.hinge) {
-                continue;
-            }
-            let (bp, bq) = (p.swing_box(), q.swing_box());
-            let meet = p.ends.iter().flat_map(|e| q.ends.iter().map(move |f| dist(*e, *f))).fold(f64::INFINITY, f64::min);
-            if iou(&bp, &bq) < 0.3
-                && (bp[0].max(bq[0]) - bp[2].min(bq[2])).max(0.0) < 0.1 * rr
-                && (bp[1].max(bq[1]) - bp[3].min(bq[3])).max(0.0) < 0.1 * rr
-                && meet <= PAIR_MEET_R * p.r.min(q.r)
-            {
-                mate = Some(j);
-                break;
-            }
-        }
-        if let Some(m) = mate {
-            let (h1, h2) = (p.hinge, arcs[m].hinge);
-            let (bp, bq) = (p.swing_box(), arcs[m].swing_box());
-            let c = P::new((bp[0] + bp[2] + bq[0] + bq[2]) / 4.0, (bp[1] + bp[3] + bq[1] + bq[3]) / 4.0);
-            let side = |x: f64, y: f64| (h2.x - h1.x) * (y - h1.y) - (h2.y - h1.y) * (x - h1.x);
-            for (k, w) in arcs.iter().enumerate() {
-                if k == i || k == m {
-                    continue;
-                }
-                let wb = w.swing_box();
-                if dist(w.hinge, h1).min(dist(w.hinge, h2)) < row && side((wb[0] + wb[2]) / 2.0, (wb[1] + wb[3]) / 2.0) * side(c.x, c.y) > 0.0 {
-                    mate = None;
-                    break;
-                }
-            }
-        }
+        let mate = mates[i];
         let leaves: Vec<Arc> = match mate {
             None => vec![p.clone()],
-            Some(m) => {
-                used[m] = true;
-                vec![p.clone(), arcs[m].clone()]
-            }
+            Some(m) => vec![p.clone(), arcs[m].clone()],
         };
         let mut bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
         for a in &leaves {
@@ -638,6 +704,32 @@ pub fn doors(arcs: &[Arc], fpp: f64, segs: &Segments) -> Vec<Door> {
         }
     }
     fin
+}
+
+/// For the `whypair` example: every two swings hinged about two leaf widths apart, and what the pair rule measures on them.
+#[doc(hidden)]
+pub fn pair_why(arcs: &[Arc], fpp: f64, segs: &Segments) -> Vec<String> {
+    let mut out = vec![];
+    for i in 0..arcs.len() {
+        for j in i + 1..arcs.len() {
+            let (p, q) = (&arcs[i], &arcs[j]);
+            let rr = p.r + q.r;
+            let d = dist(p.hinge, q.hinge);
+            if (d - rr).abs() > 0.3 * rr {
+                continue;
+            }
+            let (bp, bq) = (p.swing_box(), q.swing_box());
+            let meet = p.ends.iter().flat_map(|e| q.ends.iter().map(move |f| dist(*e, *f))).fold(f64::INFINITY, f64::min);
+            out.push(format!(
+                "h1 {:.1},{:.1} h2 {:.1},{:.1} rft {:.2} {:.2} d/rr {:.3} closed-gap/r {:.2} along {} {} meet/r {:.2} reach {:.2} {:.2} faces {} {} iou {:.2} gapx/rr {:.2} gapy/rr {:.2} tipjamb {} {} sweep {:.0} {:.0}",
+                p.hinge.x, p.hinge.y, q.hinge.x, q.hinge.y, p.r * fpp, q.r * fpp, d / rr, dist(closed_end(p), closed_end(q)) / p.r.min(q.r),
+                leaf_along(p, p.hinge, q.hinge), leaf_along(q, p.hinge, q.hinge), meet / p.r.min(q.r), reach(p, q.hinge), reach(q, p.hinge), faces(p, q.hinge), faces(q, p.hinge),
+                iou(&bp, &bq), (bp[0].max(bq[0]) - bp[2].min(bq[2])).max(0.0) / rr, (bp[1].max(bq[1]) - bp[3].min(bq[3])).max(0.0) / rr,
+                tip_is_jamb(p, segs, fpp), tip_is_jamb(q, segs, fpp), p.sweep, q.sweep
+            ));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -693,6 +785,86 @@ mod tests {
         let none = Segments::new(&[]);
         let j = jamb_line(&[swing(P::new(0.0, 27.0))], &none, FPP);
         assert_eq!(j, [P::new(0.0, 0.0), P::new(27.0, 0.0)]);
+    }
+
+    /// A leaf hinged at (hx, 0) on the wall line y = 0, closing toward `dir` (+1: +x), its swing drawn `sweep` degrees from the open leaf.
+    fn leaf(hx: f64, dir: f64, sweep: f64) -> Arc {
+        let t = sweep.to_radians();
+        let end = P::new(hx + dir * 27.0 * t.sin(), 27.0 * t.cos());
+        let tip = P::new(hx, 27.0);
+        let bbox = [hx.min(end.x), end.y, hx.max(end.x), 27.0];
+        let mut a = make_arc(P::new(hx, 0.0), 27.0, sweep, 0.0, [tip, end], bbox, Drawn::Curve, vec![]);
+        a.leaf_far = tip;
+        a
+    }
+
+    fn read(arcs: &[Arc]) -> Vec<Door> {
+        doors(arcs, FPP, &Segments::new(&[]))
+    }
+
+    #[test]
+    fn two_leaves_closing_on_one_point_are_one_pair() {
+        let got = read(&[leaf(0.0, 1.0, 90.0), leaf(54.0, -1.0, 90.0)]);
+        assert_eq!(got.len(), 1);
+        assert!(got[0].pair && got[0].leaves.len() == 2);
+        assert_eq!(got[0].jamb, [P::new(0.0, 0.0), P::new(54.0, 0.0)]);
+    }
+
+    #[test]
+    fn swings_drawn_short_of_closed_are_still_one_pair() {
+        // each swing stops 36 degrees short of the closing point, so the two arcs' ends are 0.4 leaf widths apart
+        let got = read(&[leaf(0.0, 1.0, 54.0), leaf(54.0, -1.0, 54.0)]);
+        assert_eq!(got.len(), 1);
+        assert!(got[0].pair);
+        assert_eq!(got[0].jamb, [P::new(0.0, 0.0), P::new(54.0, 0.0)]);
+    }
+
+    #[test]
+    fn a_pair_with_one_leaf_drawn_along_the_opening_is_one_pair() {
+        let mut shut = leaf(0.0, 1.0, 90.0);
+        shut.leaf_far = P::new(27.0, 0.0); // the leaf line lies in the opening; the arc's other end is out in the room
+        let got = read(&[shut, leaf(54.0, -1.0, 90.0)]);
+        assert_eq!(got.len(), 1);
+        assert!(got[0].pair);
+    }
+
+    #[test]
+    fn a_door_open_against_its_neighbours_wall_is_not_a_pair() {
+        // the same two arcs, but each swing closes on a jamb with wall running on: two doors, one standing open along the other's wall
+        let mut open = leaf(0.0, 1.0, 90.0);
+        open.leaf_far = P::new(27.0, 0.0);
+        open.strike = true;
+        let mut next = leaf(54.0, -1.0, 90.0);
+        next.strike = true;
+        let got = read(&[open, next]);
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|d| !d.pair));
+    }
+
+    #[test]
+    fn two_doors_with_wall_between_them_stay_two_doors() {
+        // hinged two leaf widths apart but closing away from each other (the wall stands between the hinges), swings drawn short
+        let apart = read(&[leaf(0.0, -1.0, 54.0), leaf(54.0, 1.0, 54.0)]);
+        assert_eq!(apart.len(), 2);
+        assert!(apart.iter().all(|d| !d.pair));
+        // side by side, both closing the same way
+        let row = read(&[leaf(0.0, 1.0, 54.0), leaf(54.0, 1.0, 54.0)]);
+        assert_eq!(row.len(), 2);
+        assert!(row.iter().all(|d| !d.pair));
+        // two full quarter swings toward each other whose ends miss by a third of a leaf (hinged on opposite faces of a thick wall)
+        let mut off = leaf(54.0, -1.0, 90.0);
+        off.hinge.y += 9.0;
+        off.leaf_far.y += 9.0;
+        off.ends[0].y += 9.0;
+        off.ends[1].y += 9.0;
+        off.bbox[1] += 9.0;
+        off.bbox[3] += 9.0;
+        assert_eq!(read(&[leaf(0.0, 1.0, 90.0), off]).len(), 2);
+        // short swings toward each other, each closing on its own jamb with wall running on
+        let (mut a, mut b) = (leaf(0.0, 1.0, 54.0), leaf(54.0, -1.0, 54.0));
+        a.strike = true;
+        b.strike = true;
+        assert_eq!(read(&[a, b]).len(), 2);
     }
 
     #[test]
