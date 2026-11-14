@@ -1,6 +1,6 @@
 {
   "toolchain": "rustc 1.99.0 (b940084d7 2026-09-28)",
   "target": "wasm32-unknown-unknown",
-  "sha256": "66e1931d7544a3e5067971c81df8d7fe69d352aa1210c92b2a7f22a4ef095ea8",
-  "bytes": 255954
+  "sha256": "77d46928c5ccfe716c5c132c394e55b2f2bef37073456c033edac95fdb58b19c",
+  "bytes": 263299
 }

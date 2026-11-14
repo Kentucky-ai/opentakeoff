@@ -10,7 +10,7 @@ app and the MCP server run it with no Rust toolchain.
   single get a second look: swings drawn short of closed (leaves square to the opening, each swing on its mate's side and
   as far short of the closing point as its own sweep leaves it), and a pair with one leaf line along the opening (both
   swings end on the closing point, drawn alike). Neither applies where a wall runs on from a swing's closed end.
-- Jamb line: hinge to hinge for a pair; for one leaf, hinge to the swing's closed end, or hinge to the leaf's tip where the wall's linework runs on past that line instead (a door drawn shut, or a leaf and closed end told apart wrongly).
+- Jamb line: hinge to hinge for a pair; for one leaf, hinge to the swing's closed end, or hinge to the leaf's tip where the wall's linework runs on past that line instead (a door drawn shut, or a leaf and closed end told apart wrongly). Where both faces of a wall start at the closed end and run on, with the closed line on one of them or between them, the wall is cut off there by the opening and the closed line stands, whatever lies along the leaf (a door standing open against a side wall).
 - Method: arcs from Bezier curves, polylines and loose or dashed strokes; a door keeps its arc when it has a leaf (drawn,
   dashed, or a quarter arc spanning a wall opening) and a wall at the hinge. Circles, revision-cloud scallops, logos and
   casework doors are left out; toilet-partition stalls are marked; two leaves meeting in one opening are a pair. With no

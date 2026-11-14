@@ -37,6 +37,14 @@ const JAMB_PROBE_FT: (f64, f64) = (0.25, 1.25);
 const JAMB_PROBE_STEPS: usize = 11;
 const JAMB_PROBE_SIDE_FT: f64 = 0.156;
 const JAMB_PROBE_TOL_FT: f64 = 0.09;
+// wall faces cut off at a jamb: strokes along the candidate line within 1 ft sideways, at least 3 in long, starting 4 in short of the
+// line's end to 6 in past it and running on a foot; two strokes less than half an inch apart sideways are one face
+const FACE_SIDE_FT: f64 = 1.0;
+const FACE_MIN_FT: f64 = 0.25;
+const FACE_START_FT: (f64, f64) = (-0.33, 0.5);
+const FACE_RUN_FT: f64 = 1.0;
+const FACE_APART_FT: f64 = 0.04;
+const FACE_BAND_FT: f64 = 0.1;
 const BOX_CELL: f64 = 40.0;
 const BOX_CELLS_MAX: i64 = 400;
 const END_CELL: f64 = 40.0;
@@ -553,6 +561,47 @@ impl Segments {
             }
         }
         hit as f64 / tot.max(1) as f64
+    }
+
+    /// Wall faces cut off at the far end of the line from `a` to `b`: strokes along the line, within a foot to either side of it,
+    /// that begin about at `b` (4 in short of it to 6 in past) and run on at least a foot. Strokes at one sideways offset count once.
+    /// None count unless the line lies on one of them or between two.
+    pub fn faces_from(&self, a: P, b: P, fpp: f64) -> usize {
+        let ft = 1.0 / fpp;
+        let v = b.sub(a);
+        let l = v.norm();
+        if l < 1e-6 {
+            return 0;
+        }
+        let u = P::new(v.x / l, v.y / l);
+        let n = P::new(-u.y, u.x);
+        let mut offs: Vec<f64> = vec![];
+        for k in self.around(b, (FACE_RUN_FT + FACE_START_FT.1 + FACE_SIDE_FT) * ft) {
+            let s = self.a[k];
+            let ln = self.len[k];
+            if ln < FACE_MIN_FT * ft || self.d[k].dot(u).abs() < 0.97 * ln {
+                continue;
+            }
+            let (p0, p1) = (P::new(s[0], s[1]).sub(a), P::new(s[2], s[3]).sub(a));
+            let (t0, t1) = (p0.dot(u), p1.dot(u));
+            let off = (p0.dot(n) + p1.dot(n)) / 2.0;
+            let (lo, hi) = (t0.min(t1), t0.max(t1));
+            if off.abs() <= FACE_SIDE_FT * ft && lo >= l + FACE_START_FT.0 * ft && lo <= l + FACE_START_FT.1 * ft && hi >= l + FACE_RUN_FT * ft {
+                offs.push(off);
+            }
+        }
+        offs.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        // the line lies in the wall it runs into: on one of its faces or between them, not beside a wall that only passes by
+        if offs.is_empty() || offs[0] > FACE_BAND_FT * ft || offs[offs.len() - 1] < -FACE_BAND_FT * ft {
+            return 0;
+        }
+        let mut count = 0;
+        for (i, o) in offs.iter().enumerate() {
+            if i == 0 || o - offs[i - 1] > FACE_APART_FT * ft {
+                count += 1;
+            }
+        }
+        count
     }
 
     /// Distance from p to segment k.

@@ -547,6 +547,8 @@ pub struct Door {
 
 /// The wall must run on past the leaf line this much more surely than past the closed line for the leaf line to be the jamb line.
 const JAMB_TIP_MARGIN: f64 = 0.15;
+/// This many wall faces starting at the swing's closed end settle it: the closed line is the jamb line (0: rule off).
+const JAMB_CLOSED_FACES: usize = 2;
 
 /// The opening's jamb-to-jamb line. A pair: hinge to hinge. One leaf: hinge to the swing's closed end, unless the wall runs on
 /// past the line from the hinge to the leaf's tip instead (the door is drawn shut, or its leaf and closed end were told apart wrongly).
@@ -584,7 +586,12 @@ fn faces(a: &Arc, mate: P) -> bool {
 
 /// The wall runs on past the leaf line, not past the line to the swing's closed end (see `jamb_line`).
 fn tip_is_jamb(a: &Arc, segs: &Segments, fpp: f64) -> bool {
-    segs.ink_beyond(a.hinge, a.leaf_far, fpp) > segs.ink_beyond(a.hinge, closed_end(a), fpp) + JAMB_TIP_MARGIN
+    let closed = closed_end(a);
+    // a wall cut off at the closed end, both its faces starting there: the opening ends there, whatever lies along the leaf
+    if JAMB_CLOSED_FACES > 0 && segs.faces_from(a.hinge, closed, fpp) >= JAMB_CLOSED_FACES {
+        return false;
+    }
+    segs.ink_beyond(a.hinge, a.leaf_far, fpp) > segs.ink_beyond(a.hinge, closed, fpp) + JAMB_TIP_MARGIN
 }
 
 /// The leaf stands square to the line from its hinge to its mate's (within 15 degrees).
@@ -785,6 +792,48 @@ mod tests {
         let none = Segments::new(&[]);
         let j = jamb_line(&[swing(P::new(0.0, 27.0))], &none, FPP);
         assert_eq!(j, [P::new(0.0, 0.0), P::new(27.0, 0.0)]);
+    }
+
+    /// The opening of `wall()` drawn with its faces 2.5 pt either side of the hinge line, in a room corner: a side wall runs along
+    /// the open leaf (x = -1.4) and on past its tip.
+    fn corner() -> Segments {
+        let l = |x0: f64, y0: f64, x1: f64, y1: f64| Item::Line(P::new(x0, y0), P::new(x1, y1));
+        let items = vec![
+            l(27.0, 2.5, 130.0, 2.5), l(27.0, -2.5, 130.0, -2.5), l(27.0, -2.5, 27.0, 2.5),
+            l(-1.4, -60.0, -1.4, 120.0), l(-6.0, -60.0, -6.0, 120.0),
+        ];
+        Segments::new(&[Path { items, dashed: false, dark_fill: false }])
+    }
+
+    #[test]
+    fn wall_faces_starting_at_the_closed_end_are_counted_once_each() {
+        let segs = corner();
+        assert_eq!(segs.faces_from(P::new(0.0, 0.0), P::new(27.0, 0.0), FPP), 2);
+        // the side wall runs alongside the leaf, it does not start at its tip
+        assert_eq!(segs.faces_from(P::new(0.0, 0.0), P::new(0.0, 27.0), FPP), 0);
+        assert_eq!(wall().faces_from(P::new(0.0, 0.0), P::new(27.0, 0.0), FPP), 2);
+        assert_eq!(wall().faces_from(P::new(0.0, 0.0), P::new(0.0, 27.0), FPP), 0);
+    }
+
+    #[test]
+    fn a_wall_that_starts_beside_the_leaf_tip_is_not_the_wall_the_line_runs_into() {
+        // both faces of a wall start level with the tip of the open leaf, but 5 and 7 in to one side of it: the leaf lies
+        // beside that wall, not in it
+        let l = |x0: f64, y0: f64, x1: f64, y1: f64| Item::Line(P::new(x0, y0), P::new(x1, y1));
+        let items = vec![l(-3.75, 27.0, -3.75, 120.0), l(-5.25, 27.0, -5.25, 120.0), l(-5.25, 27.0, -3.75, 27.0)];
+        let segs = Segments::new(&[Path { items, dashed: false, dark_fill: false }]);
+        assert_eq!(segs.faces_from(P::new(0.0, 0.0), P::new(0.0, 27.0), FPP), 0);
+    }
+
+    #[test]
+    fn a_door_open_against_a_side_wall_keeps_the_closed_end() {
+        // the side wall puts more ink past the leaf line than the wall's own faces put past the closed line,
+        // but the wall is cut off at the closed end: that is the jamb
+        let segs = corner();
+        let (tip, closed) = (P::new(0.0, 27.0), P::new(27.0, 0.0));
+        assert!(segs.ink_beyond(P::new(0.0, 0.0), tip, FPP) > segs.ink_beyond(P::new(0.0, 0.0), closed, FPP) + JAMB_TIP_MARGIN);
+        let j = jamb_line(&[swing(tip)], &segs, FPP);
+        assert_eq!(j, [P::new(0.0, 0.0), closed]);
     }
 
     /// A leaf hinged at (hx, 0) on the wall line y = 0, closing toward `dir` (+1: +x), its swing drawn `sweep` degrees from the open leaf.
