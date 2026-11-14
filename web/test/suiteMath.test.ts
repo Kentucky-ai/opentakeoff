@@ -15,11 +15,25 @@ test("parsePitch reads what roof plans print and refuses the rest", () => {
   assert.equal(parsePitch("6/12"), 6);
   assert.equal(parsePitch("4:12"), 4);
   assert.equal(parsePitch("8 in 12"), 8);
+  assert.equal(parsePitch("6in12"), 6);              // no spaces, as main reads it
+  assert.equal(parsePitch("0.25in12"), 0.25);
   assert.equal(parsePitch(7), 7);
+  assert.equal(parsePitch("2"), 2);                  // ambiguous integer keeps rise per 12
+  assert.equal(parsePitch(0), 0);
+  assert.equal(parsePitch("0"), 0);
   assert.equal(parsePitch("1/4 per ft"), 0.25);      // 1/4" rise per 12" run
   assert.equal(parsePitch('1/4" per foot'), 0.25);
+  assert.equal(parsePitch("2%"), 0.24);              // 2 rise per 100 run = 2/100 * 12 = 0.24
+  assert.equal(parsePitch("22.5 deg"), 4.971);       // 12 * tan(22.5°) = 4.97056... ≈ 4.971
+  assert.equal(parsePitch("22.5°"), 4.971);
+  assert.equal(parsePitch("1:48"), 0.25);            // 1 rise per 48 run = 1/48 * 12 = 0.25
+  assert.equal(parsePitch("1/4:12"), 0.25);          // 1/4" in 12
+  assert.equal(parsePitch("flat"), null);            // flat roof stays refused: pass 0 if drawing says 0
+  assert.equal(parsePitch("1/4"), null);             // ambiguous fraction stays refused
   assert.equal(parsePitch("steep"), null);
   assert.equal(parsePitch(-2), null);
+  assert.equal(parsePitch(50), null);
+  assert.equal(parsePitch("90 deg"), null);
 });
 
 test("slope and hip factors", () => {
