@@ -931,7 +931,7 @@ Every finished takeoff is a set of expert decisions: *this* region is *this* fin
 What a contribution contains, in plain language:
 
 - your **condition labels** (the finish tags and their hatch, waste %, multiplier),
-- each shape's **role and quantities** (SF / LF / EA) and its **geometry as a pure shape**—normalized 0-to-1 against the sheet, so it carries no scale and no location,
+- each shape's **role and quantities** (SF / LF / EA) and its **geometry as a pure shape**—normalized 0-to-1 against the sheet, so it carries no sheet-scale values or real-world coordinates,
 - and each shape's **provenance**: the app remembers whether a machine drew it (One-Click, the agent) and whether you fixed it—and sends that memory, including the machine's original boundary next to your corrected one. That pair is exactly what a takeoff model learns from.
 
 What is **never** sent—this list is normative, enforced by a whitelist in the payload builder, and specified field-by-field in [`CONTRIBUTION_SPEC.md`](CONTRIBUTION_SPEC.md):
@@ -1353,7 +1353,7 @@ those are the ones worth pinning down before you rely on a number.
 | **Zone check** | A reading, not a takeoff: trace a wing and see what's inside it, with materials scaled to the zone. Nothing is saved ([§5](#5-the-measuring-tools)). |
 | **Marked set** | The distribution-ready PDF—your work burned into the drawings behind a legend cover, with a tally of how much of it a person has approved. The deliverable a GC can check ([§10](#10-the-report-and-exports)). |
 | **Revision** | A named snapshot of the whole takeoff. Compare two and you get quantity deltas per condition, per sheet, and on the buy list ([§11](#11-revisions)). |
-| **Contribute** | The opt-in button that donates a takeoff's labels and normalized shapes—never the plan, the names, or the coordinates—to a training corpus ([§12](#12-saving-your-data-and-contribute)). |
+| **Contribute** | The opt-in button that donates a takeoff's labels and normalized shapes—never the plan, the names, or absolute coordinates—to a training corpus ([§12](#12-saving-your-data-and-contribute)). |
 
 ---
 
