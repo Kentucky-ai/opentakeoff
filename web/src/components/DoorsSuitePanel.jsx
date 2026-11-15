@@ -5,13 +5,13 @@
 // Stateless about the takeoff: the canvas owns the reading (lib/doorSuite.ts)
 // and the answers; this renders them and reports clicks.
 import React from "react";
-import { countLine, doorSetColor as setColor, feetInches } from "../lib/doorSuite.ts";
+import { countLine, doorSetColor as setColor, feetInches, DOOR_KIND_LABEL } from "../lib/doorSuite.ts";
 import "./doorsSuitePanel.css";
 
 function Elevation({ opening, color }) {
   const r = opening.row;
   const glass = r && r.glass && r.glass !== "-";
-  const leaves = opening.leaves;
+  const leaves = Math.max(1, opening.leaves);   // a cased opening still draws as one frame
   const W = 112, H = 196, pad = 10, gap = 2;
   const lw = (W - pad * 2 - gap * (leaves - 1)) / leaves;
   return (
@@ -39,6 +39,44 @@ function scheduledLabel(r) {
   return [pair ? "Pair" : "Single", r.width && `${r.width} × ${r.height}`, r.hwSet && `set ${r.hwSet}`].filter(Boolean).join(" · ");
 }
 
+const MB = (n) => Math.round(n / 1048576);
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// "Find more doors": the switch for the door detector and, in a line, what it is doing or what it found.
+function FindMore({ detect, onToggle, onRetry }) {
+  if (!detect || detect.gpu == null) return null;
+  const { on, gpu, cached, load, progress, error, sheet, canRun } = detect;
+  let line;
+  if (!gpu) line = "Needs WebGPU, which this browser doesn't have. The doors here come from the linework reader alone; a current Chrome or Edge can find more.";
+  else if (!on) line = `Also looks for cased openings, sliding, bifold and overhead doors, and swings the linework reader missed. ${cached ? "The model is already on this computer." : "Downloads a 117 MB model once from Hugging Face."} It runs on this computer; nothing is uploaded.`;
+  else if (load === "error") line = error === "no-webgpu" ? "This browser could not start WebGPU, so the detector can't run here." : `The door model couldn't start: ${error}`;
+  else if (load !== "ready") line = progress && progress.total ? `Downloading the door model: ${MB(progress.loaded)} of ${MB(progress.total)} MB…` : "Starting the door model…";
+  else if (!canRun) line = "Waiting for the doors on this sheet.";
+  else if (!sheet || sheet.status === "running") line = sheet?.stage === "detect" && sheet.total ? `Looking for more doors: part ${sheet.done} of ${sheet.total} of the sheet…` : "Looking for more doors on this sheet…";
+  else if (sheet.status === "failed") line = `Couldn't run on this sheet: ${sheet.error}`;
+  else {
+    // by what an estimator calls it: a swing found as a swing box or as a doorway strip is a swing door either way
+    const byLabel = {};
+    for (const [k, n] of Object.entries(sheet.byKind || {})) { const l = (DOOR_KIND_LABEL[k] || k).toLowerCase(); byLabel[l] = (byLabel[l] || 0) + n; }
+    const kinds = Object.entries(byLabel).map(([l, n]) => `${n} ${l}${n === 1 ? "" : "s"}`).join(", ");
+    const parts = [sheet.added ? `${plural(sheet.added, "more door", "more doors")} found${kinds ? ` (${kinds})` : ""}` : "No more doors found"];
+    if (sheet.rescued) parts.push(`${plural(sheet.rescued, "unsure swing", "unsure swings")} confirmed`);
+    if (sheet.setAside) parts.push(`${sheet.setAside} set aside under To review`);
+    line = `${parts.join(" · ")}.`;
+  }
+  const failed = on && (load === "error" || sheet?.status === "failed");
+  return (
+    <div className="ds-compare ds-find" data-find-more={on ? "on" : "off"}>
+      <Btn kind={on ? "ghost" : "plain"} aria-pressed={!!on} disabled={!gpu} onClick={onToggle}
+        title={gpu ? "Run the door detector on this sheet, on this computer" : "This browser has no WebGPU"}>
+        {on ? "Find more doors: on" : "Find more doors"}
+      </Btn>
+      {failed && gpu && <Btn onClick={onRetry}>Try again</Btn>}
+      <span className="ds-muted ds-find-line" role="status">{line}</span>
+    </div>
+  );
+}
+
 function Btn({ kind = "plain", children, ...rest }) {
   return <button type="button" className={`ds-btn ds-btn-${kind}`} {...rest}>{children}</button>;
 }
@@ -48,6 +86,7 @@ export default function DoorsSuitePanel({
   coach, onDismissCoach, tab, onTab, onAnswer, onUndo, onSelect, onShowDoor, onShowRow, onShowElevation,
   onShowSet, onAdd, added, onClose,
   compareOn, canCompare, onCompare, selMark, hoverMark, onHoverRow, onPickRow, placed, checks, onCheck, onNote,
+  detect, onToggleDetect, onRetryDetect,
 }) {
   const rowRefs = React.useRef(new Map());
   // the selected door's row stays in view in the Schedule list
@@ -65,7 +104,7 @@ export default function DoorsSuitePanel({
   const setMap = new Map((sets || []).map((s) => [s.set, s]));
   const tabs = [
     { id: "review", label: `To review (${open.length})` },
-    { id: "doors", label: `All doors (${view ? view.openings.length : 0})` },
+    { id: "doors", label: `All doors (${view ? view.openings.filter((o) => !o.hidden).length : 0})` },
     { id: "sets", label: `Hardware sets (${setOrder.length})` },
     ...(rows.length ? [{ id: "schedule", label: `Schedule (${checkedN}/${rows.length})` }] : []),
   ];
@@ -90,6 +129,7 @@ export default function DoorsSuitePanel({
             <span className="ds-muted">{open.length ? `answer ${open.length} more to finish` : `${countLine(c)} ready`}</span>
           </div>
         )}
+        {view && <FindMore detect={detect} onToggle={onToggleDetect} onRetry={onRetryDetect} />}
         {canCompare && (
           <div className="ds-compare">
             <Btn kind={compareOn ? "ghost" : "plain"} aria-pressed={!!compareOn} onClick={() => { onCompare(); if (!compareOn) onTab("schedule"); }}>
@@ -130,10 +170,10 @@ export default function DoorsSuitePanel({
               <Btn onClick={() => onSelect(null)}>← All doors</Btn>
               <div className="ds-card-title">
                 <span className="ds-dot" style={{ background: color }} />
-                <h3>{opening.mark ? `Door ${opening.mark}` : "Door with no number"}</h3>
+                <h3>{opening.mark ? `Door ${opening.mark}` : opening.added ? `${DOOR_KIND_LABEL[opening.added] || "Door"}, no number` : "Door with no number"}</h3>
                 <span className="ds-muted">{pendingQ ? "Needs your answer" : opening.withheld ? "Not sure it's a door" : r ? "On the plan, in the schedule" : "On the plan, not in the schedule"}</span>
               </div>
-              <p className="ds-counts-as">Counts as: <b>1 opening · 1 frame · {opening.leaves === 2 ? "2 door leaves" : "1 door leaf"}</b>{pendingQ ? " · not counted until you answer below" : opening.leftOut ? " · left out by your answer" : ""}</p>
+              <p className="ds-counts-as">Counts as: <b>1 opening · 1 frame · {opening.leaves === 2 ? "2 door leaves" : opening.leaves === 0 ? "no door leaf" : "1 door leaf"}</b>{opening.added ? " · found by the door detector" : ""}{pendingQ ? " · not counted until you answer below" : opening.leftOut ? " · left out by your answer" : ""}</p>
               {pendingQ && (
                 <div className="ds-q ds-q-inline">
                   <p>{pendingQ.text}</p>
@@ -200,13 +240,13 @@ export default function DoorsSuitePanel({
           <table className="ds-table">
             <thead><tr><th>Door</th><th>Type</th><th>Size</th><th>Set</th><th>Status</th></tr></thead>
             <tbody>
-              {[...view.openings].sort((a, b) => (a.mark ? 0 : 1) - (b.mark ? 0 : 1) || String(a.mark || "").localeCompare(String(b.mark || ""), undefined, { numeric: true })).map((o) => {
+              {view.openings.filter((o) => !o.hidden).sort((a, b) => (a.mark ? 0 : 1) - (b.mark ? 0 : 1) || String(a.mark || "").localeCompare(String(b.mark || ""), undefined, { numeric: true })).map((o) => {
                 const q = view.questions.find((x) => x.door === o.door && !answers[x.id]);
                 return (
                   <tr key={o.door} className={o.leftOut ? "ds-out" : ""}>
                     <td><button type="button" className="ds-row-btn" onClick={() => onSelect(o.door)}>
                       <span className="ds-dot" style={{ background: setColor(o.row?.hwSet, setOrder), opacity: o.withheld ? 0.5 : 1 }} />{o.mark || "no number"}</button></td>
-                    <td>{o.pair ? "Pair (2 leaves)" : "Single"}{o.row?.doorType ? ` · ${o.row.doorType}` : ""}</td>
+                    <td>{o.added && o.leaves === 0 ? "Cased opening (no leaf)" : o.pair ? "Pair (2 leaves)" : o.added && DOOR_KIND_LABEL[o.added] !== "Swing door" ? DOOR_KIND_LABEL[o.added] || "Single" : "Single"}{o.row?.doorType ? ` · ${o.row.doorType}` : ""}{o.added ? " · detector" : ""}</td>
                     <td className="ds-mono">{o.row ? o.row.width : "—"}</td>
                     <td>{o.row?.hwSet || "—"}</td>
                     <td className={q ? "ds-warn" : o.leftOut ? "ds-muted" : "ds-ok"}>{q ? "Question" : o.leftOut ? "Left out" : "Counted"}</td>

@@ -168,7 +168,7 @@ import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 import DoorsSuitePanel from "../components/DoorsSuitePanel.jsx";
-import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL, countMarkPoints, openingLine, heldBack } from "../lib/doorSuite.ts";
+import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL, countMarkPoints, openingLine, heldBack, DOOR_KIND_LABEL } from "../lib/doorSuite.ts";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
@@ -7787,6 +7787,14 @@ export default function TakeoffCanvas() {
   const doorRunsRef = useRef(new Map());            // sheet key → text runs in the door frame (unrotated page points)
   const doorSegsRef = useRef(new Map());            // sheet key → the sheet's linework, flat [x0,y0,x1,y1,…], same frame
   const [doorReads, setDoorReads] = useState({});   // sheet key → { status, doors, withheld, rot, w0, h0 }
+  // "Find more doors": the door detector (lib/doorDetect), off by default. The switch is remembered; the model
+  // downloads once, on the click that turns it on, and runs on WebGPU in a worker. Nothing is uploaded.
+  const [doorDetectOn, setDoorDetectOn] = useState(() => { try { return localStorage.getItem("opentakeoff_doors_detector") === "on"; } catch { return false; } });
+  const [doorDetect, setDoorDetect] = useState({ gpu: null, cached: null, load: "idle", progress: null, error: null });
+  const [doorFound, setDoorFound] = useState({});   // sheet key → { status, doors, withheld, hidden, added, … } (lib/doorDetect/apply.ts)
+  const doorDetectClientRef = useRef(null);
+  const doorDetectConsentRef = useRef(false);        // the switch was clicked on in this session: the download is allowed
+  const doorFoundBusyRef = useRef(new Set());
   // Drop cached door linework and positions for a file after a page mutation (reorder, rotate, delete, merge).
   // The suite reads the sheet again on its own.
   const dropDoorReads = (fileOrFiles) => {
@@ -7799,7 +7807,7 @@ export default function TakeoffCanvas() {
         if (k === f || k.startsWith(`${f}#`)) doorSegsRef.current.delete(k);
       }
     }
-    setDoorReads((prev) => {
+    const dropFor = (prev) => {
       let changed = false;
       const next = {};
       for (const [k, v] of Object.entries(prev)) {
@@ -7810,7 +7818,9 @@ export default function TakeoffCanvas() {
         }
       }
       return changed ? next : prev;
-    });
+    };
+    setDoorReads(dropFor);
+    setDoorFound(dropFor);
   };
   const [doorDocs, setDoorDocs] = useState(null);   // { status, schedule, sets } read once per loaded set
   const [doorSel, setDoorSel] = useState(null);     // { key, i } — the door open in the card
@@ -7924,6 +7934,85 @@ export default function TakeoffCanvas() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doorSuiteOn, doorPanelSig]);
+  // Find more doors. Probe once per suite visit: is there WebGPU, is the model already in this browser.
+  useEffect(() => {
+    if (!doorSuiteOn) return;
+    let live = true;
+    (async () => {
+      const { webGpuAvailable, modelCached } = await import("../lib/doorDetect/client.ts");
+      const [gpu, cached] = await Promise.all([webGpuAvailable(), modelCached()]);
+      if (live) setDoorDetect((d) => ({ ...d, gpu, cached }));
+    })();
+    return () => { live = false; };
+  }, [doorSuiteOn]);
+  const toggleDoorDetect = () => {
+    const on = !doorDetectOn;
+    if (on) doorDetectConsentRef.current = true;
+    else { doorDetectClientRef.current?.cancel(); setDoorDetect((d) => (d.load === "loading" || d.load === "error" ? { ...d, load: "idle", progress: null, error: null } : d)); }
+    setDoorDetectOn(on);
+    try { localStorage.setItem("opentakeoff_doors_detector", on ? "on" : "off"); } catch { /* private mode */ }
+  };
+  // Switch on: load the model (from the cache, or downloading it when the switch was clicked in this session),
+  // then run it on each open sheet the reader has finished.
+  useEffect(() => {
+    if (!doorSuiteOn || !doorDetectOn || doorDetect.gpu !== true || doorDetect.load === "error") return;
+    let live = true;
+    (async () => {
+      const { DoorDetectClient, findMoreDoors } = await import("../lib/doorDetect/client.ts");
+      const client = (doorDetectClientRef.current ??= new DoorDetectClient());
+      if (doorDetect.load !== "ready") {
+        if (doorDetect.load === "idle") setDoorDetect((d) => ({ ...d, load: "loading", progress: null, error: null }));
+        try {
+          await client.load(doorDetectConsentRef.current, (pr) => { if (live) setDoorDetect((d) => ({ ...d, progress: pr })); });
+          setDoorDetect((d) => ({ ...d, load: "ready", cached: true, progress: null }));
+        } catch (e) {
+          if (e?.code === "consent-required") {
+            // remembered "on" from an earlier visit, but the model is no longer in this browser: never download unasked
+            setDoorDetectOn(false);
+            setDoorDetect((d) => ({ ...d, load: "idle", cached: false, progress: null }));
+          } else if (e?.code === "aborted") setDoorDetect((d) => ({ ...d, load: "idle", progress: null }));
+          else setDoorDetect((d) => ({ ...d, load: "error", progress: null, error: e?.code === "no-webgpu" ? "no-webgpu" : String(e?.message || e) }));
+        }
+        return;   // the state change runs this effect again
+      }
+      for (const p of panels) {
+        const rd = doorReads[p.key];
+        if (isStitchKey(p.key) || rd?.status !== "done" || !rd.doors.length || doorFound[p.key] || doorFoundBusyRef.current.has(p.key)) continue;
+        doorFoundBusyRef.current.add(p.key);
+        setDoorFound((prev) => ({ ...prev, [p.key]: { status: "running", stage: "render" } }));
+        try {
+          if (!(rd.fpp > 0)) throw new Error("the sheet's scale could not be read from its doors");
+          const t = parseSheetKey(p.key);
+          const out = await docCache.withDoc(t.file, async (pdf) => {
+            const pg = pageObjsRef.current.get(p.key) || await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+            return findMoreDoors(pg, rd.doors, rd.fpp, pdfjsLib.OPS, client, (pr) => setDoorFound((prev) => (prev[p.key]?.status === "running" ? { ...prev, [p.key]: { status: "running", ...pr } } : prev)));
+          });
+          // dev builds only: the last pass per sheet, for the parity check against the Python runner (bench/doors/browserParity.mjs)
+          if (import.meta.env.DEV) (window.__otDoorFound ||= {})[p.key] = { ppf: 1 / rd.fpp, det: out.det, preds: out.result.preds, dropped: out.result.dropped.map((d) => ({ ...d.pred, why: d.why })), stats: out.result.stats, tiles: out.tiles, seconds: out.seconds, added: out.added };
+          setDoorFound((prev) => ({ ...prev, [p.key]: { status: "done", doors: out.doors, withheld: out.withheld, hidden: out.hidden, added: out.added, rescued: out.rescued, setAside: out.setAside, byKind: out.byKind, tiles: out.tiles, seconds: out.seconds, det: out.det } }));
+        } catch (e) {
+          setDoorFound((prev) => ({ ...prev, [p.key]: { status: "failed", error: String(e?.message || e) } }));
+        } finally {
+          doorFoundBusyRef.current.delete(p.key);
+        }
+      }
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorDetectOn, doorDetect.gpu, doorDetect.load, doorPanelSig, doorReads]);
+  useEffect(() => () => { doorDetectClientRef.current?.dispose(); doorDetectClientRef.current = null; }, []);
+  // What the suite shows: the reader's doors, or with the switch on and the sheet done, the detector's list
+  // (the reader's doors in place, some set aside or hidden, plus the doors the detector added).
+  const doorReadsEff = useMemo(() => {
+    if (!doorDetectOn) return doorReads;
+    const out = { ...doorReads };
+    for (const [k, f] of Object.entries(doorFound)) {
+      const rd = out[k];
+      if (f?.status !== "done" || rd?.status !== "done") continue;
+      out[k] = { ...rd, doors: f.doors, withheld: f.withheld, hidden: f.hidden, tone: f.doors.map((_, i) => rd.tone?.[i] ?? null) };
+    }
+    return out;
+  }, [doorDetectOn, doorReads, doorFound]);
   // unrotated page point → this panel's image pixels (the frame shapes and overlays draw in)
   const doorToImg = (rd, p, [x, y]) => {
     const { rot, w0, h0 } = rd;
@@ -7933,7 +8022,7 @@ export default function TakeoffCanvas() {
   // The suite works on the PLAN sheet: a sheet with no doors of its own (the
   // schedule sheet, opened by "Show schedule row") keeps the last plan.
   const [doorPlanKey, setDoorPlanKey] = useState(null);
-  const hereKey = panels.find((p) => doorReads[p.key]?.status === "done" && doorReads[p.key].doors.length)?.key || null;
+  const hereKey = panels.find((p) => doorReads[p.key]?.status === "done" && doorReads[p.key].doors.length)?.key || null;   // the reader's own doors decide which sheet is the plan
   useEffect(() => { if (hereKey && hereKey !== doorPlanKey) setDoorPlanKey(hereKey); }, [hereKey, doorPlanKey]);
   const doorKey = hereKey || (doorPlanKey && doorReads[doorPlanKey] ? doorPlanKey : null) || panels[0]?.key || null;
   // Fly to a region of any sheet and flash it: centred in the canvas left of
@@ -7961,13 +8050,13 @@ export default function TakeoffCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelImgs, groupSig]);
   const doorView = useMemo(() => {
-    const rd = doorKey && doorReads[doorKey];
+    const rd = doorKey && doorReadsEff[doorKey];
     if (!doorSuiteOn || !rd || rd.status !== "done") return null;
     const schedule = doorDocs?.schedule ? { rows: doorDocs.schedule.rows, box: doorDocs.schedule.box } : null;
-    const tm = matchDoorTags(rd.doors, doorRunsRef.current.get(doorKey) || [], new Set((schedule?.rows || []).map((r) => r.mark)), { segs: doorSegsRef.current.get(doorKey) || null });
-    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, marks: tm.marks, ambiguous: tm.ambiguous, tone: rd.tone, fpp: rd.fpp, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
+    const tm = matchDoorTags(rd.doors, doorRunsRef.current.get(doorKey) || [], new Set((schedule?.rows || []).map((r) => r.mark)), { segs: doorSegsRef.current.get(doorKey) || null, skip: rd.hidden });
+    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, hidden: rd.hidden, marks: tm.marks, ambiguous: tm.ambiguous, tone: rd.tone, fpp: rd.fpp, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doorSuiteOn, doorKey, doorReads, doorDocs, doorAnswers]);
+  }, [doorSuiteOn, doorKey, doorReadsEff, doorDocs, doorAnswers]);
   const doorSetOrder = useMemo(() => {
     const fromSpec = (doorDocs?.sets || []).map((s) => s.set);
     const fromSched = (doorDocs?.schedule?.rows || []).map((r) => String(r.hwSet || "").toUpperCase()).filter(Boolean);
@@ -7976,7 +8065,7 @@ export default function TakeoffCanvas() {
   const answerDoor = (id, a) => setDoorAnswers((prev) => ({ ...prev, [id]: a }));
   const undoDoor = (id) => setDoorAnswers((prev) => { const n = { ...prev }; delete n[id]; return n; });
   const showDoor = (i, key = doorKey) => {
-    const rd = doorReads[key]; const p = panelByKey(key);
+    const rd = doorReadsEff[key]; const p = panelByKey(key);
     if (!rd?.doors?.[i] || !p?.img?.w) return;
     const d = rd.doors[i];
     const a = doorToImg(rd, p, [d.box[0], d.box[1]]), b = doorToImg(rd, p, [d.box[2], d.box[3]]);
@@ -8003,7 +8092,7 @@ export default function TakeoffCanvas() {
   // swing (never on the tag). An update replaces the marks the last add made
   // on this sheet, so a second press never double-counts.
   function addDoorsToEstimate() {
-    const v = doorView, rd = doorReads[doorKey], p = panelByKey(doorKey);
+    const v = doorView, rd = doorReadsEff[doorKey], p = panelByKey(doorKey);
     if (!v || !rd || !p?.img?.w) return;
     const groups = estimateGroups(v.openings);
     const cs = agentStateRef.current.conditions;
@@ -8014,7 +8103,8 @@ export default function TakeoffCanvas() {
     const add = [];
     for (const g of groups) {
       const label = `${g.type} ${g.size}`.trim();
-      const frame = condFor(`DR FRAME ${label}`), leaf = condFor(`DR LEAF ${label}`);
+      // a group of cased openings has frames and no leaves: no empty leaf condition for it
+      const frame = condFor(`DR FRAME ${label}`), leaf = g.leaves ? condFor(`DR LEAF ${label}`) : null;
       for (const o of g.openings) {
         const d = rd.doors[o.door];
         const origin = { method: "door_reader", door: o.mark || `door-${o.door}` };
@@ -11142,10 +11232,11 @@ export default function TakeoffCanvas() {
               {doorSuiteOn && panels.map((p) => {
                 const k = 1 / tf.scale;
                 const out = [];
-                const rd = doorReads[p.key];
+                const rd = doorReadsEff[p.key];
                 if (rd?.status === "done") {
                   const marks = p.key === doorKey && doorView ? doorView.openings : null;
                   rd.doors.forEach((d, i) => {
+                    if (rd.hidden?.[i]) return;   // a second find of an opening already drawn
                     const o = marks ? marks[i] : null;
                     const color = o?.row ? doorSetColor(o.row.hwSet, doorSetOrder) : DOOR_NEUTRAL;
                     const asked = rd.withheld[i] || (doorView && p.key === doorKey && doorView.questions.some((q) => q.door === i && !doorAnswers[q.id]));
@@ -11167,6 +11258,11 @@ export default function TakeoffCanvas() {
                     // the opening itself: the jamb-to-jamb line across the wall
                     const [ja, jb] = openingLine(d).map((q) => doorToImg(rd, p, q));
                     paths.push(<path key="jamb" d={`M${ja[0] + p.xOffset},${ja[1]} L${jb[0] + p.xOffset},${jb[1]}`} />);
+                    // a door the detector added with no swing to trace (a cased opening, a slider): its box, dotted
+                    if (d.added && !d.leaves.length) {
+                      const q = [[d.box[0], d.box[1]], [d.box[2], d.box[1]], [d.box[2], d.box[3]], [d.box[0], d.box[3]]].map((v) => doorToImg(rd, p, v));
+                      paths.push(<path key="box" strokeDasharray={`${2 * k} ${4 * k}`} d={`M${q.map((v) => `${v[0] + p.xOffset},${v[1]}`).join(" L")} Z`} />);
+                    }
                     const c = doorCenter(d);
                     const C = doorToImg(rd, p, [c.x, c.y]);
                     const rPx = Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[0] - C[0]) + Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[1] - C[1]);
@@ -11175,7 +11271,7 @@ export default function TakeoffCanvas() {
                         <g fill="none" stroke={color} strokeWidth={(sel ? 4 : 2.6) * k} strokeOpacity={0.9} strokeDasharray={asked ? `${6 * k} ${4 * k}` : undefined} strokeLinecap="round">{paths}</g>
                         <circle cx={C[0] + p.xOffset} cy={C[1]} r={Math.max(rPx * 0.75, 10 * k)} fill="transparent" stroke="none" style={{ pointerEvents: "all", cursor: "pointer" }}
                           onPointerDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); setDoorSel({ key: p.key, i }); }}>
-                          <title>{o?.mark ? `Door ${o.mark}` : "Door with no number"}</title>
+                          <title>{o?.mark ? `Door ${o.mark}` : d.added ? `${DOOR_KIND_LABEL[d.added.kind] || "Door"} found by the door detector, no number` : "Door with no number"}</title>
                         </circle>
                         {o?.mark && rPx * tf.scale > 16 && (
                           <text x={C[0] + p.xOffset} y={C[1] - rPx * 0.9} textAnchor="middle" fontSize={11 * k} fontWeight={700} fontFamily="JetBrains Mono, monospace"
@@ -12845,6 +12941,11 @@ export default function TakeoffCanvas() {
         {doorSuiteOn && (() => {
           const rd = doorKey ? doorReads[doorKey] : null;
           const reading = !rd || rd.status === "reading";
+          const found = doorKey ? doorFound[doorKey] : null;
+          const detect = {
+            on: doorDetectOn, gpu: doorDetect.gpu, cached: doorDetect.cached, load: doorDetect.load, progress: doorDetect.progress, error: doorDetect.error,
+            sheet: doorDetectOn && found ? found : null, canRun: !!(rd?.status === "done" && rd.doors.length),
+          };
           const docsBusy = !doorDocs || doorDocs.status === "reading";
           const status = rd?.status === "failed" ? { busy: true, text: `Couldn't read this sheet's doors: ${rd.error}` }
             : reading ? { busy: true, text: "Reading the doors on this sheet…" }
@@ -12866,6 +12967,8 @@ export default function TakeoffCanvas() {
               compareOn={doorCompareOn} canCompare={!!doorSchedKey} onCompare={toggleDoorCompare}
               selMark={doorSelMark} hoverMark={doorHover} onHoverRow={setDoorHover} onPickRow={pickDoorRow}
               placed={doorPlaced} checks={doorAnswers} onCheck={setDoorCheck} onNote={setDoorNote}
+              detect={detect} onToggleDetect={toggleDoorDetect}
+              onRetryDetect={() => { setDoorDetect((d) => ({ ...d, load: "idle", error: null })); if (doorKey) setDoorFound((prev) => { if (prev[doorKey]?.status !== "failed") return prev; const n = { ...prev }; delete n[doorKey]; return n; }); }}
               onClose={() => pickViewTrade(ALL_TRADES)}
             />
           );

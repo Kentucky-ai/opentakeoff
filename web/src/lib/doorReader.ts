@@ -47,6 +47,12 @@ export interface ReadDoor {
   confidence: number;
   /** what lowers it, in words: the reasons a withheld door was held back */
   doubts: string[];
+  /**
+   * Set on a door the detector added ("Find more doors", lib/doorDetect), never by the reader: what kind of door the
+   * model saw ("opening" = a cased opening, "sliding", "bifold", "overhead", "swing", "swing doorway strip"), its score,
+   * and how its line was drawn. Such a door has no leaves unless a swing was fitted.
+   */
+  added?: { kind: string; score: number; how: string };
 }
 
 /** The doubts the reader can raise, in its bit order (confidence.rs DOUBTS). */

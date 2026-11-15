@@ -84,3 +84,7 @@
 .ds-chk.ok { background: #0f9d8a; border-color: #0f9d8a; color: #fff; }
 .ds-chk.look { background: #d97706; border-color: #d97706; color: #fff; }
 .ds-note-in { padding: 6px 8px; border: 1px solid var(--ink-faint); background: var(--paper-cream); color: var(--ink); font: inherit; font-size: var(--fs-s); }
+
+/* Find more doors: the switch and, beside it, one line on what it is doing or found */
+.ds-find { align-items: flex-start; }
+.ds-find-line { flex: 1 1 180px; min-width: 0; }
