@@ -419,7 +419,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
       {activeTab === "overlay" && (
         <RevisionOverlay
           sheets={availableSheets}
-          initialSheetKey={availableSheets[0]?.key || "sample-finish-plan.pdf#1"}
+          initialSheetKey={current?.shapes?.[0]?.sheet_id || availableSheets[0]?.key || "sample-finish-plan.pdf#1"}
           shapes={current?.shapes || []}
           onApplyCarriedShapes={handleApplyCarriedShapes}
           onClose={() => setActiveTab("quantities")}
