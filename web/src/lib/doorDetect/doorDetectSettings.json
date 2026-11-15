@@ -1,5 +1,5 @@
 {
-  "version": "v6-retuned-2026-11-14",
+  "version": "v7-2026-11-14",
   "note": "Every cutoff of the in-browser door detector and its fusion with the door reader. Chosen on development sheets; swap this file to change them, no code change needed.",
   "model": {
     "repo": "Kentucky-ai/opentakeoff-door-detector",
@@ -26,9 +26,9 @@
     "veto_any_det": 0.3,
     "rescue": 0.5,
     "merge": true,
-    "class_minimums": { "7": 0.45, "6": 0.5, "1": 0.7, "3": 0.6, "4": 0.9 },
+    "class_minimums": { "7": 0.45, "6": 0.45, "1": 0.7, "3": 0.5 },
     "pads_ft": { "6": 0.3, "7": 0.3 },
-    "swing_box": { "min": 0.7, "strip_min": 0.2, "arc_sweep_deg": [76, 104], "margin": 0.15, "fallback": 0.9 }
+    "swing_box": { "min": 0.6, "strip_min": 0.2, "arc_sweep_deg": [76, 104], "margin": 0.15, "fallback": 0.7 }
   },
   "tags": {
     "dup_drop": false, "near_ft": 3.0, "style_share": 0.55, "style_min_n": 4, "style_uniq": 0.6, "reach_ft": 4.0,
