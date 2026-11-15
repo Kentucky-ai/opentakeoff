@@ -44,6 +44,8 @@ export default function RevisionOverlay({
   const [diffMode, setDiffMode] = useState("auto"); // "auto" | "vector" | "raster"
   const [diffResult, setDiffResult] = useState(null);
   const [alignment, setAlignment] = useState({ dx: 0, dy: 0, confidence: 1, method: "identity" });
+  const alignmentRef = useRef(alignment);
+  alignmentRef.current = alignment;
   const [fade, setFade] = useState(50); // 0 = 100% Base, 50 = Diff, 100 = 100% Incoming
   const [manualAlignState, setManualAlignState] = useState(null); // null | { step: "pick_base", pBase: null } | { step: "pick_inc", pBase: [x, y] }
   const [slipSheetMessage, setSlipSheetMessage] = useState("");
@@ -54,6 +56,11 @@ export default function RevisionOverlay({
   const baseRasterCanvasRef = useRef(null);
   const incRasterCanvasRef = useRef(null);
   const pageDimsRef = useRef({ width: 1000, height: 800 });
+
+  const [customIncBytes, setCustomIncBytes] = useState(null);
+  const [customIncFileName, setCustomIncFileName] = useState("");
+  const [incPageNum, setIncPageNum] = useState(pageNumber);
+  const [incDocNumPages, setIncDocNumPages] = useState(1);
 
   // 1. Fetch available revisions for this PDF
   useEffect(() => {
@@ -76,9 +83,84 @@ export default function RevisionOverlay({
     return () => { cancelled = true; };
   }, [fileName]);
 
+  // Handle direct file upload for comparing with an Addendum PDF
+  const handleIncomingFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      setCustomIncBytes(bytes);
+      setCustomIncFileName(file.name);
+
+      // Pass a clone so pdf.js worker transfer never detaches our stored bytes
+      const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+      setIncDocNumPages(doc.numPages);
+
+      // Auto-match sheet number if possible (e.g. A1.3 on page 6)
+      let matchedPage = pageNumber;
+      const activeSheetObj = sheets.find(
+        (s) => s.key === selectedSheetKey || (s.file === fileName && s.page === pageNumber)
+      );
+
+      // Try finding the sheet identifier from sheet metadata or current sheet text
+      let query = (activeSheetObj?.sheetNumber || activeSheetObj?.label || "").toUpperCase();
+      if (!query) {
+        // Read the base page text to find its drawing number (e.g. A1.3)
+        try {
+          const baseRaw = await store.loadPdfRevisionData(fileName, baseRev);
+          const baseDoc = await pdfjsLib.getDocument({ data: baseRaw.slice() }).promise;
+          const bPage = await baseDoc.getPage(pageNumber);
+          const bTc = await bPage.getTextContent();
+          const bStr = bTc.items.map((it) => it.str).join(" ");
+          const bMatch = bStr.match(/\b(A\d+\.\d+|A\d+)\b/i);
+          if (bMatch) query = bMatch[1].toUpperCase();
+          await baseDoc.destroy();
+        } catch {
+          // ignore fallback
+        }
+      }
+
+      if (query) {
+        // Get base page dimensions so we can prefer the page with matching sheet size
+        // (avoids matching A1.3 in cover-sheet index tables, which are letter-sized)
+        const baseDoc2 = await pdfjsLib.getDocument({ data: (await store.loadPdfRevisionData(fileName, baseRev)).slice() }).promise;
+        const basePg = await baseDoc2.getPage(pageNumber);
+        const baseView = basePg.view; // [x0, y0, x1, y1]
+        const baseW = Math.round(baseView[2] - baseView[0]);
+        const baseH = Math.round(baseView[3] - baseView[1]);
+        await baseDoc2.destroy();
+
+        // First pass: find all candidates with the query string
+        const candidates = [];
+        for (let p = 1; p <= doc.numPages; p++) {
+          const pg = await doc.getPage(p);
+          const pgView = pg.view;
+          const pgW = Math.round(pgView[2] - pgView[0]);
+          const pgH = Math.round(pgView[3] - pgView[1]);
+          const tc = await pg.getTextContent();
+          const str = tc.items.map((it) => it.str).join(" ");
+          if (str.toUpperCase().includes(query)) {
+            const dimMatch = (pgW === baseW && pgH === baseH) || (pgW === baseH && pgH === baseW);
+            candidates.push({ p, dimMatch });
+          }
+        }
+
+        if (candidates.length > 0) {
+          // Prefer a candidate whose page size matches the base sheet over letter-sized index pages
+          const bestCandidate = candidates.find((c) => c.dimMatch) || candidates[0];
+          matchedPage = bestCandidate.p;
+        }
+      }
+      setIncPageNum(matchedPage);
+      await doc.destroy();
+    } catch (err) {
+      setError(`Failed to read addendum PDF: ${err.message || err}`);
+    }
+  };
+
   // 2. Load and compute diff for both revisions
   useEffect(() => {
-    if (!baseRev || !incomingRev || !fileName) return;
+    if (!baseRev || (!incomingRev && !customIncBytes) || !fileName) return;
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -86,19 +168,18 @@ export default function RevisionOverlay({
 
     async function loadAndDiff() {
       try {
-        const [baseBytes, incBytes] = await Promise.all([
-          store.loadPdfRevisionData(fileName, baseRev),
-          store.loadPdfRevisionData(fileName, incomingRev),
-        ]);
+        const baseBytes = await store.loadPdfRevisionData(fileName, baseRev);
+        const incBytes = customIncBytes || await store.loadPdfRevisionData(fileName, incomingRev);
 
+        // Always pass .slice() so pdf.js worker transfer never detaches the original buffers
         const [baseDoc, incDoc] = await Promise.all([
-          pdfjsLib.getDocument({ data: baseBytes }).promise,
-          pdfjsLib.getDocument({ data: incBytes }).promise,
+          pdfjsLib.getDocument({ data: baseBytes.slice() }).promise,
+          pdfjsLib.getDocument({ data: incBytes.slice() }).promise,
         ]);
 
         const [basePage, incPage] = await Promise.all([
           baseDoc.getPage(pageNumber),
-          incDoc.getPage(pageNumber),
+          incDoc.getPage(customIncBytes ? incPageNum : pageNumber),
         ]);
 
         const vp = basePage.getViewport({ scale: 2.0 });
@@ -112,28 +193,35 @@ export default function RevisionOverlay({
         const baseGeom = extractVectorGeometry(baseOps, vp.transform, pdfjsLib.OPS);
         const incGeom = extractVectorGeometry(incOps, vp.transform, pdfjsLib.OPS);
 
-        // Convert geom to Segments
+        // Convert geom to Segments (extractVectorGeometry segs is [x0, y0, x1, y1, ...])
         const baseSegs = [];
-        for (let i = 0; i < baseGeom.segs.length; i += 2) {
-          const p0 = baseGeom.points[baseGeom.segs[i]];
-          const p1 = baseGeom.points[baseGeom.segs[i + 1]];
-          if (p0 && p1) baseSegs.push([p0[0], p0[1], p1[0], p1[1]]);
+        for (let i = 0; i < baseGeom.segs.length; i += 4) {
+          baseSegs.push([
+            baseGeom.segs[i],
+            baseGeom.segs[i + 1],
+            baseGeom.segs[i + 2],
+            baseGeom.segs[i + 3],
+          ]);
         }
 
         const incSegs = [];
-        for (let i = 0; i < incGeom.segs.length; i += 2) {
-          const p0 = incGeom.points[incGeom.segs[i]];
-          const p1 = incGeom.points[incGeom.segs[i + 1]];
-          if (p0 && p1) incSegs.push([p0[0], p0[1], p1[0], p1[1]]);
+        for (let i = 0; i < incGeom.segs.length; i += 4) {
+          incSegs.push([
+            incGeom.segs[i],
+            incGeom.segs[i + 1],
+            incGeom.segs[i + 2],
+            incGeom.segs[i + 3],
+          ]);
         }
 
         baseSegsRef.current = baseSegs;
         incSegsRef.current = incSegs;
 
         // Auto-align sheets unless user supplied a manual alignment
-        let activeAlign = alignment;
+        let activeAlign = alignmentRef.current;
         if (activeAlign.method !== "manual") {
           activeAlign = autoAlignSheets(baseSegs, incSegs, vp.width, vp.height);
+          alignmentRef.current = activeAlign;
           setAlignment(activeAlign);
         }
 
@@ -176,8 +264,8 @@ export default function RevisionOverlay({
             setLoading(false);
           }
         } else {
-          // Run vector diff
-          const vDiff = diffVectorSegments(baseSegs, incSegs, activeAlign, 1.0);
+          // Run vector diff (tolerance 2.0 device px = 1.0 pt at scale 2.0)
+          const vDiff = diffVectorSegments(baseSegs, incSegs, activeAlign, 2.0);
           if (!cancelled) {
             setDiffResult(vDiff);
             setLoading(false);
@@ -195,7 +283,7 @@ export default function RevisionOverlay({
 
     loadAndDiff();
     return () => { cancelled = true; };
-  }, [fileName, pageNumber, baseRev, incomingRev, diffMode, alignment]);
+  }, [fileName, pageNumber, baseRev, incomingRev, diffMode, customIncBytes, incPageNum]);
 
   // 3. Render canvas overlay according to fade slider and diff result
   useEffect(() => {
@@ -229,10 +317,12 @@ export default function RevisionOverlay({
       }
       ctx.globalAlpha = 1.0;
     } else if (diffResult.method === "vector") {
-      ctx.lineWidth = 1.0;
+      const f50 = Math.abs(f - 0.5); // 0 at mid = diff mode; 0.5 at extremes
 
-      // 1. Draw Unchanged linework in neutral gray
-      ctx.strokeStyle = "rgba(120, 135, 155, 0.5)";
+      // 1. Draw Unchanged linework in neutral gray — lighter when slider is at mid (diff focus)
+      const unchangedAlpha = 0.25 + f50 * 0.5; // 0.25 at mid, 0.5 at extremes
+      ctx.lineWidth = 1.0;
+      ctx.strokeStyle = `rgba(140, 150, 165, ${unchangedAlpha})`;
       ctx.beginPath();
       for (const seg of diffResult.unchangedSegments) {
         ctx.moveTo(seg[0], seg[1]);
@@ -240,10 +330,11 @@ export default function RevisionOverlay({
       }
       ctx.stroke();
 
-      // 2. Draw Removed linework (Base only) in red, opacity weighted towards 0% fade
+      // 2. Draw Removed linework (Base only) in red — bold and always visible at mid
       const removedAlpha = Math.max(0, 1 - f * 1.5);
-      if (removedAlpha > 0.05) {
-        ctx.strokeStyle = `rgba(220, 38, 38, ${removedAlpha})`;
+      if (removedAlpha > 0.02) {
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = `rgba(220, 38, 38, ${Math.max(removedAlpha, f50 < 0.3 ? 0.75 : 0)})`;
         ctx.beginPath();
         for (const seg of diffResult.removedSegments) {
           ctx.moveTo(seg[0], seg[1]);
@@ -252,10 +343,31 @@ export default function RevisionOverlay({
         ctx.stroke();
       }
 
-      // 3. Draw Added linework (Incoming only) in cobalt/cyan, opacity weighted towards 100% fade
+      // 3. Draw Added linework (Incoming only) in cobalt/teal — bold and always visible at mid
       const addedAlpha = Math.max(0, (f - 0.2) * 1.25);
-      if (addedAlpha > 0.05) {
-        ctx.strokeStyle = `rgba(14, 99, 107, ${addedAlpha})`;
+      if (addedAlpha > 0.02) {
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = `rgba(14, 155, 170, ${Math.max(addedAlpha, f50 < 0.3 ? 0.75 : 0)})`;
+        ctx.beginPath();
+        for (const seg of diffResult.addedSegments) {
+          ctx.moveTo(seg[0], seg[1]);
+          ctx.lineTo(seg[2], seg[3]);
+        }
+        ctx.stroke();
+      }
+
+      // 4. At mid-slider (diff mode): always show removed in red and added in cyan regardless of alpha calc
+      if (f50 < 0.1) {
+        // Pure diff mode: show BOTH removed (red) and added (cyan) at full opacity
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(220, 38, 38, 0.9)";
+        ctx.beginPath();
+        for (const seg of diffResult.removedSegments) {
+          ctx.moveTo(seg[0], seg[1]);
+          ctx.lineTo(seg[2], seg[3]);
+        }
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(0, 185, 200, 0.9)";
         ctx.beginPath();
         for (const seg of diffResult.addedSegments) {
           ctx.moveTo(seg[0], seg[1]);
@@ -288,6 +400,16 @@ export default function RevisionOverlay({
     }
   }, [diffResult, fade, manualAlignState]);
 
+  // Helper to apply and re-diff when alignment changes manually
+  const applyAlignment = (newAlign) => {
+    alignmentRef.current = newAlign;
+    setAlignment(newAlign);
+    if (baseSegsRef.current.length > 0 && incSegsRef.current.length > 0) {
+      const vDiff = diffVectorSegments(baseSegsRef.current, incSegsRef.current, newAlign, 2.0);
+      setDiffResult(vDiff);
+    }
+  };
+
   // 4. Handle Canvas Click for 2-Point Manual Alignment
   const handleCanvasClick = (e) => {
     if (!manualAlignState || !canvasRef.current) return;
@@ -301,7 +423,7 @@ export default function RevisionOverlay({
       setManualAlignState({ step: "pick_inc", pBase: [clickX, clickY] });
     } else if (manualAlignState.step === "pick_inc") {
       const manualAlign = manualTwoPointAlign(manualAlignState.pBase, [clickX, clickY]);
-      setAlignment(manualAlign);
+      applyAlignment(manualAlign);
       setManualAlignState(null);
     }
   };
@@ -310,7 +432,10 @@ export default function RevisionOverlay({
   const handleSlipSheet = () => {
     if (!diffResult || !onApplyCarriedShapes) return;
     const baseKey = selectedSheetKey;
-    const targetKey = selectedSheetKey;
+    const hasProjectSheet = sheets && sheets.some((s) => (s.key || s.sheet_id) === `${customIncFileName}#${incPageNum}`);
+    const targetKey = (customIncFileName && hasProjectSheet)
+      ? `${customIncFileName}#${incPageNum}`
+      : selectedSheetKey;
     const { width, height } = pageDimsRef.current;
 
     const carried = carryTakeoffShapes(
@@ -324,7 +449,7 @@ export default function RevisionOverlay({
 
     onApplyCarriedShapes(carried.shapes, baseKey, targetKey);
     setSlipSheetMessage(
-      `✓ Carried ${carried.shapes.length} takeoffs to Rev ${incomingRev}. ${
+      `✓ Carried ${carried.shapes.length} takeoffs to ${customIncFileName ? `${customIncFileName} (p.${incPageNum})` : `Rev ${incomingRev}`}. ${
         carried.flaggedCount > 0
           ? `${carried.flaggedCount} shape${carried.flaggedCount === 1 ? "" : "s"} flagged "Check after revision" because ink changed.`
           : "All shapes unaffected."
@@ -444,22 +569,72 @@ export default function RevisionOverlay({
           <span style={{ color: "var(--ink-muted)" }}>➔</span>
 
           <label style={{ fontSize: 12.5, fontWeight: 600 }}>Incoming:</label>
-          <select
-            value={incomingRev}
-            onChange={(e) => setIncomingRev(Number(e.target.value))}
-            style={{ padding: "4px 8px", borderRadius: 4, border: "1px solid var(--ink-faint)" }}
-          >
-            {revisions.map((r) => (
-              <option key={r.rev} value={r.rev}>
-                Rev {r.rev} {r.current ? "(Live)" : ""}
-              </option>
-            ))}
-          </select>
+          {customIncFileName ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--cobalt, #0e636b)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={customIncFileName}>
+                {customIncFileName}
+              </span>
+              <label style={{ fontSize: 11, color: "var(--ink-muted)" }}>p.</label>
+              <select
+                value={incPageNum}
+                onChange={(e) => setIncPageNum(Number(e.target.value))}
+                style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--ink-faint)", fontSize: 12 }}
+              >
+                {Array.from({ length: incDocNumPages }, (_, i) => i + 1).map((p) => (
+                  <option key={p} value={p}>Page {p}</option>
+                ))}
+              </select>
+              <label style={{
+                fontSize: 11,
+                padding: "3px 7px",
+                backgroundColor: "var(--tint-select, #e3f3f4)",
+                color: "var(--cobalt, #0e636b)",
+                borderRadius: 4,
+                cursor: "pointer",
+                fontWeight: 600,
+                border: "1px solid var(--ink-faint)",
+              }}>
+                Change…
+                <input type="file" accept=".pdf" onChange={handleIncomingFileUpload} style={{ display: "none" }} />
+              </label>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <select
+                value={incomingRev}
+                onChange={(e) => setIncomingRev(Number(e.target.value))}
+                style={{ padding: "4px 8px", borderRadius: 4, border: "1px solid var(--ink-faint)" }}
+              >
+                {revisions.map((r) => (
+                  <option key={r.rev} value={r.rev}>
+                    Rev {r.rev} {r.current ? "(Live)" : ""}
+                  </option>
+                ))}
+              </select>
+              <label style={{
+                fontSize: 11.5,
+                padding: "4px 9px",
+                backgroundColor: "var(--cobalt, #0e636b)",
+                color: "#ffffff",
+                borderRadius: 4,
+                cursor: "pointer",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }} title="Select an issued Addendum PDF (e.g. 26-31-Addendum-Three-COMPLETE.pdf) to compare against this sheet">
+                <span>📁 Select Addendum PDF</span>
+                <input type="file" accept=".pdf" onChange={handleIncomingFileUpload} style={{ display: "none" }} />
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Fading Slider */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 1 320px" }}>
-          <span style={{ fontSize: 12, color: "#ef4444", fontWeight: 600 }}>Rev {baseRev}</span>
+          <span style={{ fontSize: 12, color: "#ef4444", fontWeight: 600 }}>
+            {`Rev ${baseRev}`}
+          </span>
           <input
             type="range"
             min={0}
@@ -469,7 +644,9 @@ export default function RevisionOverlay({
             style={{ flex: 1, cursor: "pointer" }}
             title="Fade slider: 0% = Rev A, 50% = Diff Overlay, 100% = Rev B"
           />
-          <span style={{ fontSize: 12, color: "#0e636b", fontWeight: 600 }}>Rev {incomingRev}</span>
+          <span style={{ fontSize: 12, color: "#0e636b", fontWeight: 600 }}>
+            {customIncFileName ? `p.${incPageNum}` : `Rev ${incomingRev}`}
+          </span>
         </div>
 
         {/* Diff Mode Toggle */}
@@ -510,7 +687,15 @@ export default function RevisionOverlay({
 
           {alignment.method === "manual" && (
             <button
-              onClick={() => setAlignment({ dx: 0, dy: 0, confidence: 1, method: "identity" })}
+              onClick={() => {
+                const autoAlign = autoAlignSheets(
+                  baseSegsRef.current,
+                  incSegsRef.current,
+                  pageDimsRef.current.width,
+                  pageDimsRef.current.height
+                );
+                applyAlignment(autoAlign);
+              }}
               style={{
                 padding: "4px 8px",
                 background: "transparent",
