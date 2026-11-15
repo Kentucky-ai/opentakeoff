@@ -9,7 +9,7 @@ import { store } from "../lib/store.js";
 import { extractVectorGeometry } from "../lib/oneclick.ts";
 import { diffVectorSegments, diffRasterGrayscale } from "../lib/revisionDiff.ts";
 import { autoAlignSheets, manualTwoPointAlign } from "../lib/sheetAlign.ts";
-import { carryTakeoffShapes } from "../lib/slipsheet.ts";
+import { carryTakeoffShapes, aabbOverlap, polygonsIntersect } from "../lib/slipsheet.ts";
 import { parseSheetKey } from "../lib/sheetKey";
 
 export default function RevisionOverlay({
@@ -398,7 +398,61 @@ export default function RevisionOverlay({
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-  }, [diffResult, fade, manualAlignState]);
+
+    // 5. Draw existing takeoff shapes overlaid on the sheet
+    if (shapes && shapes.length > 0) {
+      const pageShapes = shapes.filter(
+        (s) => s.sheet_id === selectedSheetKey || (!s.sheet_id && pageNumber === 1)
+      );
+      for (const shape of pageShapes) {
+        if (!shape.verts_norm || shape.verts_norm.length < 3) continue;
+
+        const vertsPx = shape.verts_norm.map(([nx, ny]) => [nx * width, ny * height]);
+
+        // Check if this shape touches any changed region
+        let touchesChange = false;
+        if (diffResult?.changedRegions?.length > 0) {
+          let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
+          for (const [vx, vy] of vertsPx) {
+            if (vx < sMinX) sMinX = vx;
+            if (vx > sMaxX) sMaxX = vx;
+            if (vy < sMinY) sMinY = vy;
+            if (vy > sMaxY) sMaxY = vy;
+          }
+          const sBox = [sMinX, sMinY, sMaxX, sMaxY];
+          for (const reg of diffResult.changedRegions) {
+            if (aabbOverlap(sBox, reg.bounds) && polygonsIntersect(vertsPx, reg.hull)) {
+              touchesChange = true;
+              break;
+            }
+          }
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(vertsPx[0][0], vertsPx[0][1]);
+        for (let i = 1; i < vertsPx.length; i++) {
+          ctx.lineTo(vertsPx[i][0], vertsPx[i][1]);
+        }
+        ctx.closePath();
+
+        if (touchesChange) {
+          // Flagged for revision: distinct amber/orange fill and border
+          ctx.fillStyle = "rgba(245, 158, 11, 0.28)";
+          ctx.fill();
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = "rgba(217, 119, 6, 0.95)";
+          ctx.stroke();
+        } else {
+          // Unaffected: normal green takeoff fill and border
+          ctx.fillStyle = "rgba(16, 185, 129, 0.24)";
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "rgba(16, 185, 129, 0.9)";
+          ctx.stroke();
+        }
+      }
+    }
+  }, [diffResult, fade, manualAlignState, shapes, selectedSheetKey]);
 
   // Helper to apply and re-diff when alignment changes manually
   const applyAlignment = (newAlign) => {
@@ -821,8 +875,10 @@ export default function RevisionOverlay({
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <span><strong style={{ color: "#888888" }}>■</strong> Unchanged</span>
           <span><strong style={{ color: "#ef4444" }}>■</strong> Removed (Old)</span>
-          <span><strong style={{ color: "#0e636b" }}>■</strong> Added (New)</span>
+          <span><strong style={{ color: "#00b9c8" }}>■</strong> Added (New)</span>
           <span><strong style={{ color: "#d97706" }}>□</strong> Changed ink boundary</span>
+          <span><strong style={{ color: "#10b981" }}>■</strong> Takeoff (Clean)</span>
+          <span><strong style={{ color: "#f59e0b" }}>■</strong> Takeoff (Flagged)</span>
           <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>
             Align: {alignment.method} (dx: {Math.round(alignment.dx)}, dy: {Math.round(alignment.dy)})
           </span>
