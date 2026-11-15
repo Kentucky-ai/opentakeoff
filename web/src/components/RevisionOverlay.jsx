@@ -168,30 +168,31 @@ export default function RevisionOverlay({
 
     async function loadAndDiff() {
       try {
+        const t0 = performance.now();
         const baseBytes = await store.loadPdfRevisionData(fileName, baseRev);
         const incBytes = customIncBytes || await store.loadPdfRevisionData(fileName, incomingRev);
 
-        // Always pass .slice() so pdf.js worker transfer never detaches the original buffers
-        const [baseDoc, incDoc] = await Promise.all([
-          pdfjsLib.getDocument({ data: baseBytes.slice() }).promise,
-          pdfjsLib.getDocument({ data: incBytes.slice() }).promise,
-        ]);
+        const isSelfComparison = (baseRev === incomingRev && !customIncBytes);
 
-        const [basePage, incPage] = await Promise.all([
-          baseDoc.getPage(pageNumber),
-          incDoc.getPage(customIncBytes ? incPageNum : pageNumber),
-        ]);
+        // Always pass .slice() so pdf.js worker transfer never detaches the original buffers
+        const baseDoc = await pdfjsLib.getDocument({ data: baseBytes.slice() }).promise;
+        const incDoc = isSelfComparison
+          ? baseDoc
+          : await pdfjsLib.getDocument({ data: incBytes.slice() }).promise;
+
+        const basePage = await baseDoc.getPage(pageNumber);
+        const incPage = isSelfComparison
+          ? basePage
+          : await incDoc.getPage(customIncBytes ? incPageNum : pageNumber);
 
         const vp = basePage.getViewport({ scale: 2.0 });
         pageDimsRef.current = { width: vp.width, height: vp.height };
 
-        const [baseOps, incOps] = await Promise.all([
-          basePage.getOperatorList(),
-          incPage.getOperatorList(),
-        ]);
+        const baseOps = await basePage.getOperatorList();
+        const incOps = isSelfComparison ? baseOps : await incPage.getOperatorList();
 
         const baseGeom = extractVectorGeometry(baseOps, vp.transform, pdfjsLib.OPS);
-        const incGeom = extractVectorGeometry(incOps, vp.transform, pdfjsLib.OPS);
+        const incGeom = isSelfComparison ? baseGeom : extractVectorGeometry(incOps, vp.transform, pdfjsLib.OPS);
 
         // Convert geom to Segments (extractVectorGeometry segs is [x0, y0, x1, y1, ...])
         const baseSegs = [];
@@ -204,14 +205,18 @@ export default function RevisionOverlay({
           ]);
         }
 
-        const incSegs = [];
-        for (let i = 0; i < incGeom.segs.length; i += 4) {
-          incSegs.push([
-            incGeom.segs[i],
-            incGeom.segs[i + 1],
-            incGeom.segs[i + 2],
-            incGeom.segs[i + 3],
-          ]);
+        const incSegs = isSelfComparison
+          ? baseSegs
+          : [];
+        if (!isSelfComparison) {
+          for (let i = 0; i < incGeom.segs.length; i += 4) {
+            incSegs.push([
+              incGeom.segs[i],
+              incGeom.segs[i + 1],
+              incGeom.segs[i + 2],
+              incGeom.segs[i + 3],
+            ]);
+          }
         }
 
         baseSegsRef.current = baseSegs;
@@ -220,9 +225,36 @@ export default function RevisionOverlay({
         // Auto-align sheets unless user supplied a manual alignment
         let activeAlign = alignmentRef.current;
         if (activeAlign.method !== "manual") {
-          activeAlign = autoAlignSheets(baseSegs, incSegs, vp.width, vp.height);
+          activeAlign = isSelfComparison
+            ? { dx: 0, dy: 0, confidence: 1, method: "identity" }
+            : autoAlignSheets(baseSegs, incSegs, vp.width, vp.height);
           alignmentRef.current = activeAlign;
           setAlignment(activeAlign);
+        }
+
+        // Fast-path: comparing identical revisions on the same sheet has 0 changes
+        if (isSelfComparison && activeAlign.dx === 0 && activeAlign.dy === 0) {
+          const vDiff = {
+            method: "vector",
+            unchangedSegments: baseSegs,
+            removedSegments: [],
+            addedSegments: [],
+            changedRegions: [],
+            stats: {
+              baseCount: baseSegs.length,
+              incomingCount: baseSegs.length,
+              unchangedCount: baseSegs.length,
+              removedCount: 0,
+              addedCount: 0,
+              durationMs: Math.round(performance.now() - t0),
+            },
+          };
+          if (!cancelled) {
+            setDiffResult(vDiff);
+            setLoading(false);
+          }
+          await baseDoc.destroy();
+          return;
         }
 
         const shouldUseRaster = diffMode === "raster" || (diffMode === "auto" && (baseSegs.length === 0 || incSegs.length === 0));
@@ -259,6 +291,10 @@ export default function RevisionOverlay({
           }
 
           const rasterDiff = diffRasterGrayscale(basePix, incPix, rW, rH, dpi);
+          rasterDiff.stats = {
+            ...rasterDiff.stats,
+            durationMs: Math.round(performance.now() - t0),
+          };
           if (!cancelled) {
             setDiffResult(rasterDiff);
             setLoading(false);
@@ -266,13 +302,21 @@ export default function RevisionOverlay({
         } else {
           // Run vector diff (tolerance 2.0 device px = 1.0 pt at scale 2.0)
           const vDiff = diffVectorSegments(baseSegs, incSegs, activeAlign, 2.0);
+          vDiff.stats = {
+            ...vDiff.stats,
+            durationMs: Math.round(performance.now() - t0),
+          };
           if (!cancelled) {
             setDiffResult(vDiff);
             setLoading(false);
           }
         }
 
-        await Promise.all([baseDoc.destroy(), incDoc.destroy()]);
+        if (incDoc !== baseDoc) {
+          await Promise.all([baseDoc.destroy(), incDoc.destroy()]);
+        } else {
+          await baseDoc.destroy();
+        }
       } catch (err) {
         if (!cancelled) {
           setError(`Failed to compute revision overlay: ${err.message || err}`);
@@ -332,9 +376,10 @@ export default function RevisionOverlay({
 
       // 2. Draw Removed linework (Base only) in red — bold and always visible at mid
       const removedAlpha = Math.max(0, 1 - f * 1.5);
-      if (removedAlpha > 0.02) {
+      const effectiveRemovedAlpha = f50 < 0.1 ? 0.9 : Math.max(removedAlpha, f50 < 0.3 ? 0.75 : 0);
+      if (effectiveRemovedAlpha > 0.02) {
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = `rgba(220, 38, 38, ${Math.max(removedAlpha, f50 < 0.3 ? 0.75 : 0)})`;
+        ctx.strokeStyle = `rgba(220, 38, 38, ${effectiveRemovedAlpha})`;
         ctx.beginPath();
         for (const seg of diffResult.removedSegments) {
           ctx.moveTo(seg[0], seg[1]);
@@ -345,29 +390,10 @@ export default function RevisionOverlay({
 
       // 3. Draw Added linework (Incoming only) in cobalt/teal — bold and always visible at mid
       const addedAlpha = Math.max(0, (f - 0.2) * 1.25);
-      if (addedAlpha > 0.02) {
+      const effectiveAddedAlpha = f50 < 0.1 ? 0.9 : Math.max(addedAlpha, f50 < 0.3 ? 0.75 : 0);
+      if (effectiveAddedAlpha > 0.02) {
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = `rgba(14, 155, 170, ${Math.max(addedAlpha, f50 < 0.3 ? 0.75 : 0)})`;
-        ctx.beginPath();
-        for (const seg of diffResult.addedSegments) {
-          ctx.moveTo(seg[0], seg[1]);
-          ctx.lineTo(seg[2], seg[3]);
-        }
-        ctx.stroke();
-      }
-
-      // 4. At mid-slider (diff mode): always show removed in red and added in cyan regardless of alpha calc
-      if (f50 < 0.1) {
-        // Pure diff mode: show BOTH removed (red) and added (cyan) at full opacity
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = "rgba(220, 38, 38, 0.9)";
-        ctx.beginPath();
-        for (const seg of diffResult.removedSegments) {
-          ctx.moveTo(seg[0], seg[1]);
-          ctx.lineTo(seg[2], seg[3]);
-        }
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(0, 185, 200, 0.9)";
+        ctx.strokeStyle = `rgba(0, 185, 200, ${effectiveAddedAlpha})`;
         ctx.beginPath();
         for (const seg of diffResult.addedSegments) {
           ctx.moveTo(seg[0], seg[1]);
@@ -401,9 +427,12 @@ export default function RevisionOverlay({
 
     // 5. Draw existing takeoff shapes overlaid on the sheet
     if (shapes && shapes.length > 0) {
-      const pageShapes = shapes.filter(
-        (s) => s.sheet_id === selectedSheetKey || (!s.sheet_id && pageNumber === 1)
-      );
+      const pageShapes = shapes.filter((s) => {
+        if (!s.sheet_id) return pageNumber === 1;
+        if (s.sheet_id === selectedSheetKey) return true;
+        const sp = parseSheetKey(s.sheet_id);
+        return sp.file === fileName && sp.page === pageNumber;
+      });
       for (const shape of pageShapes) {
         if (!shape.verts_norm || shape.verts_norm.length < 3) continue;
 
@@ -459,7 +488,30 @@ export default function RevisionOverlay({
     alignmentRef.current = newAlign;
     setAlignment(newAlign);
     if (baseSegsRef.current.length > 0 && incSegsRef.current.length > 0) {
+      if (baseRev === incomingRev && !customIncBytes && newAlign.dx === 0 && newAlign.dy === 0) {
+        setDiffResult({
+          method: "vector",
+          unchangedSegments: baseSegsRef.current,
+          removedSegments: [],
+          addedSegments: [],
+          changedRegions: [],
+          stats: {
+            baseCount: baseSegsRef.current.length,
+            incomingCount: baseSegsRef.current.length,
+            unchangedCount: baseSegsRef.current.length,
+            removedCount: 0,
+            addedCount: 0,
+            durationMs: 0,
+          },
+        });
+        return;
+      }
+      const t0 = performance.now();
       const vDiff = diffVectorSegments(baseSegsRef.current, incSegsRef.current, newAlign, 2.0);
+      vDiff.stats = {
+        ...vDiff.stats,
+        durationMs: Math.round(performance.now() - t0),
+      };
       setDiffResult(vDiff);
     }
   };
@@ -514,10 +566,11 @@ export default function RevisionOverlay({
   // 6. Summary stats using useMemo
   const statsSummary = useMemo(() => {
     if (!diffResult) return null;
+    const dur = diffResult.stats?.durationMs != null ? ` (${diffResult.stats.durationMs}ms)` : "";
     if (diffResult.method === "vector") {
-      return `${diffResult.stats.removedCount} removed · ${diffResult.stats.addedCount} added · ${diffResult.changedRegions.length} change regions`;
+      return `${diffResult.stats.removedCount} removed · ${diffResult.stats.addedCount} added · ${diffResult.changedRegions.length} change regions${dur}`;
     }
-    return `${diffResult.stats.changedPixels} px changed (${(diffResult.stats.changeRatio * 100).toFixed(1)}%) · ${diffResult.changedRegions.length} change regions`;
+    return `${diffResult.stats.changedPixels} px changed (${(diffResult.stats.changeRatio * 100).toFixed(1)}%) · ${diffResult.changedRegions.length} change regions${dur}`;
   }, [diffResult]);
 
   return (
