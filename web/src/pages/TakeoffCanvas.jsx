@@ -789,7 +789,7 @@ export default function TakeoffCanvas() {
         const n = parseFloat(saved);
         if (Number.isFinite(n)) return n;
       }
-    } catch {}
+    } catch { /* ignore */ }
     return null;
   });
 
@@ -11697,7 +11697,7 @@ export default function TakeoffCanvas() {
                 if (Math.abs(deltaY) > 4) {
                   d.didDrag = true;
                   setViewControlsDragging(true);
-                  try { viewControlsRef.current?.setPointerCapture(d.pointerId); } catch {}
+                  try { viewControlsRef.current?.setPointerCapture(d.pointerId); } catch { /* gone */ }
                 } else {
                   return;
                 }
@@ -11705,15 +11705,15 @@ export default function TakeoffCanvas() {
               const nextTop = clampViewControlsTop(d.startTop + deltaY);
               setViewControlsTop(nextTop);
             }}
-            onPointerUp={(e) => {
+            onPointerUp={(_e) => {
               if (!dockBottom) return;
               const d = viewControlsDragRef.current;
               if (d) {
-                try { viewControlsRef.current?.releasePointerCapture(d.pointerId); } catch {}
+                try { viewControlsRef.current?.releasePointerCapture(d.pointerId); } catch { /* gone */ }
                 if (d.didDrag) {
                   setViewControlsDragging(false);
                   if (viewControlsTop != null) {
-                    try { localStorage.setItem("opentakeoff:view-controls-top", String(viewControlsTop)); } catch {}
+                    try { localStorage.setItem("opentakeoff:view-controls-top", String(viewControlsTop)); } catch { /* quota/private */ }
                   }
                 }
                 viewControlsDragRef.current = null;
@@ -11723,7 +11723,7 @@ export default function TakeoffCanvas() {
               if (!dockBottom) return;
               const d = viewControlsDragRef.current;
               if (d) {
-                try { viewControlsRef.current?.releasePointerCapture(d.pointerId); } catch {}
+                try { viewControlsRef.current?.releasePointerCapture(d.pointerId); } catch { /* gone */ }
                 setViewControlsDragging(false);
                 viewControlsDragRef.current = null;
               }
@@ -11739,7 +11739,7 @@ export default function TakeoffCanvas() {
               e.stopPropagation();
               if (dockBottom) {
                 setViewControlsTop(null);
-                try { localStorage.removeItem("opentakeoff:view-controls-top"); } catch {}
+                try { localStorage.removeItem("opentakeoff:view-controls-top"); } catch { /* quota/private */ }
               }
             }}
             style={dockBottom
