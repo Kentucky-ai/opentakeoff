@@ -95,6 +95,8 @@ export const icons = {
   // dashed marquee around lines of text — the Copy text tool (#471); the
   // dashed box is the Symbol tool's marquee motif, the ragged last line reads as prose
   copyText: (s) => <I size={s}><rect x="3.5" y="4.5" width="17" height="15" strokeDasharray="2.6 2" /><line x1="7" y1="9" x2="17" y2="9" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="7" y1="15" x2="12.5" y2="15" /></I>,
+  trash: (s) => <I size={s}><path d="M4 7 H 20 M10 11 V 17 M14 11 V 17 M6 7 L 7 19.5 C 7 20.3 7.7 21 8.5 21 H 15.5 C 16.3 21 17 20.3 17 19.5 L 18 7 M9 7 V 4.5 C 9 3.9 9.5 3.5 10 3.5 H 14 C 14.5 3.5 15 3.9 15 4.5 V 7" /></I>,
+  warning: (s) => <I size={s}><path d="M12 3.5 L 21 19.5 H 3 Z" /><line x1="12" y1="9" x2="12" y2="13.5" /><circle cx="12" cy="16.5" r="0.9" fill="currentColor" stroke="none" /></I>,
 };
 
 export function Icon({ name, size = 18 }) {
