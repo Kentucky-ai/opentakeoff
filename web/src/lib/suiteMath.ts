@@ -189,12 +189,28 @@ export function bottomEdges(ring: Pt[], tolFt = 0.5): [Pt, Pt][] {
 
 /**
  * Starter runs along a wall's bottom edges, with the doors that sit on that
- * line cut out (no starter across a door opening). Each run is a 2-point
+ * line cut out (no starter across a door opening). A bottom edge that lies
+ * on another wall shape's edge on the same sheet gets no starter (covers a
+ * gable above a wall and a wall split at a floor line). Each run is a 2-point
  * segment in the ring's own units; tol is in those units too.
  */
-export function starterRuns(wall: Pt[], doors: Pt[][], tol: number): [Pt, Pt][] {
-  const cuts: [number, number, number][] = [];   // [xmin, xmax, y] of each door bottom
-  for (const d of doors) for (const [a, b] of bottomEdges(d, tol)) cuts.push([Math.min(a[0], b[0]), Math.max(a[0], b[0]), (a[1] + b[1]) / 2]);
+export function starterRuns(wall: Pt[], doors: Pt[][], tol: number, otherWalls: Pt[][] = []): [Pt, Pt][] {
+  const cuts: [number, number, number][] = [];   // [xmin, xmax, y] of each cut
+  for (const d of doors) {
+    for (const [a, b] of bottomEdges(d, tol)) {
+      cuts.push([Math.min(a[0], b[0]), Math.max(a[0], b[0]), (a[1] + b[1]) / 2]);
+    }
+  }
+  for (const w of otherWalls) {
+    const p = openRing(w);
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length];
+      const flat = Math.abs(a[1] - b[1]) <= tol * 0.25 || Math.abs(a[1] - b[1]) <= 0.02 * Math.abs(a[0] - b[0]);
+      if (flat && Math.abs(a[0] - b[0]) > 1e-4) {
+        cuts.push([Math.min(a[0], b[0]), Math.max(a[0], b[0]), (a[1] + b[1]) / 2]);
+      }
+    }
+  }
   const out: [Pt, Pt][] = [];
   for (const [a, b] of bottomEdges(wall, tol)) {
     const y = (a[1] + b[1]) / 2;
@@ -233,7 +249,8 @@ export function sidingQuantities(inp: SidingInput) {
   const walls = inp.walls.map((w) => {
     const gross = ringAreaSf(w.ring);
     const doorRings = inp.openings.filter((o) => o.sides === 3 && o.sheet === w.sheet).map((o) => o.ring);
-    const starter = starterRuns(w.ring, doorRings, 0.5).reduce((n, [a, b]) => n + Math.hypot(b[0] - a[0], b[1] - a[1]), 0);
+    const otherWalls = inp.walls.filter((o) => o.id !== w.id && o.sheet === w.sheet).map((o) => o.ring);
+    const starter = starterRuns(w.ring, doorRings, 0.5, otherWalls).reduce((n, [a, b]) => n + Math.hypot(b[0] - a[0], b[1] - a[1]), 0);
     return { id: w.id, gross_sf: r2(gross), starter_lf: r2(starter) };
   });
   const openings = inp.openings.map((o) => {

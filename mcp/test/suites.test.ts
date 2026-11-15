@@ -500,6 +500,27 @@ test("siding_takeoff: wall, window deduct, door traced separately — net, trim,
   assert.equal(bad.isError, true);
 });
 
+test("siding_takeoff: gable traced as its own triangle above wall (#619)", async () => {
+  const client = await pair({ suites: ["siding"] });
+  await ready(client);
+  // sample plan is at upp 0.1
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 600], [400, 600], [400, 700], [100, 700]], condition: "SD-WALL" });
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 600], [400, 600], [250, 525]], condition: "SD-WALL" });
+
+  const r = await call(client, "siding_takeoff", { exposure_in: 4, piece_length_ft: 12 });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.net_sf, 412.5);
+  near(r.data.starter_lf, 30);
+  assert.equal(r.data.committed, 1);                 // 1 SD-STARTER run on the wall's bottom only
+
+  const sum = (await call(client, "takeoff_summary")).data;
+  near(row(sum, "SD-WALL").floor_sf, 412.5);
+  near(row(sum, "SD-STARTER").lf, 30);
+
+  const shapes = (await call(client, "list_shapes", { condition: "SD-STARTER" })).data.shapes;
+  assert.equal(shapes.length, 1);
+});
+
 test("glazing_takeoff: 12 × 8 storefront, 3 × 2 grid — lites, glass, mullion lines", async () => {
   const client = await pair({ suites: ["glazing"] });
   await ready(client);

@@ -18,6 +18,10 @@
 - Added litre/US-gallon display selection at import and export, reversible metric quantity/rate display, and preservation of source package rounding and costs.
 - Replaced clipped fit text with «Лист целиком», clarified allowance/perimeter column names, and allowed estimate headings to wrap.
 
+## 2026-11-15 — gable starter strip (MCP 0.9.111)
+
+- `siding_takeoff`: a wall's bottom edge that lies on another SD-WALL shape's edge on the same sheet gets no starter, so a gable traced as its own shape above a wall or a wall split at a floor line figures the same starter as a single shape (#619).
+
 ## 2026-11-15 — large plan sets open and flip faster, in far less memory (#580, part 1)
 
 - **A stored PDF is read by byte range.** Opening a sheet reads the file's index and that page, not the whole set, and the render workers share the one stored copy where each used to get its own.

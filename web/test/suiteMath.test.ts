@@ -81,6 +81,54 @@ test("starterRuns cuts out a door sitting on the wall bottom", () => {
   assert.deepEqual(lens, [10, 17]);     // 0→10 and 13→30
 });
 
+test("starterRuns: bottom edge on another wall edge gets no starter (#619)", () => {
+  const wall = rect(10, 0, 40, 10);                       // top at y=0, bottom at y=10
+  const gable: Pt[] = [[10, 0], [40, 0], [25, -7.5]];     // bottom at y=0
+  assert.deepEqual(starterRuns(gable, [], 0.5, [wall]), []);
+  const wallRuns = starterRuns(wall, [], 0.5, [gable]);
+  assert.equal(wallRuns.length, 1);
+  near(Math.abs(wallRuns[0][1][0] - wallRuns[0][0][0]), 30);
+});
+
+test("sidingQuantities: gable as its own shape vs 5-point polygon (#619)", () => {
+  // 1. Traced as two shapes: 30 × 10 wall and 30 × 7.5 gable above it
+  const two = sidingQuantities({
+    walls: [
+      { id: "wall", ring: rect(10, 10, 40, 20), sheet: "A" },
+      { id: "gable", ring: [[10, 10], [40, 10], [25, 2.5]], sheet: "A" },
+    ],
+    openings: [],
+    exposure_in: 4, piece_length_ft: 12,
+  });
+  near(two.gross_sf, 412.5);
+  near(two.net_sf, 412.5);
+  near(two.starter_lf, 30);                               // wall bottom only, not the gable
+  assert.equal(two.walls.find((w) => w.id === "wall")?.starter_lf, 30);
+  assert.equal(two.walls.find((w) => w.id === "gable")?.starter_lf, 0);
+
+  // 2. Traced as one 5-point polygon (wall plus gable): exact same numbers
+  const one = sidingQuantities({
+    walls: [
+      { id: "wall_plus_gable", ring: [[10, 20], [40, 20], [40, 10], [25, 2.5], [10, 10]], sheet: "A" },
+    ],
+    openings: [],
+    exposure_in: 4, piece_length_ft: 12,
+  });
+  near(one.gross_sf, 412.5);
+  near(one.net_sf, 412.5);
+  near(one.starter_lf, 30);
+
+  // 3. Wall split at a floor line: 2nd floor sits on 1st floor top edge
+  const split = sidingQuantities({
+    walls: [
+      { id: "fl1", ring: rect(0, 10, 30, 20), sheet: "A" },
+      { id: "fl2", ring: rect(0, 0, 30, 10), sheet: "A" },
+    ],
+    openings: [],
+  });
+  near(split.starter_lf, 30);                             // 1st floor bottom only
+});
+
 test("sidingQuantities: one wall, a window, a door", () => {
   const q = sidingQuantities({
     walls: [{ id: "w", ring: rect(0, 0, 30, 10), sheet: "A" }],
