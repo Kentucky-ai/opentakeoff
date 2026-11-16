@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-16 — Stitch seam check: match line graphics held out of wall pairing, seam placed at linework match line (#642)
+
+- **Match line graphics and grid lines are not counted as walls.** Lines parallel to the seam without a counterpart of similar length or with longitudinal displacement along the seam are held out of wall pairing, and periodic dashed gridlines are excluded from displaced wall discrepancies. Clean joins are no longer withheld by single false pairs between a match line graphic and unrelated linework.
+- **The seam sits where linework meets.** For overlapping sheets, member seam clips are clamped to the boundary where member linework begins and ends, eliminating blank bands in `view_sheet` and missing snapping linework when sheets have large page overlaps.
+- **Explicit seam positioning.** `align_stitch` and `stitch_sheets` accept an optional `seam_coord` (or `match_line`) to explicitly place the seam, and `checkSeamLinework` returns verified `seam_coords`.
+
 ## 2026-11-15 — large plan sets open and flip faster, in far less memory (#580, part 1)
 
 - **A stored PDF is read by byte range.** Opening a sheet reads the file's index and that page, not the whole set, and the render workers share the one stored copy where each used to get its own.

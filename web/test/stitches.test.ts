@@ -348,3 +348,98 @@ test("mergeSegs: preserves optional lum, layerOf/layerIds, and remaps subpaths a
   assert.equal(merged.subpaths![2].x0, 120);
   assert.equal(merged.subpaths![2].x1, 140);
 });
+
+test("seamClips: explicit seams override default page overlap midline (#642)", () => {
+  const members = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 80, dy: 0 }];
+  const testDims = { A: { w: 100, h: 80 }, B: { w: 60, h: 80 } };
+  // Default midpoint would be (80 + 100) / 2 = 90
+  // Explicit seam: 85
+  const clips = seamClips(members, testDims, [85]);
+  assert.equal(clips[0].x1, 85);
+  assert.equal(clips[1].x0, 85);
+});
+
+test("seamClips: inkBounds shifts seam to match line when sheet B draws nothing left of match line (#642)", () => {
+  // Two sheets with 2950 px page overlap (e.g. A: [0..5000], B: [2050..7050])
+  // Page overlap is [2050 .. 5000], page midline is 3525 px.
+  // Sheet B draws nothing left of its match line at x_local=1200 (stitch x = 2050 + 1200 = 3250 px).
+  // Sheet A draws ink up to x=3300 px.
+  // Ink corridor is [3250 .. 3300].
+  // Default seam (3525) would clip Sheet B at 3525, leaving [3250..3525] blank!
+  // With inkBounds, seam is clamped to the ink boundary (3250..3300).
+  const members = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 2050, dy: 0 }];
+  const testDims = { A: { w: 5000, h: 3000 }, B: { w: 5000, h: 3000 } };
+  const inkBounds = {
+    A: { x0: 200, y0: 200, x1: 3300, y1: 2800 },
+    B: { x0: 1200, y0: 200, x1: 4800, y1: 2800 },
+  };
+  const clips = seamClips(members, testDims, { inkBounds });
+  // Sheet B ink min in stitch space is 2050 + 1200 = 3250
+  // Sheet A ink max in stitch space is 3300
+  // Seam should be clamped <= 3300, preventing the blank band!
+  assert.ok(clips[0].x1 <= 3300);
+  assert.ok(clips[1].x0 >= 3250);
+  assert.equal(clips[0].x1, clips[1].x0);
+});
+
+test("checkSeamLinework: match line graphic parallel to seam (with no counterpart or shifted 54 px along seam) is excluded from wall pairing (#642)", () => {
+  const members = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 80, dy: 0 }];
+  const testDims = { A: { w: 100, h: 100 }, B: { w: 100, h: 100 } };
+  const upp = 0.05555555555555555; // 1/8" = 1'-0"
+
+  // 1. One true crossing wall aligned with 0 miss
+  // 2. North sheet A has a match line graphic parallel to vertical seam: (x=90, y=10..90, len=80)
+  // 3. South sheet B has a line 54 px away along the seam: (x=12, y=64..94, len=30) -> in stitch coords (x=92, y=64..94)
+  // At 1/8" scale, 2 px miss is 1.33". Under old pairing, this bogus pair became max_in = 1.33" and withheld.
+  // With fix, lines parallel to the seam without counterpart of similar length / along-seam shift are excluded.
+  const segsA = [
+    70, 50, 95, 50, // crossing wall (matches B at 5, 50)
+    90, 10, 90, 90, // match line graphic on Sheet A: length 80
+  ];
+  const segsB = [
+    5, 50, 30, 50, // crossing wall (exact alignment with A's crossing wall)
+    12, 64, 12, 94, // line on Sheet B: length 30, shifted 54 px along the seam in Y
+  ];
+
+  const result = checkSeamLinework(
+    members,
+    testDims,
+    { A: new Float32Array(segsA), B: new Float32Array(segsB) },
+    upp,
+  );
+
+  assert.equal(result.passed, true);
+  assert.equal(result.withheld, false);
+  assert.equal(result.max_in, 0); // only the real crossing wall paired!
+  assert.equal(result.sample_count, 1);
+  assert.ok(Array.isArray(result.seam_coords));
+});
+
+test("checkSeamLinework: genuine displaced wall parallel to seam is detected and withheld", () => {
+  const members = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 80, dy: 0 }];
+  const testDims = { A: { w: 100, h: 100 }, B: { w: 100, h: 100 } };
+  const upp = 0.05555555555555555; // 1/8" = 1'-0" (1.5 px = 1 inch)
+
+  // Real wall parallel to seam at x=90 on A, x=94.5 on B (shifted 4.5 px = 3" perpendicular)
+  // Same length (60 px), same Y span (20..80)
+  const segsA = [
+    70, 50, 95, 50, // crossing wall
+    90, 20, 90, 80, // longitudinal wall on A
+  ];
+  const segsB = [
+    5, 50, 30, 50, // crossing wall
+    14.5, 20, 14.5, 80, // longitudinal wall on B (+80 = 94.5 in stitch space) -> 4.5 px off
+  ];
+
+  const result = checkSeamLinework(
+    members,
+    testDims,
+    { A: new Float32Array(segsA), B: new Float32Array(segsB) },
+    upp,
+  );
+
+  assert.equal(result.passed, false);
+  assert.equal(result.withheld, true);
+  assert.equal(result.max_in, 3);
+  assert.ok(result.withheld_reasons[0].includes('exceeds 0.50" tolerance'));
+});

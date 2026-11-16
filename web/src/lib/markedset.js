@@ -532,7 +532,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         dims[m.key] = { w: vpR.width, h: vpR.height };
         pages.push({ m, page, vpR });
       }
-      const plan = stitchPagePlan(members, dims);
+      const plan = stitchPagePlan(members, dims, sh.stitch?.seams ? { seams: sh.stitch.seams } : undefined);
       W = plan.extent.w; H = plan.extent.h;
       const pageW = W / RENDER_SCALE, pageH = H / RENDER_SCALE;
       // an encrypted member cannot be embedded as vector (lib/markedsetSource:
