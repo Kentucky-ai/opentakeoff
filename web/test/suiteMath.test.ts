@@ -90,6 +90,34 @@ test("starterRuns: bottom edge on another wall edge gets no starter (#619)", () 
   near(Math.abs(wallRuns[0][1][0] - wallRuns[0][0][0]), 30);
 });
 
+test("starterRuns: stubs shorter than tol are dropped, stubs >= tol are kept (#619)", () => {
+  const wall = rect(10, 0, 40, 10);                       // top at y=0, bottom at y=10
+  // Gable with small 0.3 ft and 0.4 ft overhangs (< tol 0.5): dropped
+  const gableSlivers: Pt[] = [[9.7, 0.1], [40.4, -0.1], [25, -7.5]];
+  assert.deepEqual(starterRuns(gableSlivers, [], 0.5, [wall]), []);
+
+  // Gable with 2 ft overhangs on each side (>= tol 0.5): kept as stubs
+  const gableOverhang: Pt[] = [[8, 0], [42, 0], [25, -7.5]];
+  const stubs = starterRuns(gableOverhang, [], 0.5, [wall]);
+  assert.equal(stubs.length, 2);
+  near(Math.abs(stubs[0][1][0] - stubs[0][0][0]), 2);
+  near(Math.abs(stubs[1][1][0] - stubs[1][0][0]), 2);
+});
+
+test("sidingQuantities: overlapping walls with bottoms on one line do not cancel (#619)", () => {
+  // 30 ft wall with 10 ft wall traced over its lower middle
+  const q = sidingQuantities({
+    walls: [
+      { id: "w30", ring: rect(0, 0, 30, 10), sheet: "A" },
+      { id: "w10", ring: rect(10, 5, 20, 10), sheet: "A" },
+    ],
+    openings: [],
+  });
+  assert.equal(q.walls.find((w) => w.id === "w30")?.starter_lf, 30);
+  assert.equal(q.walls.find((w) => w.id === "w10")?.starter_lf, 10);
+  near(q.starter_lf, 40);
+});
+
 test("sidingQuantities: gable as its own shape vs 5-point polygon (#619)", () => {
   // 1. Traced as two shapes: 30 × 10 wall and 30 × 7.5 gable above it
   const two = sidingQuantities({

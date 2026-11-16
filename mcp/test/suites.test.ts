@@ -521,6 +521,19 @@ test("siding_takeoff: gable traced as its own triangle above wall (#619)", async
   assert.equal(shapes.length, 1);
 });
 
+test("siding_takeoff: gable traced with small overhang slivers drops stubs (#619)", async () => {
+  const client = await pair({ suites: ["siding"] });
+  await ready(client);
+  // sample plan is at upp 0.1; gable at [97,601], [404,599], [250,525] has 0.3 and 0.4 ft stubs (< 0.5 ft tol)
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 600], [400, 600], [400, 700], [100, 700]], condition: "SD-WALL" });
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[97, 601], [404, 599], [250, 525]], condition: "SD-WALL" });
+
+  const r = await call(client, "siding_takeoff", { exposure_in: 4, piece_length_ft: 12 });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.starter_lf, 30);
+  assert.equal(r.data.committed, 1);                 // wall bottom only, slivers dropped
+});
+
 test("glazing_takeoff: 12 × 8 storefront, 3 × 2 grid — lites, glass, mullion lines", async () => {
   const client = await pair({ suites: ["glazing"] });
   await ready(client);

@@ -203,10 +203,13 @@ export function starterRuns(wall: Pt[], doors: Pt[][], tol: number, otherWalls: 
   }
   for (const w of otherWalls) {
     const p = openRing(w);
+    if (p.length < 3) continue;
+    const maxY = Math.max(...p.map((q) => q[1]));
     for (let i = 0; i < p.length; i++) {
       const a = p[i], b = p[(i + 1) % p.length];
       const flat = Math.abs(a[1] - b[1]) <= tol * 0.25 || Math.abs(a[1] - b[1]) <= 0.02 * Math.abs(a[0] - b[0]);
-      if (flat && Math.abs(a[0] - b[0]) > 1e-4) {
+      const isBottom = flat && maxY - a[1] <= tol && maxY - b[1] <= tol;
+      if (flat && !isBottom && Math.abs(a[0] - b[0]) > 1e-4) {
         cuts.push([Math.min(a[0], b[0]), Math.max(a[0], b[0]), (a[1] + b[1]) / 2]);
       }
     }
@@ -227,7 +230,7 @@ export function starterRuns(wall: Pt[], doors: Pt[][], tol: number, otherWalls: 
     }
     // y along the edge, so a slightly sloped bottom keeps its own line
     const yAt = (x: number) => (b[0] === a[0] ? a[1] : a[1] + ((x - a[0]) * (b[1] - a[1])) / (b[0] - a[0]));
-    for (const [s0, s1] of spans) if (s1 - s0 > 1e-6) out.push([[s0, yAt(s0)], [s1, yAt(s1)]]);
+    for (const [s0, s1] of spans) if (s1 - s0 >= tol - 1e-6) out.push([[s0, yAt(s0)], [s1, yAt(s1)]]);
   }
   return out;
 }
