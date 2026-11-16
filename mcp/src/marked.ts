@@ -110,6 +110,7 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
             dy: m.dy,
           };
         }),
+        ...(st.seams?.length ? { seams: st.seams } : {}),
       },
     };
   });
