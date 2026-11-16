@@ -17,6 +17,7 @@
 // buys: pdf.js parse time was never the bottleneck here, per-tile RENDER
 // time was, and that's exactly what this parallelizes.
 import { LOW_MEMORY_DEVICE } from "./deviceClass";
+import { isPdfSource, type PdfSource } from "./pdfSource";
 
 export interface TileRequest {
   sheetKey: string;
@@ -31,7 +32,13 @@ type OutMsg =
   | { type: "sheetReady"; sheetKey: string; openId: number }
   | { type: "sheetError"; sheetKey: string; openId: number; message: string }
   | { type: "tile"; reqId: number; sheetKey: string; w: number; h: number; bitmap: ImageBitmap }
-  | { type: "tileError"; reqId: number; sheetKey: string; message: string };
+  | { type: "tileError"; reqId: number; sheetKey: string; message: string }
+  | { type: "pageText"; reqId: number; text: PageText }
+  | { type: "pageTextError"; reqId: number; message: string };
+
+/** One page's text as a worker read it: pdf.js text items, and the numbers
+ *  of the viewport (at the scale asked for) that place them. */
+export interface PageText { items: unknown[]; viewport: { width: number; height: number; transform: number[] } }
 
 // Phone-class devices get a pool of ONE: the broadcast design means every
 // worker holds its own copy of the PDF bytes plus its own in-worker pdf.js parse,
@@ -49,6 +56,13 @@ const POOL_SIZE = LOW_MEMORY_DEVICE
   ? 1
   : CORES >= 8 ? 5 : Math.max(1, Math.min(3, CORES - 1));
 
+/** How many workers read a whole file's text at once (#580): their own,
+ *  apart from the render pool, alive only while a scan runs. Every page of a
+ *  set is parsed once for its text, which is pure CPU, so it takes the cores
+ *  the render pool and the main thread leave. 0: no workers of its own (a
+ *  low-memory device reads through the render pool's one worker). */
+export const TEXT_SCAN_WORKERS = LOW_MEMORY_DEVICE ? 0 : Math.max(1, Math.min(8, CORES - 2));
+
 interface SheetOpenState {
   openId: number;
   promise: Promise<void>;
@@ -62,6 +76,9 @@ export function createTilePool(size = POOL_SIZE) {
   const workers: Worker[] = [];
   const sheetOpen = new Map<string, SheetOpenState>();
   const pending = new Map<number, { resolve: (r: TileResult) => void; reject: (e: Error) => void; workerIdx: number; timer?: ReturnType<typeof setTimeout> }>();
+  const texts = new Map<number, { resolve: (t: PageText) => void; reject: (e: Error) => void; workerIdx: number }>();
+  let textRr = 0;
+  const textLoad: number[] = []; // text reads in flight, per worker
   let nextReqId = 1;
   let nextOpenId = 1;
   let rrCounter = 0; // round-robins tile requests across the whole pool
@@ -73,7 +90,17 @@ export function createTilePool(size = POOL_SIZE) {
   // half-rendered (the bug this exists for). Bytes are retained per open
   // sheet so a respawned worker can be re-fed; that retention cost is why the
   // whole path is gated on LOW_MEMORY_DEVICE — desktop behavior is unchanged.
-  const sheetBytes = LOW_MEMORY_DEVICE ? new Map<string, { pageNum: number; data: ArrayBuffer }>() : null;
+  const sheetBytes = LOW_MEMORY_DEVICE ? new Map<string, { pageNum: number; data: ArrayBuffer | PdfSource }>() : null;
+
+  // One sheet's open, for one worker. Bytes: a fresh transferable copy
+  // (transfer detaches, so one buffer can't be handed to N workers). A
+  // source (#580): its Blob, which every worker can hold at no cost, and the
+  // key its worker-side document is shared under.
+  function postOpen(w: Worker, sheetKey: string, openId: number, pageNum: number, data: ArrayBuffer | PdfSource) {
+    if (isPdfSource(data)) { w.postMessage({ type: "openSheet", sheetKey, openId, pageNum, data: data.blob, docKey: data.key }); return; }
+    const copy = data.slice(0);
+    w.postMessage({ type: "openSheet", sheetKey, openId, pageNum, data: copy }, [copy]);
+  }
 
   function onWorkerDeath(i: number, err: unknown) {
     const dead = workers[i];
@@ -84,14 +111,13 @@ export function createTilePool(size = POOL_SIZE) {
     for (const [reqId, p] of pending) {
       if (p.workerIdx === i) { if (p.timer) clearTimeout(p.timer); p.reject(new Error("render worker crashed")); pending.delete(reqId); }
     }
+    for (const [reqId, t] of texts) if (t.workerIdx === i) { t.reject(new Error("render worker crashed")); texts.delete(reqId); }
+    textLoad[i] = 0;
     if (disposed || !sheetBytes) return;
     // Respawn and re-feed every open sheet; settled-state bookkeeping in
     // onMessage already ignores duplicate sheetReady after settle.
     const w = ensureWorker(i);
-    for (const [sheetKey, { pageNum, data }] of sheetBytes) {
-      const copy = data.slice(0);
-      w.postMessage({ type: "openSheet", sheetKey, openId: sheetOpen.get(sheetKey)!.openId, pageNum, data: copy }, [copy]);
-    }
+    for (const [sheetKey, { pageNum, data }] of sheetBytes) postOpen(w, sheetKey, sheetOpen.get(sheetKey)!.openId, pageNum, data);
   }
 
   function ensureWorker(i: number): Worker {
@@ -118,6 +144,12 @@ export function createTilePool(size = POOL_SIZE) {
       st.settled = true; st.reject(new Error(m.message));
       return;
     }
+    if (m.type === "pageText" || m.type === "pageTextError") {
+      const t = texts.get(m.reqId); texts.delete(m.reqId);
+      if (t) textLoad[t.workerIdx]--;
+      if (t) { if (m.type === "pageText") t.resolve(m.text); else t.reject(new Error(m.message)); }
+      return;
+    }
     if (m.type === "tile") { const p = pending.get(m.reqId); if (p) { if (p.timer) clearTimeout(p.timer); p.resolve({ w: m.w, h: m.h, bitmap: m.bitmap }); } else m.bitmap.close(); pending.delete(m.reqId); return; }
     if (m.type === "tileError") { const p = pending.get(m.reqId); if (p) { if (p.timer) clearTimeout(p.timer); p.reject(new Error(m.message)); } pending.delete(m.reqId); return; }
   }
@@ -126,8 +158,10 @@ export function createTilePool(size = POOL_SIZE) {
    *  first. `data` is an ArrayBuffer this pool now OWNS: it's sliced into a
    *  fresh transferable copy per worker (transfer detaches, so one buffer
    *  can't be handed to N workers), so the caller's own copy is untouched
-   *  either way. Resolves once every worker has the sheet open. */
-  function openSheet(sheetKey: string, pageNum: number, data: ArrayBuffer): Promise<void> {
+   *  either way. A PdfSource is not copied at all: each worker reads the
+   *  ranges it needs from the one Blob. Resolves once every worker has the
+   *  sheet open. */
+  function openSheet(sheetKey: string, pageNum: number, data: ArrayBuffer | PdfSource): Promise<void> {
     if (disposed) return Promise.reject(new Error("tile pool disposed"));
     const existing = sheetOpen.get(sheetKey);
     if (existing) return existing.promise;
@@ -136,16 +170,16 @@ export function createTilePool(size = POOL_SIZE) {
     const st: SheetOpenState = { openId: nextOpenId++, promise, resolve, reject, settled: false, readyCount: 0 };
     sheetOpen.set(sheetKey, st);
     sheetBytes?.set(sheetKey, { pageNum, data }); // pool owns `data` — retained (phone only) so a respawned worker can be re-fed
-    for (let i = 0; i < size; i++) {
-      const copy = data.slice(0); // independent transferable per worker
-      ensureWorker(i).postMessage({ type: "openSheet", sheetKey, openId: st.openId, pageNum, data: copy }, [copy]);
-    }
+    for (let i = 0; i < size; i++) postOpen(ensureWorker(i), sheetKey, st.openId, pageNum, data);
     return promise;
   }
 
   function requestTile(req: TileRequest): { promise: Promise<TileResult>; reqId: number; cancel: () => void } {
     const reqId = nextReqId++;
-    const workerIdx = rrCounter++ % size;
+    // Round-robin, but past a worker that is reading a page's text while
+    // another is not: the sheet on screen never queues behind the scan.
+    let workerIdx = rrCounter++ % size;
+    for (let k = 0; k < size && textLoad[workerIdx]; k++) workerIdx = rrCounter++ % size;
     const w = ensureWorker(workerIdx);
     const promise = new Promise<TileResult>((resolve, reject) => {
       // Phone-only watchdog: mobile Safari can jetsam-kill a worker with NO
@@ -169,13 +203,44 @@ export function createTilePool(size = POOL_SIZE) {
     sheetBytes?.delete(sheetKey);
   }
 
+  /** One page's text, read in a worker from the file's Blob (#580): the
+   *  main thread parses nothing. Spread round-robin like tiles. The worker
+   *  reads it from its own document for these bytes, kept apart from the
+   *  one its sheets paint from, so reading a whole set's text never grows
+   *  the document on screen. */
+  function requestText(source: PdfSource, pageNum: number, scale: number): Promise<PageText> {
+    if (disposed) return Promise.reject(new Error("tile pool disposed"));
+    const reqId = nextReqId++;
+    const workerIdx = textRr++ % size;
+    return new Promise<PageText>((resolve, reject) => {
+      texts.set(reqId, { resolve, reject, workerIdx });
+      textLoad[workerIdx] = (textLoad[workerIdx] || 0) + 1;
+      ensureWorker(workerIdx).postMessage({ type: "pageText", reqId, pageNum, scale, data: source.blob, docKey: `text\u0000${source.key}` });
+    });
+  }
+
+  /** Every worker starts loading this file's document now (#580), ahead of
+   *  the openSheet that will want it. */
+  function warm(source: PdfSource) {
+    if (disposed) return;
+    for (let i = 0; i < size; i++) ensureWorker(i).postMessage({ type: "warmDoc", data: source.blob, docKey: source.key });
+  }
+
+  /** Tiles are owed: what can wait (text reads) should. */
+  const busy = () => pending.size > 0;
+
+  /** Start every worker now, so the first sheet doesn't wait for them to
+   *  boot (each imports pdf.js): called when a file is on its way in. */
+  function prewarm() { if (!disposed) for (let i = 0; i < size; i++) ensureWorker(i); }
+
   function dispose() {
     disposed = true;
     for (const w of workers) w?.terminate();
     workers.length = 0;
     for (const [, p] of pending) if (p.timer) clearTimeout(p.timer);
-    sheetOpen.clear(); pending.clear(); sheetBytes?.clear();
+    for (const [, t] of texts) t.reject(new Error("tile pool disposed"));
+    sheetOpen.clear(); pending.clear(); texts.clear(); sheetBytes?.clear();
   }
 
-  return { openSheet, requestTile, closeSheet, dispose };
+  return { openSheet, requestTile, closeSheet, requestText, busy, size, prewarm, warm, dispose };
 }

@@ -71,11 +71,15 @@ try {
     const opens = await page.evaluate(() => window.tileAudit.opens);
     await page.getByTitle(i % 2 ? 'Next sheet' : 'Previous sheet', { exact: true }).click();
     await settled(opens);
-    if (i === 10 || i === 30) snapshots.push(await snapshot(i));
+    if (i === 1 || i === 10 || i === 30) snapshots.push(await snapshot(i));
   }
   assert.equal(snapshots[0].fonts.length, 5);
-  if (!process.env.BASELINE) for (const s of snapshots) assert.deepEqual(s.fonts, snapshots[0].fonts);
-  assert.deepEqual(snapshots[2].canvases, snapshots[0].canvases, 'same sheet pixels after 30 flips');
+  // A worker keeps one document per file across flips (#580), so it holds the
+  // fonts of the pages that document has shown: both of this plan's pages
+  // after the first flip. That is the ceiling. 30 flips never pass it, which
+  // is what #508 asks: nothing gathers per flip.
+  if (!process.env.BASELINE) for (const s of snapshots) s.fonts.forEach((n, w) => assert.ok(n <= snapshots[1].fonts[w], `worker ${w}: ${n} fonts after ${s.flips} flips, ${snapshots[1].fonts[w]} after one`));
+  assert.deepEqual(snapshots[3].canvases, snapshots[0].canvases, 'same sheet pixels after 30 flips');
   assert.deepEqual(errors, []);
   const report = { browser: browser.version(), plan: 'bundled sample-finish-plan.pdf', layout: 'Classic', workers: 5, snapshots, errors };
   mkdirSync(resolve(out, '..'), { recursive: true }); writeFileSync(out, JSON.stringify(report, null, 2) + '\n');

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-15 — large plan sets open and flip faster, in far less memory (#580, part 1)
+
+- **A stored PDF is read by byte range.** Opening a sheet reads the file's index and that page, not the whole set, and the render workers share the one stored copy where each used to get its own.
+- **Flipping sheets inside a big file no longer re-parses it**, and a sheet you leave is released from memory.
+- **The Sheets tree keeps filling in.** Reading every page's text (sheet numbers, noted scales, plan search) now runs in the background on its own workers and carries on while you flip sheets; before, it stopped at the first flip.
+- Measured on a public 1,271-sheet, 853 MB set in Chrome on an Apple laptop, median of 5: first sheet 2.2 s → 0.9 s, sheet flip 665 ms → 166 ms, peak memory 11.8 GB → 4.3 GB. The bundled two-sheet plan is unchanged. Numbers, method and limits: [docs/review/580](docs/review/580/README.md); the benchmark: `web/bench/largeset/`.
+- Reading the text of a whole 1,271-sheet set still takes about 35 s; that is the next step.
+
 ## 2026-11-14 — Doors suite: Find more doors (the door detector, in the browser)
 
 - **A switch, off by default.** The Doors suite gets **Find more doors**. Off, the suite works exactly as before, from the linework reader alone. On, it also runs the [OpenTakeoff door detector](https://huggingface.co/Kentucky-ai/opentakeoff-door-detector) (RF-DETR, round 4) over the sheet and adds what the reader has no door for: cased openings, sliding, bifold and overhead doors, and swings drawn in a way the reader could not trace. Elevator and pocket boxes are never added.

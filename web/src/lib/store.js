@@ -33,7 +33,11 @@ import { isPdfHash, OCR_CACHE_ROOT, ocrCachePrefix, ocrHashesToDrop, startPdfHas
 
 const DB_NAME = "opentakeoff";
 const DB_VERSION = 3;
-const PDF_STORE = "pdfs";          // key: file name -> { name, bytes: ArrayBuffer, hash?, rev?, ts? }
+const PDF_STORE = "pdfs";          // key: file name -> { name, bytes: Blob | ArrayBuffer, hash?, rev?, ts? }
+// `bytes` is a Blob since #580: the browser keeps it on disk, so reading the
+// record costs nothing and pdf.js reads byte ranges from it (loadPdfSource).
+// A record written before that holds an ArrayBuffer, which loads whole.
+// Every reader goes through bufferOf / blobOf, so both read alike.
 const META_STORE = "meta";         // key: "annotations" -> payload object
 const SNAP_STORE = "snapshots";    // key: id -> { id, ts, label, payload }
 // Archived sheet revisions (v3). key: "name + NUL + rev" — NUL can't appear in
@@ -203,6 +207,11 @@ async function txDecide(db, stores, fn) {
   return holder.out;
 }
 
+const isBlob = (b) => typeof Blob !== "undefined" && b instanceof Blob;
+// A record's bytes as a buffer (the whole file in memory), or as a Blob.
+const bufferOf = (bytes) => (isBlob(bytes) ? bytes.arrayBuffer() : Promise.resolve(bytes));
+const blobOf = (bytes) => (isBlob(bytes) ? bytes : new Blob([bytes], { type: "application/pdf" }));
+
 // SHA-256 of a PDF's bytes as lowercase hex — the identity a revision is keyed
 // on. WebCrypto is available in every target (browsers, the Node 24 test env).
 export async function sha256Hex(bytes) {
@@ -220,11 +229,63 @@ const legacyHashMemo = new Map();
 function legacyHash(name, bytes) {
   let p = legacyHashMemo.get(name);
   if (!p) {
-    p = startPdfHash(bytes);
+    p = bufferOf(bytes).then(startPdfHash, () => null);
     legacyHashMemo.set(name, p);
     p.then((h) => { if (h == null && legacyHashMemo.get(name) === p) legacyHashMemo.delete(name); });
   }
   return p;
+}
+
+// A file this big, under a name the store doesn't have, is stored first and
+// hashed after (#580): reading and hashing every byte before the first sheet
+// could open was most of the wait on a large set. Smaller files hash in a
+// few milliseconds and take the one-step path.
+let deferHashBytes = 32 * 1024 * 1024;
+/** Test seam: the size from which addPdf stores before it hashes. */
+export function setDeferHashBytes(n) { deferHashBytes = n; }
+// the hashes still being worked out, so a test (or a caller that must have
+// the stored hash) can wait for the write that follows
+const hashBackfills = new Set();
+/** Resolves once every store-first file's hash has been written back. */
+export function pdfHashesSettled() { return Promise.all([...hashBackfills]).then(() => {}); }
+
+// Store `file` under its name if that name is free, without its hash: true
+// if stored. The record is, for a moment, what a pre-v3 record is for good
+// (no hash), a state every reader already handles: pdfHash hashes it on
+// demand, and here that demand is met by the one hashing already running
+// (legacyHashMemo). The hash is then written back, only onto the very
+// record stored here: a revision or a removal meanwhile wins.
+async function addUnhashed(file) {
+  const name = file.name, ts = Date.now();
+  const bytes = file.slice(0, file.size, "application/pdf");
+  const stored = await withDb((db) => txDecide(db, [PDF_STORE], (t, step) => {
+    const pdfs = t.objectStore(PDF_STORE);
+    const req = pdfs.getKey(name); // the key alone: an existing record's bytes don't load
+    req.onsuccess = step(() => {
+      if (req.result !== undefined) return false;
+      pdfs.put({ name, bytes, rev: 1, ts });
+      return true;
+    });
+  }));
+  if (!stored) return false;
+  forgetPdfHash(name);
+  const hashing = bufferOf(bytes).then(startPdfHash, () => null);
+  legacyHashMemo.set(name, hashing);
+  const backfill = hashing.then((hash) => {
+    if (!hash) return undefined;
+    return withDb((db) => txDecide(db, [PDF_STORE], (t, step) => {
+      const pdfs = t.objectStore(PDF_STORE);
+      const req = pdfs.get(name);
+      req.onsuccess = step(() => {
+        const r = req.result;
+        if (r && !r.hash && r.ts === ts && (r.rev || 1) === 1) pdfs.put({ ...r, hash });
+        return null;
+      });
+    }));
+  }).catch((e) => { console.warn("PDF hash: couldn't be saved; it is worked out again when needed", e); })
+    .finally(() => { hashBackfills.delete(backfill); });
+  hashBackfills.add(backfill);
+  return true;
 }
 
 // pdfHash, memoized per name for the session (#471): reading a record loads
@@ -304,7 +365,20 @@ export const localStore = {
     const rec = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
     if (!rec) throw new Error(`PDF not found in local store: ${name}`);
     // hand pdf.js a fresh view each call — getDocument({data}) may detach it
-    return new Uint8Array(rec.bytes);
+    return new Uint8Array(await bufferOf(rec.bytes));
+  },
+
+  // The file as a byte-range source (#580, lib/pdfSource.ts): nothing is
+  // read here. What opens a sheet takes this; what needs every byte (export,
+  // page tools, the project archive) takes loadPdfData. The key is the
+  // record's identity (name, revision, time stored, size): addPdf changes
+  // the revision and the time whenever it changes the bytes. Not the hash,
+  // which a large file gains a moment after it is stored.
+  async loadPdfSource(name) {
+    const rec = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
+    if (!rec) throw new Error(`PDF not found in local store: ${name}`);
+    const blob = blobOf(rec.bytes);
+    return { blob, key: `${name}\u0000${rec.rev || 1}\u0000${rec.ts || 0}\u0000${blob.size}` };
   },
 
   async addPdf(file) {
@@ -312,8 +386,14 @@ export const localStore = {
     // unrelated (possibly slow, file-sized) await. Same rule for the hash:
     // subtle.digest is async, and an IDB transaction commits the moment its
     // event loop drains, so ALL hashing happens outside every transaction.
-    const bytes = await file.arrayBuffer();
-    const hash = await sha256Hex(bytes);
+    if (isBlob(file) && file.size >= deferHashBytes && await addUnhashed(file)) return { name: file.name, rev: 1 };
+    const buffer = await file.arrayBuffer();
+    const hash = await sha256Hex(buffer);
+    // Stored as a Blob (#580): the browser copies the file to its own disk
+    // store as the transaction commits, and the buffer hashed above is let
+    // go. A plain Blob, not the File: its name and date aren't the record's.
+    // Something file-like that can't be sliced is stored as its bytes.
+    const bytes = isBlob(file) ? file.slice(0, file.size, "application/pdf") : buffer;
     forgetPdfHash(file.name);
     const ts = Date.now();
     // Records written before v3 carry no hash/rev. Peek first and hash a
@@ -322,7 +402,7 @@ export const localStore = {
     // legacy to hashed in the meantime but never back: a peek that saw no
     // record or a hashed one never needs this hash.
     const peek = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(file.name)));
-    const peekHash = peek && !peek.hash ? await sha256Hex(peek.bytes) : null;
+    const peekHash = peek && !peek.hash ? await sha256Hex(await bufferOf(peek.bytes)) : null;
     // Read, compare and write in ONE readwrite transaction (#493). The
     // database runs readwrite transactions over the same stores one at a
     // time, across connections and tabs, so two adds of one name can't both
@@ -457,10 +537,10 @@ export const localStore = {
   // listPdfRevisions without caring which side of the archive it lives on.
   async loadPdfRevisionData(name, rev) {
     const cur = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
-    if (cur && (cur.rev || 1) === rev) return new Uint8Array(cur.bytes);
+    if (cur && (cur.rev || 1) === rev) return new Uint8Array(await bufferOf(cur.bytes));
     const rec = await withDb((db) => tx(db, REV_STORE, "readonly", (os) => os.get(revKey(name, rev))));
     if (!rec) throw new Error(`Revision ${rev} of ${name} not found in local store`);
-    return new Uint8Array(rec.bytes);
+    return new Uint8Array(await bufferOf(rec.bytes));
   },
 
   async loadAnnotations() {

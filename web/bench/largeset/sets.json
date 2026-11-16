@@ -1,0 +1,21 @@
+{
+  "odot-cuy-105743": {
+    "title": "Ohio DOT CUY-105743, Stage 3 plans, part 1 (reference only)",
+    "url": "https://ftp.dot.state.oh.us/pub/Contracts/CUY105743RefOnly/CUY105743-P1-Stage3Plans-RefOnly.pdf",
+    "landing": "https://ftp.dot.state.oh.us/pub/Contracts/CUY105743RefOnly/",
+    "sha256": "8dd1d89a83312b1f1fcef01a38fd8c23f0f23839e6f8af9f004cca92a9f458fb",
+    "bytes": 852805975,
+    "pages": 1271,
+    "pageSize": "34 x 22 in",
+    "note": "A state agency's public bid reference set. Only this record is committed, never the file."
+  },
+  "txdot-pump-station-rebid": {
+    "title": "TxDOT Facilities, SLBC 14-0914-04-362 REBID, CapEx pump station plans",
+    "url": "https://ftp.txdot.gov/plans/Facilities/2025/05%20May/SLBC%2014-0914-04-362%20REBID%20CapEx%20Pump%20Station/14-0914-04-362r-plans.pdf",
+    "sha256": "5f2affce8c52f8313af023209b1c307b45604ccae96989eb5ff666c175f3f4a9",
+    "bytes": 668294436,
+    "pages": 734,
+    "pageSize": "22 x 34 in",
+    "note": "A building set (architectural, structural, MEP) from a state agency's public bid folder, used for what the highway set lacks: title-block sheet numbers for the Sheets tree."
+  }
+}

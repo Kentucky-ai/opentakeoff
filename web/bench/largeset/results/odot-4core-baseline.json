@@ -1,0 +1,251 @@
+{
+  "label": "odot-4core-baseline",
+  "set": "odot-cuy-105743",
+  "file": {
+    "sha256": "8dd1d89a83312b1f1fcef01a38fd8c23f0f23839e6f8af9f004cca92a9f458fb",
+    "bytes": 852805975
+  },
+  "commit": "2bf1f48",
+  "machine": {
+    "cpu": "Apple M5",
+    "cores": 10,
+    "memGb": 24,
+    "os": "darwin arm64"
+  },
+  "browser": "Chrome 157.0.8103.78 (headless)",
+  "viewport": "1500x1000",
+  "told": {
+    "cores": 4,
+    "deviceMemoryGb": null
+  },
+  "runs": 3,
+  "flipsPerRun": 12,
+  "median": {
+    "firstPixelMs": 2191,
+    "firstSheetMs": 2578,
+    "reopenFirstPixelMs": 1148,
+    "treeNumberedMs": 3536,
+    "treeNumberedAt5s": 0,
+    "treeNumbered": 0,
+    "treeRows": 1271,
+    "textScanMs": null,
+    "flipEarlyFirstPixelMs": 554,
+    "flipFirstPixelMs": 532,
+    "flipCompleteMs": 628,
+    "galleryFps": 58,
+    "idleRssMb": 801,
+    "afterDropRssMb": 5382,
+    "peakRssMb": 10228,
+    "retainedRssMb": 5337
+  },
+  "failedRuns": 0,
+  "perRun": [
+    {
+      "run": 1,
+      "idleRssMb": 799,
+      "firstPixelMs": 2178,
+      "firstSheetMs": 2560,
+      "afterDropRssMb": 5382,
+      "treeNumberedAt5s": 0,
+      "treeRows": 1271,
+      "treeNumbered": 0,
+      "treeNumberedMs": 3511,
+      "flipEarlyFirstPixelMs": 554,
+      "textScanMs": null,
+      "flipFirstPixelMs": 532,
+      "flipCompleteMs": 649,
+      "flips": [
+        {
+          "first": 597,
+          "complete": 710
+        },
+        {
+          "first": 532,
+          "complete": 656
+        },
+        {
+          "first": 548,
+          "complete": 673
+        },
+        {
+          "first": 532,
+          "complete": 658
+        },
+        {
+          "first": 532,
+          "complete": 618
+        },
+        {
+          "first": 498,
+          "complete": 548
+        },
+        {
+          "first": 499,
+          "complete": 548
+        },
+        {
+          "first": 464,
+          "complete": 509
+        },
+        {
+          "first": 664,
+          "complete": 970
+        },
+        {
+          "first": 565,
+          "complete": 649
+        },
+        {
+          "first": 532,
+          "complete": 621
+        },
+        {
+          "first": 513,
+          "complete": 600
+        }
+      ],
+      "galleryFps": 58,
+      "reopenFirstPixelMs": 1097,
+      "retainedRssMb": 5673,
+      "peakRssMb": 10465
+    },
+    {
+      "run": 2,
+      "idleRssMb": 801,
+      "firstPixelMs": 2193,
+      "firstSheetMs": 2599,
+      "afterDropRssMb": 5382,
+      "treeNumberedAt5s": 0,
+      "treeRows": 1271,
+      "treeNumbered": 0,
+      "treeNumberedMs": 3549,
+      "flipEarlyFirstPixelMs": 554,
+      "textScanMs": null,
+      "flipFirstPixelMs": 532,
+      "flipCompleteMs": 628,
+      "flips": [
+        {
+          "first": 565,
+          "complete": 686
+        },
+        {
+          "first": 565,
+          "complete": 674
+        },
+        {
+          "first": 507,
+          "complete": 628
+        },
+        {
+          "first": 566,
+          "complete": 688
+        },
+        {
+          "first": 532,
+          "complete": 623
+        },
+        {
+          "first": 469,
+          "complete": 514
+        },
+        {
+          "first": 498,
+          "complete": 549
+        },
+        {
+          "first": 498,
+          "complete": 543
+        },
+        {
+          "first": 699,
+          "complete": 1007
+        },
+        {
+          "first": 549,
+          "complete": 637
+        },
+        {
+          "first": 532,
+          "complete": 621
+        },
+        {
+          "first": 532,
+          "complete": 610
+        }
+      ],
+      "galleryFps": 58,
+      "reopenFirstPixelMs": 1154,
+      "retainedRssMb": 5337,
+      "peakRssMb": 10228
+    },
+    {
+      "run": 3,
+      "idleRssMb": 804,
+      "firstPixelMs": 2191,
+      "firstSheetMs": 2578,
+      "afterDropRssMb": 5392,
+      "treeNumberedAt5s": 0,
+      "treeRows": 1271,
+      "treeNumbered": 0,
+      "treeNumberedMs": 3536,
+      "flipEarlyFirstPixelMs": 565,
+      "textScanMs": null,
+      "flipFirstPixelMs": 547,
+      "flipCompleteMs": 628,
+      "flips": [
+        {
+          "first": 559,
+          "complete": 675
+        },
+        {
+          "first": 548,
+          "complete": 673
+        },
+        {
+          "first": 564,
+          "complete": 683
+        },
+        {
+          "first": 565,
+          "complete": 687
+        },
+        {
+          "first": 547,
+          "complete": 628
+        },
+        {
+          "first": 515,
+          "complete": 563
+        },
+        {
+          "first": 515,
+          "complete": 553
+        },
+        {
+          "first": 499,
+          "complete": 547
+        },
+        {
+          "first": 666,
+          "complete": 974
+        },
+        {
+          "first": 524,
+          "complete": 625
+        },
+        {
+          "first": 515,
+          "complete": 601
+        },
+        {
+          "first": 532,
+          "complete": 619
+        }
+      ],
+      "galleryFps": 58,
+      "reopenFirstPixelMs": 1148,
+      "retainedRssMb": 5329,
+      "peakRssMb": 10114
+    }
+  ]
+}
