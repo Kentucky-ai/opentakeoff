@@ -1737,7 +1737,7 @@ export default function TakeoffCanvas() {
     if (!st) return [{ drawKey: p.key, compKey: p.key, x: p.xOffset, y: 0, w: p.img.w, h: p.img.h, clip: null }];
     const dims = panelSourceDimsRef.current.get(p.key);
     if (!dims) return [];   // members not resolved yet — the render effect paints nothing until phase A lands
-    const clips = seamClips(st.members, dims);
+    const clips = seamClips(st.members, dims, st.seams ? { seams: st.seams } : undefined);
     return st.members.map((m, i) => ({
       drawKey: `${p.key}::${m.key}`, compKey: `${p.key}::${m.key}`,
       x: p.xOffset + m.dx, y: m.dy,
@@ -3143,7 +3143,7 @@ export default function TakeoffCanvas() {
       // one-click mask (lib/stitches.ts mergePoints/mergeSegs).
       for (const m of metas) {
         if (m.stitch) {
-          const clips = seamClips(m.stitch.members, m.dims);
+          const clips = seamClips(m.stitch.members, m.dims, m.stitch.seams ? { seams: m.stitch.seams } : undefined);
           Promise.all(m.sources.map((s) => s.pageObj.getOperatorList().then((ol) => ({ s, g: extractVectorGeometry(ol, s.viewport.transform, pdfjsLib.OPS) })))).then((parts) => {
             if (stale()) return;
             const byIdx = parts.map(({ s, g }, i) => ({

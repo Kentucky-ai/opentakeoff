@@ -175,6 +175,7 @@ test("stitch_sheets: creation, alignment, seam view, and measurement", async () 
   assert.equal(alignRes.data.seam_check.passed, true);
   assert.equal(alignRes.data.seam_check.max_in, 0);
   assert.ok(alignRes.data.seam_check.sample_count > 50, "has real verified wall linework samples");
+  assert.ok(Array.isArray(alignRes.data.seam_check.seam_coords), "returns verified seam coords");
 
   // Inspect existing composite panels via list_stitches
   const list = await call(client, "list_stitches");
@@ -481,6 +482,10 @@ test("stitch_sheets: seam gate enforced on edit_shape/revise_proposal, align_sti
   const verifyOnly = await call(client, "align_stitch", { stitch: vId });
   assert.equal(verifyOnly.isError, false);
   assert.equal(verifyOnly.data.seam_check.passed, true);
+
+  const withSeamCoord = await call(client, "align_stitch", { stitch: vId, seam_coord: 2850 });
+  assert.equal(withSeamCoord.isError, false);
+  assert.equal(withSeamCoord.data.seam_check.passed, true);
 
   const compText = await call(client, "read_sheet_text", { sheet: vId });
   assert.equal(compText.isError, false);

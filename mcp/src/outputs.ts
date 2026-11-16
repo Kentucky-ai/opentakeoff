@@ -1259,6 +1259,7 @@ export const seamCheckSchema = z.object({
     sheet_a_pt: point.optional(),
     sheet_b_pt: point.optional(),
   })).describe("Discrepancy locations along the match line"),
+  seam_coords: z.array(z.number()).optional().describe("Computed seam coordinates along the seam axis"),
   note: z.string().describe("Seam check summary note"),
 });
 
