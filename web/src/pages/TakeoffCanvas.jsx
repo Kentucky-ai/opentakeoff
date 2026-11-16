@@ -24,6 +24,7 @@ import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { isPdfSource, rangeParams } from "../lib/pdfSource";
 import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut, metaDelete, sha256Hex } from "../lib/store.js";
 import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
 import { Z } from "../lib/ui.js";
@@ -227,6 +228,7 @@ import { repairConditionMultipliers, describeMultiplierRepair } from "../lib/mul
 // long-lived compositor instance. Replaces the old single-raster base +
 // threshold-gated detail-overlay effects below.
 import { createTileCompositor } from "../lib/tileCompositor";
+import { createTilePool, TEXT_SCAN_WORKERS } from "../lib/tilePool";
 import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // Shape provenance policy now lives in ONE place: lib/shapeCommands.js. Every
 // meaningful mutation of `shapes` (create / reshape / reassign / relabel /
@@ -276,6 +278,12 @@ function hitShapeC(s, x, y, w, h, thr) {
 }
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+// What opens a sheet (#580): a byte-range source where the store keeps the
+// file as a Blob, so pdf.js reads the cross-reference table and the pages on
+// screen, not the whole set; else the file's bytes, as before (cloud mode).
+// What needs every byte (export, page tools) still asks for loadPdfData.
+const pdfSourceOf = (file) => (typeof store.loadPdfSource === "function" ? store.loadPdfSource(file) : store.loadPdfData(file));
+const openPdf = (data) => pdfjsLib.getDocument(isPdfSource(data) ? rangeParams(pdfjsLib.PDFDataRangeTransport, data.blob) : { data });
 
 // Hatch templates, palette, NO_FILL, and the HatchPattern/HatchSwatch pieces
 // live in components/hatches.jsx — shared with the TakeoffsPanel.
@@ -506,6 +514,8 @@ export default function TakeoffCanvas() {
   const templatesRef = useRef([]);                            // readable inside hydrate (seeding a fresh workspace)
   const [matLib, setMatLib] = useState([]);                   // material library (browser-global; conditions COPY on attach + carry lib_id)
   const labeledFileRef = useRef("");             // which file we've already title-block-scanned
+  const textScanRef = useRef(null);       // the running whole-file text scan's token: a new scan, or unmount, ends the old one
+  const scanHoldRef = useRef(0);          // performance.now() until which the text scan starts no new read: a sheet is changing
   const wantSheetRef = useRef(new URLSearchParams(window.location.search).get("sheet") || "");
   const [status, setStatus] = useState("loading");
   const [err, setErr] = useState("");
@@ -1165,8 +1175,8 @@ export default function TakeoffCanvas() {
   const pinsRef = useRef({ files: new Set(), stitchById: {} });
   const readerRef = useRef(null);
   const [docCache] = useState(() => createDocCache({
-    load: (file) => store.loadPdfData(file),
-    open: (data) => pdfjsLib.getDocument({ data }),
+    load: pdfSourceOf,
+    open: openPdf,
     hashing: (file) => (ocrEnabled() && typeof store.beginPdfHash === "function" ? store.beginPdfHash(file) : null),
     // asked live: a stopped read's page may still be rasterizing
     pinned: () => {
@@ -2161,6 +2171,8 @@ export default function TakeoffCanvas() {
     const prof = incoming.find((f) => isProfileFile(f.name));
     if (prof) { await importProfileFile(prof); return; }
     setCommitMsg("Reading files…");
+    // the render workers boot while the files are read and stored (#580)
+    try { getCompositor().prewarm(); } catch { /* no Worker here: the first sheet starts them */ }
     let pdfs = [], skipped = [];
     try { ({ pdfs, skipped } = await ingestFiles(incoming, { onProgress: setCommitMsg })); }
     catch (e) { setCommitMsg(`Couldn't read those files: ${e.message || e}`); return; }
@@ -2783,7 +2795,7 @@ export default function TakeoffCanvas() {
         if (cancelled) return;
         const viewport = pageObj.getViewport({ scale: RENDER_SCALE });
         const w = Math.ceil(viewport.width), h = Math.ceil(viewport.height);
-        getCompositor().openSheet(`ref::${refKey}`, pn, store.loadPdfData(file), w, h);
+        getCompositor().openSheet(`ref::${refKey}`, pn, pdfSourceOf(file), w, h);
         refDimsRef.current = { key: refKey, w, h };
         // preserve object identity when dims didn't actually change (the
         // common groupSig-resync case) — see the sameKey comment above
@@ -2904,6 +2916,7 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
+    scanHoldRef.current = performance.now() + 500; // the whole-file text scan waits for this sheet
     // each shown file's generation as this render starts (spec §5.3): text
     // read below is offered under it, so a re-drop meanwhile discards it
     const nameGens = new Map();
@@ -2928,6 +2941,13 @@ export default function TakeoffCanvas() {
     sheetStatsRef.current.clear();
     rasterMaskCacheRef.current.clear();
     canvasInvertedRef.current.clear();
+    // The sheets leaving the screen: let pdf.js free what each page cached
+    // (its operator list, its decoded images). The document outlives the
+    // sheet, so without this every sheet visited in a big set stayed in
+    // memory until its file closed (#580). A page still being read (a
+    // thumbnail, an OCR raster) frees itself when that finishes; one shown
+    // again reads its operator list again.
+    for (const pg of new Set(pageObjsRef.current.values())) { try { pg.cleanup(); } catch { /* its document is already gone */ } }
     pageObjsRef.current.clear();
     renderScalesRef.current.clear();
     getCompositor().resetAll();
@@ -2946,6 +2966,13 @@ export default function TakeoffCanvas() {
     try { refDetailCancelRef.current?.cancel(); } catch { /* done */ }
     refDetailCancelRef.current = null;
     refDetailKeyRef.current = null;
+    // The render workers start on each file's document now, while the main
+    // thread opens its own and finds the page: the two used to run one after
+    // the other (#580). A file the workers already hold costs nothing.
+    if (typeof store.loadPdfSource === "function") {
+      const files = new Set(groupKeys.flatMap((k) => (stitchById[k] ? stitchById[k].members.map((m) => parseSheetKey(m.key).file) : [parseSheetKey(k).file])));
+      for (const f of files) store.loadPdfSource(f).then((src) => { if (!stale()) getCompositor().warm(src); }).catch(() => { /* the open below reports it */ });
+    }
     (async () => {
       // resolve one drawable source: doc → page → viewport at the FIXED logical
       // scale. Every file here is pinned (groupKeys), so docFor holds; a stale
@@ -3010,7 +3037,7 @@ export default function TakeoffCanvas() {
       // pool now (not one shared canvas context), so there's no reason to
       // serialize them the way the old left-to-right raster loop had to.
       await Promise.all(metas.flatMap((m) => m.sources.map(async (s) => {
-        getCompositor().openSheet(s.drawKey, s.pageNum, store.loadPdfData(s.file), s.w, s.h);
+        getCompositor().openSheet(s.drawKey, s.pageNum, pdfSourceOf(s.file), s.w, s.h);
         let canvas = panelCanvasRefs.current.get(s.drawKey);
         for (let t = 0; !canvas && t < 10; t++) {
           await new Promise((r) => requestAnimationFrame(r)); if (stale()) return;
@@ -3167,28 +3194,91 @@ export default function TakeoffCanvas() {
       if (labeledFileRef.current !== active) {
         labeledFileRef.current = active;
         setLabelsByFile((m) => labelsOnFileChange(m, active)); // drop other files' labels
+        // Every other page's text, for the tree's sheet numbers, the noted
+        // scales and plan search. The scan belongs to the FILE, not to this
+        // render: it runs on through sheet flips, and stops when another file
+        // becomes active, this one is re-dropped, or the canvas unmounts.
+        // (It used to stop at the first flip and never start again, leaving
+        // the tree half numbered.) Where the store gives a byte-range source
+        // the pages are read in the render workers, one per worker at a
+        // time, and only while no tile is owed (#580); else on the main
+        // document, one at a time, as before.
+        textScanRef.current?.end?.(); // a scan of another file: its workers go now
+        const scan = textScanRef.current = {};
+        const scanLive = () => textScanRef.current === scan && labeledFileRef.current === active && labelsLive();
+        const nameGen = nameGenOf(active);
         (async () => {
-          const pdf = await docFor(active);   // pinned while active; a switch stops the loop (stale)
+          const pdf = await docFor(active);   // pinned while active
+          const total = pdf.numPages || 1;
+          const source = typeof store.loadPdfSource === "function" ? await store.loadPdfSource(active).catch(() => null) : null;
           const found = {};
-          for (let n = 1; n <= (pdf.numPages || 1); n++) {
-            if (stale()) return;
-            if (n === lead.pageNum) continue;
-            try {
-              const p2 = await pdf.getPage(n);
-              const tc = await p2.getTextContent();
-              const vp2 = p2.getViewport({ scale: RENDER_SCALE });
-              const lbl = extractSheetNumber(tc, vp2);
-              offerSheetText(active, n, nameGenOf(active), tc, vp2);
-              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0 && labelsLive()) setLabelsByFile((m) => withFoundLabels(m, active, found)); }
-              const key = n > 1 ? `${active}#${n}` : active;
-              const det = detectScale(tc, vp2);
-              if (det) setDetectedScales((d) => (d[key]?.label === det.label ? d : { ...d, [key]: det }));
-              if (stale()) return;
-              if (acceptsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp2));
-            } catch { /* skip */ }
-          }
-          if (!stale() && labelsLive() && Object.keys(found).length) setLabelsByFile((m) => withFoundLabels(m, active, found));
-        })();
+          let dirty = 0;
+          const flush = () => { if (dirty && scanLive()) { dirty = 0; setLabelsByFile((m) => withFoundLabels(m, active, { ...found })); } };
+          const scales = {};
+          const flushScales = () => {
+            const batch = Object.entries(scales); if (!batch.length || !scanLive()) return;
+            for (const k of Object.keys(scales)) delete scales[k];
+            setDetectedScales((d) => { let next = d; for (const [k, det] of batch) if (next[k]?.label !== det.label) { if (next === d) next = { ...d }; next[k] = det; } return next; });
+          };
+          const take = (n, tc, vp) => {
+            const lbl = extractSheetNumber(tc, vp);
+            offerSheetText(active, n, nameGen, tc, vp);
+            if (lbl) { found[n] = lbl; dirty++; }
+            const key = n > 1 ? `${active}#${n}` : active;
+            const det = detectScale(tc, vp);
+            if (det) scales[key] = det;
+            if (acceptsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp));
+          };
+          const readOnMain = async (n) => {
+            const p2 = await pdf.getPage(n);
+            const tc = await p2.getTextContent();
+            take(n, tc, p2.getViewport({ scale: RENDER_SCALE }));
+          };
+          // The scan gives way to the sheet: no read starts while a tile is
+          // owed or a sheet change is under way (scanHoldRef, set as each
+          // render begins), and a page's text is taken up in an idle period
+          // of the main thread, so a flip or a scroll never waits on it.
+          const idleTiles = async () => { while (scanLive() && (getCompositor().busy() || performance.now() < scanHoldRef.current)) await new Promise((r) => setTimeout(r, 40)); };
+          const idleMain = () => new Promise((r) => { if (typeof requestIdleCallback === "function") requestIdleCallback(() => r(), { timeout: 250 }); else setTimeout(r, 0); });
+          // The scan's own workers (lib/tilePool TEXT_SCAN_WORKERS), ended with
+          // it: the render pool keeps every one of its workers for the sheet.
+          const scanPool = source && TEXT_SCAN_WORKERS > 0 ? createTilePool(TEXT_SCAN_WORKERS) : null;
+          scan.end = () => { try { scanPool?.dispose(); } catch { /* already gone */ } };
+          const readText = scanPool ? scanPool.requestText : (src, n, scale) => getCompositor().readText(src, n, scale);
+          const lanes = !source ? 1 : scanPool ? TEXT_SCAN_WORKERS : Math.max(1, getCompositor().workers - 1);
+          let next = 1;
+          const lane = async () => {
+            for (;;) {
+              const n = next++;
+              if (n > total || !scanLive()) return;
+              if (n === lead.pageNum) continue;
+              try {
+                if (source) {
+                  await idleTiles(); if (!scanLive()) return;
+                  const r0 = performance.now();
+                  const t = await readText(source, n, RENDER_SCALE);
+                  const r1 = performance.now();
+                  await idleMain();
+                  if (!scanLive()) return;
+                  const r2 = performance.now();
+                  take(n, t, t.viewport);
+                  if (window.__OT_SCAN_DEBUG) (window.__scanT ??= []).push([r1 - r0, r2 - r1, performance.now() - r2, t.items.length]);
+                } else {
+                  await readOnMain(n); if (!scanLive()) return;
+                }
+              } catch { /* skip */ }
+              // the tree and the scale chips fill in as the scan goes, in
+              // batches: one state update per page was most of its cost
+              if (dirty >= 24) flush();
+              if (Object.keys(scales).length >= 24) flushScales();
+            }
+          };
+          const t0 = performance.now();
+          try { performance.mark("sheet-text-scan-start"); } catch { /* unsupported */ }
+          try { await Promise.all(Array.from({ length: lanes }, lane)); } finally { scan.end(); }
+          flush(); flushScales();
+          if (scanLive()) { try { performance.measure("sheet-text-scan", { start: t0, detail: { pages: total } }); } catch { /* unsupported */ } }
+        })().catch(() => { });
       }
     })().catch((e) => { if (stale() || e?.name === "RenderingCancelledException") return; setErr(String(e.message || e)); setStatus("error"); });
     // cleanup MUST read the LIVE refs, not a mount-time copy: bumping the current
@@ -3314,6 +3404,8 @@ export default function TakeoffCanvas() {
   // pair was observed to cause; see getCompositor's comment).
   useEffect(() => () => {
     docCache.clear();
+    textScanRef.current?.end?.();
+    textScanRef.current = null; labeledFileRef.current = ""; // the text scan reads through this pool
     try { compositorRef.current?.dispose(); } catch { /* half-built pool */ }
     compositorRef.current = null;
   }, [docCache]);

@@ -350,8 +350,7 @@ uploads, and no feature is gated on an operating system.
 
 The **Premium workspace** offers compact controls, searchable actions and sheets, personal panel arrangements, adjustable surfaces and larger sheet previews. It is the default when this browser has no saved layout choice; **Classic layout** remains available. [See the workspace design and research](design/PERSONAL_WORKSPACE.md).
 
-Sheet navigation releases closed PDFs and embedded fonts from the tile workers;
-see the [30-flip rendering check](review/508/README.md).
+A stored PDF is read by byte range: opening a sheet reads the file's index and that sheet's page, not the whole set, and the tile workers share the one stored copy. Each worker keeps a file's document across sheet flips, releases it 20 seconds after its last sheet closes, and starts a fresh one every 24 sheets, so what it holds (fonts, page data) stays bounded; see the [30-flip rendering check](review/508/README.md) and the [large-set benchmark](../web/bench/largeset/README.md).
 Beyond the PDFs in open tabs, at most four idle PDFs stay loaded (two on
 a phone or tablet, or a browser that reports 4 GB of memory or less), least recently used out first; see the [12-PDF check](review/302-doc-lru/README.md).
 

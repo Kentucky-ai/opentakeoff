@@ -4,6 +4,7 @@
 // file's bytes under the same name while an open document still has the old
 // ones. No OCR imports: the canvas's document cache is built from this.
 import { startPdfHash } from "./pdfHash";
+import { isPdfSource, type PdfSource } from "../pdfSource";
 
 interface DocLike<P> { getPage(n: number): Promise<P> }
 
@@ -57,9 +58,10 @@ export interface DocCache<P, D extends DocLike<P>> {
  * stay that are neither pinned (`pinned()`, asked afresh on every trim) nor
  * leased; past that the least recently asked for go. The defaults keep
  * every document until evicted. */
-export function createDocCache<P, D extends DocLike<P> = DocLike<P>>(deps: {
-  load(file: string): Promise<Uint8Array>;
-  open(data: Uint8Array): LoadingTask<D>;
+export function createDocCache<P, D extends DocLike<P> = DocLike<P>, S extends Uint8Array | PdfSource = Uint8Array>(deps: {
+  /** the file's bytes, or a byte-range source for them (#580) */
+  load(file: string): Promise<S>;
+  open(data: S): LoadingTask<D>;
   hashing(file: string): ((h: Promise<string | null>) => void) | null;
   pinned?(): Iterable<string>;
   maxIdle?: number;
@@ -111,7 +113,8 @@ export function createDocCache<P, D extends DocLike<P> = DocLike<P>>(deps: {
       loaded: false,
       task: deps.load(file).then((data) => {
         if (report) {
-          const h = startPdfHash(data);
+          // a source is hashed from its Blob: the one case that reads it whole
+          const h = isPdfSource(data) ? data.blob.arrayBuffer().then(startPdfHash, () => null) : startPdfHash(data);
           settle(h);
           if (docs.get(file) === e) report(h);
         }
