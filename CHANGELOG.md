@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-17 — the 3D view (Kevin Murphy's, as improved in the Spline viewer)
+
+- **A 3D button.** The view cluster gets **3D**: the open sheet's takeoff stood up, read-only. Floors are slabs at their thickness with holes and stacked layers, base stands at its height, transitions lie flush on the higher floor, surface runs stand up, a count with a height is a post, and tile floors with a stated size carry a grout grid.
+- **Stairs.** A floor shape under a STAIR condition, labeled with the plan's note (`13T @ 11" 14R @ 7"`), draws as treads, risers and nosings; a *landing* rectangle sits at the top of the flight that reaches it, and another sheet can be stacked at the stair's top as the level above.
+- **Ceilings at their height.** ACT / CLG / soffit conditions draw as a plane at their height above the floor: **Ceiling AFF** on the condition (or on one area, for a soffit), else a height in the tag (`9'-0"`), else a 9'-0" allowance flagged in the panel. A soffit inside a higher ceiling gets vertical drops; acoustical tile shows its grid.
+- **Check what you measured.** Click a surface for its condition, quantity and source (and it selects on the canvas); isolate a room or a unit; plan, orbit and sheet cameras; export a PNG with the sheet, scale, legend and caveat.
+- **No cost to anyone who never opens it.** three.js and the view are a separate chunk (634 kB, 169 kB gzip) fetched on the first click; the main bundle grows 6.6 kB (2.2 kB gzip) for the button, the ceiling-height fields and the wiring.
+- Built from Kevin Murphy's `feat/3d-takeoff-view` (Apache-2.0) with Michael Edlin's Spline improvements: the north-south handedness fix, batched meshes with picking, the accuracy panel, isolation that is fast at 2,000 rooms, and stairs. Tests: `web/test/scene3d.test.ts`.
+
 ## Russian localization: unit and export corrections
 
 - Preserve custom names and textual codes when localizing CSV, Excel and editable fields; format numeric CSV cells before serialization.

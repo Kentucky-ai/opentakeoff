@@ -833,6 +833,19 @@ In Russian, CSV uses UTF-8 with a BOM, semicolons between cells and decimal comm
 
 **Contribute** also lives here—covered with the rest of your data in §12.
 
+### The 3D view
+
+The **3D** button in the view cluster (bottom left, with fit, focus and invert) stands the open sheet's takeoff up in three dimensions. It is read-only: nothing you do in it changes a shape or a quantity. The sheet needs a scale first (3D is feet-true), and it shows one sheet at a time, not a stitched group.
+
+- **Floors** are slabs at the condition's thickness (a nominal ½" when none is set, noted in the panel). Cut-outs and same-condition deducts are holes; a deduct outside every floor of its condition shows as a red volume. Two conditions traced on one footprint stack as layers, underlayments first.
+- **Base** stands as a ribbon at the condition's height (a nominal 4" when unset); a derived base sits on its room's side of the wall line. **Transitions** and other lines lie flush on the higher floor beside them. **Surface** runs stand at their height. A **count** with a height (a corner guard) stands as a 2" post.
+- **Tile floors** show a grout grid when the condition states a size, for example a condition named "Porcelain 24x24".
+- **Stairs.** Trace the flight as a rectangle on the stair plan under a condition whose tag or name says *STAIR* (or whose flooring type is `stairs`), and type the plan's stair note into the shape's label, for example `13T @ 11" 14R @ 7"`. The 3D view draws every tread, riser and nosing from those counts. A rectangle labeled *landing* is a landing; it sits at the top of the flight that reaches it. Put *open* in a flight's label to draw one open side with a stringer. No riser height draws at a nominal 7" and says so. Under **Level above**, pick another open sheet to stack it at the stair's top (or type the floor-to-floor).
+- **Ceilings** sit at their height, not on the floor. A condition whose tag or name says *ACT*, *CLG*, *CEILING*, *SOFFIT* or *BULKHEAD* is a ceiling: set **Ceiling AFF** on it (the RCP height tag, e.g. 9'), or write the height in its tag (`ACT-1 2x2 9'-0"`). Select one area to give it its own height (a soffit). A lower ceiling inside a higher one draws as a soffit with vertical drops between them. Acoustical tile shows its grid (the size in the name, else 2'×2', marked assumed). A ceiling with no height anywhere is drawn at a **9'-0" allowance** and flagged in the panel. Ceiling heights are display-only; no quantity reads them.
+- **Click a surface** to see its condition, measured SF/LF/EA and where it came from, and to select that shape on the canvas. **Isolate → Room / Unit** shows only the picked room (or every room of its unit); **All** brings everything back.
+- **Plan / Orbit / Sheet** set the camera; drag to orbit, right-drag to pan, scroll to zoom. **Export PNG** saves the view with the sheet name, scale, date, legend and a "schematic, not as-built" caveat.
+- Esc closes the view. three.js downloads only the first time you open it.
+
 ---
 
 ## 11. Revisions

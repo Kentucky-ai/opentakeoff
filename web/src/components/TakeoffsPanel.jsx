@@ -44,6 +44,7 @@ import { itemRule, itemWastePct, coverageLabel } from "../lib/totals.js";
 import { loadAssemblies, saveAssemblies, conditionToAssembly, ASSEMBLY_EVENT, ASSEMBLY_STORAGE_KEY } from "../lib/assemblies.js";
 import { mintUuid } from "../lib/provenance.js";
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
+import { isCeilingCondition } from "../lib/ceilingKind.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
 import { Z } from "../lib/ui.js";
 import { ftIn } from "../lib/units";
@@ -555,6 +556,13 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
           <DimParamInput name="condition-height-ft" internal={c.height_ft} units={units} kind="height" width={54}
             onCommit={(v) => onSetCondParam("height_ft", v)} />
         </span>
+        {isCeilingCondition(c) && (
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Ceiling height AFF (${heightUnit(units)}) — where this ceiling sits in the 3D view (the RCP height tag, e.g. 9'-0"). Display only: no quantity reads it. Blank = a 9'-0" allowance, flagged. Select an area to give it its own height (a soffit).`}>
+            <span style={{ color: "var(--ink-muted)" }}>Ceiling AFF</span>
+            <DimParamInput name="condition-ceiling-ft" internal={c.ceiling_ft} units={units} kind="height" width={54}
+              onCommit={(v) => onUpdateCond({ ceiling_ft: v === "" ? null : v })} />
+          </span>
+        )}
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={uiText(`Thickness (${thickUnit(units)}) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.`)}>
           <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>{uiText("Thickness")}</span>
           <DimParamInput name="condition-thickness-in" internal={c.thickness_in} units={units} kind="thickness" width={50}
