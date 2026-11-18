@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Read page text (#471): the canvas's control for reading a scan (a sheet
 // with little or no text layer, planIndex isScan) on-device, and Read
 // picture text (#489) for a hybrid's pictures (planIndex isHybrid). One row per sheet on screen whose view (lib/ocr/pageRead
@@ -36,28 +37,28 @@ function RowBody({ row, onRead, onReadAgain, onCancel, onRetry }) {
   switch (view.kind) {
     case "read":
       return (<>
-        <button type="button" className="btn-ghost" style={btn} onClick={() => onRead(key)}>{what === "picture" ? "Read picture text" : "Read page text"}</button>
-        {view.note && <span aria-live="polite" style={{ color: "var(--c-danger)", whiteSpace: "normal" }}>{view.note}</span>}
+        <button type="button" className="btn-ghost" style={btn} onClick={() => onRead(key)}>{uiText(what === "picture" ? "Read picture text" : "Read page text")}</button>
+        {view.note && <span aria-live="polite" style={{ color: "var(--c-danger)", whiteSpace: "normal" }}>{uiText(view.note)}</span>}
       </>);
     case "reading":
       return (<>
         <span className="pip" aria-hidden="true" />
-        <span aria-live="polite">{view.text}</span>
-        <button type="button" className="btn-ghost" style={btn} onClick={() => onCancel(key)}>Cancel</button>
+        <span aria-live="polite">{uiText(view.text)}</span>
+        <button type="button" className="btn-ghost" style={btn} onClick={() => onCancel(key)}>{uiText("Cancel")}</button>
       </>);
     case "stopping":
-      return <span aria-live="polite" style={{ color: "var(--ink-muted)" }}>{view.text}</span>;
+      return <span aria-live="polite" style={{ color: "var(--ink-muted)" }}>{uiText(view.text)}</span>;
     case "unreadable":
-      return <span aria-live="polite" style={{ color: "var(--c-danger)", whiteSpace: "normal" }}>{view.text}</span>;
+      return <span aria-live="polite" style={{ color: "var(--c-danger)", whiteSpace: "normal" }}>{uiText(view.text)}</span>;
     case "unreachable":
       return (<>
-        <span aria-live="polite" style={{ color: "var(--c-danger)", whiteSpace: "normal" }}>{view.text}</span>
-        <button type="button" className="btn-ghost" style={btn} onClick={() => onRetry?.()}>Retry</button>
+        <span aria-live="polite" style={{ color: "var(--c-danger)", whiteSpace: "normal" }}>{uiText(view.text)}</span>
+        <button type="button" className="btn-ghost" style={btn} onClick={() => onRetry?.()}>{uiText("Retry")}</button>
       </>);
     case "done":
       return (<>
-        <span aria-live="polite">{view.text}</span>
-        {view.readAgain && <button type="button" className="btn-ghost" style={btn} onClick={() => onReadAgain(key)}>Read again</button>}
+        <span aria-live="polite">{uiText(view.text)}</span>
+        {view.readAgain && <button type="button" className="btn-ghost" style={btn} onClick={() => onReadAgain(key)}>{uiText("Read again")}</button>}
       </>);
     default:
       return null;
@@ -69,10 +70,10 @@ export default function PageReadControl({ rows, onRead, onReadAgain, onCancel, o
   if (!shown.length) return null;
   const labelled = rows.filter((r) => !r.background).length > 1;
   return (
-    <div role="group" aria-label="Read text from scans and pictures" data-page-read="" style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", padding: "var(--sp-1) var(--sp-2)", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", maxWidth: READ_CONTROL_MAX_W }}>
+    <div role="group" aria-label={uiText("Read text from scans and pictures")} data-page-read="" style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", padding: "var(--sp-1) var(--sp-2)", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", maxWidth: READ_CONTROL_MAX_W }}>
       {shown.map((row) => (
         <div key={row.key} style={{ ...S.monoReadout, fontSize: "var(--fs-xs)", display: "flex", alignItems: "center", gap: "var(--sp-2)", whiteSpace: "nowrap" }}>
-          {labelled && !row.background && <span style={{ ...S.monoLabel, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{row.label}</span>}
+          {labelled && !row.background && <span style={{ ...S.monoLabel, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{uiText(row.label)}</span>}
           <RowBody row={row} onRead={onRead} onReadAgain={onReadAgain} onCancel={onCancel} onRetry={onRetry} />
         </div>
       ))}

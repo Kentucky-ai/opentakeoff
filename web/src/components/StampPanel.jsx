@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // StampPanel — the stamp palette (the tool-chest, #40). A docked, project-
 // global panel (like the RFI register, unlike the sheet-scoped markup panel):
 // the browser-global stamp library, one row per stamp with a live geometric
@@ -30,15 +31,15 @@ function StampPreview({ elements = [], w = 54, h = 34 }) {
           return <g key={i}><line x1={fx} y1={fy} x2={tx} y2={ty} stroke={col} strokeWidth={1.4} /><path d={arrowheadPath(fx, fy, tx, ty, 5)} fill={col} /></g>;
         }
         if (el.type === "bubble" && el.at) {
-          return <g key={i}><circle cx={mx(el.at[0])} cy={my(el.at[1])} r={Math.max(4, (Number(el.r) || 0.02) * K)} fill="none" stroke={col} strokeWidth={1.4} />{el.text ? <text x={mx(el.at[0])} y={my(el.at[1])} fill={col} fontSize={8} fontWeight="700" textAnchor="middle" dominantBaseline="central">{el.text}</text> : null}</g>;
+          return <g key={i}><circle cx={mx(el.at[0])} cy={my(el.at[1])} r={Math.max(4, (Number(el.r) || 0.02) * K)} fill="none" stroke={col} strokeWidth={1.4} />{el.text ? <text x={mx(el.at[0])} y={my(el.at[1])} fill={col} fontSize={8} fontWeight="700" textAnchor="middle" dominantBaseline="central">{uiText(el.text)}</text> : null}</g>;
         }
         if ((el.type === "highlight" || el.type === "cloud") && el.rect) {
           const x0 = mx(Math.min(el.rect[0][0], el.rect[1][0])), y0 = my(Math.min(el.rect[0][1], el.rect[1][1]));
           const x1 = mx(Math.max(el.rect[0][0], el.rect[1][0])), y1 = my(Math.max(el.rect[0][1], el.rect[1][1]));
-          return <g key={i}><rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={el.type === "highlight" ? col + "22" : "none"} stroke={col} strokeWidth={1.2} strokeDasharray={el.type === "cloud" ? "2 1.5" : undefined} />{el.text ? <text x={(x0 + x1) / 2} y={(y0 + y1) / 2} fill={col} fontSize={6} fontWeight="700" textAnchor="middle" dominantBaseline="central">{el.text}</text> : null}</g>;
+          return <g key={i}><rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={el.type === "highlight" ? col + "22" : "none"} stroke={col} strokeWidth={1.2} strokeDasharray={el.type === "cloud" ? "2 1.5" : undefined} />{el.text ? <text x={(x0 + x1) / 2} y={(y0 + y1) / 2} fill={col} fontSize={6} fontWeight="700" textAnchor="middle" dominantBaseline="central">{uiText(el.text)}</text> : null}</g>;
         }
         if ((el.type === "callout" || el.type === "text") && el.at) {
-          return <g key={i}>{el.type === "callout" && el.target ? <line x1={mx(el.target[0])} y1={my(el.target[1])} x2={mx(el.at[0])} y2={my(el.at[1])} stroke={col} strokeWidth={1.2} /> : null}<text x={mx(el.at[0])} y={my(el.at[1])} fill={col} fontSize={9} fontWeight="700" textAnchor="middle" dominantBaseline="central">{el.text || "T"}</text></g>;
+          return <g key={i}>{el.type === "callout" && el.target ? <line x1={mx(el.target[0])} y1={my(el.target[1])} x2={mx(el.at[0])} y2={my(el.at[1])} stroke={col} strokeWidth={1.2} /> : null}<text x={mx(el.at[0])} y={my(el.at[1])} fill={col} fontSize={9} fontWeight="700" textAnchor="middle" dominantBaseline="central">{uiText(el.text || "T")}</text></g>;
         }
         if (el.type === "svg" && el.path && Array.isArray(el.vb)) {
           // vector symbol — fit the viewBox into ~80% of the thumbnail (a proper
@@ -74,7 +75,7 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
     return (
       <button key={id} onClick={() => setSetFilter(id)}
         style={{ padding: "2px 8px", border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`, background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 11 }}>
-        {label}
+        {uiText(label)}
       </button>
     );
   };
@@ -93,17 +94,17 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
       {docked ? (
         // docked: no blue title bar / ×; Export/Import become a slim light toolbar
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
-          <button onClick={onExport} title="Export the stamp library as JSON" style={ctrl}>Export</button>
-          <button onClick={() => fileRef.current?.click()} title="Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)" style={ctrl}>Import</button>
-          {fileInput}
+          <button onClick={onExport} title={uiText("Export the stamp library as JSON")} style={ctrl}>{uiText("Export")}</button>
+          <button onClick={() => fileRef.current?.click()} title={uiText("Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)")} style={ctrl}>{uiText("Import")}</button>
+          {uiText(fileInput)}
         </div>
       ) : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-          <strong>Stamps · palette</strong>
+          <strong>{uiText("Stamps · palette")}</strong>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={onExport} title="Export the stamp library as JSON" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>Export</button>
-            <button onClick={() => fileRef.current?.click()} title="Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>Import</button>
-            {fileInput}
+            <button onClick={onExport} title={uiText("Export the stamp library as JSON")} style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>{uiText("Export")}</button>
+            <button onClick={() => fileRef.current?.click()} title={uiText("Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)")} style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>{uiText("Import")}</button>
+            {uiText(fileInput)}
             <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
           </span>
         </div>
@@ -111,28 +112,27 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
 
       <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
         {armedStamp
-          ? <span><b style={{ color: "var(--cobalt)" }}>“{armedStamp.name}” armed</b> — click the plan to place it. Esc to cancel.</span>
-          : <span>Click <b>Place</b> on a stamp, then click the plan. Placed stamps are normal, editable markups.</span>}
+          ? <span><b style={{ color: "var(--cobalt)" }}>“{uiText(armedStamp.name)}{uiText("” armed")}</b> {uiText("— click the plan to place it. Esc to cancel.")}</span>
+          : <span>{uiText("Click ")}<b>{uiText("Place")}</b> {uiText("on a stamp, then click the plan. Placed stamps are normal, editable markups.")}</span>}
       </div>
 
       {/* set filter — the model carries StampSets; the palette groups by them */}
       {library.sets.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 10px 8px" }}>
-          {chip("all", "All")}
-          {library.sets.map((s) => chip(s.id, s.name || "Set"))}
+          {uiText(chip("all", "All"))}
+          {uiText(library.sets.map((s) => chip(s.id, s.name || "Set")))}
         </div>
       )}
 
       {/* define: save the selected markup as a new stamp */}
       <div style={{ padding: "0 10px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
         <button onClick={() => selectedMarkup && onSaveSelected(selectedMarkup)} disabled={!selectedMarkup}
-          title={selectedMarkup ? "Save the selected markup as a reusable stamp" : "Select a markup on the canvas first"}
+          title={uiText(selectedMarkup ? "Save the selected markup as a reusable stamp" : "Select a markup on the canvas first")}
           style={{ ...ctrl, width: "100%", padding: "6px 8px", color: selectedMarkup ? "var(--cobalt)" : "var(--ink-muted)", fontWeight: 600, cursor: selectedMarkup ? "pointer" : "not-allowed" }}>
-          <Icon name="plus" size={12} /> Save selected markup as stamp
-        </button>
+          <Icon name="plus" size={12} /> {uiText("Save selected markup as stamp")}</button>
       </div>
 
-      {shown.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No stamps here yet.</div>}
+      {shown.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>{uiText("No stamps here yet.")}</div>}
       {shown.map((s) => {
         const armed = armedStamp?.id === s.id;
         return (
@@ -145,16 +145,16 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
                   onBlur={(e) => { onRename(s.id, e.currentTarget.value); setEditId(null); }}
                   style={{ width: "100%", fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", outline: "none" }} />
               ) : (
-                <div style={{ fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.name}>{s.name}</div>
+                <div style={{ fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={uiText(s.name)}>{uiText(s.name)}</div>
               )}
-              <div style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{s.elements.length} element{s.elements.length === 1 ? "" : "s"}</div>
+              <div style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{uiText(s.elements.length)} {uiText("element")}{uiText(s.elements.length === 1 ? "" : "s")}</div>
             </div>
-            <button onClick={() => onArm(s)} title="Arm this stamp for placement"
+            <button onClick={() => onArm(s)} title={uiText("Arm this stamp for placement")}
               style={{ ...ctrl, color: armed ? "var(--accent-contrast)" : "var(--cobalt)", background: armed ? "var(--cobalt)" : "transparent", border: `1px solid var(--cobalt)`, fontWeight: 600 }}>
-              {armed ? "Armed" : "Place"}
+              {uiText(armed ? "Armed" : "Place")}
             </button>
-            <button onClick={() => setEditId((id) => (id === s.id ? null : s.id))} title="Rename stamp" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
-            <button onClick={() => { if (window.confirm(`Delete stamp “${s.name}”?`)) onDelete(s.id); }} title="Delete stamp" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
+            <button onClick={() => setEditId((id) => (id === s.id ? null : s.id))} title={uiText("Rename stamp")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
+            <button onClick={() => { if (window.confirm(uiText(`Delete stamp “${s.name}”?`))) onDelete(s.id); }} title={uiText("Delete stamp")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
           </div>
         );
       })}

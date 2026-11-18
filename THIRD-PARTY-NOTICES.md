@@ -10,6 +10,8 @@ which retain their own licenses:
 | [React Router](https://github.com/remix-run/react-router) | MIT | Routing |
 | [Vite](https://github.com/vitejs/vite) | MIT | Build tool / dev server |
 | [fflate](https://github.com/101arrowz/fflate) | MIT | Unzipping dropped `.zip` plan sets (lazy-loaded) |
+| [Noto Sans](https://github.com/notofonts/noto-fonts) | SIL OFL 1.1 (web/public/fonts/OFL.txt) | Bundled Cyrillic fonts for proposal PDFs |
+| [@pdf-lib/fontkit](https://github.com/Hopding/fontkit) | MIT | Embedding Cyrillic fonts in PDF |
 | [pdf-lib](https://github.com/Hopding/pdf-lib) | MIT | Wrapping dropped images into PDFs (lazy-loaded) |
 | [TypeScript](https://github.com/microsoft/TypeScript) | Apache-2.0 | Type-checking the geometry libs |
 | [tsx](https://github.com/privatenumber/tsx) | MIT | Running TS tests under Node |

@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Presence chip (#317) — the coat on the chair. One honest line per teammate
 // with the project open: declared name, the sheet they were last on, and how
 // long ago the heartbeat landed. "Last seen", never "is editing" — a synced
@@ -55,14 +56,14 @@ export default function PresenceChip({ bridge }) {
     .join("\n");
 
   return (
-    <span title={title} style={{
+    <span title={uiText(title)} style={{
       display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 8px",
       border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)",
       fontSize: 10.5, color: "var(--ink-muted)", maxWidth: 300,
       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
     }}>
       <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, background: "var(--c-positive)", flex: "none" }} />
-      {peers.length === 1 ? line : `${peers.length} teammates in this project`}
+      {uiText(peers.length === 1 ? line : `${peers.length} teammates in this project`)}
     </span>
   );
 }

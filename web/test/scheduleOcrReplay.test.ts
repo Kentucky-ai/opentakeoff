@@ -33,7 +33,6 @@
 // a change to the reader that moved the key cannot move the scores with it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { pageSpans, spansInRect, graphSpans } from "../src/lib/pageSpans.ts";
@@ -54,11 +53,10 @@ interface Fixture {
 const fixture = (dpi: number): Fixture =>
   JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/schedule-ocr/demo-material-${dpi}dpi.json`, import.meta.url)), "utf8"));
 
-const req = createRequire(import.meta.url);
 const DEMO = fileURLToPath(new URL("../public/demo/sample-finish-plan.pdf", import.meta.url));
 /** The vector read of `rect` on the demo PDF, as the canvas reads a box. */
 async function vectorKey(fx: Fixture): Promise<ScheduleRow[]> {
-  const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(DEMO)), useSystemFonts: true }).promise;
   try {
     const page = await doc.getPage(fx.source.page);
@@ -67,7 +65,8 @@ async function vectorKey(fx: Fixture): Promise<ScheduleRow[]> {
     assert.deepEqual([vp1.width, vp1.height, page.rotate], [3024, 2160, 0]);
     const vp = page.getViewport({ scale: fx.rs });
     const tc = await page.getTextContent();
-    const r = readScheduleSpans(graphSpans(spansInRect(pageSpans(tc.items, vp.transform, fx.rs), fx.rect)));
+    const textItems = tc.items.filter((item) => "str" in item);
+    const r = readScheduleSpans(graphSpans(spansInRect(pageSpans(textItems, vp.transform, fx.rs), fx.rect)));
     assert.ok(!("refused" in r), "the vector read of the box reads the table");
     assert.deepEqual(r.rows.map((x) => [x.finish_tag, x.section, x.category]), KEY, "the answer key is the demo's pinned read");
     return r.rows;

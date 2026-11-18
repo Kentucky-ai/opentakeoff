@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { buildTree, filterTree, visibleRows, nextFocus, treeKey, rowTitle } from "../lib/sheetTree.ts";
@@ -100,9 +101,9 @@ export function SheetTree({
   for (const r of rows) { const k = r.parent ?? ""; const i = (sizes.get(k) ?? 0) + 1; sizes.set(k, i); place.set(r.id, [i, k]); }
   for (const [id, [i, k]] of place) place.set(id, [i, sizes.get(k)]);
 
-  if (!items.length) return <div className="calm-sheet-tree"><p>Open a plan to see its sheets here.</p></div>;
+  if (!items.length) return <div className="calm-sheet-tree"><p>{uiText("Open a plan to see its sheets here.")}</p></div>;
   return <div className="calm-sheet-tree">
-    <div role="tree" aria-label="Sheets" ref={treeRef} onKeyDown={onKeyDown}>
+    <div role="tree" aria-label={uiText("Sheets")} ref={treeRef} onKeyDown={onKeyDown}>
       {rows.map((r) => {
         const n = r.node;
         const common = {
@@ -112,8 +113,8 @@ export function SheetTree({
           onFocus: () => setFocusId(r.id),
         };
         if (n.kind === "folder") {
-          return <div key={r.id} {...common} onMouseDown={noFocus} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={`${n.file} · ${n.pages} sheets`} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
-            <Icon name="chevronRight" size={14} /><span><strong>{base(n.file)}</strong></span><small>{n.pages} sheets</small>{n.shapes > 0 && <em>{n.shapes}</em>}
+          return <div key={r.id} {...common} onMouseDown={noFocus} className="calm-tree-folder" aria-expanded={isOpen(n.file)} title={uiText(`${n.file} · ${n.pages} sheets`)} onClick={() => { setFocusId(r.id); toggle(n.file); }}>
+            <Icon name="chevronRight" size={14} /><span><strong>{uiText(base(n.file))}</strong></span><small>{n.pages} {uiText("sheets")}</small>{n.shapes > 0 && <em>{n.shapes}</em>}
           </div>;
         }
         const isPage = n.kind === "sheet";
@@ -122,7 +123,7 @@ export function SheetTree({
           {...common}
           className={`calm-tree-sheet${r.depth === 2 ? " is-child" : ""}${dragOverKey === n.key ? " is-drag-over" : ""}`}
           aria-current={n.key === current ? "page" : undefined}
-          title={rowTitle(n)}
+          title={uiText(rowTitle(n))}
           draggable={isPage}
           onDragStart={(e) => {
             if (!isPage) return;
@@ -156,19 +157,19 @@ export function SheetTree({
           <Icon name="document" size={17} />
           <span>
             <strong className={n.number ? "calm-sheet-number" : undefined}>{n.number ?? n.label}</strong>
-            {n.kind !== "sheet" && <small>{n.file}</small>}
+            {n.kind !== "sheet" && <small>{uiText(n.file)}</small>}
           </span>
           {/* an unnumbered row's label already starts with its level */}
-          {n.level && n.number && <i className="calm-level-chip">{n.level}</i>}
+          {n.level && n.number && <i className="calm-level-chip">{uiText(n.level)}</i>}
           {n.shapes > 0 && <em>{n.shapes}</em>}
           {(onRotatePage || onDeletePage) && (
             <span className="calm-sheet-row-tools" onClick={(e) => e.stopPropagation()}>
               {onRotatePage && (
                 <button
                   type="button"
-                  title="Rotate page 90° clockwise"
+                  title={uiText("Rotate page 90° clockwise")}
                   onClick={() => onRotatePage(n.key, 90)}
-                  aria-label={`Rotate ${n.label} 90°`}
+                  aria-label={uiText(`Rotate ${n.label} 90°`)}
                   className="calm-tree-action-btn"
                 >
                   ↻
@@ -177,9 +178,9 @@ export function SheetTree({
               {onDeletePage && isPage && (
                 <button
                   type="button"
-                  title="Delete page"
+                  title={uiText("Delete page")}
                   onClick={() => onDeletePage(n.key)}
-                  aria-label={`Delete ${n.label}`}
+                  aria-label={uiText(`Delete ${n.label}`)}
                   className="calm-tree-action-btn"
                 >
                   ×
@@ -190,7 +191,7 @@ export function SheetTree({
         </div>;
       })}
     </div>
-    {!rows.length && <p>No sheets match your search.</p>}
-    {query.trim() && unread > 0 && <p className="calm-tree-note">{unread} file{unread === 1 ? " isn't" : "s aren't"} fully numbered yet; open {unread === 1 ? "it" : "them"} to read {unread === 1 ? "its" : "their"} sheet numbers. <button type="button" onClick={onSearchAll}>Search all sheet text</button></p>}
+    {!rows.length && <p>{uiText("No sheets match your search.")}</p>}
+    {query.trim() && unread > 0 && <p className="calm-tree-note">{uiText(unread)} {uiText("file")}{uiText(unread === 1 ? " isn't" : "s aren't")} {uiText("fully numbered yet; open ")}{uiText(unread === 1 ? "it" : "them")} {uiText("to read ")}{uiText(unread === 1 ? "its" : "their")} {uiText("sheet numbers. ")}<button type="button" onClick={onSearchAll}>{uiText("Search all sheet text")}</button></p>}
   </div>;
 }

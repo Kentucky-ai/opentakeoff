@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Toolbar account chip for the optional Google cloud mode.
 //
 // Renders NOTHING when the build isn't configured for Google, AND nothing when
@@ -23,13 +24,12 @@ export default function AuthChip() {
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span title={user.email} style={{ fontSize: 12, color: "var(--ink-muted)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {user.email}
+      <span title={uiText(user.email)} style={{ fontSize: 12, color: "var(--ink-muted)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {uiText(user.email)}
       </span>
-      <button type="button" onClick={() => signOut()} title="Sign out"
+      <button type="button" onClick={() => signOut()} title={uiText("Sign out")}
         style={{ ...base, padding: "5px 8px", color: "var(--ink-muted)" }}>
-        Sign out
-      </button>
+        {uiText("Sign out")}</button>
     </span>
   );
 }

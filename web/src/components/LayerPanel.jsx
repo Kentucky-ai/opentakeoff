@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Layer panel (#85 phase 2) — the docked right-rail surface for the sheet's
 // PDF layer table (Optional Content Groups): every layer the drawing STATES,
 // with its classified role, and a per-layer Auto / Wall / Off control feeding
@@ -45,22 +46,22 @@ function LayerRow({ layer: l, override, onOverride }) {
   const conf = Math.round((l.confidence || 0) * 100);
   return (
     <div style={{ padding: "7px 12px", borderBottom: "1px solid var(--divider-soft)" }}
-      title={`${l.name || l.id} — ${l.seg_count} segment${l.seg_count === 1 ? "" : "s"} on this sheet\nStated role: ${ROLE_LABEL[l.role] || l.role}${conf ? ` (${conf}% sure)` : ""}${l.visible === false ? "\nHidden in the drawing's default view — Auto excludes it" : ""}`}>
+      title={uiText(`${l.name || l.id} — ${l.seg_count} segment${l.seg_count === 1 ? "" : "s"} on this sheet\nStated role: ${ROLE_LABEL[l.role] || l.role}${conf ? ` (${conf}% sure)` : ""}${l.visible === false ? "\nHidden in the drawing's default view — Auto excludes it" : ""}`)}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <b style={{ flex: 1, fontFamily: "var(--f-mono)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name || l.id}</b>
-        <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)", flexShrink: 0 }}>{l.seg_count}</span>
+        <b style={{ flex: 1, fontFamily: "var(--f-mono)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(l.name || l.id)}</b>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)", flexShrink: 0 }}>{uiText(l.seg_count)}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: ROLE_TINT[l.role] || "var(--ink-muted)" }}>
-          {ROLE_LABEL[l.role] || l.role}{l.visible === false ? " · hidden" : ""}
+          {uiText(ROLE_LABEL[l.role] || l.role)}{uiText(l.visible === false ? " · hidden" : "")}
         </span>
         <span style={{ flex: 1 }} />
         <button onClick={() => onOverride(null)} style={seg(!override)}
-          title={`Auto — follow the stated role: ${autoMeaning(l)}`}>auto</button>
+          title={uiText(`Auto — follow the stated role: ${autoMeaning(l)}`)}>{uiText("auto")}</button>
         <button onClick={() => onOverride(override === "include" ? null : "include")} style={seg(override === "include")}
-          title="Wall — treat this layer's ink as hard boundary (a fill stops at it)">wall</button>
+          title={uiText("Wall — treat this layer's ink as hard boundary (a fill stops at it)")}>{uiText("wall")}</button>
         <button onClick={() => onOverride(override === "exclude" ? null : "exclude")} style={seg(override === "exclude")}
-          title="Off — ignore this layer's ink entirely (a fill passes through it)">off</button>
+          title={uiText("Off — ignore this layer's ink entirely (a fill passes through it)")}>{uiText("off")}</button>
       </div>
     </div>
   );
@@ -76,22 +77,18 @@ export default function LayerPanel({
     <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--ink)", color: "var(--paper-cream)" }}>
         <Icon name="layers" size={15} />
-        <strong style={{ flex: 1, fontSize: 12.5 }}>Layers</strong>
-        <button onClick={onClose} title="Close panel" style={{ border: "none", background: "transparent", color: "var(--paper-cream)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>×</button>
+        <strong style={{ flex: 1, fontSize: 12.5 }}>{uiText("Layers")}</strong>
+        <button onClick={onClose} title={uiText("Close panel")} style={{ border: "none", background: "transparent", color: "var(--paper-cream)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>×</button>
       </div>
       <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--ink-faint)", fontSize: 11, lineHeight: 1.5, color: "var(--ink-muted)" }}>
-        What the drawing states each ink is — feeds One-Click and room
-        detection on these sheets. <b>Wall</b> stops a fill, <b>Off</b> is
-        passed through, <b>Auto</b> follows the stated role. The sheet itself
-        draws unchanged.
-      </div>
+        {uiText("What the drawing states each ink is — feeds One-Click and room detection on these sheets. ")}<b>{uiText("Wall")}</b> {uiText("stops a fill, ")}<b>{uiText("Off")}</b> {uiText("is passed through, ")}<b>{uiText("Auto")}</b> {uiText("follows the stated role. The sheet itself draws unchanged.")}</div>
       <div style={{ flex: 1, overflow: "auto", fontSize: 12 }}>
         {/* no empty state by design: the canvas renders this panel (and its
             rail button) only when an open sheet actually carries layers */}
         {entries.map(({ key, label, layers, overrides }) => (
           <div key={key}>
             {entries.length > 1 && (
-              <div className="t-label" style={{ padding: "8px 12px 4px", borderBottom: "1px solid var(--divider-soft)" }}>{label}</div>
+              <div className="t-label" style={{ padding: "8px 12px 4px", borderBottom: "1px solid var(--divider-soft)" }}>{uiText(label)}</div>
             )}
             {layers.map((l) => (
               <LayerRow key={l.id} layer={l} override={overrides[l.id]}
@@ -101,9 +98,8 @@ export default function LayerPanel({
               <div style={{ padding: "6px 12px", borderBottom: "2px solid var(--ink-faint)" }}>
                 <button onClick={() => onReset(key)}
                   style={{ border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11, padding: 0, textDecoration: "underline" }}
-                  title="Return every layer on this sheet to Auto">
-                  Reset to stated roles
-                </button>
+                  title={uiText("Return every layer on this sheet to Auto")}>
+                  {uiText("Reset to stated roles")}</button>
               </div>
             )}
           </div>

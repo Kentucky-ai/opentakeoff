@@ -10,7 +10,6 @@
 // traces, reviewed by eye — a self-consistency record, not an accuracy one
 // (issue #184 round 9). Printed area callouts are the one quantity on a plan
 // the engine did not author, and they cost nothing to check.
-import { createRequire } from "module";
 import { readFileSync, readdirSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -19,8 +18,7 @@ import { parseAreaCallouts, nearMissCallouts, nearbyText, sweepOffsetsFor, check
 
 const here = dirname(fileURLToPath(import.meta.url));
 const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-const req = createRequire(import.meta.url);
-const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
+const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
 const files = readdirSync(join(here, "corpus"))
   .filter((f) => f.endsWith(".json"))

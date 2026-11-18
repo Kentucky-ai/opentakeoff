@@ -1,3 +1,6 @@
+import { wrapPdfText } from "./pdfText.js";
+import { formatEstimateMoney as money, getLanguage, localizeText as uiText, finishLabel } from './i18n/core.js';
+import { pricingDisplay } from './estimatePresentation.js';
 // Bid proposal → PDF (letter, pdf-lib, lazy-loaded like the marked set).
 // Lays out what lib/bidProposal.js decided — letterhead, prepared-for, scope,
 // base bid, inclusions / exclusions / terms, acceptance — and stamps the
@@ -11,32 +14,13 @@ const PAGE = [612, 792];
 const M = 54;                       // margin
 const RIGHT = PAGE[0] - M;
 const BOTTOM = M + 24;              // above the watermark footer
-const money = (v) => `$${(Number(v) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const qty = (v) => (Number(v) || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+const qty = (v) => (Number(v) || 0).toLocaleString(getLanguage() === "ru" ? "ru-RU" : "en-US", { maximumFractionDigits: 2 });
 
 // Greedy word wrap at a width; a single word longer than the line is hard-split.
 // Splits on the text's own line breaks FIRST, then makes each line WinAnsi-safe
 // (sanitizing first would turn every newline into "?").
-export function wrapText(text, font, size, width) {
-  const out = [];
-  for (const para of String(text || "").split(/\r?\n/)) {
-    let line = "";
-    for (const word of winAnsiSafe(para).split(/\s+/).filter(Boolean)) {
-      const next = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(next, size) <= width) { line = next; continue; }
-      if (line) out.push(line);
-      let w = word;
-      while (font.widthOfTextAtSize(w, size) > width && w.length > 1) {
-        let n = w.length - 1;
-        while (n > 1 && font.widthOfTextAtSize(w.slice(0, n), size) > width) n--;
-        out.push(w.slice(0, n));
-        w = w.slice(n);
-      }
-      line = w;
-    }
-    out.push(line);
-  }
-  return out;
+export function wrapText(text, font, size, width, encode = winAnsiSafe) {
+  return wrapPdfText(text, font, size, width, encode);
 }
 
 const dataUrlBytes = (url) => {
@@ -45,30 +29,40 @@ const dataUrlBytes = (url) => {
 };
 
 /** @param {ReturnType<typeof import("./bidProposal.js").buildBidProposal>} model */
-export async function buildBidProposalPdf(model) {
+export async function buildBidProposalPdf(model, { fontBytes, boldBytes } = {}) {
   const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
   const doc = await PDFDocument.create();
-  doc.setTitle(winAnsiSafe(`Proposal${model.project ? ` — ${model.project}` : ""}`));
+  doc.setTitle(uiText('Proposal') + (model.project ? ' — ' + model.project : ''));
   doc.setCreator("OpenTakeoff");
   doc.setProducer("OpenTakeoff");
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const ru = getLanguage() === 'ru';
+  const unicode = ru || Array.from(JSON.stringify(model)).some(ch => ch.codePointAt(0) > 0x24f);
+  let font, bold;
+  if (unicode) {
+    const {default:fontkit} = await import('@pdf-lib/fontkit'); doc.registerFontkit(fontkit);
+    const fetchFont = async name => { const r = await fetch('/fonts/' + name); if (!r.ok) throw Error(uiText('Could not load the PDF font.')); return new Uint8Array(await r.arrayBuffer()); };
+    font = await doc.embedFont(fontBytes || await fetchFont('NotoSans-Regular.ttf'), {subset:true});
+    bold = await doc.embedFont(boldBytes || await fetchFont('NotoSans-Bold.ttf'), {subset:true});
+  } else { font = await doc.embedFont(StandardFonts.Helvetica); bold = await doc.embedFont(StandardFonts.HelveticaBold); }
+  const encode = value => unicode ? Array.from(String(value ?? ''), ch => ch.codePointAt(0) < 32 ? ' ' : ch).join('') : winAnsiSafe(value);
+  const wrap = (value,f,size,width) => wrapText(value,f,size,width,encode);
   const ink = rgb(0.1, 0.11, 0.12), muted = rgb(0.42, 0.44, 0.47), rule = rgb(0.8, 0.82, 0.84);
 
   let page = doc.addPage(PAGE);
   let y = PAGE[1] - M;
   const newPage = () => { page = doc.addPage(PAGE); y = PAGE[1] - M; };
   const ensure = (h) => { if (y - h < BOTTOM) newPage(); };
-  const text = (t, x, size = 10, f = font, color = ink) => page.drawText(winAnsiSafe(t), { x, y, size, font: f, color });
+  const textData = (t, x, size = 10, f = font, color = ink) => page.drawText(encode(t), { x, y, size, font: f, color });
+  const text = (t, x, size = 10, f = font, color = ink) => textData(uiText(t), x, size, f, color);
   const textRight = (t, x, size = 10, f = font, color = ink) => {
-    const s = winAnsiSafe(t);
+    const s = encode(uiText(t));
     page.drawText(s, { x: x - f.widthOfTextAtSize(s, size), y, size, font: f, color });
   };
   const para = (t, x, width, size = 10, f = font, color = ink, lead = 1.35) => {
-    for (const line of wrapText(t, f, size, width)) { ensure(size * lead); text(line, x, size, f, color); y -= size * lead; }
+    for (const line of wrap(t, f, size, width)) { ensure(size * lead); textData(line, x, size, f, color); y -= size * lead; }
   };
   const hr = (gap = 10) => { y -= gap / 2; page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.6, color: rule }); y -= gap / 2 + 4; };
-  const heading = (t) => { ensure(28); y -= 6; text(t.toUpperCase(), M, 8.5, bold, muted); y -= 14; };
+  const heading = (t) => { ensure(28); y -= 6; text(uiText(t).toUpperCase(), M, 8.5, bold, muted); y -= 14; };
 
   // ── letterhead ────────────────────────────────────────────────────────────
   const c = model.company;
@@ -83,13 +77,14 @@ export async function buildBidProposalPdf(model) {
   }
   const top = y;
   if (logoH) y -= logoH + 8;
-  if (c.name) { y -= 14; text(c.name, M, 15, bold); y -= 6; }
-  for (const line of [...wrapText(c.address, font, 9.5, 260), [c.phone, c.email].filter(Boolean).join(" · "), c.license ? `License ${c.license}` : ""].filter(Boolean)) {
-    y -= 12; text(line, M, 9.5, font, muted);
+  if (c.name) { for (const line of wrap(c.name, bold, 15, 260)) { y -= 17; textData(line, M, 15, bold); } y -= 6; }
+  for (const line of [...wrap(c.address, font, 9.5, 260), [c.phone, c.email].filter(Boolean).join(" · "), c.license ? `${uiText("License")} ${c.license}` : ""].filter(Boolean)) {
+    y -= 12; textData(line, M, 9.5, font, muted);
   }
   const leftBottom = y;
   y = top - 18;
-  textRight("PROPOSAL", RIGHT, 20, bold);
+  const title = ru ? uiText("Proposal") : "PROPOSAL";
+  textRight(title, RIGHT, Math.min(ru ? 17 : 20, 235 / bold.widthOfTextAtSize(encode(title), 1)), bold);
   y -= 18; textRight(model.date, RIGHT, 10, font, muted);
   y -= 13; textRight(`Valid until ${model.valid_until}`, RIGHT, 10, font, muted);
   y = Math.min(leftBottom, y) - 10;
@@ -99,15 +94,15 @@ export async function buildBidProposalPdf(model) {
   const colW = (RIGHT - M - 24) / 2;
   const blockTop = y;
   text("PREPARED FOR", M, 8.5, bold, muted); y -= 14;
-  if (model.client.name) { text(model.client.name, M, 11, bold); y -= 13; }
-  for (const line of wrapText(model.client.address, font, 10, colW)) { text(line, M, 10); y -= 12.5; }
-  if (model.client.reference) { text(`Ref. ${model.client.reference}`, M, 10, font, muted); y -= 12.5; }
+  if (model.client.name) { for (const line of wrap(model.client.name, bold, 11, colW)) { textData(line, M, 11, bold); y -= 13; } }
+  for (const line of wrap(model.client.address, font, 10, colW)) { textData(line, M, 10); y -= 12.5; }
+  if (model.client.reference) { textData(`${uiText("Ref.")} ${model.client.reference}`, M, 10, font, muted); y -= 12.5; }
   if (!model.client.name && !model.client.address) { text("—", M, 10, font, muted); y -= 12.5; }
   const left2 = y;
   y = blockTop;
   const px = M + colW + 24;
   text("PROJECT", px, 8.5, bold, muted); y -= 14;
-  for (const line of wrapText(model.project || "—", bold, 11, colW)) { text(line, px, 11, bold); y -= 13; }
+  for (const line of wrap(model.project || "—", bold, 11, colW)) { textData(line, px, 11, bold); y -= 13; }
   y = Math.min(left2, y) - 6;
   hr(14);
 
@@ -120,13 +115,29 @@ export async function buildBidProposalPdf(model) {
   if (model.itemized) textRight("PRICE", col.price, 8, bold, muted);
   y -= 6; hr(6); y -= 8;
   for (const s of model.scope) {
-    const lines = wrapText(s.description || "", font, 9.5, descW);
-    ensure(14 + Math.max(0, lines.length - 1) * 12);
-    text(s.tag, col.item, 10, bold);
-    textRight(qty(s.qty), col.qty, 10);
-    text(s.unit, col.unit, 10, font, muted);
-    if (model.itemized) textRight(s.included ? "Included" : money(s.price), col.price, 10, font, s.included ? muted : undefined);
-    lines.forEach((l, i) => { if (i) y -= 12; text(l, col.desc, 9.5); });
+    const fullName = bold.widthOfTextAtSize(encode(s.tag), 10) > col.desc - col.item - 6;
+    const description = s.description || (ru ? finishLabel(s.tag, "ru") : "");
+    // The item column normally holds a short drawing code. A full custom name
+    // gets a spanning line above its quantities instead of a very narrow stack.
+    if (fullName) {
+      const nameLines = wrap(s.tag, bold, 10, RIGHT - M);
+      ensure(Math.min((nameLines.length + 1) * 13 + 16, PAGE[1] - M - BOTTOM));
+      para(s.tag, col.item, RIGHT - M, 10, bold);
+    }
+    const lines = wrap(fullName && description === s.tag ? "" : description, font, 9.5, descW);
+    const tagLines = fullName ? [] : wrap(s.tag, bold, 10, col.desc - col.item - 6);
+    const rowLines = Math.max(lines.length, tagLines.length);
+    ensure(Math.min(14 + Math.max(0, rowLines - 1) * 12, PAGE[1] - M - BOTTOM));
+    const display = pricingDisplay(s.unit, ru);
+    textRight(qty(s.qty * display.factor), col.qty, 10);
+    text(display.unit, col.unit, 10, font, muted);
+    if (model.itemized) textRight(s.included ? uiText("Included") : money(s.price), col.price, 10, font, s.included ? muted : undefined);
+    for (let i = 0; i < rowLines; i++) {
+      if (i) y -= 12;
+      ensure(12);
+      if (tagLines[i]) textData(tagLines[i], col.item, 10, bold);
+      if (lines[i]) textData(lines[i], col.desc, 9.5);
+    }
     y -= 16;
   }
   if (model.scope_note) { y -= 2; para(model.scope_note, M, RIGHT - M, 9.5, font, muted); }
@@ -145,10 +156,10 @@ export async function buildBidProposalPdf(model) {
     if (!items.length) return;
     heading(title);
     for (const it of items) {
-      const lines = wrapText(it, font, 10, RIGHT - M - 14);
+      const lines = wrap(it, font, 10, RIGHT - M - 14);
       ensure(lines.length * 13.5);
       text("•", M + 2, 10);
-      for (const l of lines) { text(l, M + 14, 10); y -= 13.5; }
+      for (const l of lines) { textData(l, M + 14, 10); y -= 13.5; }
     }
   };
   bullets("Inclusions", model.inclusions);
@@ -158,18 +169,18 @@ export async function buildBidProposalPdf(model) {
   // ── acceptance ────────────────────────────────────────────────────────────
   ensure(130);
   heading("Acceptance");
-  para("The prices, scope and terms above are accepted. The contractor is authorized to do the work as specified.", M, RIGHT - M, 9.5, font, muted);
+  para(uiText("The prices, scope and terms above are accepted. The contractor is authorized to do the work as specified."), M, RIGHT - M, 9.5, font, muted);
   y -= 22;
   const sigW = (RIGHT - M - 36) / 2;
   const sigRow = (label) => {
     for (const x of [M, M + sigW + 36]) {
       page.drawLine({ start: { x, y }, end: { x: x + sigW, y }, thickness: 0.6, color: ink });
-      page.drawText(label, { x, y: y - 11, size: 8, font, color: muted });
+      page.drawText(encode(uiText(label)), { x, y: y - 11, size: 8, font, color: muted });
     }
     y -= 34;
   };
-  page.drawText(winAnsiSafe(c.name || "Contractor"), { x: M, y: y + 12, size: 9, font: bold, color: ink });
-  page.drawText(winAnsiSafe(model.client.name || "Customer"), { x: M + sigW + 36, y: y + 12, size: 9, font: bold, color: ink });
+  page.drawText(encode(c.name || uiText("Contractor")), { x: M, y: y + 12, size: 9, font: bold, color: ink });
+  page.drawText(encode(model.client.name || uiText("Customer")), { x: M + sigW + 36, y: y + 12, size: 9, font: bold, color: ink });
   y -= 6;
   sigRow("Signature");
   sigRow("Name and title");
@@ -180,7 +191,7 @@ export async function buildBidProposalPdf(model) {
   // this loop, so a proposal can't be written without the watermark.
   const pages = doc.getPages();
   pages.forEach((pg, i) => {
-    if (pages.length > 1) pg.drawText(`Page ${i + 1} of ${pages.length}`, { x: M, y: 18, size: 7.5, font, color: muted });
+    if (pages.length > 1) pg.drawText(encode(ru ? `Страница ${i + 1} из ${pages.length}` : `Page ${i + 1} of ${pages.length}`), { x: M, y: 18, size: 7.5, font, color: muted });
     stampWatermark(pg, { font, rgb, degrees });
   });
   return { bytes: await doc.save(), pages: pages.length };

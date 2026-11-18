@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // Condition appearance primitives — shared by the canvas (shape fills, the
 // compact strip) and the TakeoffsPanel (row swatches, the hatch picker).
 // TakeoffCanvas already imports TakeoffsPanel, so a TakeoffsPanel -> TakeoffCanvas
@@ -62,23 +63,23 @@ export function HatchPattern({ id, type, line, fill, dark }) {
   const wrap = (kids, w = 10, h = 10) => (
     <pattern id={id} patternUnits="userSpaceOnUse" width={w} height={h}>
       {fill && fill !== NO_FILL ? <rect width={w} height={h} fill={fill} opacity={dark ? 0.32 : 0.18} /> : null}
-      {kids}
+      {uiText(kids)}
     </pattern>
   );
   switch (type) {
     case "diag": return wrap(s("M0,10 L10,0 M-3,3 L3,-3 M7,13 L13,7"));
     case "diag2": return wrap(s("M0,0 L10,10 M-3,7 L3,13 M7,-3 L13,3"));
-    case "cross": return wrap(<>{s("M0,10 L10,0 M-3,3 L3,-3 M7,13 L13,7")}{s("M0,0 L10,10 M-3,7 L3,13 M7,-3 L13,3")}</>);
+    case "cross": return wrap(<>{uiText(s("M0,10 L10,0 M-3,3 L3,-3 M7,13 L13,7"))}{uiText(s("M0,0 L10,10 M-3,7 L3,13 M7,-3 L13,3"))}</>);
     case "diagdense": return wrap(s("M0,5 L5,0 M0,10 L10,0 M5,10 L10,5 M-2.5,2.5 L2.5,-2.5 M7.5,12.5 L12.5,7.5"));
     case "horiz": return wrap(s("M0,3 L10,3 M0,7 L10,7"));
     case "vert": return wrap(s("M3,0 L3,10 M7,0 L7,10"));
     case "grid": return wrap(s("M0,3 L10,3 M0,7 L10,7 M3,0 L3,10 M7,0 L7,10"));
-    case "brick": return wrap(<>{s("M0,3 L10,3 M0,7 L10,7")}{s("M5,0 L5,3 M0,3 L0,7 M10,3 L10,7 M5,7 L5,10")}</>);
-    case "plank": return wrap(<>{s("M0,0 L10,0 M0,5 L10,5 M0,10 L10,10")}{s("M3,0 L3,5 M7,5 L7,10")}</>);
-    case "herring": return wrap(<>{s("M0,5 L5,0 L10,5")}{s("M0,10 L5,5 L10,10")}</>);
-    case "basket": return wrap(<>{s("M0,2 L5,2 M0,4 L5,4")}{s("M7,0 L7,5 M9,0 L9,5")}{s("M2,5 L2,10 M4,5 L4,10")}{s("M5,7 L10,7 M5,9 L10,9")}</>);
+    case "brick": return wrap(<>{uiText(s("M0,3 L10,3 M0,7 L10,7"))}{uiText(s("M5,0 L5,3 M0,3 L0,7 M10,3 L10,7 M5,7 L5,10"))}</>);
+    case "plank": return wrap(<>{uiText(s("M0,0 L10,0 M0,5 L10,5 M0,10 L10,10"))}{uiText(s("M3,0 L3,5 M7,5 L7,10"))}</>);
+    case "herring": return wrap(<>{uiText(s("M0,5 L5,0 L10,5"))}{uiText(s("M0,10 L5,5 L10,10"))}</>);
+    case "basket": return wrap(<>{uiText(s("M0,2 L5,2 M0,4 L5,4"))}{uiText(s("M7,0 L7,5 M9,0 L9,5"))}{uiText(s("M2,5 L2,10 M4,5 L4,10"))}{uiText(s("M5,7 L10,7 M5,9 L10,9"))}</>);
     case "checker": return wrap(<>{<rect x={0} y={0} width={5} height={5} fill={line} opacity={0.4} />}{<rect x={5} y={5} width={5} height={5} fill={line} opacity={0.4} />}</>);
-    case "wave": return wrap(<>{s("M0,4 Q2.5,1 5,4 T10,4")}{s("M0,8 Q2.5,5 5,8 T10,8")}</>);
+    case "wave": return wrap(<>{uiText(s("M0,4 Q2.5,1 5,4 T10,4"))}{uiText(s("M0,8 Q2.5,5 5,8 T10,8"))}</>);
     case "dots": return wrap(<>{[2, 6].map((y) => [2, 6].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r={1.1} fill={line} />))}</>);
     case "speckle": return wrap(<>{[[1.5, 2, 1.3], [6, 1.5, 0.8], [3.5, 5, 1], [8, 5.5, 1.4], [1.5, 8, 0.9], [6.5, 8.5, 1.2]].map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} fill={line} />)}</>);
     // ── signal set (2026-07): trade-agnostic, engineering-read patterns ──
@@ -88,12 +89,12 @@ export function HatchPattern({ id, type, line, fill, dark }) {
       // corner hexes (clipped quarters) keep the lattice seamless.
       const H = 6.9282, hx = (cx, cy) =>
         s(`M${cx - 4},${cy} L${cx - 2},${cy - 3.4641} L${cx + 2},${cy - 3.4641} L${cx + 4},${cy} L${cx + 2},${cy + 3.4641} L${cx - 2},${cy + 3.4641} Z`);
-      return wrap(<>{hx(0, 0)}{hx(12, 0)}{hx(0, H)}{hx(12, H)}{hx(6, H / 2)}</>, 12, H);
+      return wrap(<>{uiText(hx(0, 0))}{uiText(hx(12, 0))}{uiText(hx(0, H))}{uiText(hx(12, H))}{uiText(hx(6, H / 2))}</>, 12, H);
     }
     case "scan": return wrap(s("M0,2 L10,2 M8,6 L16,6 M0,6 L2,6"), 16, 8);
     case "plus": return wrap(s("M6,3.5 L6,8.5 M3.5,6 L8.5,6 M0,0 L0,2.5 M0,9.5 L0,12 M12,0 L12,2.5 M12,9.5 L12,12 M0,0 L2.5,0 M9.5,0 L12,0 M0,12 L2.5,12 M9.5,12 L12,12"), 12, 12);
     case "circuit": return wrap(<>
-      {s("M2,2 L10,2 L10,10")}{s("M14,18 L14,13 L18,13")}
+      {uiText(s("M2,2 L10,2 L10,10"))}{uiText(s("M14,18 L14,13 L18,13"))}
       {[[2, 2], [10, 10], [14, 18], [18, 13]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r={1.2} fill={line} />)}
     </>, 20, 20);
     case "topo": return wrap(<>
@@ -106,25 +107,25 @@ export function HatchPattern({ id, type, line, fill, dark }) {
       // Flat-top hex, side 5 (larger read than honeycomb's side 4): tile 15 × 5√3.
       const H = 8.6603, hx = (cx, cy) =>
         s(`M${cx - 5},${cy} L${cx - 2.5},${cy - 4.3301} L${cx + 2.5},${cy - 4.3301} L${cx + 5},${cy} L${cx + 2.5},${cy + 4.3301} L${cx - 2.5},${cy + 4.3301} Z`, SW2);
-      return wrap(<>{hx(0, 0)}{hx(15, 0)}{hx(0, H)}{hx(15, H)}{hx(7.5, H / 2)}</>, 15, H);
+      return wrap(<>{uiText(hx(0, 0))}{uiText(hx(15, 0))}{uiText(hx(0, H))}{uiText(hx(15, H))}{uiText(hx(7.5, H / 2))}</>, 15, H);
     }
     case "penny": return wrap(<>{[[3.5, 3], [10.5, 3], [0, 9], [7, 9], [14, 9]].map(([x, y], i) =>
       <circle key={i} cx={x} cy={y} r={3.2} fill="none" stroke={line} strokeWidth={SW2} />)}</>, 14, 12);
     case "octagondot": return wrap(<>
-      {s("M4.5,0 L9.5,0 L14,4.5 L14,9.5 L9.5,14 L4.5,14 L0,9.5 L0,4.5 Z", SW2)}
+      {uiText(s("M4.5,0 L9.5,0 L14,4.5 L14,9.5 L9.5,14 L4.5,14 L0,9.5 L0,4.5 Z", SW2))}
       {[[0, 0], [14, 0], [0, 14], [14, 14]].map(([x, y], i) =>
         <path key={i} d={`M${x},${y - 1.8} L${x + 1.8},${y} L${x},${y + 1.8} L${x - 1.8},${y} Z`} fill={line} stroke="none" />)}
     </>, 14, 14);
     case "pinwheel": return wrap(s("M0,0 L16,0 M0,0 L0,16 M0,6 L10,6 M6,10 L16,10 M10,0 L10,10 M6,6 L6,16", SW2), 16, 16);
     case "harlequin": return wrap(s("M5,0 L10,8 L5,16 L0,8 Z"), 10, 16);
     case "woodgrain": return wrap(<>
-      {s("M0,4 C6,7 18,1 24,4", SW2)}{s("M0,9 C6,6.5 18,11.5 24,9", SW2)}{s("M0,14 C6,17 18,11 24,14", SW2)}
+      {uiText(s("M0,4 C6,7 18,1 24,4", SW2))}{uiText(s("M0,9 C6,6.5 18,11.5 24,9", SW2))}{uiText(s("M0,14 C6,17 18,11 24,14", SW2))}
       <ellipse cx={12} cy={9} rx={2.2} ry={1.2} fill="none" stroke={line} strokeWidth={SW2} />
     </>, 24, 18);
     case "concrete": return wrap(<>
       {[[3, 4], [9, 2], [15, 6], [6, 10], [17, 13], [11, 16], [2, 15]].map(([x, y], i) =>
         <circle key={i} cx={x} cy={y} r={0.9} fill={line} />)}
-      {s("M12,6.8 L13.6,9.4 L10.4,9.4 Z", SW2)}{s("M4,16.8 L5.7,19.4 L2.3,19.4 Z", SW2)}
+      {uiText(s("M12,6.8 L13.6,9.4 L10.4,9.4 Z", SW2))}{uiText(s("M4,16.8 L5.7,19.4 L2.3,19.4 Z", SW2))}
     </>, 20, 20);
     case "fleur": return wrap(
       <g fill={line} stroke="none">

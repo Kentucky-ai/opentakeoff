@@ -8,22 +8,23 @@
 // menu and the tray without its handler changing.
 import { Icon } from "../brand/icons.jsx";
 import { keyText } from "../lib/keys.ts";
+import { localizeText as uiText } from "../lib/i18n/core.js";
 import "./toolTray.css";
 
 export default function ToolTray({ groups, onPicked }) {
   return (
-    <div className="ot-tray" id="ot-tool-tray" role="region" aria-label="More tools" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="ot-tray" id="ot-tool-tray" role="region" aria-label={uiText("More tools")} onPointerDown={(e) => e.stopPropagation()}>
       {groups.filter(([, items]) => items.length).map(([heading, items]) => (
-        <div key={heading} className="ot-tray-col" role="group" aria-label={heading}>
-          <div className="ot-tray-h">{heading}</div>
+        <div key={heading} className="ot-tray-col" role="group" aria-label={uiText(heading)}>
+          <div className="ot-tray-h">{uiText(heading)}</div>
           <div className="ot-tray-grid" style={{ gridTemplateRows: `repeat(${Math.min(3, items.length)}, auto)` }}>
             {items.map((it) => (
               <button key={it.id} type="button" className="ot-tray-tile" data-active={it.active || undefined} disabled={!!it.disabled}
                 aria-pressed={it.active ? true : undefined}
-                title={`${it.title || it.label}${it.shortcut ? ` (${keyText(it.shortcut)})` : ""}`}
+                title={`${uiText(it.title || it.label)}${it.shortcut ? ` (${keyText(it.shortcut)})` : ""}`}
                 onClick={() => { if (it.disabled) return; it.onSelect?.(); if (!it.stayOpen) onPicked?.(it); }}>
                 <span className="ot-tray-ic" aria-hidden="true">{it.iconNode || <Icon name={it.icon} size={18} />}</span>
-                <span className="ot-tray-label">{it.short || it.label}</span>
+                <span className="ot-tray-label">{uiText(it.short || it.label)}</span>
                 {it.count > 0 && <span className="ot-tray-n">{it.count}</span>}
               </button>
             ))}

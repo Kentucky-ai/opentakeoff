@@ -15,6 +15,8 @@ import { m365Config, M365_ENABLED_KEY } from "./lib/msgraph/config.js";
 import { cloudSyncEnabled } from "./lib/prefs.js";
 import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
+import { FirstRunLanguage } from "./lib/i18n/index.jsx";
+import "./components/workspaceChrome.css";
 import { LOW_MEMORY_DEVICE } from "./lib/deviceClass";
 import { byteBudget } from "./lib/pdfBytes";
 import { initDrawStyle } from "./lib/drawStyles.js";
@@ -507,6 +509,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="/projects" element={<ProjectHomeGate />} />
           <Route path="*" element={<App />} />
         </Routes>
+        <FirstRunLanguage />
       </BrowserRouter>
     </GoogleAuthProvider>
   </React.StrictMode>

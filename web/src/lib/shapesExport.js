@@ -7,7 +7,7 @@
 // figure (floor perimeters include door openings and shared walls), never
 // counted in the condition's LF total; only linear rows sum to it.
 
-import { csvEsc as esc } from "./csv.js";
+import { createExportPresentation } from "./exportPresentation.js";
 import { linearVerticalFt } from "./shapeMetrics.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
 import { round2 } from "./num.js";
@@ -53,7 +53,8 @@ export function shapesDetail(conditions, shapes, sheetLabel) {
   });
 }
 
-export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", units = "imperial") {
+export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", units = "imperial", presentation = {}) {
+  const p = createExportPresentation(presentation);
   const M = units === "metric";
   const areaUnit = M ? "m2" : "SF";
   const lengthUnit = M ? "m" : "LF";
@@ -62,20 +63,20 @@ export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", u
   const L = (v) => (M ? round2((Number(v) || 0) * M_PER_FT) : v);
   const header = ["Shape", "Sheet", "Sheet ID", "Finish", "Role", `Area ${areaUnit}`, lengthUnit, "EA", `Height ${heightUnit}`, "Height override", `Rise ${heightUnit}`, `Drop ${heightUnit}`, "Origin"];
   const lines = [
-    "# Per-shape measured quantities — no multiplier or waste; standalone deducts negative; reconciled cutouts stay as audit rows with zero additive area because the parent is already net; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop",
-    header.map(esc).join(","),
+    "# " + p.label("Per-shape measured quantities — no multiplier or waste; standalone deducts negative; reconciled cutouts stay as audit rows with zero additive area because the parent is already net; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop"),
+    p.header(header),
   ];
   for (const r of rows) {
-    lines.push([
-      r.shape_id, r.sheet, r.sheet_id, r.finish, r.role,
+    lines.push(p.row([
+      r.shape_id, r.sheet, r.sheet_id, p.finish(r.finish), p.label(r.role),
       A(r.area_sf), L(r.lf), r.ea, L(r.height_ft),
-      r.height_override ? "yes" : "",
+      r.height_override ? p.label("yes") : "",
       L(r.rise_ft), L(r.drop_ft),
-      r.origin,
-    ].map(esc).join(","));
+      p.label(r.origin),
+    ]));
   }
-  const title = projectName ? `# ${projectName} — ${brandName} shapes\n` : "";
-  return title + lines.join("\n") + "\n";
+  if (projectName) lines.unshift(`# ${projectName} — ${brandName} ${presentation.language === "ru" ? p.label("Shapes") : "shapes"}`);
+  return p.document(lines);
 }
 
 export function shapesToJson(rows, projectName) {

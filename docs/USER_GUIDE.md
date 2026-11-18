@@ -829,6 +829,8 @@ Every page of the proposal, the marked set and the printed report carries **Prep
 | **Marked set** | A distribution-ready PDF built in your browser: every sheet that carries takeoffs or markups, the work burned in as drawn—condition colors, hatches, quantity chips, count markers, markups (toggleable)—behind a legend cover with net totals, w/Waste quantities, and a by-sheet breakdown. Exports in your current view: dark canvas → dark PDF. Send it to a GC who will never install anything. |
 | **RFI CSV / JSON** | The RFI register (appears once RFIs exist). |
 
+In Russian, CSV uses UTF-8 with a BOM, semicolons between cells and decimal commas for numeric cells. Custom names, notes, custom-column captions and text codes such as `001.20` remain literal data. CSV does not carry cell types: use **Excel** when a code must retain leading zeros when opened in a spreadsheet, or import its CSV column explicitly as text. Excel exports store codes as text and quantities/costs as numbers. Localized workbooks wrap long names; the marked-set and proposal PDFs also wrap long names without overwriting quantities.
+
 **Contribute** also lives here—covered with the rest of your data in §12.
 
 ---
@@ -1195,6 +1197,12 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 ### Drawing
 
+The following key is available only in a build with One-Click enabled (see §6):
+
+| Key | Tool |
+|---|---|
+| `O` | One-Click Area |
+
 | Key / action | Effect |
 |---|---|
 | Click (release without moving) | Place a point |
@@ -1386,3 +1394,64 @@ explains the browser controls and the current MCP transport limit explicitly.
 ## Privacy and terms
 
 Open the guide (`?`) for links to the [Privacy Policy](https://opentakeoff.kentucky-ai.com/privacy/) and [Terms of Service](https://opentakeoff.kentucky-ai.com/terms/). These explain local storage, optional cloud and AI connections, contributions, and responsibility for reviewed estimates.
+
+## Interface language and metric presentation
+
+Choose **English** or **Русский** in the **EN / RU** selector. The choice
+is remembered on this device and synchronizes across tabs. Russian selects
+metric display; switching to English selects imperial display. The unit switch
+remains available. Changing language never changes stored drawing coordinates,
+calibration coefficients, condition identifiers or measurement mathematics.
+
+Russian starts the scale menu with ratio scales (1:20 through 1:500). Feet/inch
+scales remain in a secondary expandable group. A scale read from an imperial
+plan can be displayed as its exact equivalent ratio, e.g. 1/8 inch = 1 foot
+becomes 1:96. Do not replace it with 1:100 merely to use a familiar label.
+
+The Russian interface includes the tool rail, menus, properties, quantity and
+material panels, stamps, RFI/revision panels, reports, estimate dialogs and
+help. The report and human CSV/Excel headings follow the selected language;
+JSON/API field names remain the interchange format's original keys. Imported
+PDFs, user-entered notes and source material specification units stay original.
+Use **Liquid materials** in the report, estimate, or material editor to select
+**Litres (L)** or **US gallons**. Imports of a takeoff/profile offer the choice
+before applying the file; schedule import also exposes it. Russian defaults
+to litres, English to US gallons; each language remembers its own preference.
+The adapter converts volume, coverage per unit and price per unit together.
+Purchase rounding remains in the source package size: 2 US gallons display as
+7.570823568 litres, not 8 litres. Unknown packaging and UK gallons are never
+guessed. Source values and machine JSON stay unchanged.
+
+The Russian estimate displays area/length quantities and prices per m²/m
+through reversible adapters; costs remain those of the original pricing engine.
+Estimate Excel tabs, headings, missing-price details, and quantities follow the
+selected language and unit preferences. Excel and CSV coverage rates also use
+metric bases in metric mode. This does not change a project's currency or turn
+the existing sales-tax model into Russian VAT. Proposal PDFs embed the bundled
+Noto Sans Cyrillic font and use Russian labels and dates in Russian mode.
+
+Built-in finish tags get display descriptions, e.g. **Ковровое покрытие 1
+(CPT-1)** and **Эластичный плинтус 1 (RB-1)**. CPT means carpet, not laminate;
+the exact product is determined by the project's finish schedule. Codes remain
+visible so the estimate can be checked against the source drawing. Custom tags
+are retained; the app never rewrites a source PDF to localize it.
+
+The editable catalog is `web/src/lib/i18n/ru.json`. After changing it, run
+`node web/scripts/sync-russian-catalog.mjs` to regenerate the runtime module.
+`web/test/localization.test.ts` checks catalog/placeholder consistency, display
+labels, scale-order and scale-ratio behavior, and CSV data preservation.
+
+Terminology follows the construction context and quantity-sheet wording used
+in [Smeta.RU](https://help.smeta.ru/7/) and
+[GRAND-Smeta](https://help.grandsmeta.ru/). This is interface localization, not
+implementation of Russian estimating standards or currency conversion.
+
+Translated report and estimate toolbars keep their close action pinned to the top-right corner. The report liquid-unit selector stays beside the materials table. Dense condition palettes retain source tags with localized descriptions in tooltips.
+A scale calibrated from a known dimension displays its numerical ratio (for example 1:78) in metric mode, or real feet per paper inch in imperial mode. The label uses the baseline PDF rendering scale and is independent of screen zoom; it does not change calibration or quantities.
+
+Marked-set PDFs in Russian mode also embed the bundled Cyrillic fonts for project
+names, company details, annotations and the RFI schedule. Legends continue onto
+additional pages when needed; the last condition is not discarded. Customer
+project/company/client values and annotation text remain literal even when they
+match an English command such as `Report` or `Work`. Proposal page numbers are
+localized; the OpenTakeoff attribution remains on every PDF page.

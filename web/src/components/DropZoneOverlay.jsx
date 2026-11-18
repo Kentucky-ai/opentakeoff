@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // The ghost-half + label shown while a tab is dragged over a pane. `zone` is
 // the live dropZoneAt() result; null hides the overlay.
 import { zoneToOrientation } from "../lib/dropZones";
@@ -18,7 +19,7 @@ export default function DropZoneOverlay({ zone }) {
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 20 }}>
       <div style={{ position: "absolute", ...half, background: "var(--cobalt, #2f6fed)", opacity: 0.18, transition: "all .08s ease" }} />
       <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", padding: "4px 10px",
-        background: "var(--ink, #222)", color: "var(--paper-bright, #fff)", font: "12px var(--f-body, sans-serif)", borderRadius: 0 }}>{label}</div>
+        background: "var(--ink, #222)", color: "var(--paper-bright, #fff)", font: "12px var(--f-body, sans-serif)", borderRadius: 0 }}>{uiText(label)}</div>
     </div>
   );
 }

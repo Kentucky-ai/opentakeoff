@@ -284,7 +284,11 @@ test("marked set cover prints linear waste in LF (and m), not zero area", async 
       getPage: async () => mockPage(612, 792, 0), loadPdfData: async () => srcBytes,
     });
     const text = await pageText(bytes, 0);
-    assert.ok(text.includes(units === "imperial" ? "waste 10% -> 110 LF" : "waste 10% -> 33.5 m"), text);
+    // The PDF follows the system locale; a Russian host prints 33,5, an
+    // English host 33.5. Pin the quantity and unit without assuming the host.
+    const allowance = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 })
+      .format(units === "imperial" ? 110 : 33.5);
+    assert.ok(text.includes(`waste 10% -> ${allowance} ${units === "imperial" ? "LF" : "m"}`), text);
     assert.ok(!text.includes("waste 10% -> 0 SF"), text);
   }
 });

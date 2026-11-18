@@ -1,3 +1,5 @@
+import MaterialUnitSelector from './MaterialUnitSelector.jsx';
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // ImportSchedulePanel — the approval dialog for "Import from schedule".
 // The estimator drags a box around the finish/material schedule; the parent
 // (TakeoffCanvas) reads it (lib/scheduleRead) and hands the rows
@@ -175,26 +177,25 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
         style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(82vh, 720px)", display: "flex", flexDirection: "column", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", fontSize: 12.5 }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-          <span id={titleId} style={{ fontWeight: 700 }}>{empty ? "Import from schedule — no rows read" : `Import from schedule — ${rows.length} finish${rows.length === 1 ? "" : "es"} found`}</span>
-          <button onClick={onClose} title="Close" style={{ background: "transparent", border: "none", color: "var(--accent-contrast)", cursor: "pointer", display: "inline-flex" }}><Icon name="close" size={14} /></button>
+          <span id={titleId} style={{ fontWeight: 700 }}>{uiText(empty ? "Import from schedule — no rows read" : `Import from schedule — ${rows.length} finish${rows.length === 1 ? "" : "es"} found`)}</span>
+          <button onClick={onClose} title={uiText("Close")} style={{ background: "transparent", border: "none", color: "var(--accent-contrast)", cursor: "pointer", display: "inline-flex" }}><Icon name="close" size={14} /></button>
         </div>
 
+        <div style={{padding:"12px 14px"}}><MaterialUnitSelector /></div>
         {hasSkipped && (
           <div role="note" id={bannerId} style={{ fontSize: "var(--fs-s)", color: "var(--ink)", borderLeft: "3px solid var(--c-warning)", paddingLeft: 8, margin: "8px 14px" }}>
-            {skippedBanner(skipped)}
+            {uiText(skippedBanner(skipped))}
           </div>
         )}
 
         {hasCodeChecks && (
           <div role="note" id={checkId} style={{ fontSize: "var(--fs-s)", color: "var(--ink)", borderLeft: "3px solid var(--c-warning)", paddingLeft: 8, margin: "8px 14px" }}>
-            Verify scanned codes against the schedule, then edit the code or select each row yourself. Two reads can agree on the same wrong code. Group checkboxes and Select all leave unverified rows unchecked. A row labeled “set code” needs you to enter its code first.
-          </div>
+            {uiText("Verify scanned codes against the schedule, then edit the code or select each row yourself. Two reads can agree on the same wrong code. Group checkboxes and Select all leave unverified rows unchecked. A row labeled “set code” needs you to enter its code first.")}</div>
         )}
 
         {hasLegacy && (
           <div role="note" id={legacyBannerId} style={{ fontSize: "var(--fs-s)", color: "var(--ink)", borderLeft: "3px solid var(--c-warning)", paddingLeft: 8, margin: "8px 14px" }}>
-            Some codes may already exist without parentheses. Those rows are held. Check the existing condition; if it is the same finish, rename it before importing again. If they are different finishes, add the new condition manually.
-          </div>
+            {uiText("Some codes may already exist without parentheses. Those rows are held. Check the existing condition; if it is the same finish, rename it before importing again. If they are different finishes, add the new condition manually.")}</div>
         )}
 
         {/* rows */}
@@ -209,8 +210,8 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                 <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", cursor: anyPickable ? "pointer" : "default", background: "var(--paper)", borderTop: "1px solid var(--ink-faint)" }}>
                   <input type="checkbox" checked={state === "all"} data-state={state} disabled={!anyPickable} onChange={() => toggleGroup(grp)}
                     ref={(el) => { if (el) el.indeterminate = state === "some"; }} />
-                  <span style={lbl}>{grp.label}</span>
-                  <span style={{ ...lbl, opacity: 0.6 }}>{grp.items.length}</span>
+                  <span style={lbl}>{uiText(grp.label)}</span>
+                  <span style={{ ...lbl, opacity: 0.6 }}>{uiText(grp.items.length)}</span>
                 </label>
                 {grp.items.map(({ key, row: r }) => {
                   const st = stateOf(key);
@@ -237,7 +238,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   const several = [guessId, readAsId, notUsedId, useId_].filter(Boolean).length > 1;
                   const right = several ? {} : { marginLeft: "auto" };
                   const guess = guessId && (
-                    <span id={guessId} title="Category guessed from the row's own words — no printed heading names one" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>from description</span>
+                    <span id={guessId} title={uiText("Category guessed from the row's own words — no printed heading names one")} style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>{uiText("from description")}</span>
                   );
                   // The code as read, in the edit button's mono and size, so O and
                   // 0 can be told apart. The title says what was repaired; the
@@ -245,21 +246,21 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   // just read the code out.
                   const repaired = readAsId && `Repaired from ${r.read_as}; check the code against the schedule.`;
                   const readAs = readAsId && (
-                    <span id={readAsId} title={repaired} style={{ ...lbl, textTransform: "none", color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>
-                      read as <span style={{ fontFamily: "var(--f-mono)", fontSize: 12.5 }}>{r.read_as}</span><span style={S.visuallyHidden}> — check the code against the schedule.</span>
+                    <span id={readAsId} title={uiText(repaired)} style={{ ...lbl, textTransform: "none", color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>
+                      {uiText("read as ")}<span style={{ fontFamily: "var(--f-mono)", fontSize: 12.5 }}>{uiText(r.read_as)}</span><span style={S.visuallyHidden}> {uiText("— check the code against the schedule.")}</span>
                     </span>
                   );
                   const notUsed = notUsedId && (
-                    <span id={notUsedId} title={note.trimStart()} style={{ ...lbl, textTransform: "none", color: "var(--ink)", borderLeft: "2px solid var(--c-warning)", paddingLeft: 4, position: "relative", flex: "0 0 auto", cursor: "help", ...right }}>
-                      {r.not_used_text || "NOT USED"}<span style={S.visuallyHidden}>{note}</span>
+                    <span id={notUsedId} title={uiText(note.trimStart())} style={{ ...lbl, textTransform: "none", color: "var(--ink)", borderLeft: "2px solid var(--c-warning)", paddingLeft: 4, position: "relative", flex: "0 0 auto", cursor: "help", ...right }}>
+                      {uiText(r.not_used_text || "NOT USED")}<span style={S.visuallyHidden}>{uiText(note)}</span>
                     </span>
                   );
                   // Quiet unless the code wasn't found: a found code is a muted
                   // count, an unchecked one muted too; only "not found in
                   // checked text" takes the warning color.
                   const onPlans = useId_ && (
-                    <span id={useId_} title={useLine.title} style={{ ...lbl, textTransform: "none", color: u.state === "not-found" ? "var(--c-warning)" : "var(--ink-muted)", flex: "0 0 auto", cursor: "help", ...right }}>
-                      {useLine.text}
+                    <span id={useId_} title={uiText(useLine.title)} style={{ ...lbl, textTransform: "none", color: u.state === "not-found" ? "var(--c-warning)" : "var(--ink-muted)", flex: "0 0 auto", cursor: "help", ...right }}>
+                      {uiText(useLine.text)}
                     </span>
                   );
                   return (
@@ -283,27 +284,27 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                         ) : (
                           <button
                             type="button"
-                            title="Click to fix the code"
+                            title={uiText("Click to fix the code")}
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); startEdit(key, r); }}
                             style={{ fontFamily: "var(--f-mono)", fontWeight: 600, fontSize: 12.5, minWidth: 58, textAlign: "left", padding: "1px 3px", border: "1px dashed var(--ink-faint)", background: "transparent", color: st?.status === "empty" ? "var(--ink-muted)" : "var(--ink)", cursor: "text" }}
                           >
-                            {st?.tag || "set code"}
+                            {uiText(st?.tag || "set code")}
                           </button>
                         )}
                         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {r.description || <span style={{ color: "var(--ink-muted)" }}>—</span>}
                           {(r.manufacturer || r.size) && (
-                            <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>  ·  {[r.manufacturer, r.size].filter(Boolean).join(" · ")}</span>
+                            <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>  ·  {uiText([r.manufacturer, r.size].filter(Boolean).join(" · "))}</span>
                           )}
                         </span>
-                        {flag && <span title={st?.status === "legacy" ? `An earlier import may have removed the parentheses. Check the existing ${st.legacyTag} condition; if it is this finish, rename that condition to ${st.tag} before importing again.` : st?.status === "duplicate" ? "Click the code to rename it." : undefined} style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
+                        {flag && <span title={uiText(st?.status === "legacy" ? `An earlier import may have removed the parentheses. Check the existing ${st.legacyTag} condition; if it is this finish, rename that condition to ${st.tag} before importing again.` : st?.status === "duplicate" ? "Click the code to rename it." : undefined)} style={{ ...lbl, opacity: 0.8 }}>{uiText(flag)}</span>}
                       </label>
                       {codeCheckId && (
                         <span id={codeCheckId} style={{ flexBasis: "100%", fontSize: "var(--fs-s)", color: "var(--c-warning)" }}>
-                          {r.code_checks?.length ? `Check code: ${r.code_checks.map(({ first, second }) => second ? `${first} / ${second}` : `${first} / second read did not confirm`).join("; ")}` : "Verify scanned code"}
+                          {uiText(r.code_checks?.length ? `Check code: ${r.code_checks.map(({ first, second }) => second ? `${first} / ${second}` : `${first} / second read did not confirm`).join("; ")}` : "Verify scanned code")}
                         </span>
                       )}
-                      {several ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{guess}{readAs}{notUsed}{onPlans}</div> : guess || readAs || notUsed || onPlans}
+                      {several ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{uiText(guess)}{uiText(readAs)}{uiText(notUsed)}{uiText(onPlans)}</div> : guess || readAs || notUsed || onPlans}
                     </div>
                   );
                 })}
@@ -316,15 +317,15 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 14px", borderTop: "1px solid var(--ink-faint)" }}>
           {empty ? (
             // nothing to pick or create: the notice says what wasn't read
-            <button autoFocus onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Close</button>
+            <button autoFocus onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>{uiText("Close")}</button>
           ) : (
             <>
-              <button onClick={() => pickAll(true)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Select all</button>
-              <button onClick={() => pickAll(false)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, marginRight: "auto" }}>Deselect all</button>
-              <button onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Cancel</button>
+              <button onClick={() => pickAll(true)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>{uiText("Select all")}</button>
+              <button onClick={() => pickAll(false)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, marginRight: "auto" }}>{uiText("Deselect all")}</button>
+              <button onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>{uiText("Cancel")}</button>
               <button onClick={create} disabled={!count}
                 style={{ padding: "8px 16px", border: "none", background: count ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: count ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-                Create {count} condition{count === 1 ? "" : "s"}
+                {uiText("Create ")}{uiText(count)} {uiText("condition")}{uiText(count === 1 ? "" : "s")}
               </button>
             </>
           )}

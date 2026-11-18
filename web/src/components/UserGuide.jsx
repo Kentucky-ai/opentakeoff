@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // The in-app manual — the short version, reachable without leaving the canvas.
 //
 // docs/USER_GUIDE.md is 705 lines and good, and until now NOTHING in the app
@@ -33,12 +34,12 @@ function Kbd({ children }) {
 
 export function Keys({ combo }) {
   // A tool with no key (Copy text) says where it lives instead of an empty cell.
-  if (!combo.length) return <span style={S.monoLabel}>rail</span>;
+  if (!combo.length) return <span style={S.monoLabel}>{uiText("rail")}</span>;
   // Labels only — the handlers already treat ⌘ and Ctrl as one key. See lib/keys.ts.
   const apple = isApplePlatform();
   return (
     <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}>
-      {combo.map((k, i) => <Kbd key={i}>{keyLabel(k, apple)}</Kbd>)}
+      {combo.map((k, i) => <Kbd key={i}>{uiText(keyLabel(k, apple))}</Kbd>)}
     </span>
   );
 }
@@ -49,7 +50,7 @@ function Table({ rows }) {
       {rows.map(([combo, what], i) => (
         <div key={i} style={{ display: "contents" }}>
           <div style={{ justifySelf: "start" }}><Keys combo={combo} /></div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.45 }}>{keyText(what)}</div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.45 }}>{uiText(keyText(uiText(what)))}</div>
         </div>
       ))}
     </div>
@@ -59,8 +60,8 @@ function Table({ rows }) {
 function Section({ title, children }) {
   return (
     <div style={{ marginBottom: 26 }}>
-      <div className="t-label" style={{ marginBottom: 10 }}>{title}</div>
-      {children}
+      <div className="t-label" style={{ marginBottom: 10 }}>{uiText(title)}</div>
+      {uiText(children)}
     </div>
   );
 }
@@ -147,7 +148,7 @@ export default function UserGuide({ onClose, onTour, onConnect }) {
         onKeyDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="OpenTakeoff user guide"
+        aria-label={uiText("OpenTakeoff user guide")}
         className="panel"
         style={{
           width: "min(760px, 100%)", background: "var(--paper-bright)", color: "var(--ink)",
@@ -155,56 +156,51 @@ export default function UserGuide({ onClose, onTour, onConnect }) {
           boxShadow: "var(--shadow-2)",
         }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
-          <strong style={{ fontFamily: "var(--f-display)", fontSize: 17, letterSpacing: "-0.02em" }}>How OpenTakeoff works</strong>
-          <button onClick={onClose} title="Close (Esc)"
+          <strong style={{ fontFamily: "var(--f-display)", fontSize: 17, letterSpacing: "-0.02em" }}>{uiText("How OpenTakeoff works")}</strong>
+          <button onClick={onClose} title={uiText("Close (Esc)")}
             style={{ background: "none", border: "none", color: "var(--ink-soft)", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 4 }}>×</button>
         </div>
         <p style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5, margin: "0 0 22px" }}>
-          A takeoff canvas with a local workspace — no account required. Optional cloud and AI connections share data with the services you choose. Open a plan,
-          set the scale, measure the finishes, export a priced quantity report.
-        </p>
+          {uiText("A takeoff canvas with a local workspace — no account required. Optional cloud and AI connections share data with the services you choose. Open a plan, set the scale, measure the finishes, export a priced quantity report.")}</p>
 
         {(onTour || onConnect) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
             {onTour && (
               <button type="button" onClick={onTour}
                 style={{ padding: "8px 14px", border: "none", background: "var(--cobalt)", color: "var(--accent-contrast)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
-                Start the guided first takeoff
-              </button>
+                {uiText("Start the guided first takeoff")}</button>
             )}
             {onConnect && (
               <button type="button" onClick={onConnect}
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", fontSize: 12.5, cursor: "pointer" }}>
-                <ScanStar size={12} style={{ color: "var(--cobalt)" }} />Connect your AI
-              </button>
+                <ScanStar size={12} style={{ color: "var(--cobalt)" }} />{uiText("Connect your AI")}</button>
             )}
           </div>
         )}
 
-        <nav aria-label="Legal" style={{ display: "flex", gap: 16, marginBottom: 22, fontSize: 12.5 }}>
-          <a href="/privacy/" target="_blank" rel="noreferrer">Privacy Policy</a>
-          <a href="/terms/" target="_blank" rel="noreferrer">Terms of Service</a>
+        <nav aria-label={uiText("Legal")} style={{ display: "flex", gap: 16, marginBottom: 22, fontSize: 12.5 }}>
+          <a href="/privacy/" target="_blank" rel="noreferrer">{uiText("Privacy Policy")}</a>
+          <a href="/terms/" target="_blank" rel="noreferrer">{uiText("Terms of Service")}</a>
         </nav>
 
-        <Section title="Five minutes to a takeoff">
+        <Section title={uiText("Five minutes to a takeoff")}>
           <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 9 }}>
             {START.map(([t, d]) => (
               <li key={t} style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-                <strong style={{ color: "var(--ink)" }}>{t}</strong>
-                <span style={{ color: "var(--ink-soft)" }}> — {keyText(d)}</span>
+                <strong style={{ color: "var(--ink)" }}>{uiText(t)}</strong>
+                <span style={{ color: "var(--ink-soft)" }}> — {uiText(keyText(uiText(d)))}</span>
               </li>
             ))}
           </ol>
         </Section>
 
-        <Section title="Tools"><Table rows={TOOLS} /></Section>
-        <Section title="Drawing & editing"><Table rows={DRAW} /></Section>
-        <Section title="Getting around"><Table rows={VIEW} /></Section>
+        <Section title={uiText("Tools")}><Table rows={TOOLS} /></Section>
+        <Section title={uiText("Drawing & editing")}><Table rows={DRAW} /></Section>
+        <Section title={uiText("Getting around")}><Table rows={VIEW} /></Section>
 
         <div style={{ borderTop: "1px solid var(--ink-faint)", paddingTop: 14, fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 }}>
-          This is the short version. The full manual covers conditions, markups and RFIs, revisions,
-          the report and exports, the Agent panel, and driving OpenTakeoff from an AI agent over MCP —{" "}
-          <a href={GUIDE_URL} target="_blank" rel="noreferrer" style={{ color: "var(--cobalt)" }}>read the complete guide</a>.
+          {uiText("This is the short version. The full manual covers conditions, markups and RFIs, revisions, the report and exports, the Agent panel, and driving OpenTakeoff from an AI agent over MCP —")}{uiText(" ")}
+          <a href={GUIDE_URL} target="_blank" rel="noreferrer" style={{ color: "var(--cobalt)" }}>{uiText("read the complete guide")}</a>.
         </div>
       </div>
     </div>

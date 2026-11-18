@@ -33,7 +33,6 @@
 // visible, it just stops being mistaken for the product's accuracy. Audit F6
 // GATED that reading (it shipped ungated, so a regression to raw IoU 0.60
 // passed) and ratcheted the snapped thresholds onto the post-A5b baseline.
-import { createRequire } from "module";
 import { readFileSync, readdirSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -244,8 +243,7 @@ for (const c of syntheticCorpus()) {
 // pinned real-PDF cases. corpus/sealed/ holds the run-once protocol cases
 // (human-measured plans nobody calibrates against) — included only with
 // BENCH_SEALED=1 so day-to-day runs can't overfit to them.
-const req = createRequire(import.meta.url);
-const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
+const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 const caseFiles = readdirSync(join(here, "corpus")).filter((f) => f.endsWith(".json")).map((f) => join(here, "corpus", f));
 if (process.env.BENCH_SEALED) {
   try {

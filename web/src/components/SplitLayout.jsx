@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // The two-pane shell: a flex container whose direction is the split
 // orientation, a resizable divider between the panes (default 50/50, min
 // size clamped by the caller), plus divider affordances to flip V<->H and
@@ -45,7 +46,7 @@ export default function SplitLayout({ orientation, ratio, onRatioChange, onFlip,
 
   return (
     <div ref={rootRef} style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: vertical ? "row" : "column" }}>
-      <div style={{ position: "relative", flex: split ? `0 0 ${primaryPct}` : "1 1 auto", minWidth: 0, minHeight: 0, overflow: "hidden" }}>{primary}</div>
+      <div style={{ position: "relative", flex: split ? `0 0 ${primaryPct}` : "1 1 auto", minWidth: 0, minHeight: 0, overflow: "hidden" }}>{uiText(primary)}</div>
       {split && (
         <>
           <div
@@ -59,12 +60,12 @@ export default function SplitLayout({ orientation, ratio, onRatioChange, onFlip,
             }}
           >
             {/* divider affordances — kept tiny/unobtrusive; hit target padded via ::before in CSS if needed */}
-            <button title="Flip split orientation" onPointerDown={(e) => e.stopPropagation()} onClick={onFlip}
+            <button title={uiText("Flip split orientation")} onPointerDown={(e) => e.stopPropagation()} onClick={onFlip}
               style={dividerBtn}>⟳</button>
-            <button title="Close split" onPointerDown={(e) => e.stopPropagation()} onClick={onCollapse}
+            <button title={uiText("Close split")} onPointerDown={(e) => e.stopPropagation()} onClick={onCollapse}
               style={dividerBtn}>✕</button>
           </div>
-          <div style={{ position: "relative", flex: `0 0 ${refPct}`, minWidth: 0, minHeight: 0, overflow: "hidden" }}>{reference}</div>
+          <div style={{ position: "relative", flex: `0 0 ${refPct}`, minWidth: 0, minHeight: 0, overflow: "hidden" }}>{uiText(reference)}</div>
         </>
       )}
     </div>

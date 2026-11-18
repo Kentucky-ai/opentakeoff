@@ -1,3 +1,4 @@
+import { localizeText as uiText } from "../lib/i18n/core.js";
 // OcrDownloadNotice (#469): shown before on-device OCR downloads its files
 // for the first time, or again after the browser clears its cache. It says
 // how much downloads, where from, where it's kept and where the read runs,
@@ -54,30 +55,27 @@ export default function OcrDownloadNotice({ downloadBytes, progress, onDownload,
     <div role="dialog" aria-modal="true" aria-labelledby="ocr-download-title" aria-describedby="ocr-download-body" onKeyDown={noticeKeyDown(onCancel)}
       style={{ width: "min(420px, calc(100vw - 2 * var(--sp-4)))", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", borderRadius: "var(--r-1)", color: "var(--ink)" }}>
       <div style={{ padding: "var(--sp-3) var(--sp-4)", borderBottom: "1px solid var(--ink-faint)" }}>
-        <div style={S.monoLabel}>On-device text recognition</div>
+        <div style={S.monoLabel}>{uiText("On-device text recognition")}</div>
         <h2 id="ocr-download-title" style={{ margin: "var(--sp-1) 0 0", fontSize: "var(--fs-l)", fontWeight: 600 }}>
-          Download the text reader?
-        </h2>
+          {uiText("Download the text reader?")}</h2>
       </div>
       <div id="ocr-download-body" style={{ padding: "var(--sp-3) var(--sp-4)", fontSize: "var(--fs-s)", lineHeight: 1.5 }}>
         <p style={{ margin: 0 }}>
-          Reading text from an image needs two recognition models, a character list and their runtime:{" "}
-          <span style={S.monoReadout}>up to {formatMB(downloadBytes)}</span>, downloaded once from this site and kept in your browser.
-        </p>
+          {uiText("Reading text from an image needs two recognition models, a character list and their runtime:")}{uiText(" ")}
+          <span style={S.monoReadout}>{uiText("up to ")}{uiText(formatMB(downloadBytes))}</span>{uiText(", downloaded once from this site and kept in your browser.")}</p>
         <p style={{ margin: "var(--sp-2) 0 0", color: "var(--ink-muted)" }}>
-          The read runs on this device. The page image isn’t sent anywhere.
-        </p>
+          {uiText("The read runs on this device. The page image isn’t sent anywhere.")}</p>
         {downloading && (
           <div style={{ marginTop: "var(--sp-3)", display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
-            <progress value={pct} max={100} aria-label="Download progress" style={{ flex: 1, accentColor: "var(--cobalt)" }} />
-            <span style={S.monoReadout} aria-hidden="true">{pct}%</span>
+            <progress value={pct} max={100} aria-label={uiText("Download progress")} style={{ flex: 1, accentColor: "var(--cobalt)" }} />
+            <span style={S.monoReadout} aria-hidden="true">{uiText(pct)}%</span>
           </div>
         )}
-        <div role="status" style={S.visuallyHidden}>{downloading ? `Downloading the text reader: ${announcedPct(pct)}%` : ""}</div>
+        <div role="status" style={S.visuallyHidden}>{uiText(downloading ? `Downloading the text reader: ${announcedPct(pct)}%` : "")}</div>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--sp-2)", padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--ink-faint)" }}>
-        <button key={downloading ? "cancel-download" : "cancel"} type="button" className="btn-ghost" autoFocus={downloading} onClick={onCancel}>Cancel</button>
-        {!downloading && <button type="button" className="btn-primary" autoFocus onClick={onDownload}>Download</button>}
+        <button key={downloading ? "cancel-download" : "cancel"} type="button" className="btn-ghost" autoFocus={downloading} onClick={onCancel}>{uiText("Cancel")}</button>
+        {!downloading && <button type="button" className="btn-primary" autoFocus onClick={onDownload}>{uiText("Download")}</button>}
       </div>
     </div>
   );

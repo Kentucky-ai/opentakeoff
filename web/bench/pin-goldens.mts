@@ -58,7 +58,6 @@
 // product never returns; the whole-corpus re-pin that fixed it went through
 // this protocol, one adjudicated reason per moved probe, and those reasons are
 // in the corpus JSON. Goldens also declare `wallSemantics` — see bench/corpus.ts.
-import { createRequire } from "module";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -388,8 +387,7 @@ type CaseAdjudicationOut = Record<string, unknown>;
 
 async function main() {
   const { adjudications, dryRun } = parseRepinArgs(process.argv.slice(2));
-  const req = createRequire(import.meta.url);
-  const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const at = new Date().toISOString().slice(0, 10);
   const pending: Array<{ path: string; json: string; diff: CaseRepinDiff }> = [];
   const failures: string[] = [];
