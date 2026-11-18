@@ -107,6 +107,8 @@ export default function View3D({
     camera.add(head); camera.add(head.target); head.target.position.set(0, 0, -1);
     threeScene.add(camera);
     engineRef.current = { renderer, scene: threeScene, camera, controls };
+    // dev builds only: lets a scripted review set an exact elevation camera (headless drags don't orbit)
+    if (import.meta.env.DEV) window.__ot3dEngine = engineRef.current;
     const resize = () => { const w = mount.clientWidth || 1, h = mount.clientHeight || 1; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h); };
     resize();
     const ro = new ResizeObserver(resize); ro.observe(mount);

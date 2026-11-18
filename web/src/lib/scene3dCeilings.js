@@ -73,17 +73,21 @@ export function buildCeilingLayer({ shapes, conditions, sheet }) {
   const slabs = [], quads = [], notes = [], info = new Map(), ceilingIds = new Set();
   const allowance = items.filter((it) => it.h.allowance);
   if (allowance.length) notes.push({ kind: "ceiling-allowance", tag: "", text: `${allowance.length} ceiling area${allowance.length === 1 ? " has" : "s have"} no height — drawn at a ${ftIn(CEILING_ALLOWANCE_FT)} ALLOWANCE (set Ceiling AFF on the condition or the area, or write the RCP tag, e.g. 9'-0")` });
+  // a soffit / bulkhead: a ceiling inside another ceiling that is higher — find its host first, so
+  // the host plane gets the soffit cut out of it (a lowered plane + drops, never a closed box)
   for (const it of items) {
-    const { s, c, ring, h } = it;
+    const [px, py] = interiorPoint(it.ring);
+    it.host = null;
+    for (const o of items) {
+      if (o === it || o.h.ft <= it.h.ft + 1e-6 || px < o.bbox[0] || px > o.bbox[2] || py < o.bbox[1] || py > o.bbox[3]) continue;
+      if (pointInRing2(px, py, o.ring) && (!it.host || o.h.ft < it.host.h.ft)) it.host = o;
+    }
+    if (it.host) it.host.holes.push(it.ring);
+  }
+  for (const it of items) {
+    const { s, c, ring, h, host } = it;
     ceilingIds.add(s.id);
     const grid = ceilingGridOf(c);
-    // a soffit / bulkhead: a ceiling inside another ceiling that is higher — drop down to it
-    const [px, py] = interiorPoint(ring);
-    let host = null;
-    for (const o of items) {
-      if (o === it || o.h.ft <= h.ft + 1e-6 || px < o.bbox[0] || px > o.bbox[2] || py < o.bbox[1] || py > o.bbox[3]) continue;
-      if (pointInRing2(px, py, o.ring) && (!host || o.h.ft < host.h.ft)) host = o;
-    }
     slabs.push({ verts_ft: ringCCW(ring), holes_ft: it.holes.map((x) => ringCW(x)), z0: h.ft, z1: h.ft + CEILING_THICK_FT, kind: "ceiling",
       shapeId: s.id, condId: c.id, color: c.color || "#d9dcdf", gridSpec: grid, allowance: h.allowance });
     if (host) {

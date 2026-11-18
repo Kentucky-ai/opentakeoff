@@ -391,6 +391,8 @@ test("ceilings: drawn at their height, soffits drop to the ceiling around them, 
   const drops = L.quads.filter((q) => q.shapeId === "s1");
   eq(drops.length, 4, "the soffit drops on all four sides");
   ok(drops.every((q) => q.pts.some((p) => p[1] === 8) && q.pts.some((p) => p[1] === 9)), "from 8' up to the 9' ceiling");
+  eq([by.c1.holes_ft.length, by.s1.holes_ft.length], [1, 0], "the 9' plane has the soffit cut out of it — a lowered plane with drops, not a closed box");
+  ok(by.s1.z1 - by.s1.z0 < 0.1, "the soffit is a thin plane at 8', not a block");
   const sc = buildTakeoffScene({ shapes: shapes.map((s) => ({ ...s, sheet_id: "S" })), conditions: conds, sheetId: "S", sheet: CS });
   eq(sc.slabs.map((s) => s.shapeId), ["f1"], "ceilings never become floor slabs (nor stack the floor on them)");
   eq([sc.stats.ceilings, sc.stats.soffits, sc.stats.ceilingAllowances], [3, 1, 1], "stats");
