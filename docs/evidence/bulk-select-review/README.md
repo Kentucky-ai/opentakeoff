@@ -1,10 +1,41 @@
-# Bulk selection and review — branch evidence
+# Bulk selection and review—branch evidence
 
 This branch starts at upstream main `3add1846a974aebc8820fa53af9933f75251690a`.
 It adds checkboxes, filtered selection, a plan highlight and a batch review button
 to **Work and review**. Review and undo use the existing `review` shape command.
 There is no persistence change, new MCP tool, callout record or dependency on the
 paper-space marker/locator branch. This is a fork review branch; no PR is opened.
+
+## Contribution readiness
+
+Audit date: 2026-11-18. The upstream contribution guide and PR template were
+checked at current main `3add1846a974aebc8820fa53af9933f75251690a`. The implementation
+is a fork prototype for review, not a declaration that every PR requirement is met.
+
+| Requirement | Status |
+|---|---|
+| One concern | Bulk measurement selection and review; no callout model, catalog integration, trade suite or marker-geometry feature |
+| Branch and checks | Separate branch from main; required local checks passed on implementation commit `82c9478`; no GitHub CI run exists for this topic branch |
+| Public evidence | Bundled sample plan, screenshots of the panel and canvas, reproduction scripts and exact-record export comparison; no new plan PDF or private customer data committed |
+| Documentation | Changelog, feature map, user guide and reviewer limits updated |
+| Contributor agreement | The author's [existing agreement](https://github.com/Kentucky-ai/opentakeoff/issues/659#issuecomment-6985194643) is verified; link it in a future PR |
+| Issue-first discussion | Outstanding for this feature; the prototype was built before a separate bulk-review issue |
+| Short flow recording | Outstanding; the screenshots do not replace the required recording |
+
+The [contribution guide](../../../CONTRIBUTING.md#pull-requests--how-we-work)
+allows small bug fixes to go directly to a PR, and asks that new canvas interaction
+start with an issue. Bulk selection and batch review are classified here as a new
+interaction, so raise the proposal and seek agreement on its scope before moving
+this prototype toward a PR. The square/circle correction is part of this feature.
+Issue #659 concerns the landscape suite and explicitly leaves bulk review for a
+separate proposal; it does not establish agreement on this implementation.
+
+Before a PR, add the flow recording, complete the browser checks listed below,
+and fill the [PR template](../../../.github/PULL_REQUEST_TEMPLATE.md) with the
+issue, agreement and evidence links. Current main still matches this branch's
+base; refresh and recheck it if main changes. The existing CI workflow runs on
+PRs and main pushes, so passing local checks should not be described as green
+GitHub CI. No issue or PR has been posted as part of this audit.
 
 ## Reproduce the example
 
