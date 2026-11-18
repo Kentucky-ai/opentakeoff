@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-18 — Acoustical ceilings suite (MCP 0.9.112)
+
+- **`ceiling_takeoff`, the acoustical-ceiling part of Division 09 (#614).** `open_suite {suite: "acoustical_ceilings"}` (or `{division: "09"}`) opens it. Trace the lay-in areas on the reflected ceiling plan under `ACT-<type>`, then call `ceiling_takeoff {condition, module, hanger_spacing_ft}`.
+- **What it figures from the module** (2x2 or 2x4; 600x600 or 600x1200 with `units: "metric"`):
+  - tiles before waste, and the order count with waste (stated, or a labeled 10% allowance);
+  - main runner LF and pieces (12 ft unless stated), with mains at 4 ft;
+  - long cross tees, and short cross tees in a square module;
+  - hanger wires at the spec spacing along the mains.
+- **Where it puts them.** All of the above go on the condition as material rows, updated on a re-run, never duplicated. Each area's perimeter is committed as a wall angle run under `<condition>-WA`, and a re-run skips areas it already derived.
+- **Missing values.** No module is refused. No hanger spacing is listed under `not_figured`. A 20 × 30 ft room in 2 × 2 tile gives 150 tiles and 100 LF of wall angle.
+- The Trade view books `ACT-` tags to the new suite.
+
 ## 2026-11-17 — the 3D view (Kevin Murphy's, as improved in the Spline viewer)
 
 - **A 3D button.** The view cluster gets **3D**: the open sheet's takeoff stood up, read-only. Floors are slabs at their thickness with holes and stacked layers, base stands at its height, transitions lie flush on the higher floor, surface runs stand up, a count with a height is a post, and tile floors with a stated size carry a grout grid.

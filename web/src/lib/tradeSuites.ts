@@ -63,6 +63,24 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
     presets: [],
   },
   {
+    id: "acoustical_ceilings",
+    label: "Acoustical ceilings",
+    prefixes: ["ACT-"],
+    divisions: ["09"],
+    summary: "lay-in tiles, main runners, cross tees, hanger wires and wall angle from areas on the reflected ceiling plan",
+    tools: ["ceiling_takeoff"],
+    method: [
+      "Reflected ceiling plan, scale set. One tag per ceiling type from the RCP legend or finish schedule: ACT-1, ACT-2.",
+      "1. measure_polygon (or one_click) each lay-in area wall to wall under its ACT-<type>. Gypsum soffits, bulkheads and areas open to structure are not ACT: leave them out or cut_out them.",
+      "2. ceiling_takeoff {condition, module, hanger_spacing_ft} once per type: tiles, main runners, long and short cross tees and hanger wires as material rows on the condition, and each area's perimeter committed as wall angle under <condition>-WA.",
+      "The module (2x2, 2x4) comes from the RCP legend, the hanger spacing from the spec's suspension section. Not given: create_rfi, never guess.",
+      "Wall angle follows every traced edge. An edge that meets another ceiling, not a wall, is not wall angle: delete_shape that run and measure_line the wall edges under the -WA tag.",
+    ].join("\n"),
+    presets: [
+      { tag: "ACT-<type>", measure: "area", what: "lay-in ceiling areas on the RCP, one tag per ceiling type" },
+    ],
+  },
+  {
     id: "roofing",
     label: "Roofing",
     prefixes: ["RF-"],

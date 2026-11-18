@@ -240,6 +240,7 @@ once, at open time, instead of riding every turn. The long form is the
 | Suite | Divisions | Tool it adds |
 |---|---|---|
 | finishes | 09 | none: core tools (`measure_polygon`, `derive_base`, `derive_transitions`, `measure_surface`) |
+| acoustical_ceilings | 09 | `ceiling_takeoff`: from lay-in areas on the reflected ceiling plan and the module (2x2, 2x4, or 600x600 / 600x1200 in metric): tiles before and with waste, main runners, long and short cross tees, hanger wires at the spec spacing, all as material rows; each area's perimeter committed as a wall angle run. |
 | roofing | 07 | `roof_takeoff`: sloped SF and squares from plan-view planes and a stated pitch, true rake/hip/valley LF, drip edge, starter, ridge cap, underlayment, ice & water. Writes the slope factors onto the conditions so every total reads true. |
 | siding | 07 | `siding_takeoff`: net wall SF and squares from elevation faces minus openings, opening trim (doors 3 sides), starter along wall bottoms, corner LF, lap pieces. |
 | soffit_fascia | 07 | `soffit_takeoff`: soffit SF (eave/rake LF × depth from the wall section), fascia LF, wall receiver, attic intake vent area. |

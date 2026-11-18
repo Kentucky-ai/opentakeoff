@@ -25,7 +25,7 @@ import {
 import { M_PER_FT, MM_PER_IN, SUITE_UNIT_PAIRS, suiteMetricName, suiteMetricReply } from "../../web/src/lib/units.ts";
 import {
   parsePitch, roofQuantities, slopeFactor, hipValleyFactor, sidingQuantities, bottomEdges, starterRuns, soffitQuantities,
-  glazingOpening, electricalRollup, plumbingRollup, ringPerimeter, type Pt,
+  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringPerimeter, type Pt,
 } from "../../web/src/lib/suiteMath.ts";
 
 export { SUITE_TOOL_NAMES };
@@ -34,7 +34,7 @@ const SUITE_IDS = TRADE_SUITES.map((s) => s.id) as [string, ...string[]];
 
 /** One line for the initialize instructions. */
 export const SUITE_INSTRUCTIONS =
-  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, plumbing and electrical tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
+  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, acoustical ceiling, plumbing and electrical tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
 
 const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
   async (args: any): Promise<ToolReply> => {
@@ -563,6 +563,69 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     }
     return { ...q, committed: 0, undo_steps: steps,
       next: q.needs_you.length ? "Settle needs_you with the estimator (or create_rfi) before the counts go out." : "Counts agree with the schedule." };
+  }));
+
+  // ── acoustical ceilings ───────────────────────────────────────────────────
+  const ceilingInput = z.looseObject({
+    condition: z.string().default("ACT-1").describe("The ceiling condition: lay-in areas traced on the RCP, e.g. ACT-1"),
+    module: z.string().optional().describe('Lay-in module from the RCP legend: "2x2" or "2x4" (feet); with units metric, "600x600" or "600x1200" (mm). Required'),
+    hanger_spacing_ft: z.number().positive().optional().describe("Hanger wire spacing along the mains, feet (spec suspension section); absent = hangers not figured"),
+    hanger_spacing_m: z.number().positive().optional().describe("Hanger wire spacing along the mains, m (units metric)"),
+    main_piece_ft: z.number().positive().optional().describe("Main runner piece length, feet; absent = 12"),
+    main_piece_m: z.number().positive().optional().describe("Main runner piece length, m (units metric); absent = 3.66"),
+    waste_pct: z.number().min(0).max(50).optional().describe("Tile waste; absent = 10 % suite allowance"),
+    wall_angle: z.string().optional().describe("Condition the wall angle runs are committed under; absent = <condition>-WA"),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
+  reg("ceiling_takeoff", {
+    description: "Acoustical ceilings suite. From lay-in areas traced on the reflected ceiling plan and the module from its legend: tiles (before and with waste), main runner LF and pieces, long and short cross tees, hanger wires at the spec spacing, and wall angle LF from the areas' perimeters. apply (default true) writes the tiles and grid as material rows on the condition (updating rows it wrote before) and commits each area's perimeter as a wall angle run under <condition>-WA. Re-running skips areas it already derived. A run without hanger_spacing_ft reports hangers as not figured.",
+    inputSchema: ceilingInput,
+    outputSchema: { ...deriveOutput, tiles: z.number().optional(), wall_angle_lf: z.number().optional(), wall_angle_m: z.number().optional() },
+  }, suiteRun("ceiling_takeoff", ceilingInput, (a, units) => {
+    const examples = units === "metric" ? '"600x600" or "600x1200"' : '"2x2" or "2x4"';
+    if (!a.module) throw new UserError(`ceiling_takeoff needs the lay-in module from the RCP legend: ${examples}.`);
+    const mod = parseCeilingModule(a.module, units === "metric");
+    if (!mod) throw new UserError(`Cannot read module ${JSON.stringify(a.module)} — pass ${examples} as the RCP legend prints it.`);
+    conditionOrError(a.condition, "ceiling");
+    const areas = session.suiteShapes(a.condition, ["floor_area"]);
+    const tot = session.suiteTotals(a.condition)!;
+    const perimeterOf = (s: { shape: { computed?: { perimeter_lf?: number } }; ft: Pt[] }) => s.shape.computed?.perimeter_lf ?? ringPerimeter(s.ft);
+    const mult = tot.multiplier || 1;
+    let q: ReturnType<typeof ceilingQuantities>;
+    try {
+      q = ceilingQuantities({
+        area_sf: tot.floor_sf, perimeter_lf: areas.reduce((n, s) => n + perimeterOf(s), 0) * mult,
+        module_w_ft: mod.w_ft, module_l_ft: mod.l_ft,
+        hanger_spacing_ft: unitArg(a, "hanger_spacing_ft", units), main_piece_ft: unitArg(a, "main_piece_ft", units), waste_pct: a.waste_pct,
+      });
+    } catch (e) { throw new UserError(`module ${JSON.stringify(a.module)}: ${(e as Error).message}.`); }
+    const len = (ft: number) => (units === "metric" ? `${Math.round(ft * 304.8)} mm` : `${r2(ft)} ft`);
+    const waTag: string = a.wall_angle ?? `${a.condition}-WA`;
+    let committed = 0, steps = 0;
+    if (a.apply) {
+      const done = derivedFrom("ceiling_takeoff", [waTag]);
+      const items: Parameters<Session["suiteCommit"]>[1] = [];
+      for (const s of areas) {
+        if (done.has(`${waTag}|${s.shape.id}`)) continue;
+        const px = s.px, closed = px.length > 1 && px[0][0] === px[px.length - 1][0] && px[0][1] === px[px.length - 1][1];
+        items.push({ sheet_id: s.shape.sheet_id, tag: waTag, role: "linear", px: closed ? px : [...px, px[0]], computed: { area_sf: 0, perimeter_lf: r2(perimeterOf(s)) }, derived: { from_shape_id: s.shape.id } });
+      }
+      if (items.length) { session.suiteCommit("ceiling_takeoff", items); committed = items.length; steps++; }
+      // N identical floors on the ceiling condition are N runs of wall angle
+      if (mult !== 1 && session.hasCondition(waTag)) { session.editCondition(waTag, { multiplier: mult }); steps++; }
+      const S = q.main_spacing_ft, w = mod.w_ft;
+      const rows: MatRow[] = [
+        { name: "Ceiling tiles", basis: "area", per: q.tile_sf / (1 + q.waste_pct / 100), unit: "EA", round: true, note: `${a.module} module, ${q.waste_pct}% waste (ceiling_takeoff)` },
+        { name: "Main runners", basis: "area", per: S * q.main_piece_ft, unit: "EA", round: true, note: `${len(q.main_piece_ft)} pieces, ${len(S)} on center (ceiling_takeoff)` },
+        { name: "Cross tees, long", basis: "area", per: S * w, unit: "EA", round: true, note: `${len(S)} tees, ${len(w)} on center (ceiling_takeoff)` },
+      ];
+      if (q.cross_tees_short) rows.push({ name: "Cross tees, short", basis: "area", per: S * w, unit: "EA", round: true, note: `${len(w)} tees, one per bay between long tees (ceiling_takeoff)` });
+      if (q.hanger_spacing_ft) rows.push({ name: "Hanger wires", basis: "area", per: S * q.hanger_spacing_ft, unit: "EA", round: true, note: `1 per ${len(q.hanger_spacing_ft)} along mains ${len(S)} apart (ceiling_takeoff)` });
+      steps += upsertRows(session, a.condition, rows);
+    }
+    return { ...q, module: a.module, wall_angle_condition: waTag, committed, undo_steps: steps,
+      next: `view_sheet overlay:true: the wall angle runs (${waTag}) follow every traced edge; an edge against another ceiling is not wall angle — delete_shape that run and measure_line the wall edges. export_report lists the grid rows. A row an earlier run wrote and this one did not (a short-tee row after switching to a 2x4 module) stays until edit_materials removes it.` };
   }));
 
   // hidden until opened, unless pre-opened

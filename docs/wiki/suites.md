@@ -23,6 +23,7 @@ that. A client that reads its tool list only once can pre-open suites with
 | Suite | Divisions | Tool | What it figures |
 |---|---|---|---|
 | finishes | 09 | none | Rooms with `measure_polygon`, base with `derive_base`, transitions with `derive_transitions`, wall finishes with `measure_surface`. |
+| acoustical_ceilings | 09 | `ceiling_takeoff` | Lay-in tiles from the module, main runners, long and short cross tees, hanger wires, wall angle LF from the areas' perimeters. |
 | roofing | 07 | `roof_takeoff` | Sloped SF and squares, true rake, hip and valley LF, drip edge, starter, ridge cap, underlayment, ice and water. |
 | siding | 07 | `siding_takeoff` | Net wall SF and squares, opening trim, starter, corners, lap pieces. |
 | soffit_fascia | 07 | `soffit_takeoff` | Soffit SF, fascia LF, wall receiver LF, attic intake vent area. |
@@ -38,7 +39,7 @@ condition count. Other trades' conditions leave the Condition list and the
 Takeoffs panel and their shapes hide; the Report, estimate and exports keep
 everything. A condition made while a trade is showing is booked to it
 (`trade` on the condition). Otherwise a condition's trade is read from its tag
-prefix (`RF-`, `SD-`, `SF-`, `GL-`, `DR-`/`HW-`, `P-`, `E-`/`FA-`/`LV-`), else
+prefix (`RF-`, `SD-`, `SF-`, `ACT-`, `GL-`, `DR-`/`HW-`, `P-`, `E-`/`FA-`/`LV-`), else
 Finishes, so the suite tools' default tags land in the right trade. Set it by
 hand in the condition's properties. The picker is per user and saved in the
 browser, not in the project.

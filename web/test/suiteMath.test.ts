@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePitch, slopeFactor, hipValleyFactor, roofQuantities, bottomEdges, starterRuns, sidingQuantities,
-  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ringAreaSf, ringPerimeter, type Pt,
+  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringAreaSf, ringPerimeter, type Pt,
 } from "../src/lib/suiteMath.ts";
 import { TRADE_SUITES, SUITE_TOOL_NAMES, suitesForDivision, suiteOfTool, suiteCatalogLines } from "../src/lib/tradeSuites.ts";
 
@@ -155,6 +155,58 @@ test("plumbingRollup: schedule check carries the plan count and names every diff
   assert.ok(q.not_figured.some((s) => s.startsWith("P-SAN-4")), "no hanger spacing → not figured, never assumed");
 });
 
+test("ceilingQuantities: the #614 finish line — a 20 × 30 ft room in 2 × 2 tile", () => {
+  const q = ceilingQuantities({ area_sf: 600, perimeter_lf: 100, module_w_ft: 2, module_l_ft: 2, hanger_spacing_ft: 4 });
+  assert.equal(q.tiles, 150);                         // 600 SF / 4 SF per tile
+  assert.equal(q.wall_angle_lf, 100);                 // 2 × (20 + 30)
+  near(q.main_spacing_ft, 4);                          // square module: mains at 2 × 2 ft
+  near(q.main_runner_lf, 150);                         // 600 / 4 ft
+  assert.equal(q.main_runners, 13);                    // 150 LF / 12 ft pieces = 12.5, rounded up
+  assert.equal(q.cross_tees_long, 75);                 // 600 / (4 × 2): one 4 ft tee per 8 SF
+  assert.equal(q.cross_tees_short, 75);                // 600 / (4 × 2): one 2 ft tee per 8 SF
+  // grid LF per SF = 150/600 + 75·4/600 + 75·2/600 = 0.25 + 0.5 + 0.25 = 1, a line every 2 ft both ways
+  near((q.main_runner_lf + q.cross_tees_long * q.cross_tee_long_ft + q.cross_tees_short * q.cross_tee_short_ft) / 600, 1);
+  assert.equal(q.hangers, 38);                         // 600 / (4 ft mains × 4 ft along) = 37.5, rounded up
+  assert.equal(q.waste_pct, 10);
+  assert.match(q.waste_source, /allowance/);
+  assert.equal(q.tiles_order, 165);                    // 150 × 1.10
+  assert.deepEqual(q.not_figured, []);
+});
+
+test("ceilingQuantities: 2 × 4 module, an L-shaped room, rounding up, missing hanger spacing", () => {
+  const q = ceilingQuantities({ area_sf: 600, perimeter_lf: 100, module_w_ft: 2, module_l_ft: 4, waste_pct: 5, main_piece_ft: 10 });
+  assert.equal(q.tiles, 75);                           // 600 / 8
+  near(q.main_spacing_ft, 4);                          // mains at the long side
+  assert.equal(q.main_runners, 15);                    // 150 LF / 10 ft pieces
+  assert.equal(q.cross_tees_long, 75);                 // 600 / (4 × 2)
+  assert.equal(q.cross_tees_short, 0);                 // no short tees in a 2 × 4 grid
+  assert.equal(q.tiles_order, 79);                     // 75 × 1.05 = 78.75, rounded up
+  assert.equal(q.waste_source, "stated");
+  assert.equal(q.hangers, undefined);
+  assert.ok(q.not_figured.some((s) => s.startsWith("hanger wires")), "no hanger spacing → not figured, never assumed");
+
+  // 20 × 30 with a 10 × 10 corner taken out: 500 SF, the perimeter unchanged at 100 LF
+  const L = ceilingQuantities({ area_sf: 500, perimeter_lf: 100, module_w_ft: 2, module_l_ft: 2 });
+  assert.equal(L.tiles, 125);
+  assert.equal(L.wall_angle_lf, 100);
+  assert.equal(ceilingQuantities({ area_sf: 601, perimeter_lf: 0, module_w_ft: 2, module_l_ft: 2 }).tiles, 151);   // 150.25 → 151
+  assert.throws(() => ceilingQuantities({ area_sf: 600, perimeter_lf: 100, module_w_ft: 2, module_l_ft: 3 }), /square or twice as long/);
+});
+
+test("parseCeilingModule reads the module as the plan prints it; metric is in mm", () => {
+  assert.deepEqual(parseCeilingModule("2x2"), { w_ft: 2, l_ft: 2 });
+  assert.deepEqual(parseCeilingModule("2' x 4'"), { w_ft: 2, l_ft: 4 });
+  assert.deepEqual(parseCeilingModule("4×2"), { w_ft: 2, l_ft: 4 });     // short side first
+  const m = parseCeilingModule("600x1200", true)!;
+  near(m.w_ft, 1.9685, 1e-4);                                            // 600 / 304.8
+  near(m.l_ft, 3.937, 1e-3);
+  assert.equal(parseCeilingModule("two by two"), null);
+  // 600 × 600 mm over 600 SF (55.74 m²): 55.74 / 0.36 = 154.8 → 155 tiles; mains at 1200 mm
+  const q = ceilingQuantities({ area_sf: 600, perimeter_lf: 100, module_w_ft: parseCeilingModule("600x600", true)!.w_ft, module_l_ft: parseCeilingModule("600x600", true)!.l_ft });
+  assert.equal(q.tiles, 155);
+  near(q.main_spacing_ft * 0.3048, 1.2, 1e-4);                            // reported to 4 places
+});
+
 test("ring helpers ignore a repeated closing point", () => {
   const r = rect(0, 0, 4, 3);
   near(ringAreaSf([...r, r[0]]), 12, 1e-9);
@@ -172,7 +224,8 @@ test("registry: ids unique, every suite has a method, divisions route, tools are
   assert.deepEqual(suitesForDivision("07").map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
   assert.deepEqual(suitesForDivision("Div 26 05 00").map((s) => s.id), ["electrical"]);
   assert.deepEqual(suitesForDivision("8").map((s) => s.id), ["glazing", "doors"]);
-  assert.deepEqual([...SUITE_TOOL_NAMES], ["electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
+  assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
+  assert.deepEqual(suitesForDivision("09").map((s) => s.id), ["finishes", "acoustical_ceilings"]);
   assert.equal(suiteCatalogLines().length, TRADE_SUITES.length);
 });
 
@@ -190,6 +243,7 @@ test("trade view: explicit trade wins, then tag prefix, then Finishes; the view 
   assert.equal(conditionTrade({ finish_tag: "P-WC1" }), "plumbing");
   assert.equal(conditionTrade({ finish_tag: "FA-HORN" }), "electrical");
   assert.equal(conditionTrade({ finish_tag: "PT-1" }), "finishes");           // paint is not plumbing
+  assert.equal(conditionTrade({ finish_tag: "ACT-2" }), "acoustical_ceilings");
   assert.equal(conditionTrade({ finish_tag: "LVT-1" }), "finishes");          // pre-suite takeoffs read as finishes
   assert.equal(conditionTrade({ finish_tag: "LVT-1", trade: "glazing" }), "glazing");
   assert.equal(conditionTrade({ finish_tag: "RF-1", trade: "nonsense" }), "roofing");
