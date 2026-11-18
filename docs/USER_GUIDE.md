@@ -999,8 +999,9 @@ without changing any measurement.
 Click **Show selected on plan** to open and frame the selected measurements on up
 to four sheets. Selected measurements get a temporary outline; hidden conditions
 are revealed and a conflicting trade filter is cleared. Selection outlines are
-not saved or exported. A count's selection outline is screen-sized and does not
-represent a plant's spread or change its marker style.
+not saved or exported. Counts use the same marker geometry and selected
+appearance for individual and bulk selection; selection does not represent a
+plant's spread or change the saved marker style.
 
 Click **Mark selected reviewed** to review only the selected pending measurements.
 Existing decisions, IDs, geometry and quantities stay unchanged. One undo restores

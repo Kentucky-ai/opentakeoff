@@ -68,10 +68,17 @@ build at `http://127.0.0.1:5182/`, at 1600 × 1000, 900 × 900 and the default
 
 Machine-readable observations are in [validation.json](validation.json).
 
+The count-shape correction was checked after a full browser reload. The pending
+count's geometry, fill, selected stroke and dash match exactly between individual
+and bulk selection; all three bulk markers use native rectangles. See the actual
+rendered attributes in [count-selection-parity.json](count-selection-parity.json).
+No review action was performed for this visual correction. Updated screenshots
+cover the 1600 × 1000 desktop, 900 × 900 panel and 1261 × 1243 default viewport.
+
+![Individual count selection using the native marker](07-single-count-selection.jpg)
 ![Three selected occurrences and the batch controls](01-selected-desktop.jpg)
 ![Only the two pending entries reviewed](02-batch-reviewed.jpg)
 ![One undo restores the original decisions](03-batch-undone.jpg)
-![All selected occurrences on a narrow canvas](04-selected-narrow.jpg)
 ![Narrow review panel](05-panel-narrow.jpg)
 
 ## Checks
@@ -96,8 +103,10 @@ geometry, multi-sheet offsets, curves, holes and large vertex lists.
 
 - Stored vertices remain normalized per sheet. Framing and SVG highlights map
   them to rendered panel pixels, with existing panel offsets and curve flattening.
-- Selection is temporary. The small count outline is a screen-space cue; it does
-  not change the saved count marker or represent plant spread.
+- Selection is temporary. Counts use the native count glyph's selected appearance
+  for both individual and bulk selection. This branch's native count is a rounded
+  square; there is no separate circular overlay or marker geometry definition.
+  Selection does not change the saved marker or represent plant spread.
 - **Show selected on plan** uses the existing four-sheet display limit. Selections
   beyond that limit show an explanation; use smaller groups for plan review.
 - Only selected records with explicit `origin.reviewed === false` and a usable

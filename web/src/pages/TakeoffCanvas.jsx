@@ -854,6 +854,7 @@ export default function TakeoffCanvas() {
   const [workSelectionIds, setWorkSelectionIds] = useState([]);
   const [workSelectionFrame, setWorkSelectionFrame] = useState(null);
   const selectedWork = useMemo(() => workSelection(shapes, workSelectionIds), [shapes, workSelectionIds]);
+  const selectedCountIds = useMemo(() => new Set(selectedWork.locatable.filter((s) => s.measure_role === "count").map((s) => s.id)), [selectedWork]);
   const workButtonRef = useRef(null);
   // ── roll goods (#136) — view state; the figured layouts are a memo below ──
   const [rollShow, setRollShow] = useState(true);         // draw the figured cuts over the plan (on: opting a condition in shows its cuts immediately)
@@ -11116,10 +11117,16 @@ export default function TakeoffCanvas() {
                         mirror (ReferencePane.jsx) — see that module for the full
                         measure_role switch. `sel`/`DS.selection` only matter when
                         `sel` is true, which never happens on the reference side. */}
-                    {uiText(pShapes.map((s) => renderShapeGlyph(s, {
-                    dn, cond: condById[s.condition_id], sel: s.id === selectedId,
-                    z: tf.scale, darkMode, selection: DS.selection, patId,
-                    })))}
+                  {uiText(pShapes.map((s) => {
+                    // Counts inherit the same glyph and selected appearance in
+                    // single and bulk review; no separate shape is drawn over them.
+                    const bulkCount = selectedCountIds.has(s.id);
+                    const glyph = renderShapeGlyph(s, {
+                      dn, cond: condById[s.condition_id], sel: s.id === selectedId || bulkCount,
+                      z: tf.scale, darkMode, selection: DS.selection, patId,
+                    });
+                    return bulkCount ? <g key={s.id} data-work-selection-id={s.id}>{glyph}</g> : glyph;
+                  }))}
                   {/* vertex handles for the selected shape (drag to reshape) */}
                   {selectedId && (() => {
                     const sel = pShapes.find((s) => s.id === selectedId);
