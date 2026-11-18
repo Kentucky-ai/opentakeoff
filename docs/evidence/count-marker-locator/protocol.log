@@ -1,0 +1,87 @@
+
+> opentakeoff-protocol-checks@0.0.0 check
+> npm test && node scripts/check-docs.mjs && node scripts/check-matrix.mjs
+
+
+> opentakeoff-protocol-checks@0.0.0 test
+> node --import tsx --test test/*.test.mjs
+
+✔ both adapter directions and same-version calls preserve every JSON value and omission (106.9709ms)
+✔ converted output is detached, with opaque keys retained and no prototype pollution (0.3555ms)
+✔ legacy count omissions and unavailable original history keep warnings without fabricated data (0.4207ms)
+✔ both directions refuse unsupported or invalid sources without a converted document (2.5464ms)
+✔ unsupported targets and unsafe JavaScript data cannot bypass preflight or execute getters (1.6613ms)
+✔ CLI round trip writes separate importable files and reports preservation without exposing records (995.206ms)
+✔ CLI refuses incompatibility before creating output and never overwrites input, files or aliases (1196.3782ms)
+✔ CLI usage, parse, missing input and destination failures return exit 2 without leftover files (1267.0489ms)
+✔ legacyId equals the shared takeoff schema id (0.5708ms)
+✔ the legacy JSON schema pins the same id (0.3754ms)
+Warning: Please use the `legacy` build in Node.js environments.
+Warning: Please use the `legacy` build in Node.js environments.
+✔ count display diameter is optional and does not change stored geometry or quantities (49.9461ms)
+✔ empty browser persistence and a real browser add command conform without changing quantities (1.3142ms)
+✔ MCP commits every manual measurement role with agent provenance and unconfirmed scale (244.3262ms)
+✔ human correction, subsequent correction, review and undo retain existing machine originals (0.7471ms)
+✔ agent self-revision then human correction preserves the proposal seen by the human through import and archive (30.7787ms)
+✔ legacy missing originals stay absent under validation; agent review stays pending (0.4038ms)
+✔ legacy spline and browser-only provenance are represented without changing interpretation (0.4735ms)
+✔ browser stitch, unknown extensions and original trace survive the existing project archive (2.4082ms)
+✔ browser approvals transport as records while MCP verdict creation remains agent-only (8.9372ms)
+✔ wall bands and physically clipped base runs conform without floor deductions (8.4594ms)
+✔ generated references detect changed fields, constraints and schema references (3.6268ms)
+✔ a removed generated block fails instead of silently bypassing the check (0.3229ms)
+✔ the CI command exits nonzero for stale documentation, repairs only with --write (748.3508ms)
+✔ matrix generation rejects unclassified, duplicate or incomplete cases and missing markers (1.7056ms)
+✔ CI rejects changed matrix evidence and repairs only explicitly; CRLF is stable (1316.3896ms)
+Warning: Please use the `legacy` build in Node.js environments.
+Warning: Please use the `legacy` build in Node.js environments.
+✔ preflight accepts real MCP manual roles and derived base without recomputation or authority changes (224.1409ms)
+✔ browser correction retains first machine ring, evidence and existing human review without authenticating it (3.023ms)
+✔ legacy omissions, extensions and out-of-frame coordinates stay absent or exact (0.7779ms)
+✔ unscaled counts preserve the existing absent-count default; missing sheets collection refuses (0.4911ms)
+✔ surface condition height is supported; missing calibration does not infer PDF availability (0.4964ms)
+✔ historical references and already missing originals are warnings, never fabricated history (0.2674ms)
+✔ preflight detects schema-valid active-reference and role defects (50.782ms)
+✔ known unsupported semantics refuse even when structural schema accepts them (93.6147ms)
+✔ eligibility explicitly does not verify topology, cached quantity correctness or MCP preservation (0.9277ms)
+✔ unsafe JSON values and getters refuse before schema validation, without invoking getters (1.3588ms)
+✔ unknown identifiers and malformed known fields report invalid before semantic checks (0.3ms)
+✔ CLI returns parseable reports and exit codes, keeps source bytes, and never emits source records (1222.9153ms)
+✔ all draft and legacy schemas compile offline with unique identifiers (44.2003ms)
+✔ document identifiers are explicit; neither version is silently accepted as the other (8.0965ms)
+✔ invalid coordinates, scale, confidence and review types are rejected without coercion (4.3248ms)
+✔ actor is independent of method; missing legacy review and author stay absent (0.6031ms)
+✔ unknown extensions and out-of-sheet geometry survive structural validation (0.6483ms)
+✔ Review distinguishes record shapes but cannot authenticate a human claim (0.9951ms)
+✔ known secondary families retain data without claiming full semantic validation (0.2152ms)
+Warning: Please use the `legacy` build in Node.js environments.
+Warning: Please use the `legacy` build in Node.js environments.
+✔ compatibility catalog is unique, classified and has one executable case per row (1.3162ms)
+✔ manual-roundtrip [conforms]: MCP → browser import → MCP file import (187.7578ms)
+✔ cutout-roundtrip [conforms]: Reconciled hole through archive and MCP (51.7067ms)
+✔ derived-base-roundtrip [conforms]: Derived base through MCP import (22.6407ms)
+✔ curves-roundtrip [conforms]: Legacy control points and baked browser arc (28.1368ms)
+✔ review-transport [conforms]: Browser approval and MCP mutation boundary (22.7537ms)
+✔ scale-conflict [unsupported]: Merge into conflicting local calibration (10.8463ms)
+✔ draft-import [needs-adapter]: Unadapted draft document → current import (7.2162ms)
+✔ adapter-roundtrip [conforms]: Opt-in canvas ↔ draft, then archive/browser/MCP (95.5056ms)
+✔ stitch-mcp [conforms]: Browser composite → MCP export (21.5889ms)
+✔ extensions-mcp [unsupported]: Whole browser workspace → MCP export (18.6949ms)
+✔ missing-source [unsupported]: Unloaded source sheet → MCP (28.3353ms)
+✔ transitions-roundtrip [conforms]: Derived transition through archive/MCP (21.9113ms)
+✔ rule-results-roundtrip [conforms]: Rule-generated measurement through archive/MCP (107.1747ms)
+ℹ Rule fixture: analytic 16 SF; mask candidate 14.44 SF; transport requires exact record equality.
+✔ snapshot-storage [conforms]: Browser snapshot store (in-memory IndexedDB) (12.5847ms)
+✔ pdf-revision-storage [conforms]: Browser PDF revision store (in-memory IndexedDB) (10.1215ms)
+✔ archive-history [unsupported]: Full browser history → current project archive (11.4543ms)
+✔ schema conformance does not establish active references or verified quantities (6.8245ms)
+ℹ tests 62
+ℹ suites 0
+ℹ pass 62
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3956.7025
+Protocol documentation matches 11 schema files.
+Protocol transport matrix matches 16 executable cases.

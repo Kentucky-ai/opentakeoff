@@ -12,6 +12,7 @@
 import { flattenCurve } from "../lib/curve.js";
 import { dashArrayFor } from "../lib/lineStyles.js";
 import { NO_FILL } from "./hatches.jsx";
+import { countDiameterPt, countRadiusPx } from "../lib/countDisplay";
 
 // Fill for a committed shape. Hatch tiles are 10 stage-units — once the zoom
 // puts a tile under ~4 screen px the pattern aliases into subpixel mush
@@ -32,7 +33,7 @@ export function shapeFill(cond, { scale, darkMode, patId }) {
 // into. `sel` is always false from the reference pane (it has no selection);
 // `selection` (DS.selection's {color,width}) is only ever read when `sel` is
 // true, so the reference pane can omit it.
-export function renderShapeGlyph(s, { dn, cond, sel, z, darkMode, selection = {}, patId }) {
+export function renderShapeGlyph(s, { dn, cond, sel, z, darkMode, selection = {}, patId, locatePulse = 0 }) {
   const pts = dn(s.verts_norm);
   const col = cond?.color || "#888";
   const sw = (sel ? selection.width : 2) / z;
@@ -44,8 +45,29 @@ export function renderShapeGlyph(s, { dn, cond, sel, z, darkMode, selection = {}
   const fill = (c) => shapeFill(c, { scale: z, darkMode, patId });
 
   if (s.measure_role === "count") {
-    const [cx, cy] = pts[0], r = 7 / z;
-    return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + (pending ? "55" : "cc")} stroke={sel ? selection.color : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={pending ? `${3 / z} ${2.5 / z}` : undefined} />;
+    const [cx, cy] = pts[0], r = countRadiusPx(cond, z);
+    const diameter = countDiameterPt(cond);
+    const halo = Math.max(r + 8 / z, 17 / z);
+    // The permanent footprint is drawing-space geometry. Only the temporary
+    // locator and selection cue use screen-space spacing. Review is unchanged.
+    return <g key={s.id} data-measurement-id={s.id} data-selected={sel || undefined}>
+      {diameter === null ? <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + (pending ? "55" : "cc")} stroke={sel ? selection.color : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={pending ? `${3 / z} ${2.5 / z}` : undefined} /> : <>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#fff" strokeWidth={Math.min(5 / z, r / 2)} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={col} strokeWidth={Math.min(2.5 / z, r / 3)} strokeDasharray={pending ? pDash : undefined} />
+      </>}
+      {sel && <>
+        {locatePulse > 0 && <g key={locatePulse} data-locate-pulse={locatePulse} pointerEvents="none" transform={`translate(${cx},${cy})`}>
+          <style>{`@keyframes ot-count-locate { from { transform: scale(1); opacity: 1; } to { transform: scale(3.6); opacity: 0; } } @media (prefers-reduced-motion: reduce) { .ot-count-locate { animation: none !important; opacity: 0; } }`}</style>
+          <g className="ot-count-locate" style={{ transformOrigin: "0 0", animation: "ot-count-locate 0.9s ease-out 3 forwards" }}>
+            <circle r={18 / z} fill="none" stroke="#fff" strokeWidth={4 / z} />
+            <circle r={18 / z} fill="none" stroke={selection.color || "#1f3fc7"} strokeWidth={1.5 / z} />
+          </g>
+        </g>}
+        <circle cx={cx} cy={cy} r={halo} fill="none" stroke="#fff" strokeWidth={6 / z} />
+        <circle cx={cx} cy={cy} r={halo} fill="none" stroke={selection.color || "#1f3fc7"} strokeWidth={3 / z} />
+        <text x={cx + halo + 6 / z} y={cy - halo - 2 / z} fontSize={12 / z} fontWeight="700" fill={selection.color || "#1f3fc7"} stroke="#fff" strokeWidth={4 / z} paintOrder="stroke">{cond?.finish_tag || "Count"} · {s.computed?.count ?? 1} EA</text>
+      </>}
+    </g>;
   }
   if (s.measure_role === "surface_area") {
     return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? selection.color : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={pending ? pDash : `${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;

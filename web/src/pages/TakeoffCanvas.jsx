@@ -866,6 +866,7 @@ export default function TakeoffCanvas() {
   useEffect(() => () => agentAbortRef.current?.abort(), []);   // leaving the canvas stops a live agent run
   const [ocSel, setOcSel] = useState(null);        // selected proposal vertex {ri, vi} — Delete removes just that point
   const [ocHover, setOcHover] = useState(-1);      // proposal region under the cursor — handles reveal on hover
+  const [locatePulse, setLocatePulse] = useState({ id: null, sequence: 0 });
   const [selectedId, setSelectedId] = useState(null);   // selected shape (Select tool)
   // raw text of the per-wall height field while it is being edited; null =
   // mirror the stored value. Same reason as DimParamInput's draft: the field
@@ -8490,6 +8491,8 @@ export default function TakeoffCanvas() {
   }
 
   function locateWork(shape) {
+    setHiddenConds((hidden) => revealed(hidden, shape.condition_id));
+    if (tradeHidden.has(shape.condition_id)) setViewTrade(ALL_TRADES);
     setWorkLocateId(shape.id);
     if (!panelKeySet.has(shape.sheet_id)) openSheets([shape.sheet_id], false);
     setTool("select");
@@ -8513,6 +8516,9 @@ export default function TakeoffCanvas() {
       setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
     }
     setSelectedId(shape.id); setSelectedMarkupId(null); setWorkLocateId(null);
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setLocatePulse((previous) => ({ id: shape.id, sequence: previous.sequence + 1 }));
+    }
   }, [workLocateId, status, shapes, panels, setTfNow]);
 
   // A withheld transition is a QUESTION, and the answer is at a PLACE on the
@@ -11069,6 +11075,7 @@ export default function TakeoffCanvas() {
                     {uiText(pShapes.map((s) => renderShapeGlyph(s, {
                     dn, cond: condById[s.condition_id], sel: s.id === selectedId,
                     z: tf.scale, darkMode, selection: DS.selection, patId,
+                    locatePulse: locatePulse.id === s.id ? locatePulse.sequence : 0,
                     })))}
                   {/* vertex handles for the selected shape (drag to reshape) */}
                   {selectedId && (() => {

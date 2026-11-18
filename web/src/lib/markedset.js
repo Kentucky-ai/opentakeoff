@@ -1,4 +1,5 @@
 import { wrapPdfText } from "./pdfText.js";
+import { countDiameterPt } from "./countDisplay";
 import { stampWatermark } from "./pdfWatermark.js";
 import { getLanguage, localizeText, rfiStatusLabel } from "./i18n/core.js";
 import { annotationScene, pathString } from './annotationTools.js';
@@ -755,7 +756,14 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         chip(shapeChip(s, cond, M, russian), mid[0], mid[1] - 14, col);
       } else if (s.measure_role === "count") {
         const [px, py] = toPage(pts[0][0], pts[0][1]);
-        pg.drawEllipse({ x: px, y: py, xScale: 4.5, yScale: 4.5, borderColor: col, borderWidth: 1.2, color: col, opacity: 0.35 });
+        const diameter = countDiameterPt(cond);
+        if (diameter === null) {
+          pg.drawEllipse({ x: px, y: py, xScale: 4.5, yScale: 4.5, borderColor: col, borderWidth: 1.2, color: col, opacity: 0.35 });
+        } else {
+          const radius = diameter / 2;
+          pg.drawEllipse({ x: px, y: py, xScale: radius, yScale: radius, borderColor: rgb(1, 1, 1), borderWidth: Math.min(2.5, radius / 2) });
+          pg.drawEllipse({ x: px, y: py, xScale: radius, yScale: radius, borderColor: col, borderWidth: Math.min(1.2, radius / 3), borderDashArray: s.origin?.reviewed === false ? [2, 1.5] : undefined });
+        }
       }
     }
     // highlights draw FIRST (behind) so their translucent fill never dims the

@@ -1,0 +1,33 @@
+{
+  "result": "pass",
+  "archive_round_trip": "exact",
+  "comparisons": [
+    {
+      "build": "hosted",
+      "measurements": 18,
+      "unchanged_measurements": 18,
+      "quantities_ea": {
+        "TA": 6,
+        "TB": 2,
+        "sa": 10
+      },
+      "pending": 18,
+      "changed_condition_timestamps": []
+    },
+    {
+      "build": "local",
+      "measurements": 18,
+      "unchanged_measurements": 18,
+      "quantities_ea": {
+        "TA": 6,
+        "TB": 2,
+        "sa": 10
+      },
+      "pending": 18,
+      "changed_condition_timestamps": [
+        "TA"
+      ]
+    }
+  ],
+  "bundled_sample_fixture": "3 CG callout anchors; limited UI QA, not a complete takeoff"
+}

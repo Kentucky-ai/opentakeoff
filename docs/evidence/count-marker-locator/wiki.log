@@ -1,0 +1,5 @@
+
+> opentakeoff-mcp@0.9.111 check:wiki
+> node scripts/check-wiki.mjs
+
+Wiki bundle: 11 public pages; version and content checked against source.

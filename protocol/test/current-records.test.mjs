@@ -42,6 +42,17 @@ function checkBoth(record) {
   assert.deepEqual(conditionTotals(record.conditions, record.shapes), quantities);
 }
 
+test("count display diameter is optional and does not change stored geometry or quantities", () => {
+  const record = browserDocument();
+  record.conditions[0].count_diameter_pt = 36;
+  checkBoth(record);
+  for (const value of [0, -1, "36"]) {
+    const invalid = structuredClone(record);
+    invalid.conditions[0].count_diameter_pt = value;
+    assert.throws(() => assertValid(assert, ajv, "v1/takeoff-document.schema.json", { ...invalid, schema: draftId }));
+  }
+});
+
 test("empty browser persistence and a real browser add command conform without changing quantities", () => {
   checkBoth(emptyAnnotations());
   checkBoth(browserDocument());

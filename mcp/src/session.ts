@@ -194,6 +194,8 @@ export interface ConditionEditProposal {
 }
 
 export interface Condition {
+  /** Optional count display diameter in PDF points; never changes quantities. */
+  count_diameter_pt?: number;
   id: string;
   finish_tag: string;
   color: string;

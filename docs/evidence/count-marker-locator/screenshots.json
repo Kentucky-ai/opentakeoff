@@ -1,0 +1,128 @@
+[
+  {
+    "file": "hosted-overview.jpg",
+    "caption": "Published build, fictional landscape overview: legacy pins.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "953ae4e3306195b63b6ac58b527f2dde0ec877bd3dd4b2767704a148208b7171"
+  },
+  {
+    "file": "local-overview.jpg",
+    "caption": "Local build, same fictional landscape overview: paper-space rings.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "9e670e6afffcca373f37803796b82c1d33ab26a158b526370584f378014de234"
+  },
+  {
+    "file": "hosted-selected-TA.jpg",
+    "caption": "Published build: selected tree and existing measurement receipt.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "54149ee34d45a8abc304d3a5b1d873780f6d61ccdf508582353a20de8f2de945"
+  },
+  {
+    "file": "local-selected-TA.jpg",
+    "caption": "Local build: selected tree, persistent halo, code/quantity label, and receipt identity.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "3c4d3e568f77b6aebc9651de4a63b3613376c5e31a4d8793adcfd2ad32d4ac8b"
+  },
+  {
+    "file": "local-ring-settings.jpg",
+    "caption": "Condition appearance editor with a 60-point ring diameter.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "717dbde7d428f93ec065f11950b6d0f15c241e7ca993cd57de8777e5ce71b23e"
+  },
+  {
+    "file": "local-standard-pin.jpg",
+    "caption": "Clearing the diameter restores the legacy screen-size pin.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "e1955926c25a2c86a62c8c69224886c5d5fee9c013147bda71b1cd84f9bd4b3a"
+  },
+  {
+    "file": "local-selected-TB-cross-sheet.jpg",
+    "caption": "Locating an existing TB occurrence opens the second sheet.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "283280cd289029d50dd00ea3b7b7d892c1126a49eb41f10b71418e0fda624343"
+  },
+  {
+    "file": "local-selected-sa.jpg",
+    "caption": "A smaller shrub ring uses the same existing count center.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "6cbc205c4c8933422e681b2824c593f5deb4c58ad35c12737bbf73729ffe8e50"
+  },
+  {
+    "file": "hosted-hidden-TB-locator.jpg",
+    "caption": "Published build: locating a hidden condition leaves its count invisible.",
+    "pixels": [
+      878,
+      883
+    ],
+    "sha256": "8b06dac76e00abd692ed8238ddbacf1f840d6484d6e8755d2c2dc9fb3832f750"
+  },
+  {
+    "file": "local-hidden-TB-locator.jpg",
+    "caption": "Local build: locating the hidden condition reveals its count.",
+    "pixels": [
+      1280,
+      720
+    ],
+    "sha256": "799f1b995c74e404149da3c29401f0ecbdf4182548afb1e77de66f9cd643981f"
+  },
+  {
+    "file": "sample-hosted-selected-CG.jpg",
+    "caption": "Published build on bundled AF101: selected CG has the legacy pin.",
+    "pixels": [
+      878,
+      883
+    ],
+    "sha256": "7f54c327ebed8198835dc9818b87ade3aad1bd9b3b622ec7ce16bb77b0a9d48c"
+  },
+  {
+    "file": "sample-local-selected-CG.jpg",
+    "caption": "Local build on bundled AF101: the same selected CG has a ring, halo and label.",
+    "pixels": [
+      878,
+      883
+    ],
+    "sha256": "a81383b2db60b00fed119c617f6227c47f7177918534204bf0475b6e39f341fe"
+  },
+  {
+    "file": "local-marked-page-2.png",
+    "caption": "Actual Download marked set export, first fictional landscape sheet.",
+    "pixels": [
+      1400,
+      906
+    ],
+    "sha256": "eee73fca47b16605da51f90a376546cb7dff75d9bde10e83e314bf279fa8f7b1"
+  },
+  {
+    "file": "local-marked-page-3.png",
+    "caption": "Actual Download marked set export, second fictional landscape sheet.",
+    "pixels": [
+      1400,
+      906
+    ],
+    "sha256": "a398f4ab96c07de97c1ac6567cdbd3d62df50ae95b489a2ef34f040d69910837"
+  }
+]

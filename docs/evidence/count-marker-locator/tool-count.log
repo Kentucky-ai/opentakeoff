@@ -1,0 +1,10 @@
+
+> opentakeoff-mcp@0.9.111 check:tool-count
+> node --import tsx scripts/check-tool-count.mjs
+
+MCP published version agreement: 0.9.111 (7 fields)
+web package version agreement: 0.1.0 (3 fields)
+21 marker(s), 0 stale, 69 default / 71 gated / 22 setup tools
+Warning: Please use the `legacy` build in Node.js environments.
+Warning: Please use the `legacy` build in Node.js environments.
+Runtime inventory: 69 default tools, 71 with gate lifted; schema inputs and reference rows checked.

@@ -98,6 +98,11 @@
     },
     "updated_at": {
       "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "count_diameter_pt": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Optional display-only count ring diameter in PDF points. Scales with the drawing without changing measured centers, quantities, calibration or review. Absent retains the standard pin appearance."
     }
   },
   "required": [

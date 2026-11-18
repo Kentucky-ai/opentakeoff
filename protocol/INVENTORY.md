@@ -92,3 +92,12 @@ See the [wire tests](../mcp/test/tools.test.ts). No new durable event is claimed
 ## Annotation toolbar extensions
 
 Browser markups may carry `annotation_style` (color, stroke/font/marker sizes in PDF points, opacity, head, both ends, line style, and highlighter mode), normalized `quads` for native text highlights, `note_at` for cloud notes, and `source_region` for a reviewed Sweep result. Existing markup IDs, links and geometry remain in the markup family; these fields add no quantities or approval authority. Saved tool favorites are browser-local storage, and batch inverses are transient undo history. The canvas schema identifier is unchanged. Older consumers may preserve opaque fields without rendering the new style or quads; no full older-client visual compatibility is claimed.
+
+## Count display footprint
+
+Condition `count_diameter_pt` optionally sets a positive diameter in PDF points.
+The main canvas, reference pane and marked PDF use the same paper-space size.
+Without it, the existing pin appearance remains. The value changes no count,
+normalized center, calibration or review state. The locator is temporary UI
+state and does not enter an archive or PDF. Older readers preserve the optional
+field without necessarily displaying its ring. No schema migration is implied.
