@@ -13,7 +13,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { ConditionAppearanceEditor, MaterialsEditor, useAssemblyLibrary } from "./TakeoffsPanel.jsx";
-import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
+import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, dimInputStr } from "../lib/units";
+import { isCeilingCondition } from "../lib/ceilingKind.js";
 import { baseTagOf } from "../lib/variants.ts";
 import { localizeText as uiText } from "../lib/i18n/core.js";
 import { useTranslation } from "../lib/i18n/index.jsx";
@@ -140,6 +141,18 @@ function ConditionsDock({
               <span>%</span>
             </label>
           </div>
+
+          {isCeilingCondition(c) && (
+            <div className="cd-inline">
+              <label title={`Ceiling height AFF — where this ceiling sits in the 3D view (the RCP tag, e.g. 9'-0"). Display only; no quantity reads it. Blank (auto) = a height in the tag, else a 9'-0" allowance, flagged in 3D. Select an area to give a soffit its own height.`}>
+                <span>{uiText("Ceiling AFF")}</span>
+                <input name="condition-ceiling-ft" type="number" min="0" step="0.25" placeholder="auto"
+                  value={c.ceiling_ft != null ? dimInputStr(c.ceiling_ft, units, "height") : ""}
+                  onChange={(e) => onUpdateCond({ ceiling_ft: e.target.value === "" ? null : Math.max(0, heightInputToFeet(parseFloat(e.target.value) || 0, units)) })} />
+                <span>{heightUnit(units)}</span>
+              </label>
+            </div>
+          )}
 
           <label className="cd-field-label" htmlFor="cd-asm">{uiText("Price with")}</label>
           <select id="cd-asm" name="apply-assembly" className="cd-input" value={pickedAsm} onChange={(e) => { setPickedAsm(e.target.value); setAsmMsg(""); }}>
