@@ -1,7 +1,7 @@
 // Detect Rooms core tests — pure, DOM-free, pdfjs-free. Run with: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { roomLabelSeeds, detectRegions, sheetBounds, detectionReport, NO_TAG_CAVEAT, ROOM_LABEL_RE } from "../src/lib/detectRooms.ts";
+import { roomLabelSeeds, detectRegions, sheetBounds, detectionReport, NO_TAG_CAVEAT, ROOM_LABEL_RE, roomLabelMatcher } from "../src/lib/detectRooms.ts";
 import type { DetectionTally } from "../src/lib/detectRooms.ts";
 import { buildMask, MASK_MAX_DIM } from "../src/lib/oneclick.ts";
 
@@ -18,6 +18,32 @@ function squareSegs(x0: number, y0: number, x1: number, y1: number): number[] {
 test("ROOM_LABEL_RE: 2-3 digits with an optional trailing letter", () => {
   for (const s of ["10", "134", "139A", "170"]) assert.ok(ROOM_LABEL_RE.test(s), s);
   for (const s of ["1", "1234", "AB12", "104-A", ""]) assert.ok(!ROOM_LABEL_RE.test(s), s);
+});
+
+test("roomLabelMatcher: letter-prefixed room numbers only for a stated prefix, never a sheet number", () => {
+  const plain = roomLabelMatcher();
+  for (const s of ["134", "139A"]) assert.ok(plain(s), s);
+  for (const s of ["A2521", "B101", "A101"]) assert.ok(!plain(s), `${s}: no prefix stated, numeric only`);
+
+  const a = roomLabelMatcher({ prefixes: ["a"], exclude: ["A-101", "A501"] });
+  for (const s of ["A2521", "A2532", "A102", "A2521B", "134"]) assert.ok(a(s), s);
+  for (const s of ["A101", "A501"]) assert.ok(!a(s), `${s}: one of the set's sheet numbers`);
+  for (const s of ["B101", "AB101A"]) assert.ok(!a(s), `${s}: a prefix nobody stated`);
+  for (const s of ["A5.401", "D2.20.B", "ACT01", "A1", "A12345", "A-2521"]) assert.ok(!a(s), `${s}: not the shape`);
+  const ab = roomLabelMatcher({ prefixes: ["AB", "B"] });
+  for (const s of ["AB101A", "B101"]) assert.ok(ab(s), s);
+});
+
+test("roomLabelSeeds: prefixes widen the tokens it keeps, and the text gates still apply", () => {
+  const items = [
+    { str: "PATIENT ROOM A2521", x: 10, y: 20 },
+    { str: "A2532", x: 30, y: 40 },
+    { str: "SEE A501", x: 50, y: 60 },                 // a sheet reference
+    { str: "A2540 557 SF", x: 70, y: 80 },             // a printed area, not a tag
+    { str: "OFFICE 101", x: 90, y: 95 },
+  ];
+  assert.deepEqual(roomLabelSeeds(items).map((s) => s.str), ["101"]);
+  assert.deepEqual(roomLabelSeeds(items, { prefixes: ["A"], exclude: ["A501"] }).map((s) => s.str), ["A2521", "A2532", "101"]);
 });
 
 test("roomLabelSeeds: keeps only room-number tokens, ANY token in a multi-word item counts", () => {
