@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-17 — detect_rooms: letter-prefixed room numbers on request (MCP 0.9.113)
+
+- **`detect_rooms {label_prefixes: ["A"]}` reads room numbers like A2521, A2532 and B101A.** Hospital and campus sets put a wing or floor letter in front of every room number, so the 2–3 digit room pattern found no rooms at all. The letters are an argument read off the plan, because a sheet number (A101) has the same shape. A prefixed token that is the number of any loaded sheet is never a room, and the text gates (printed areas, title-block words, a second number) still apply.
+- Without `label_prefixes`, nothing changes: numeric room numbers only. `roomLabelSeeds` takes the same `prefixes` and `exclude` options (`roomLabelMatcher` in `web/src/lib/detectRooms.ts`). The sheet graph's room tags are unchanged.
+
 ## 2026-11-15 — large plan sets open and flip faster, in far less memory (#580, part 1)
 
 - **A stored PDF is read by byte range.** Opening a sheet reads the file's index and that page, not the whole set, and the render workers share the one stored copy where each used to get its own.

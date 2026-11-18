@@ -44,7 +44,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // scale-unpinned masks here, so an MCP trace and a canvas click at the same
 // seed measured DIFFERENT square footage under the same origin.method.
 import { sweepCommitRefusal } from "./sweepGuard.ts";
-import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodSurroundsLabelPx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
+import { roomLabelMatcher, seedLadderPx, isLabelBubblePx, floodSurroundsLabelPx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
@@ -2337,7 +2337,7 @@ export class Session {
    *       broom closet is ~10 SF): a door swing or wall cavity. Only applied
    *       once a scale exists, since without one there is no real area to
    *       judge and nothing commits anyway. */
-  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] }; assignFromSchedule?: boolean }) {
+  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] }; assignFromSchedule?: boolean; labelPrefixes?: string[] }) {
     const s = this.sheet(name);
     // assign-from-schedule (0.9.18): each detected room commits under the
     // FLOOR finish its OWN schedule row states, and rooms the schedule cannot
@@ -2376,8 +2376,11 @@ export class Session {
     // labels with BBOXES: same tokenization as roomLabelSeeds, but the ladder
     // and the bubble test need the label's box, not just its anchor
     const labels: { str: string; bbox: LabelBBox }[] = [];
+    // a letter-prefixed room number (A2521) only for a prefix the caller
+    // states, and never one of the loaded sheets' own numbers (A101)
+    const isLabel = roomLabelMatcher({ prefixes: opts.labelPrefixes, exclude: [...this.sheets.values()].map((x) => x.sheetNumber ?? "") });
     for (const sp of s.spans) {
-      const num = (sp.str || "").trim().split(/\s+/).find((tok) => ROOM_LABEL_RE.test(tok));
+      const num = (sp.str || "").trim().split(/\s+/).find(isLabel);
       if (num) labels.push({ str: num, bbox: sp });
     }
 
