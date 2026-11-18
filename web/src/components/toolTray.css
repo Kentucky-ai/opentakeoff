@@ -1,0 +1,27 @@
+/* The dock's ⋯ tray: a glass panel that grows up out of the dock. */
+.ot-tray {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%);
+  display: flex; align-items: stretch; gap: 0; padding: 12px 6px 10px;
+  max-width: calc(100vw - 32px); overflow-x: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--paper-cream) 92%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid var(--ink-faint); border-radius: 12px; box-shadow: var(--shadow-2);
+  z-index: 30;
+}
+.ot-tray-col { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding: 0 10px; }
+.ot-tray-col + .ot-tray-col { border-left: 1px solid var(--ink-faint); }
+.ot-tray-h { font: 700 10.5px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); padding: 0 4px 2px; white-space: nowrap; }
+.ot-tray-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 74px; gap: 2px; }
+.ot-tray-tile {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px;
+  min-height: 52px; padding: 7px 4px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--ink);
+  font: 500 11.5px/1.2 var(--f-body); text-align: center; cursor: pointer;
+}
+.ot-tray-tile:hover:not(:disabled) { background: var(--paper-shadow); }
+.ot-tray-tile:focus-visible { outline: 2px solid var(--cobalt); outline-offset: -2px; }
+.ot-tray-tile[data-active] { background: var(--tint-select); color: var(--cobalt); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cobalt) 35%, transparent); }
+.ot-tray-tile:disabled { opacity: .38; cursor: default; }
+.ot-tray-ic { display: inline-grid; place-items: center; height: 18px; color: var(--ink-soft); }
+.ot-tray-tile[data-active] .ot-tray-ic { color: inherit; }
+.ot-tray-label { display: block; max-width: 100%; overflow-wrap: anywhere; }
+.ot-tray-n { position: absolute; top: 4px; right: 6px; font: 600 9.5px/1 var(--f-mono); color: var(--ink-muted); }

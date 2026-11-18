@@ -51,6 +51,7 @@
 import { RENDER_SCALE } from "./sheets";
 import { LOW_MEMORY_DEVICE } from "./deviceClass";
 import { createTilePool } from "./tilePool";
+import type { PdfSource } from "./pdfSource";
 import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, visibleTilesAtDensity, fitDensity, tileGrid, BASE_LEVEL, BASE_COARSE_LEVEL, BASE_MID_LEVEL, isBaseLevel, tileKey as rawTileKey, TILE_SIZE } from "./tiles";
 
 // ~450MB shared across every open sheet/panel — the old per-group ceiling
@@ -155,8 +156,9 @@ export function createTileCompositor() {
   }
 
   /** Idempotent per sheetKey. `dataPromise` must resolve to a FRESH byte copy
-   *  (transferred to the worker, not shared with the main-thread pdf.js doc). */
-  function openSheet(sheetKey: string, pageNum: number, dataPromise: Promise<ArrayBuffer | Uint8Array>, imgW: number, imgH: number) {
+   *  (transferred to the worker, not shared with the main-thread pdf.js doc),
+   *  or to a PdfSource, whose Blob the workers read by range (#580). */
+  function openSheet(sheetKey: string, pageNum: number, dataPromise: Promise<ArrayBuffer | Uint8Array | PdfSource>, imgW: number, imgH: number) {
     levelsFor(sheetKey, imgW, imgH);
     if (opened.has(sheetKey)) return;
     opened.add(sheetKey);
@@ -166,6 +168,7 @@ export function createTileCompositor() {
     const current = () => readyBySheet.get(sheetKey) === ready;
     const ready: Promise<void> = dataPromise.then((data) => {
       if (!current()) return;
+      // a source (#580) goes through as it is: nothing to copy
       const buf = data instanceof Uint8Array ? data.slice().buffer : data;
       return pool.openSheet(sheetKey, pageNum, buf);
     }).catch((err) => {
@@ -527,5 +530,5 @@ export function createTileCompositor() {
 
   function dispose() { resetAll(); pool.dispose(); }
 
-  return { openSheet, resetAll, paintBase, paintDetail, dispose };
+  return { openSheet, resetAll, paintBase, paintDetail, prewarm: () => pool.prewarm(), warm: pool.warm, readText: pool.requestText, busy: pool.busy, workers: pool.size, dispose };
 }

@@ -58,7 +58,8 @@ export function toolFaceLabel(id) {
   return ({ select: "Выбор", area: "Площадь", rect: "Прямоугольник", linear: "Длина",
     surface: "Площадь стен", count: "Количество", symbol: "Обозначения",
     deduct: "Вычет по контуру", "deduct-rect": "Вычет рамкой", approve: "Утвердить",
-    textcopy: "Копировать текст", calibrate: "Масштаб по размеру", oneclick: "Площадь щелчком" })[id] || localizeText(id);
+    textcopy: "Копировать текст", calibrate: "Масштаб по размеру", oneclick: "Площадь щелчком",
+    cut: "Вырезать", "dock-undo": "Отменить", "dock-redo": "Повторить" })[id] || localizeText(id);
 }
 export function scaleRatioLabel(label, lang = language) {
   if (lang !== "ru" || typeof label !== "string" || label.startsWith("1:")) return label;

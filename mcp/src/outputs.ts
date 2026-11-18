@@ -1161,11 +1161,15 @@ export const countMarksOutput = {
 // ── estimate (lib/estimate.js) ──────────────────────────────────────────────
 const unpricedRow = z.object({
   id: z.string(), finish_tag: z.string(),
+  unit: z.enum(["SF", "SY", "LF", "EA"]).optional().describe("Which of the condition's lines is unpriced"),
   status: z.enum(["partial", "unpriced"]),
   missing: z.array(z.string()).describe('What was never entered: "material", "labor", or "material row: <name>"'),
 }).passthrough();
 const estimateLine = z.object({
   id: z.string(), finish_tag: z.string(), unit: z.enum(["SF", "SY", "LF", "EA"]),
+  key: z.string().optional().describe('"<condition id>:<unit>" — one line per quantity kind the condition carries'),
+  main: z.boolean().optional().describe("The condition's first line: priced by pricing.unit / material / labor and carrying its assembly items; the others price from pricing.by_unit[unit]"),
+  optional: z.boolean().optional().describe("A bordered linear run's derived line: priceable, but an empty rate is carried in the main line, never missing"),
   material_qty: z.number().describe("Order quantity in the unit — waste applied (EA never carries waste)"),
   labor_qty: z.number().describe("Measured quantity in the unit — no waste"),
   material_rate: z.number().nullable().describe("$ per unit; null = never entered"),
@@ -1173,16 +1177,20 @@ const estimateLine = z.object({
   material_cost: z.number(), labor_cost: z.number(),
   materials: z.array(z.object({ name: z.string(), unit: z.string(), qty: z.number(), price: z.number().nullable(), cost: z.number(), priced: z.boolean() }).passthrough()),
   materials_cost: z.number(), total: z.number(),
-  status: z.enum(["priced", "partial", "unpriced"]),
+  status: z.enum(["priced", "partial", "unpriced", "optional"]).describe('optional = an optional line nobody priced (not in unpriced)'),
   missing: z.array(z.string()),
 }).passthrough();
 const estimateSettings = z.object({ tax_pct: z.number(), overhead_pct: z.number(), profit_pct: z.number(), profit_mode: z.enum(["markup", "margin"]) }).passthrough();
 
 export const setPricingOutput = {
   condition: z.string(), condition_id: z.string(),
-  pricing: z.object({ unit: z.enum(["SF", "SY", "LF", "EA"]).optional(), material: z.number().optional(), labor: z.number().optional() }).passthrough().describe("The condition's prices after this write; an absent field is not entered"),
+  pricing: z.object({
+    unit: z.enum(["SF", "SY", "LF", "EA"]).optional(), material: z.number().optional(), labor: z.number().optional(),
+    by_unit: z.record(z.string(), z.object({ material: z.number().optional(), labor: z.number().optional() }).passthrough()).optional().describe("The other lines' rates, keyed by their unit"),
+  }).passthrough().describe("The condition's prices after this write; an absent field is not entered"),
   material_prices: z.array(z.object({ name: z.string(), unit: z.string(), price: z.number().nullable() }).passthrough()),
-  line: estimateLine.nullable().describe("The condition's estimate line after this write; null while it has no committed shapes"),
+  line: estimateLine.nullable().describe("The line this call priced (the main line unless `line` named another), after the write; null while it has no committed quantity of that kind"),
+  lines: z.array(estimateLine).describe("Every estimate line of the condition, main first"),
   note: z.string().optional(),
 };
 export const setEstimateSettingsOutput = {
@@ -1209,4 +1217,155 @@ export const exportEstimateOutput = {
 export const exportProposalOutput = {
   path: z.string(), pages: z.number().int(), base_bid: z.number(), itemized: z.boolean(), complete: z.boolean(), unpriced: z.array(unpricedRow),
   note: z.string().optional(),
+};
+
+// ── the Assistant window (assistantBridge.ts) ──
+const poweredBy = z.object({ name: z.string().describe("The AI app driving this server, as it announced itself (e.g. claude-ai, claude-code, codex-mcp-client)"), version: z.string() });
+export const assistantOpenOutput = {
+  port: z.number().int().describe("127.0.0.1 port the window connects to"),
+  code: z.string().describe("One-time pairing code the person types into the canvas's Assistant window (empty when already paired)"),
+  link: z.string().describe("Opens the canvas and pairs automatically — give this to the person"),
+  powered_by: poweredBy,
+  already_paired: z.boolean(),
+  next: z.string().describe("What to tell the person, then what to call"),
+};
+export const assistantListenOutput = {
+  status: z.enum(["message", "timeout", "sleep"]).describe("message = the person wrote; timeout = call again; sleep = stop, they are away"),
+  message: z.string().nullable().describe("What the person typed (several messages joined), or null"),
+  idle_s: z.number().int().describe("Seconds since the person last wrote"),
+};
+export const assistantSayOutput = {
+  delivered_to: z.number().int().describe("Open windows that received the reply (0 = the person closed the window; it shows when they reopen)"),
+};
+
+export const seamCheckSchema = z.object({
+  passed: z.boolean().describe("true = linework mismatch and leftover rotation are within stated tolerances"),
+  withheld: z.boolean().describe("true = seam check did not pass tolerance; measuring across seam is refused"),
+  tolerance_in: z.number().describe("Stated displacement tolerance in inches"),
+  rot_tolerance_deg: z.number().describe("Stated rotation tolerance in degrees"),
+  max_px: z.number().describe("True maximum linework displacement in image pixels"),
+  p95_px: z.number().describe("95th percentile linework displacement in image pixels"),
+  median_px: z.number().describe("Median linework displacement in image pixels"),
+  max_in: z.number().describe("True maximum linework displacement in inches at set scale"),
+  p95_in: z.number().describe("95th percentile linework displacement in inches at set scale"),
+  median_in: z.number().describe("Median linework displacement in inches at set scale"),
+  leftover_rotation_deg: z.number().describe("Leftover rotation between member sheets in degrees"),
+  sample_count: z.number().int().describe("Number of wall linework crossings sampled across the match line"),
+  withheld_reasons: z.array(z.string()).describe("Disclosed reasons for withholding if tolerances are exceeded"),
+  discrepancies: z.array(z.object({
+    at: point.describe("Stitch coordinates along the seam line to inspect with view_sheet"),
+    miss_px: z.number().describe("Displacement in pixels"),
+    miss_in: z.number().describe("Displacement in inches at scale"),
+    sheet_a_pt: point.optional(),
+    sheet_b_pt: point.optional(),
+  })).describe("Discrepancy locations along the match line"),
+  note: z.string().describe("Seam check summary note"),
+});
+
+export const alignStitchOutput = {
+  stitch_id: z.string().describe("The aligned composite surface key (starts with stitch:)"),
+  name: z.string().describe("Name of the stitched surface"),
+  aligned: z.boolean().describe("true = alignment completed"),
+  extent: z.object({
+    width_px: z.number(),
+    height_px: z.number(),
+  }).describe("Composite surface dimensions in image px at render scale 2.0"),
+  members: z.array(z.object({
+    key: z.string(),
+    dx: z.number(),
+    dy: z.number(),
+  })).describe("Member sheet placements within the composite surface"),
+  seam_check: seamCheckSchema.describe("Seam linework check results"),
+  note: z.string(),
+};
+
+export const stitchSheetsOutput = {
+  stitch_id: z.string().describe("The created composite surface key (starts with stitch:)"),
+  name: z.string().describe("Name of the stitched surface"),
+  aligned: z.boolean().describe("true = aligned across match lines; false = starting auto-butt layout"),
+  extent: z.object({
+    width_px: z.number(),
+    height_px: z.number(),
+  }).describe("Composite surface dimensions in image px at render scale 2.0"),
+  members: z.array(z.object({
+    key: z.string(),
+    dx: z.number(),
+    dy: z.number(),
+  })).describe("Member sheet placements within the composite surface"),
+  scale: z.object({
+    upp: z.number().nullable().optional(),
+    scale_confirmed: z.boolean().optional(),
+  }).describe("Scale status inherited from member sheets, if all member scales agree"),
+  seam_check: seamCheckSchema.optional().describe("Seam linework check results when align was provided"),
+  note: z.string(),
+};
+
+export const listStitchesOutput = {
+  stitches: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    aligned: z.boolean().optional().describe("true = aligned with match points; false = auto-butt"),
+    extent: z.object({
+      width_px: z.number(),
+      height_px: z.number(),
+    }),
+    members: z.array(z.object({
+      key: z.string(),
+      dx: z.number(),
+      dy: z.number(),
+    })),
+    scale: z.object({
+      upp: z.number().nullable().optional(),
+      scale_confirmed: z.boolean().optional(),
+    }),
+    shape_count: z.number().int(),
+    seam_check: z.object({
+      passed: z.boolean(),
+      max_in: z.number(),
+      p95_in: z.number().optional(),
+      median_in: z.number(),
+      leftover_rotation_deg: z.number(),
+      withheld: z.boolean(),
+    }).optional().describe("Seam check summary when aligned"),
+    created_at: z.string().optional(),
+  })),
+};
+
+export const rotatePageOutput = {
+  sheet: z.string(),
+  angle: z.number().int(),
+  output_file: z.string().optional(),
+  width_px: z.number(),
+  height_px: z.number(),
+  shapes_transformed: z.number().int(),
+  markups_transformed: z.number().int(),
+  note: z.string(),
+};
+
+export const reorderPagesOutput = {
+  file: z.string(),
+  order: z.array(z.number().int()),
+  output_file: z.string().optional(),
+  sheets: z.array(z.string()),
+  shapes_remapped: z.number().int(),
+  note: z.string(),
+};
+
+export const extractPagesOutput = {
+  source_file: z.string(),
+  output_file: z.string(),
+  takeoff_file: z.string().optional(),
+  extracted_pages: z.array(z.number().int()),
+  page_count: z.number().int(),
+  shapes_carried: z.number().int(),
+  note: z.string(),
+};
+
+export const mergeDocumentsOutput = {
+  merged_files: z.array(z.string()),
+  output_file: z.string(),
+  takeoff_file: z.string().optional(),
+  total_pages: z.number().int(),
+  shapes_remapped: z.number().int(),
+  note: z.string(),
 };

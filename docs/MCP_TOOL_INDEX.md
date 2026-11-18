@@ -6,12 +6,16 @@ Refresh with `npm run check:tool-count --prefix mcp -- --write`; CI fails on sta
 For the operating workflow, read [the agent guide](AGENT_GUIDE.md) and [geometry workflow](GEOMETRY_WORKFLOW.md).
 For behavior and optional arguments, use the [tool reference](../mcp/README.md#tools) and the discovered input schema.
 
-Default build: **58 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
+Default build: **69 tools**. Coordinates, where present, are full-sheet image pixels at PDF render scale 2.0, top-left origin, y down.
 
 | Tool | Stage | Availability | Required arguments |
 |---|---|---|---|
+| `align_stitch` | setup | Default | `stitch` |
 | `annotate` | revise | Default | `sheet`, `type` |
 | `apply_rules` | handoff | Default | None |
+| `assistant_listen` | setup | Default | None |
+| `assistant_open` | setup | Default | None |
+| `assistant_say` | setup | Default | `text` |
 | `count_marks` | measure | Default | None |
 | `create_rfi` | revise | Default | `title`, `question`, `sheet` |
 | `cut_out` | measure | Default | `parent_shape_id`, `verts` |
@@ -33,6 +37,7 @@ Default build: **58 tools**. Coordinates, where present, are full-sheet image pi
 | `export_proposal` | handoff | Default | None |
 | `export_report` | handoff | Default | None |
 | `export_takeoff` | handoff | Default | None |
+| `extract_pages` | setup | Default | `file`, `pages` |
 | `find_schedule` | setup | Default | `kind` |
 | `find_text` | setup | Default | `sheet`, `q` |
 | `get_sheet_vectors` | setup | Default | `sheet` |
@@ -41,19 +46,24 @@ Default build: **58 tools**. Coordinates, where present, are full-sheet image pi
 | `list_annotations` | revise | Default | None |
 | `list_rfis` | revise | Default | None |
 | `list_shapes` | revise | Default | None |
+| `list_stitches` | setup | Default | None |
 | `load_plan` | setup | Default | `path` |
 | `mark_verdict` | revise | Default | None |
 | `measure_line` | measure | Default | `sheet`, `pts` |
 | `measure_polygon` | measure | Default | `sheet`, `verts` |
 | `measure_surface` | measure | Default | `sheet`, `pts`, `condition` |
+| `merge_documents` | setup | Default | `files`, `output_path` |
 | `one_click` | measure | One-Click gate lifted | `sheet`, `x`, `y` |
+| `open_suite` | setup | Default | None |
 | `place_count` | measure | Default | `sheet`, `points`, `condition` |
 | `propose_condition_edit` | revise | Default | `condition`, `rationale` |
 | `propose_takeoff` | measure | Default | `label`, `rationale` |
 | `read_sheet_text` | setup | Default | `sheet` |
+| `reorder_pages` | setup | Default | `file`, `order` |
 | `resolve_rfi` | revise | Default | `rfi_id`, `answer` |
 | `resolve_tag` | setup | Default | `tag` |
 | `revise_proposal` | revise | Default | `proposal_id`, `shapes` |
+| `rotate_page` | setup | Default | `sheet`, `angle` |
 | `scope_duplicates` | revise | Default | None |
 | `scope_merge` | revise | Default | `shape_a`, `shape_b` |
 | `set_estimate_settings` | revise | Default | None |
@@ -63,6 +73,7 @@ Default build: **58 tools**. Coordinates, where present, are full-sheet image pi
 | `sheet_graph` | setup | Default | None |
 | `sheet_info` | setup | Default | `sheet` |
 | `split_condition` | revise | Default | `condition` |
+| `stitch_sheets` | setup | Default | `sheets` |
 | `sweep_schedule_row` | measure | Default | `tag` |
 | `symbol_sweep` | measure | Default | `sheet`, `seed_rect` |
 | `takeoff_summary` | handoff | Default | None |
@@ -72,6 +83,8 @@ Default build: **58 tools**. Coordinates, where present, are full-sheet image pi
 | `withdraw_proposal` | revise | Default | `proposal_id` |
 
 `open_tool_stage {stage}` exists only when staged exposure is enabled. Setup starts open; measure, revise and handoff open on demand. This opener is not part of the default flat count.
+
+Trade-suite tools are not in the default list or count: `open_suite {suite}` enables them (or `OPENTAKEOFF_MCP_SUITES` pre-opens them). roofing: `roof_takeoff`; siding: `siding_takeoff`; soffit_fascia: `soffit_takeoff`; glazing: `glazing_takeoff`; plumbing: `plumbing_rollup`; electrical: `electrical_rollup`. See [trade suites](wiki/suites.md).
 
 Schema-required fields are only the first validation layer: conditional requirements (such as annotation coordinates by type or exactly one calibration method) are explained by each tool and validated by its handler.
 

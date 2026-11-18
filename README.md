@@ -27,7 +27,7 @@ engine for that job. It has two front ends:
 
 - **🧑‍🔧 A browser canvas for people.** Drag in a plan set, set the scale, trace rooms, and
   export a report and a marked-up planset.
-- **🤖 An MCP server for agents.** It offers <!--tool-count-->58<!--/tool-count--> tools over
+- **🤖 An MCP server for agents.** It offers <!--tool-count-->69<!--/tool-count--> tools over
   stdio. An agent drives the same engine with the same math and the same scale gate as the
   canvas, and its work stays a dashed proposal until a person accepts it.
 
@@ -85,7 +85,7 @@ The step-by-step walkthrough for each client is in [Connect OpenTakeoff to your 
 The server can also describe itself: read the `takeoff://wiki` resource before you load a plan.
 
 <details>
-<summary><strong>All <!--tool-count-->58<!--/tool-count--> tools, grouped by stage</strong></summary>
+<summary><strong>All <!--tool-count-->69<!--/tool-count--> tools, grouped by stage</strong></summary>
 
 <br/>
 
@@ -180,7 +180,7 @@ takeoff. Everything is in the [CHANGELOG](CHANGELOG.md), and the older highlight
 | **Estimate** | Unit prices, tax, overhead and profit, an Excel export and a **bid proposal PDF** |
 | **Report and export** | SF, SY, LF and EA per condition, with and without waste. Exports CSV, JSON, Excel, DXF and a **Marked Set PDF** |
 | **Review** | Revisions with quantity deltas, markups, approval seals, an RFI register, and agent proposals you accept or reject |
-| **MCP server** | <!--tool-count-->58<!--/tool-count--> tools, sheet resources, a packaged wiki and multi-document sessions ([`mcp/`](mcp/README.md)) |
+| **MCP server** | <!--tool-count-->69<!--/tool-count--> tools, sheet resources, a packaged wiki and multi-document sessions ([`mcp/`](mcp/README.md)) |
 | **Privacy** | Runs only in the client. Work is stored in IndexedDB and localStorage and is never uploaded |
 
 You'll find every feature in depth in [**the tour**](docs/TOUR.md), every feature mapped to
@@ -196,7 +196,9 @@ the same bar, and a PR that clears it merges fast.
 an [RFC](https://github.com/Kentucky-ai/opentakeoff/labels/rfc), a
 [flagship](https://github.com/Kentucky-ai/opentakeoff/labels/flagship) challenge, a
 [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue),
-or a bug you hit on your own plans. If it's still an idea, start in
+or a bug you hit on your own plans. Bid a trade we don't serve yet? Tell us how you take it off
+with the [Trade suite form](https://github.com/Kentucky-ai/opentakeoff/issues/new?template=trade_suite.yml);
+no code needed. If it's still an idea, start in
 [Discussions](https://github.com/Kentucky-ai/opentakeoff/discussions).
 
 **2 · Build it.**
@@ -265,6 +267,15 @@ the PDF, file names, client names or scale values, and a whitelist in
 nothing is captured. The engine is free because a corpus is only as good as the number of real
 takeoffs that flow through it. The research program behind this, including the model work and
 the evaluation method, is in [the tour](docs/TOUR.md#the-research-program).
+
+**Contribute is not connected to anything today.** The hosted app is built with no contribution
+endpoint, so the button cannot send, and its dialog says so before you can press it. Your plans
+are not part of a contribution in any build. If an endpoint is connected later, contributions
+that are good enough become training data and small models (computer vision and other neural
+networks for reading plans), and those are released back as open source with open weights, for
+the community to use. Kentucky AI provides the compute and the training cookbooks. The open
+model problems are listed under the
+[`research`](https://github.com/Kentucky-ai/opentakeoff/labels/research) label.
 [OpenTakeoff Academy](https://union.kentucky-ai.com) scores agents on operating this engine
 against geometry they don't control.
 

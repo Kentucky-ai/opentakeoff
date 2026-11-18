@@ -70,7 +70,7 @@ export const instantiateTemplate = (t) => ({
   // geometry — a shallow spread here aliased the CT-1 seed's one grout object
   // into every fresh-workspace condition across every project in the session
   // prices are per project (lib/estimate.js): a hand-edited template's price never seeds a new job
-  materials: (t.materials || []).map(({ price: _price, ...m }) => instantiateMaterial(m, uid("mat"))),
+  materials: (t.materials || []).map(({ price: _price, labor_price: _labor, ...m }) => instantiateMaterial(m, uid("mat"))),
 });
 // The inverse: a condition saved to the template library ("Save as template").
 export const conditionToTemplate = (c) => ({
@@ -84,7 +84,7 @@ export const conditionToTemplate = (c) => ({
   ...(c.subfloorType != null ? { subfloorType: c.subfloorType } : {}),
   ...(c.roll_setup ? { roll_setup: { ...c.roll_setup } } : {}),   // #136 — the roll spec is part of what makes a CPT-1 template CPT-1
   // ids are minted on instantiation; grout never shared by reference; prices are per project (lib/estimate.js), never carried by a template
-  materials: (c.materials || []).map(({ id: _id, price: _price, ...m }) => (m.grout ? { ...m, grout: { ...m.grout } } : m)),
+  materials: (c.materials || []).map(({ id: _id, price: _price, labor_price: _labor, ...m }) => (m.grout ? { ...m, grout: { ...m.grout } } : m)),
 });
 // Fresh-workspace seeding reads the user's template library first; the
 // built-in flooring defaults are only the empty-library fallback. Both paths

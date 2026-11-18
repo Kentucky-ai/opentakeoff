@@ -15,12 +15,16 @@
     "bench": "node --import tsx bench/run.mts",
     "bench:callouts": "node --import tsx bench/callouts.mts",
     "bench:batch": "node --import tsx bench/batch.mts",
-    "check": "npm run typecheck && npm run lint && npm run check:ort && npm test && npm run bench && npm run build && npm run check:ocr-dist",
+    "check": "npm run typecheck && npm run lint && npm run check:ort && npm run check:door-reader && npm test && npm run bench && npm run build && npm run check:ocr-dist",
     "styles:sync": "diff src/styles/tokens.css ${SPLINE_DIR:-../../spline-app/frontend}/src/styles/tokens.css && diff src/styles/app.css ${SPLINE_DIR:-../../spline-app/frontend}/src/styles/app.css && echo styles-in-sync || echo \"sibling missing or drifted (non-fatal)\"",
     "lint": "eslint src",
     "check:ort": "node scripts/check-one-ort.mjs",
     "check:ocr-dist": "node scripts/check-ocr-dist.mjs",
-    "stage:ocr": "node scripts/stage-ocr-model.mjs"
+    "stage:ocr": "node scripts/stage-ocr-model.mjs",
+    "build:door-reader": "node ../scripts/build-door-reader.mjs",
+    "check:door-reader": "node ../scripts/build-door-reader.mjs --check-embedded",
+    "check:door-reader:source": "node ../scripts/build-door-reader.mjs --check",
+    "bench:doors": "node --import tsx bench/doors/run.mts"
   },
   "engines": {
     "node": ">=24"

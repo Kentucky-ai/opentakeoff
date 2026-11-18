@@ -112,7 +112,7 @@ export function applyUnits(cols, units, labels = METRIC_LABELS) {
       ...c,
       header: c.header.replace(/\bSF\b/g, labels.area).replace(/\bLF\b/g, labels.len),
       conv,
-      get: (r, ctx) => conv(base(r, ctx)),
+      get: (r, ctx) => { const v = base(r, ctx); return v === "" ? v : conv(v); },
       ...(c.foot ? { foot: (g) => conv(c.foot(g)) } : {}),
     };
   });

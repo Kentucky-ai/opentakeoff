@@ -80,3 +80,27 @@ export function currentStep(done) {
   const d = new Set(done || []);
   return TOUR_STEPS.find((s) => !d.has(s.id)) || null;
 }
+
+// Where the tour card may sit without covering the tool rail. The rail docks to
+// any edge (Layout menu); a fixed bottom-left card put itself straight over the
+// Area/Rectangle tiles whenever the rail was docked along the bottom — the very
+// tile step 3 asks for. A bottom dock that shares any column with the card
+// lifts the card above it.
+//   rail = { side, left, right, top } (viewport px) or null; vh = window height
+export const TOUR_CARD_W = 340;
+export const TOUR_CARD_GAP = 14;
+export function cardPlacement(rail, vh, cardLeft = 52 + TOUR_CARD_GAP) {
+  const place = { bottom: 38, side: rail?.side || "left" };
+  if (rail && rail.side === "bottom" && cardLeft < rail.right && cardLeft + TOUR_CARD_W > rail.left) {
+    place.bottom = Math.max(38, Math.round(vh - rail.top + 10));
+  }
+  return place;
+}
+
+// Step text that names where the tool rail actually is.
+const RAIL_WHERE = { left: "on the left", right: "on the right", bottom: "along the bottom", top: "along the top" };
+export function stepBody(step, railSide) {
+  if (!step) return "";
+  if (step.id !== "tool") return step.body;
+  return step.body.replace("in the tool rail on the left", `in the tool rail ${RAIL_WHERE[railSide] || RAIL_WHERE.left} (outlined)`);
+}

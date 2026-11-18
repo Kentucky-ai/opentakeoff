@@ -2,7 +2,7 @@
 // action, in order, and never un-complete.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TOUR_STEPS, countFloorShapes, advanceTour, currentStep } from "../src/lib/firstTakeoff.js";
+import { TOUR_STEPS, countFloorShapes, advanceTour, currentStep, cardPlacement, stepBody } from "../src/lib/firstTakeoff.js";
 
 const idle = { sheetOpen: false, scaled: false, tool: "select", floorShapes: 0, reportOpen: false };
 
@@ -62,4 +62,26 @@ test("countFloorShapes skips cut-outs and shapes with no area", () => {
   ];
   assert.equal(countFloorShapes(shapes), 1);
   assert.equal(countFloorShapes(undefined), 0);
+});
+
+test("the card lifts above a bottom-docked tool rail it would cover", () => {
+  // the hosted demo at 1423x835: rail docked bottom from x 289..1134, top 735
+  const p = cardPlacement({ side: "bottom", left: 289, right: 1134, top: 735 }, 835, 78);
+  assert.equal(p.bottom, 835 - 735 + 10);
+  assert.equal(p.side, "bottom");
+});
+
+test("the card keeps its corner when the rail is docked left or doesn't reach it", () => {
+  assert.equal(cardPlacement({ side: "left", left: 0, right: 64, top: 100 }, 800, 78).bottom, 38);
+  assert.equal(cardPlacement({ side: "bottom", left: 600, right: 1100, top: 700 }, 800, 78).bottom, 38);
+  assert.equal(cardPlacement(null, 800).bottom, 38);
+});
+
+test("step 3 names where the tool rail actually is", () => {
+  const tool = TOUR_STEPS.find((s) => s.id === "tool");
+  assert.match(stepBody(tool, "bottom"), /tool rail along the bottom/);
+  assert.match(stepBody(tool, "left"), /tool rail on the left/);
+  assert.doesNotMatch(stepBody(tool, "bottom"), /on the left/);
+  const scale = TOUR_STEPS.find((s) => s.id === "scale")!;
+  assert.equal(stepBody(scale, "bottom"), scale.body);
 });

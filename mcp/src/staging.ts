@@ -17,6 +17,13 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
   setup: [
     "load_plan", "sheet_info", "set_scale", "sheet_graph", "resolve_tag",
     "find_schedule", "read_sheet_text", "find_text", "sheet_context", "get_sheet_vectors", "view_sheet",
+    // the Assistant window is how a person reaches the agent from the canvas — open from the first call
+    "assistant_open", "assistant_listen", "assistant_say",
+    // trade suites (suites.ts): the opener is always on; the trade tools it
+    // enables are NOT in this table — they are hidden until a suite opens
+    "open_suite",
+    "rotate_page", "reorder_pages", "extract_pages", "merge_documents",
+    "stitch_sheets", "align_stitch", "list_stitches",
   ],
   measure: [
     "propose_takeoff",

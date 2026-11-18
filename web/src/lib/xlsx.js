@@ -65,7 +65,13 @@ export function sanitizeSheetName(name, used = new Set()) {
 //   number (finite)      → <c r=… ><v>…</v></c>
 //   null / undefined / "" → cell skipped entirely
 //   anything else         → inline string, XML-escaped
-export function sheetXml(rows, columnWidths = []) {
+// `footer` (optional) is the printed page footer, centred on every page Excel
+// prints from the tab — the estimate's OpenTakeoff line rides here so a
+// printed or PDF-saved estimate carries it too. "&" is Excel's header/footer
+// code character, so a literal one is doubled.
+// `columnWidths` (optional) sets per-column widths and turns on wrapped,
+// auto-height rows (the localized deliverables use it).
+export function sheetXml(rows, { footer = "", columnWidths = [] } = {}) {
   const out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'];
   if (columnWidths.length) out.push('<cols>' + columnWidths.map((width, i) => '<col min="' + (i+1) + '" max="' + (i+1) + '" width="' + Math.max(8,Math.min(60,Number(width)||16)) + '" customWidth="1"/>').join('') + '</cols>');
@@ -89,7 +95,9 @@ export function sheetXml(rows, columnWidths = []) {
     });
     out.push("</row>");
   });
-  out.push("</sheetData></worksheet>");
+  out.push("</sheetData>");
+  if (footer) out.push(`<headerFooter><oddFooter>${escXml(`&C${String(footer).replace(/&/g, "&&")}`)}</oddFooter></headerFooter>`);
+  out.push("</worksheet>");
   return out.join("");
 }
 
@@ -110,7 +118,7 @@ const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
 
 /**
  * Zip sheet definitions into an .xlsx byte array.
- * @param {Array<{name: string, rows: any[][], columnWidths?: number[]}>} sheets one entry per tab, in order
+ * @param {Array<{name: string, rows: any[][], footer?: string, columnWidths?: number[]}>} sheets one entry per tab, in order
  * @returns {Promise<Uint8Array>} download with MIME
  *   application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
  */
@@ -151,7 +159,7 @@ export async function buildXlsx(sheets) {
     "xl/_rels/workbook.xml.rels": strToU8(wbRels),
     "xl/styles.xml": strToU8(STYLES_XML),
   };
-  sheets.forEach((s, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(s.rows, s.columnWidths)); });
+  sheets.forEach((s, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(s.rows, { footer: s.footer, columnWidths: s.columnWidths })); });
   return zipSync(files);
 }
 

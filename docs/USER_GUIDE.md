@@ -308,13 +308,16 @@ Open **Supporting Materials** on a condition. Two free-text fields sit above the
 
 Below that, list what actually goes on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each line carries:
 
-- a **coverage rate**—*1 unit per N*—and a **basis**: floor SF, linear LF, each, or **seam LF**;
+- a **quantity rule** and a **basis** (floor SF, linear LF, each, or **seam LF**): **1 per N** is a coverage rate—*1 gal per 150 SF*—and **N per 1** is a count per measured unit—*2 anchors per EA*, *1 cover plate per piece*;
 - a **round up** flag (on by default—you buy whole buckets and bags);
+- the item's own **waste %**, applied before the round-up (cut tape, spilled adhesive). It's separate from the condition's waste, and empty means none;
 - a **preset picker** for adhesive and mortar lines: real trowel-notch and roller spread rates (PSA rollers at 300 SF/gal down to coarse wood notches at 40 SF/gal; mortar trowels from 90 to 30 SF per 50-lb bag). Generic industry-typical values—always verify against the product data sheet;
 - for **grout** lines, an inline **calculator**: enter tile L × W × thickness, joint width (1/32″–1/2″), and bag weight, and the SF/bag rate derives itself, writing its work into the note (`12×24×3/8″ @ 1/8″ · 25 lb`);
 - a **note** field for coats, notch, anything the order needs to remember.
 
-Order quantity = measured basis ÷ coverage, **rounded up to whole units**. The Report sums every condition's lines into one combined buy list (§10).
+Order quantity = measured basis ÷ coverage (or × the count per unit), plus the item's waste, **rounded up to whole units**. The Report sums every condition's lines into one combined buy list (§10).
+
+**Assemblies.** A condition's item list is its assembly. Under the list, **Assembly: save as…** saves it by name (rules, waste and notes, never prices) to your assembly library, and **+ apply assembly…** adds a saved one to the condition you're on; items the condition already has are skipped. The **Library** tab lists your assemblies with **Apply to** the active condition and ✕. The library is yours across projects and travels in your `.otprofile`. Nothing ships in it.
 
 **The seam LF basis** is the one that isn't measured off the drawing—it's *figured* off the
 condition's roll layout (§4, Roll goods): the length where two cuts actually meet on the floor,
@@ -774,28 +777,30 @@ Nothing is pre-filled. Every field saves as you type, stays in this browser, and
 
 ### Estimate
 
-**Estimate** (in the toolbar, in **Find an action**, and in the Report header) prices what you measured. Each condition that has takeoffs gets a row:
+**Estimate** (in the toolbar, in **Find an action**, and in the Report header) prices what you measured. Each condition gets a line for **each kind of quantity it carries**: a CPT-1 with a room, a border line and two floor-box counts is three lines (SF, LF and EA), each with its own prices.
 
-- **Unit**—SF, SY, LF or EA. It starts as what you measured (area, then length, then count).
+- **Unit**—the condition's first line is SF, SY, LF or EA. It starts as what you measured (area, then length, then count). Its other lines price in their own unit (area in SF, then LF, then EA).
 - **Material $/unit** prices the **order quantity**, with the condition's waste. **Labor $/unit** prices the **measured quantity**, without waste. EA never carries waste.
-- **▸ materials** opens the condition's supporting materials (adhesive, grout and so on) to price per package. Quantities are already rounded up to whole packages.
+- **▸ items** on the first line opens the condition's assembly items (adhesive, grout and so on). **Material $/unit** prices each item's order quantity, already rounded up to whole packages with the item's waste. **Labor $/unit** on an item is optional. It prices the item's measured quantity (no waste, no round-up). Leave it empty when the condition's own labor covers the install.
 - Across the top: **Overhead**, **Profit** (markup or margin) and **Sales tax** on material for this project. The first time a project's estimate opens they're copied from **Company setup**. After that they belong to the project: changing your defaults never re-prices a bid you already worked up. **Company defaults** copies them again when you ask.
 
 An empty box means *not entered*, never $0. Type 0 for scope you aren't charging for. Until every line is priced, a banner names what's missing, the row says **PARTLY PRICED** or **UNPRICED**, and the total reads **Base bid — priced so far**.
 
-**Excel** downloads `<project> - estimate.xlsx`: **Estimate** (every line, then material, labor, tax, overhead, profit and the base bid), **Materials** (each supply's packages, price and cost) and, when anything is missing, **Unpriced**. Rates you didn't enter stay empty cells. Every tab ends with *Prepared with OpenTakeoff*.
+A linear condition with a thickness (a border) measures one run and gets two lines, its border SF and its LF. The line you don't buy by is marked **OPTIONAL**. That is the LF when the SF is the first line, or the SF when you price by LF. Leave it empty and its cost stays in the first line's price: it isn't missing, it doesn't block the base bid, and an itemized proposal prints it as *Included*. Price it only when it's bought or installed separately.
+
+**Excel** downloads `<project> - estimate.xlsx`: **Estimate** (every line, then material, labor, tax, overhead, profit and the base bid), **Materials** (each assembly item's packages, prices and costs) and, when anything is missing, **Unpriced**. Rates you didn't enter stay empty cells. Every tab ends with *Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com* and prints it as the page footer. You can't turn it off.
 
 Prices are saved with the project. Condition templates never carry them, so every new job starts unpriced.
 
 ### Proposal
 
-**Estimate → Proposal PDF…** builds the bid proposal you send: your letterhead from **Company setup** (name, logo, address, phone, email, license), **Prepared for** (client, address and reference, saved with the project), the scope (each condition, its spec description and measured quantity), the **base bid**, then inclusions, exclusions, terms and a signature block for both sides.
+**Estimate → Proposal PDF…** builds the bid proposal you send: your letterhead from **Company setup** (name, logo, address, phone, email, license), **Prepared for** (client, address and reference, saved with the project), the scope (each estimate line, its spec description and measured quantity), the **base bid**, then inclusions, exclusions, terms and a signature block for both sides.
 
 - **Lump sum** prints one base bid. **Itemized** prints a price on each line: the base bid spread over the lines in proportion to their cost, to the cent, so the lines add up to the base bid exactly.
 - The first time you open it, the inclusions, exclusions, terms and validity are copied from Company setup. Edits here change **this job only**. **Reset text to Company setup** copies them again.
 - If the estimate isn't fully priced, the dialog says which lines and still lets you download.
 
-Every page of the proposal, the marked set and the printed report carries **Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com**. The proposal and the marked set also carry a light diagonal *OpenTakeoff* watermark. Branding as your trade name puts your company on the document; it doesn't remove these.
+Every page of the proposal, the marked set and the printed report carries **Prepared with OpenTakeoff · opentakeoff.kentucky-ai.com**. The proposal and the marked set also carry a light diagonal *OpenTakeoff* watermark. Branding as your trade name puts your company on the document; it doesn't remove these, and no setting does.
 
 ### The numbers, honestly
 
@@ -951,9 +956,13 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 **Workspace layout.** Premium workspace is the default for browsers without a saved layout choice. From Classic, choose **⋯ → Premium layout — compact controls** for compact drawing controls. **Classic layout** returns immediately. Measuring tools keep their sidebar order and shortcuts; **All controls** reveals the existing toolbar for advanced settings. **Properties** opens the active condition editor. **Sheets** opens your plan set as a tree: each multi-page PDF is a folder of its pages and each one-page PDF a row. A row shows the sheet number printed in the title block's sheet-number box once that page's text has been read — when you open it, when the gallery draws its thumbnail, or when plan search reads it — and the label its tab shows until then. Numbers are saved with a local project, so it reopens with them; a Drive project reads them again each session. Search matches numbers, labels and file names. In the tree, arrow keys move, Right and Left open and close folders, and Enter opens a sheet. The sheet tabs and visual gallery remain available. **Find an action** (Cmd/Ctrl+K outside text fields) searches tools, sheets, scale choices and file actions; use arrows and Enter, or click a result.
 
-**Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
+**PDF page tools.** You can manipulate pages directly in the browser with every takeoff, markup, and approval seal staying locked to its drawing geometry:
+- **Rotate:** Press `]` to rotate the active sheet 90° clockwise, or `[` for 270° clockwise (90° counter-clockwise). You can also click the `↻` icon on any sheet row in the Sheets navigator tree, or choose *Rotate page* from the **File** menu.
+- **Reorder:** In the Sheets navigator tree, click and drag any page row up or down within a multi-page PDF to reorder pages. `⌘Z` (or `Ctrl+Z`) restores the previous page order and takeoffs.
+- **Delete with undo:** Click `×` on a sheet row in the Sheets tree, or choose **File → Delete current page…**. If the page carries takeoffs, the app prompts with the count before removing; `⌘Z` restores the deleted page and all of its measurements.
+- **Extract & Merge:** Under the **File** menu, choose **Extract pages from set…** to pull a page range into a new PDF carrying its takeoffs, or **Merge PDF sets…** to combine multiple open PDFs into one multi-page set. **Insert pages from PDF…** appends external pages behind the active sheet, and **Export edited PDF…** downloads the modified PDF.
 
-**Premium plans.** **Premium plans** in the top toolbar, the plan gallery or the Classic **⋯** menu opens the pricing section of [kentucky-ai.com](https://kentucky-ai.com/#pricing) in a new tab, so your takeoff stays open. Current plans, prices and the 7-day free trial are listed there. Premium is a separate hosted workspace; nothing from this app is sent, and your local projects stay in your browser.
+**Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
 
 **One place for panel tools.** Quantities, Work, Markup list, Stamps, RFI register and Revisions live in the top toolbar. In Focus mode, the panel controls move to the right edge. **Create annotation** in the drawing toolbar creates clouds, callouts, text and highlights; **Markup list** opens existing annotations. Supporting materials remain under **Quantities → Materials** or a condition’s **Materials** button.
 
@@ -971,13 +980,13 @@ Select a measurement to open its sheet and center its boundary. Its **Measuremen
 
 On smaller screens the panel opens as a drawer; on phones it fills the work area. Selecting a measurement returns you to the plan. **Open report →** opens the existing report. Floating totals clear both views. The condition’s **properties** disclosure above the drawing hides or shows its appearance controls.
 
-Select the **Agent** tab inside **Work** to run the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. Closing the panel preserves its search and in-session task draft; page reload still discards uncommitted browser-agent proposals and the run log.
+Select the **Agent** tab inside **Work** to chat with the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. The conversation is saved per project **in this browser only** and comes back after a reload (**New chat** clears it). It is not part of the project file, any export, or Drive sync, so another browser or computer won't see it. A page reload still discards uncommitted browser-agent proposals, and a run that was going when the page closed shows as stopped.
 
 The Agent panel is the newest way to run the engine: describe a takeoff in a sentence, and an AI model—**yours**, on your key, from your browser—works the sheet with the app's own tools and stages **dashed proposals you accept or reject**. It is a proposer, never a committer.
 
 ### What it is, structurally
 
-Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
+Open **Work**, then select **Agent**. It is a chat window: ask about the project or give it a job—*"Take off the carpet per the finish schedule on this sheet"*—and press `⏎` (`⇧⏎` adds a line). With no messages yet it offers a few starting points (read the finish schedule, trace the rooms on this sheet, list the sheets, check the conditions); picking one fills the box for you to edit and send. Each message runs a tool-use loop against a registry of the app's own deterministic tools, with the last earlier questions and answers of the conversation (8 by default; **Conversation memory** in AI settings, 0–20; never their tool results) and the sheet you are looking at sent along as context:
 
 - **`list_sheets`**—what's open, with sizes and scale status;
 - **`read_sheet_text`**—the sheet's positioned text layer;
@@ -987,7 +996,7 @@ Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per th
 - **`get_conditions` / `create_condition`**—your condition list (creation dedupes against existing tags);
 - **`propose_shapes`**—stage proposals for your review.
 
-Proposals include evidence fields. Inspect the boundary and its claimed evidence before accepting it; those fields do not independently verify the geometry. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that stops the run.
+Proposals include evidence fields. Inspect the boundary and its claimed evidence before accepting it; those fields do not independently verify the geometry. The answer appears as the model writes it, word by word; a tool call runs only once the model has finished sending it. Endpoints that don't stream (some local runtimes) still work: the app asks once, and if the endpoint refuses or answers all at once, the reply arrives whole. Each reply shows the model's answer, how many proposals it staged, and a **Show every step** list—every tool call with a short label and its status (running, done, failed), refusals included—capped at 24 model turns, with a **■ Stop** button that stops the run (mid-answer too: the words that already arrived stay, marked stopped). With no model connected, the tab shows a connect card: **AI settings…** for your own key, or **Connect your AI** to drive OpenTakeoff from Claude Desktop, Codex or Cursor over MCP instead.
 
 ### The scale gate holds
 
@@ -1073,14 +1082,17 @@ Point AI settings at it—endpoint `http://localhost:8787`, API style **Anthropi
 - **API style**—OpenAI-style (the default; most local runtimes) or Anthropic-style.
 - **Model**—a vision-capable model id.
 - **API key**—optional; local runtimes generally need none. Stored **in this browser's localStorage only**—anyone with access to this browser profile can read it, so use a key you can revoke. The endpoint must allow browser requests (CORS); local runtimes generally allow localhost.
+- **Conversation memory**—how many earlier turns of the chat (each a question and its answer) are sent with every new message: 0 to 20, default 8. 0 sends each message on its own; more turns give the model more context and send more text. Saved with the other AI settings in this browser; **Clear** puts it back to 8.
 
-What's sent, and only while an agent run you started is going: your goal, the prompts, and what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
+Chats stay in this browser. The Agent conversation is saved per project in this browser's local storage only: it is not in the project file, any export, or Drive sync.
+
+What's sent, and only while an agent run you started is going: your message, up to the last 8 earlier questions and answers in this project's chat (your Conversation memory setting; never their tool results), the sheet you're looking at, the prompts, and what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER` / `VITE_AI_HISTORY_TURNS`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
 
 ### MCP — for agent users
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). **Help → Connect your AI** in the app (also on the opening screen and in the **⋯** menu) has the setup for Claude Desktop, Claude Code, Codex and Cursor with copy buttons, and a first question to ask about the sample plan; [CONNECT.md](CONNECT.md) is the same walk-through. An
-MCP client gets **<!--tool-count-->58<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **<!--tool-count-->69<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
@@ -1217,6 +1229,16 @@ The following key is available only in a build with One-Click enabled (see §6):
 | `⌫` | Delete (a picked vertex first, else the shape or markup) |
 | Double-click a markup | Edit its text in place |
 
+### Page tools
+
+| Key / action | Effect |
+|---|---|
+| `]` | Rotate current page 90° clockwise (takeoffs follow) |
+| `[` | Rotate current page 270° clockwise (90° counter-clockwise) |
+| Drag sheet row | In the Sheets sidebar tree, drag a page row up or down to reorder pages within a multi-page PDF |
+| `↻` on sheet row | Rotate page 90° clockwise |
+| `×` on sheet row | Delete page (prompts before removing takeoffs; `⌘Z` restores page and takeoffs) |
+
 ### View and navigation
 
 | Key / action | Effect |
@@ -1236,7 +1258,7 @@ The following key is available only in a build with One-Click enabled (see §6):
 
 | Key | Action |
 |---|---|
-| `⌘⏎` | Run the agent (in the Agent panel's goal box) |
+| `⏎` / `⇧⏎` | Send the message / new line (in the Agent chat's composer) |
 | `⏎` | Apply calibration (calibrate field) · grade the check (check field) · save (revision-name field) |
 
 ---
@@ -1325,7 +1347,7 @@ those are the ones worth pinning down before you rely on a number.
 | **Reported, never counted** | A quantity the engine found but refuses to commit, with the reason. Transitions across a wall are the common one: the real transition is a threshold in a doorway nothing can locate from a trace. Go measure it ([§5](#5-the-measuring-tools)). |
 | **Deduct / Cut Out** | A void subtracted from a condition's floor total—a column, a shaft, casework. Draws dashed red and carries its negative sign into the audit ([§5](#5-the-measuring-tools)). |
 | **Measured versus w/Waste** | Measured is what's on the drawing. w/Waste is what you order. Waste lives only in the order column, never in the measured number ([§10](#10-the-report-and-exports)). |
-| **Basis** | What a supporting material is bought against: floor SF, linear LF, each, or figured seam LF. Order quantity = basis ÷ coverage rate, rounded up ([§4](#4-conditions--your-finishes)). |
+| **Basis** | What a supporting material is bought against: floor SF, linear LF, each, or figured seam LF. Order quantity = basis ÷ coverage rate (or × a count per unit), plus the item's waste, rounded up ([§4](#4-conditions--your-finishes)). |
 | **Figured seam LF** | Seam length read off the roll layout—where two cuts actually meet—not a percentage of perimeter. Needs a roll setup; without one it reads 0, meaning *needs a layout* ([§4](#4-conditions--your-finishes)). |
 | **Roll goods** | Broadloom, sheet vinyl, sheet rubber—material that comes off a roll, so the order depends on how the cuts nest, not on area alone ([§4](#4-conditions--your-finishes)). |
 | **Stitch** | Two to four sheets split at a match line, joined into one working surface so a room crossing the seam traces as one shape. Align it before you trace on it ([§2](#2-opening-plans-and-moving-around)). |

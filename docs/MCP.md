@@ -284,16 +284,13 @@ Two rules carry over from the app unchanged:
   fields appear on the tool replies, so an agent can triage before it
   commits.
 
-And one capability deliberately does **not** carry over: **stitching**. The
-canvas can join sheets split at a match line into one composite surface, but
-there is no agent verb for it—aligning the match line means clicking the
-same drawn wall junction on both halves, a human-judgment act whose failure
-mode (a subtly sloppy join) silently skews every quantity that crosses the
-seam. Same doctrine as the scale gate, taken one step further: here the agent
-doesn't even propose. A human stitches and aligns in the canvas; an agent
-works the member sheets individually and leaves seam-crossing rooms to the
-person at the screen. See the Limits section of
-[`mcp/README.md`](../mcp/README.md) for the round-trip caveat that follows.
+**Stitching** carries over with a gate. An agent joins sheets split at a match
+line with `stitch_sheets` and `align_stitch`, and the server compares the two
+sheets' linework at the seam after every alignment. A subtly sloppy join would
+skew every quantity that crosses the seam, so measuring across a seam is
+refused until that check passes. Same doctrine as the scale gate: the agent
+proposes the join, the drawing has to agree. See
+[Stitching sheets over MCP](MCP_STITCHING.md).
 
 ## An example session
 
@@ -398,7 +395,7 @@ New agent measurements, including `measure_polygon` and `measure_line`, explicit
 
 The [generated tool index](MCP_TOOL_INDEX.md) gives each tool's stage and required
 arguments directly from the running server's schemas. The default surface has
-<!--tool-count-->58<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
+<!--tool-count-->69<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
 
 Use `list_annotations` → `edit_annotation {annotation_id, text}` to shorten or clear
 a note. One `undo_last` restores the text. Geometry, dimension length, links and
@@ -416,12 +413,18 @@ opening allowances refuses clipping because those openings have no locations.
 The canvas's **Estimate** panel and **Proposal** dialog have agent verbs over the same engine
 (`web/src/lib/estimate.js`):
 
-1. `set_pricing {condition, unit, material, labor, materials:[{name, price}]}` for each
+1. `set_pricing {condition, unit, line, material, labor, materials:[{name, price}]}` for each
    condition, with the estimator's prices. Material is priced on the order quantity (waste
-   applied), labor on the measured quantity, supplies per package.
+   applied), labor on the measured quantity, supplies per package. A condition has one line
+   per quantity kind it carries (a room, a run and two boxes are an SF, an LF and an EA line);
+   `line` picks which one material and labor price: leave it out for the main (first) line,
+   pass `LF`, `EA` or `SF` (a second area line) for another, one call per line. `unit` still
+   picks the main line's unit (0.9.103). A bordered linear run's derived line (its LF when the
+   border SF is the main line) is optional: priceable, but empty it is carried in the main line.
 2. `set_estimate_settings {tax_pct, overhead_pct, profit_pct, profit_mode, proposal, client}`
    for the project's markups, proposal text and client.
-3. `estimate_summary` to read the result. `complete: false` and `unpriced` name every hole.
+3. `estimate_summary` to read the result: every line with its unit, quantities, rates,
+   `main`, `optional` and `missing`. `complete: false` and `unpriced` name every hole.
 4. `export_estimate` (Excel) and `export_proposal {company}` (PDF, OpenTakeoff watermark on
    every page) to write the files beside the plan.
 

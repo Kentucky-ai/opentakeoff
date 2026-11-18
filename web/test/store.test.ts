@@ -8,6 +8,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { setDeferHashBytes, pdfHashesSettled } from "../src/lib/store.js";
 import { store, localStore, createLocalStore, metaGet, metaPut, metaDelete, isStaleTabError, ANN_SCHEMA, STALE_TAB_MESSAGE, friendlyStoreError } from "../src/lib/store.js";
 import { createCloudStore } from "../src/lib/cloudStore.js";
 
@@ -980,4 +981,71 @@ test("removePdf: a legacy file hashed this session keeps the reads of the bytes 
   await metaPut(ocrKey(await sha([6, 6])), OCR_VAL);
   await store.removePdf("k-a.pdf");
   assert.deepEqual(await metaGet(ocrKey(await sha([6, 6]))), OCR_VAL);
+});
+
+// ── #580: a PDF is stored as a Blob and read by byte range ──────────────────
+test("addPdf stores a real File as a Blob; every reader gets the same bytes, and a revision keeps its own", async () => {
+  const v1 = new TextEncoder().encode("%PDF-1.7 first revision"), v2 = new TextEncoder().encode("%PDF-1.7 second, longer revision");
+  const out = await localStore.addPdf(new File([v1], "set.pdf", { type: "application/pdf", lastModified: 5 }));
+  assert.deepEqual(out, { name: "set.pdf", rev: 1 });
+  const db = await rawOpen(3);
+  const rec: any = await new Promise((res, rej) => { const q = db.transaction("pdfs").objectStore("pdfs").get("set.pdf"); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  db.close();
+  assert.ok(rec.bytes instanceof Blob, "the record holds a Blob");
+  assert.ok(!(rec.bytes instanceof File), "not the File: its name and date aren't the record's");
+  assert.deepEqual([...await localStore.loadPdfData("set.pdf")], [...v1]);
+  const src = await localStore.loadPdfSource("set.pdf");
+  assert.equal((await localStore.loadPdfSource("set.pdf")).key, src.key, "one identity while the bytes stand");
+  assert.deepEqual([...new Uint8Array(await src.blob.slice(0, 8).arrayBuffer())], [...v1.slice(0, 8)], "a range reads just that range");
+  // same bytes: no revision; changed bytes: the old Blob is archived as it is
+  assert.equal((await localStore.addPdf(new File([v1], "set.pdf"))).unchanged, true);
+  assert.equal((await localStore.addPdf(new File([v2], "set.pdf"))).revised, true);
+  assert.deepEqual([...await localStore.loadPdfRevisionData("set.pdf", 1)], [...v1]);
+  assert.deepEqual([...await localStore.loadPdfRevisionData("set.pdf", 2)], [...v2]);
+  const src2 = await localStore.loadPdfSource("set.pdf");
+  assert.notEqual(src2.key, src.key, "new bytes, new key: a worker never reuses the old document");
+  assert.equal(src2.blob.size, v2.byteLength);
+});
+
+test("loadPdfSource reads a record stored before #580 (an ArrayBuffer, perhaps with no hash)", async () => {
+  await localStore.listSheets(); // create the database at the current version
+  const bytes = new TextEncoder().encode("%PDF-1.4 legacy");
+  const db = await rawOpen(3);
+  await new Promise<void>((res, rej) => { const t = db.transaction("pdfs", "readwrite"); t.objectStore("pdfs").put({ name: "old.pdf", bytes: bytes.buffer.slice(0) }); t.oncomplete = () => res(); t.onerror = () => rej(t.error); });
+  db.close();
+  const src = await localStore.loadPdfSource("old.pdf");
+  assert.deepEqual([...new Uint8Array(await src.blob.arrayBuffer())], [...bytes]);
+  assert.ok(src.key.startsWith("old.pdf\u0000"), "keyed by name, revision, time and size");
+  assert.deepEqual([...await localStore.loadPdfData("old.pdf")], [...bytes]);
+  await assert.rejects(localStore.loadPdfSource("missing.pdf"), /not found/);
+});
+
+test("a large file under a new name is stored before it is hashed, and gains its hash after (#580)", async () => {
+  setDeferHashBytes(8);
+  try {
+    const bytes = new TextEncoder().encode("%PDF-1.7 a set big enough to store first"), other = new TextEncoder().encode("%PDF-1.7 a different, revised set of sheets");
+    const hashOf = async (b: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", b as BufferSource)), (x) => x.toString(16).padStart(2, "0")).join("");
+    const raw = async () => { const db = await rawOpen(3); const rec: any = await new Promise((res, rej) => { const q = db.transaction("pdfs").objectStore("pdfs").get("big.pdf"); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); db.close(); return rec; };
+    assert.deepEqual(await localStore.addPdf(new File([bytes], "big.pdf")), { name: "big.pdf", rev: 1 });
+    const key = (await localStore.loadPdfSource("big.pdf")).key;
+    // asked for before the write-back: the one hashing answers, nothing is hashed twice
+    assert.equal(await localStore.pdfHash("big.pdf"), await hashOf(bytes));
+    await pdfHashesSettled();
+    assert.equal((await raw()).hash, await hashOf(bytes), "the hash is written back");
+    assert.equal((await localStore.loadPdfSource("big.pdf")).key, key, "the source's identity doesn't move when the hash lands");
+    assert.deepEqual([...await localStore.loadPdfData("big.pdf")], [...bytes]);
+    // a name the store has takes the hashed path: same bytes no-op, new bytes a revision
+    assert.equal((await localStore.addPdf(new File([bytes], "big.pdf"))).unchanged, true);
+    assert.equal((await localStore.addPdf(new File([other], "big.pdf"))).revised, true);
+
+    // re-dropped with new bytes BEFORE the write-back: the revision stands, and
+    // the late hash of the first bytes is not written onto it
+    await localStore.removePdf("big.pdf");
+    await localStore.addPdf(new File([bytes], "big.pdf"));
+    const second = await localStore.addPdf(new File([other], "big.pdf"));
+    assert.equal(second.revised, true); assert.equal(second.rev, 2);
+    await pdfHashesSettled();
+    assert.equal((await raw()).hash, await hashOf(other));
+    assert.equal((await localStore.listPdfRevisions("big.pdf")).find((r: any) => r.rev === 1).hash, await hashOf(bytes));
+  } finally { setDeferHashBytes(32 * 1024 * 1024); }
 });

@@ -1,0 +1,58 @@
+/* The Assistant window: a docked glass panel on the canvas's right, and its launcher. */
+.ot-asst-launch {
+  position: fixed; right: 14px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; width: 72px; padding: 10px 6px;
+  border: 1px solid var(--ink-faint); border-radius: 12px; background: var(--paper-cream); color: var(--ink);
+  box-shadow: var(--shadow-2); font: 600 11.5px/1.1 var(--f-body); cursor: pointer;
+}
+.ot-asst-launch:hover { background: var(--paper-shadow); }
+.ot-asst-launch .ot-scan-star { color: var(--cobalt); }
+
+.ot-asst {
+  position: fixed; right: 12px; top: calc(var(--topbar-h, 56px) + 60px); bottom: 40px; width: min(380px, calc(100vw - 24px));
+  display: flex; flex-direction: column; background: var(--paper-cream); color: var(--ink);
+  border: 1px solid var(--ink-faint); border-radius: 12px; box-shadow: var(--shadow-2); font-family: var(--f-body); overflow: hidden;
+}
+.ot-asst-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px; border-bottom: 1px solid var(--ink-faint); }
+.ot-asst-head .ot-scan-star { color: var(--cobalt); }
+.ot-asst-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ot-asst-title strong { font: 700 14px/1.2 var(--f-display); }
+.ot-asst-title small { font-size: 11.5px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ot-asst-title small b { color: var(--ink); font-weight: 600; }
+.ot-asst-ver { font-family: var(--f-mono); font-size: 10.5px; }
+.ot-asst-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+.ot-asst-dot.is-listening { background: var(--c-positive); }
+.ot-asst-dot.is-working { background: var(--cobalt); }
+.ot-asst-dot.is-paused, .ot-asst-dot.is-lost, .ot-asst-dot.is-connecting { background: var(--c-warning); }
+.ot-asst-x { border: 0; background: transparent; color: var(--ink-soft); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+
+.ot-asst-setup { padding: 14px; font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); overflow: auto; }
+.ot-asst-setup p { margin: 0 0 10px; }
+.ot-asst-setup ol { margin: 0 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.ot-asst-say { font-family: var(--f-mono); font-size: 12px; color: var(--ink); background: var(--paper-shadow); padding: 1px 6px; border-radius: 4px; }
+.ot-asst-copy, .ot-asst-linkbtn { border: 1px solid var(--ink-faint); background: transparent; color: var(--cobalt); font-size: 11px; padding: 1px 7px; border-radius: 4px; cursor: pointer; }
+.ot-asst-linkbtn { border: 0; padding: 0; text-decoration: underline; }
+.ot-asst-pair { display: flex; gap: 6px; margin-top: 4px; }
+.ot-asst-pair input { flex: 1; min-width: 0; font: 600 15px/1 var(--f-mono); letter-spacing: .18em; text-transform: uppercase; padding: 8px 10px; border: 1px solid var(--ink-faint); border-radius: 8px; background: var(--paper-bright); color: var(--ink); }
+.ot-asst-pair button, .ot-asst-foot form button { border: 0; border-radius: 8px; background: var(--cobalt); color: var(--accent-contrast); font-weight: 700; padding: 0 14px; cursor: pointer; }
+.ot-asst-pair button:disabled, .ot-asst-foot form button:disabled { opacity: .45; cursor: default; }
+
+.ot-asst-log { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ot-asst-empty { color: var(--ink-muted); font-size: 12.5px; margin: 0; }
+.ot-asst-msg { font-size: 13px; line-height: 1.5; padding: 8px 11px; border-radius: 10px; max-width: 92%; overflow-wrap: anywhere; }
+.ot-asst-msg.is-user { align-self: flex-end; background: var(--tint-select); color: var(--ink); white-space: pre-wrap; }
+.ot-asst-msg.is-ai { align-self: flex-start; background: var(--paper-bright); border: 1px solid var(--ink-faint); }
+.ot-asst-msg.is-ai p { margin: 0 0 6px; } .ot-asst-msg.is-ai p:last-child { margin-bottom: 0; }
+.ot-asst-act { font: 11px/1.3 var(--f-mono); color: var(--ink-muted); padding-left: 4px; }
+.ot-asst-act span { opacity: .75; }
+.ot-asst-act.is-err { color: var(--c-danger); }
+.ot-asst-working { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--cobalt); padding: 2px 4px; }
+
+.ot-asst-foot { border-top: 1px solid var(--ink-faint); padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.ot-asst-foot form { display: flex; gap: 6px; align-items: stretch; }
+.ot-asst-foot textarea { flex: 1; min-width: 0; resize: none; font: 13px/1.45 var(--f-body); padding: 8px 10px; border: 1px solid var(--ink-faint); border-radius: 8px; background: var(--paper-bright); color: var(--ink); }
+.ot-asst-note { font-size: 11.5px; line-height: 1.45; color: var(--ink-soft); background: var(--paper-shadow); border-radius: 8px; padding: 6px 9px; }
+.ot-asst-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--ink-muted); }
+.ot-asst-err { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--c-danger); border-top: 1px solid var(--ink-faint); }
+
+@media (max-width: 640px) { .ot-asst { top: 64px; bottom: 12px; } .ot-asst-launch { top: auto; bottom: 90px; transform: none; } }

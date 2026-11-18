@@ -3,7 +3,7 @@
 // with the metric display port.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, dimLabel, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr, volVal, volUnit, M3_PER_CF } from "../src/lib/units.js";
+import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, dimLabel, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr, volVal, volUnit, M3_PER_CF, suiteMetricReply } from "../src/lib/units.js";
 import { STANDARD_SCALES, RENDER_SCALE } from "../src/lib/sheets.js";
 import { totalsToCsv } from "../src/lib/totals.js";
 
@@ -227,4 +227,16 @@ test("volVal/volUnit: 27 cubic feet is one cubic yard, and the metric cube", () 
   assert.ok(Math.abs(volVal(1, "metric") - M3_PER_CF) < 1e-12);
   assert.ok(Math.abs(volVal(35.3147, "metric") - 1) < 1e-4); // ~35.31 CF per m³
   assert.equal(volUnit("metric"), "m³");
+});
+
+test("suiteMetricReply fails when two reply keys would share a metric name (#620)", () => {
+  assert.throws(() => suiteMetricReply({ trim_ft: 1, trim_lf: 2 }), /trim_lf and another key are both trim_m in metric/);
+  assert.deepEqual(suiteMetricReply({ whip_ft: 6, whip_lf: 12 }), { whip_m: 1.83, whip_total_m: 3.66 });
+});
+
+test("suiteMetricReply keeps the caller's tags and shape ids as named (#620)", () => {
+  assert.deepEqual(
+    suiteMetricReply({ openings: [{ id: "wall_1_sf", sf: 12 }], non_rectangular: ["wall_1_sf"], runs: [{ tag: "cw_lf", lf: 10 }] }),
+    { openings: [{ id: "wall_1_sf", m2: 1.11 }], non_rectangular: ["wall_1_sf"], runs: [{ tag: "cw_lf", m: 3.05 }] },
+  );
 });

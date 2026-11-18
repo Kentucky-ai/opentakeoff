@@ -1,0 +1,74 @@
+name: 🧰 Trade suite
+description: Propose a suite for your trade, or tell us what an existing one gets wrong. Trade knowledge counts more than code here.
+labels: [enhancement, trade-suite]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A trade suite is what one trade adds on top of the core tools: a short method, the condition tags it uses, and a tool that turns what was traced into what gets ordered. [How suites work](https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/wiki/suites.md). [Suites shipped and proposed](https://github.com/Kentucky-ai/opentakeoff/labels/trade-suite).
+
+        You do not need to write code to fill this in. If you bid the trade, your answers are the part nobody else can supply. Leave out anything private: no client names, prices or plan sheets you cannot share.
+  - type: input
+    id: trade
+    attributes:
+      label: Trade and CSI division
+      placeholder: Masonry, Division 04
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Where you stand
+      options:
+        - I bid this trade
+        - I work in this trade but do not estimate
+        - I build software for this trade
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: traced
+    attributes:
+      label: What you trace or count, and on which sheets
+      description: Areas, lines and counts, in the order you take them off.
+      placeholder: |
+        Wall faces on the exterior elevations, net of openings.
+        Lintels counted off the structural plan.
+    validations:
+      required: true
+  - type: textarea
+    id: documents
+    attributes:
+      label: What you read from the documents
+      description: Values that come from the drawings, schedules or spec. The suite takes these as inputs and never assumes them.
+      placeholder: Unit size and bond from the spec, grout spacing from the structural notes.
+    validations:
+      required: true
+  - type: textarea
+    id: order
+    attributes:
+      label: What you order or price at the end
+      description: The lines on your takeoff sheet, with their units.
+      placeholder: Units (EA), mortar (bags), grout (CY), joint reinforcing (LF), lintels (EA).
+    validations:
+      required: true
+  - type: textarea
+    id: math
+    attributes:
+      label: The arithmetic, on one small example
+      description: A wall, room or run with round numbers, worked by hand. This becomes the suite's first test.
+      placeholder: 30 x 10 ft wall less a 3 x 4 ft opening is 288 SF. At 1.125 units per SF that is 324 units before waste.
+  - type: textarea
+    id: never
+    attributes:
+      label: What a tool must never guess in your trade
+      description: The defaults you would not accept, and the mistakes you have seen software make.
+  - type: textarea
+    id: missing
+    attributes:
+      label: For an existing suite, what it gets wrong or misses
+      description: Name the suite and, if you can, the sheet type and the number you expected.
+  - type: markdown
+    attributes:
+      value: |
+        **Planning to build it?** Read [CLA.md](https://github.com/Kentucky-ai/opentakeoff/blob/main/CLA.md) and post its agreement text yourself, or link your earlier agreement comment. Proposing or discussing a suite does not require signing.

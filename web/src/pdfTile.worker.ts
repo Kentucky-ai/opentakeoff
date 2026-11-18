@@ -26,13 +26,17 @@
 // that parser; no nested worker is created.
 //
 // Protocol:
-//   in : { type:"openSheet", sheetKey, openId, pageNum, data: ArrayBuffer }
+//   in : { type:"openSheet", sheetKey, openId, pageNum, data: ArrayBuffer | Blob, docKey? }
+//        (a Blob is read by byte range, and sheets with one docKey share
+//        this worker's document for those bytes: #580)
 //        { type:"renderTile", reqId, sheetKey, scale, rect:{x,y,w,h}, dark }
+//        { type:"pageText", reqId, pageNum, scale, data: Blob, docKey }
 //        { type:"cancel", reqId }
 //        { type:"closeSheet", sheetKey }
 //   out: { type:"sheetReady", sheetKey, openId } | { type:"sheetError", sheetKey, openId, message }
 //        { type:"tile", reqId, sheetKey, bitmap: ImageBitmap, w, h }
 //        { type:"tileError", reqId, sheetKey, message }
+//        { type:"pageText", reqId, text: { items, viewport } } | { type:"pageTextError", reqId, message }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 if (typeof (Promise as any).withResolvers !== "function") {
@@ -46,6 +50,7 @@ if (typeof (Promise as any).withResolvers !== "function") {
 
 import * as pdfjsLib from "pdfjs-dist";
 import { createTileWorkerCore, type TileMessage } from "./lib/tileWorkerCore";
+import { rangeParams } from "./lib/pdfSource";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -113,7 +118,8 @@ function invertOffscreen(canvas: OffscreenCanvas) {
 
 const core = createTileWorkerCore<pdfjsLib.PDFPageProxy>({
   load: data => pdfjsLib.getDocument({
-    data,
+    // a Blob: only the cross-reference table and this sheet's page are read
+    ...(data instanceof Blob ? rangeParams(pdfjsLib.PDFDataRangeTransport, data) : { data }),
     verbosity: 0,
     CanvasFactory: OffscreenCanvasFactory,
     FilterFactory: WorkerFilterFactory,
@@ -137,5 +143,22 @@ const core = createTileWorkerCore<pdfjsLib.PDFPageProxy>({
     };
   },
   post,
+  // The page's text items and the viewport numbers that place them: all the
+  // main thread's readers (sheet number, plan scale, search index) use.
+  async text(page, scale) {
+    const vp = page.getViewport({ scale });
+    const tc = await page.getTextContent();
+    return { items: tc.items, viewport: { width: vp.width, height: vp.height, transform: vp.transform } };
+  },
+  // A shared document outlives its sheets: free what a closed page cached
+  // for painting (its operator list, its images), which destroying a
+  // private document used to do.
+  cleanup: page => { page.cleanup(); },
+  // Flipping through a set closes one sheet and opens the next a moment
+  // later; the document waits that long for it. Past maxSheets it is
+  // destroyed at the next close instead, which is what bounds the fonts and
+  // byte ranges it has gathered from every page it served.
+  idleMs: 20_000,
+  maxSheets: 24,
 });
 self.onmessage = (e: MessageEvent<TileMessage>) => { void core.handle(e.data); };

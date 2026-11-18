@@ -31,6 +31,8 @@ export function materialForDisplay(m, targetUnit) {
   if (factor === null) return m;
   return { ...m, unit: targetUnit, ...(typeof m.qty === 'number' ? { qty: m.qty * factor } : {}),
     ...(typeof m.per === 'number' ? { per: m.per / factor } : {}),
-    ...(typeof m.price === 'number' ? { price: m.price / factor } : {}) };
+    ...(typeof m.price === 'number' ? { price: m.price / factor } : {}),
+    ...(typeof m.labor_qty === 'number' ? { labor_qty: m.labor_qty * factor } : {}),
+    ...(typeof m.labor_rate === 'number' ? { labor_rate: m.labor_rate / factor } : {}) };
 }
 export const materialRowsForDisplay = (rows, unit) => rows.map(r => ({ ...r, materials: (r.materials || []).map(m => materialForDisplay(m, unit)) }));

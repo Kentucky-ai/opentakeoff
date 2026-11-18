@@ -12,6 +12,7 @@
 //   report_cols/groupby   localStorage (lib/reportColumns.js)
 //   company_profiles      localStorage (lib/identity.js — trade names, logo, contact)
 //   estimating_defaults   localStorage (lib/companySetup.js — markups, proposal text)
+//   assembly_library      localStorage (lib/assemblies.js — saved assemblies, recipes only)
 //
 // Project data (shapes, conditions in the payload, scales, markups) is
 // deliberately NOT here — switching profiles must never touch a takeoff.
@@ -30,6 +31,7 @@ import { activeThemeFileRaw, saveActiveThemeFile, clearActiveTheme } from "./rep
 import { loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy } from "./reportColumns.js";
 import { loadProfiles, saveProfiles } from "./identity.js";
 import { loadEstimatingDefaults, saveEstimatingDefaults, hasEstimatingDefaults } from "./companySetup.js";
+import { loadAssemblies, saveAssemblies } from "./assemblies.js";
 
 export const PROFILE_SCHEMA = "opentakeoff.profile.v1";
 
@@ -65,12 +67,15 @@ export async function buildProfile(name) {
 // Company setup (identity.js trade names + companySetup.js defaults) rides the
 // profile only once the estimator has entered some, so a profile built before
 // any setup stays byte-for-byte what it was.
+// The assembly library follows the same rule: present once one is saved.
 function companySections() {
   const profs = loadProfiles();
   const defaults = loadEstimatingDefaults();
+  const assemblies = loadAssemblies();
   return {
     ...(profs.profiles.length ? { company_profiles: profs } : {}),
     ...(hasEstimatingDefaults(defaults) ? { estimating_defaults: defaults } : {}),
+    ...(assemblies.length ? { assembly_library: assemblies } : {}),
   };
 }
 
@@ -93,7 +98,7 @@ export function parseProfile(text) {
  * REPLACE the working environment with a parsed profile. Each section rides
  * its own sanitize gate; absent sections clear to their defaults, so applying
  * a profile always lands the full, self-consistent environment it describes.
- * @returns {{ templates: number, materials: number, stamps: number, reportTemplates: number, company: boolean }} counts for the receipt line
+ * @returns {{ assemblies: number|null, templates: number, materials: number, stamps: number, reportTemplates: number, company: boolean }} counts for the receipt line (assemblies null = section absent, library untouched)
  */
 export async function applyProfile(p) {
   const templates = sanitizeTemplates(p.condition_templates);
@@ -112,7 +117,10 @@ export async function applyProfile(p) {
   // name, logo and proposal terms. Present → replaced (each through its gate).
   const company = Array.isArray(p.company_profiles?.profiles) && saveProfiles(p.company_profiles);
   const estimating = Boolean(p.estimating_defaults && typeof p.estimating_defaults === "object") && saveEstimatingDefaults(p.estimating_defaults);
+  // assemblies: the same exception — a profile without the section leaves the library alone
+  if (Array.isArray(p.assembly_library)) saveAssemblies(p.assembly_library);
   return {
+    assemblies: Array.isArray(p.assembly_library) ? loadAssemblies().length : null,
     templates: templates.length,
     materials: materials.length,
     stamps: (stamps.stamps || []).length,
@@ -134,4 +142,5 @@ export async function resetProfileDefaults() {
   clearActiveTheme();
   saveColPrefs({});
   saveGroupBy("");
+  saveAssemblies([]);
 }

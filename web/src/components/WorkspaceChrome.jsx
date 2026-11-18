@@ -2,7 +2,7 @@ import { localizeText as uiText } from "../lib/i18n/core.js";
 import { useTranslation } from "../lib/i18n/index.jsx";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { ScanStar } from "../brand/marks.jsx";
+import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import { keyText } from "../lib/keys.ts";
 import { SheetTree } from "./SheetTree.jsx";
 import "./workspaceChrome.css";
@@ -10,15 +10,14 @@ import "./workspaceChrome.css";
 // Workspace chrome. All actions are supplied by the existing canvas;
 // this component owns only navigation, search and disclosure state.
 export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onTakeoffs, takeoffsOpen,
-  onPremium, onWork, workOpen, workButtonRef, pending, running, onReport, onEstimate, onFocus, onClassic,
+  onWork, workOpen, workButtonRef, pending, running, onReport, onEstimate, onFocus, onClassic,
   languageControl, onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, helpMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
   const { t: tr } = useTranslation();
   return <>
     <header className="calm-header">
-      <strong className="calm-brand"><ScanStar size={15} reach={1.6} working={running} />open<span>takeoff</span></strong>
+      <strong className="calm-brand" title={tr("OpenTakeoff")}><OtLockup size={15} />{running && <ScanStar size={13} reach={1.6} working style={{ marginLeft: 8, color: "var(--cobalt)" }} title={tr("The agent is working")} />}</strong>
       <div className="calm-project" title={title}><span>{title || tr("Untitled workspace")}</span><small>{tr("Premium workspace")}</small></div>
       <div className="calm-header-actions">
-
         <button type="button" onClick={onOpen} title={tr("Open plans")}><Icon name="plus" size={16} /><span>{tr("Open")}</span></button>
         {uiText(fileMenu)}
         <button type="button" aria-pressed={navigationOpen} onClick={onNavigate}><Icon name="sheets" size={16} />{tr("Sheets")}</button>
@@ -29,7 +28,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
         {uiText(panelTools)}
         {onEstimate && <button type="button" onClick={onEstimate} title={tr("Price the takeoff: material and labor per unit, markups, Excel")}>{tr("Estimate")}</button>}
         <button type="button" onClick={onReport} className="calm-report" data-tour="report"><Icon name="document" size={16} />{tr("Report")}</button>
-        {uiText(layoutMenu)}{uiText(helpMenu)}{uiText(languageControl)}<button type="button" className="calm-premium" data-premium-trigger onClick={onPremium}>{tr("Premium plans")}</button><button type="button" onClick={onClassic} className="calm-classic" title={tr("Return to the current layout without reloading the plan")}>{tr("Classic layout")}</button>
+        {uiText(layoutMenu)}{uiText(helpMenu)}{uiText(languageControl)}<button type="button" onClick={onClassic} className="calm-classic" title={tr("Return to the current layout without reloading the plan")}>{tr("Classic layout")}</button>
       </div>
     </header>
     <div className="calm-context" aria-label={tr("Current drawing settings")}>
@@ -42,16 +41,22 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
   </>;
 }
 
-export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle, namer = null, countKnown = () => true, hold }) {
+export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle, namer = null, countKnown = () => true, hold, onReorderPages, onRotatePage, onDeletePage }) {
   const { t: tr } = useTranslation();
   const [query, setQuery] = useState("");
   return <aside className="calm-navigator" data-dock-side={dockSide} style={{ width, order: dockSide === "right" ? 20 : -20 }} hidden={!open} aria-label={tr("Sheet navigator")} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
     <header>{uiText(dockHandle)}<strong>{tr("Sheets")} <small>{uiText(items.length)}</small></strong><button type="button" aria-label={tr("Close sheet navigator")} onClick={onClose}>×</button></header>
     <label><Icon name="search" size={15} /><input name="workspace-sheet-search" aria-label={tr("Find a sheet")} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tr("Find a sheet…")} /></label>
-    <SheetTree items={items} current={current} onSelect={onSelect} namer={namer} countKnown={countKnown} query={query} hold={hold} onSearchAll={onGallery} />
+    <SheetTree items={items} current={current} onSelect={onSelect} namer={namer} countKnown={countKnown} query={query} hold={hold} onSearchAll={onGallery} onReorderPages={onReorderPages} onRotatePage={onRotatePage} onDeletePage={onDeletePage} />
     <footer><button type="button" onClick={onGallery}><Icon name="sheets" size={16} />{tr("Open visual gallery")}</button></footer>
   </aside>;
 }
+
+// Row ids are built from the row's POSITION, not its action id: action ids carry
+// raw labels such as `scale-1/8" = 1'-0"`, and an id with quotes and spaces is
+// not a valid CSS selector — label[for=…] / #id lookups throw on it, which broke
+// page inspection (and the accessibility-tree readers built on it) app-wide.
+const actionDomId = (i) => `workspace-action-row-${i}`;
 
 export function WorkspaceCommandMenu({ open, onClose, actions, onOpenChange }) {
   const { t: tr } = useTranslation();
@@ -70,9 +75,9 @@ export function WorkspaceCommandMenu({ open, onClose, actions, onOpenChange }) {
   useEffect(() => { dialogRef.current?.querySelector(".is-highlighted")?.scrollIntoView({ block: "nearest" }); }, [index]);
   const run = (row) => { if (row && !row.disabled) { onClose(); row.run(); } };
   return <dialog ref={dialogRef} className="calm-command-menu" onKeyDown={(e) => e.stopPropagation()} aria-label={tr("Find an action")} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === e.currentTarget) { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose(); } }}>
-    <header><Icon name="search" size={18} /><input name="workspace-action-search" role="combobox" aria-autocomplete="list" aria-expanded={true} aria-controls="workspace-action-results" aria-activedescendant={rows[index] ? `workspace-action-${rows[index].id}` : undefined} aria-label={tr("Search actions")} autoFocus value={query} placeholder={tr("Find a tool, sheet, or action…")} onChange={(e) => { setQuery(e.target.value); setIndex(0); }}
+    <header><Icon name="search" size={18} /><input name="workspace-action-search" role="combobox" aria-autocomplete="list" aria-expanded={true} aria-controls="workspace-action-results" aria-activedescendant={rows[index] ? actionDomId(index) : undefined} aria-label={tr("Search actions")} autoFocus value={query} placeholder={tr("Find a tool, sheet, or action…")} onChange={(e) => { setQuery(e.target.value); setIndex(0); }}
       onKeyDown={(e) => { if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))); } else if (e.key === "Enter") { e.preventDefault(); run(rows[index]); } }} /><button type="button" aria-label={tr("Close action search")} onClick={onClose}>{uiText("Esc")}</button></header>
-    <div className="calm-command-results" id="workspace-action-results" role="listbox" aria-label={tr("Actions")}>{rows.map((row, i) => <button type="button" role="option" tabIndex={-1} aria-selected={i === index} id={`workspace-action-${row.id}`} key={row.id} className={i === index ? "is-highlighted" : ""} disabled={row.disabled} onMouseEnter={() => setIndex(i)} onClick={() => run(row)}><span>{uiText(row.label)}<small>{uiText(row.group)}</small></span>{row.shortcut && <kbd>{keyText(uiText(row.shortcut))}</kbd>}</button>)}{!rows.length && <p>{tr("No matching action. Try “scale”, “import”, or a tool name.")}</p>}</div>
+    <div className="calm-command-results" id="workspace-action-results" role="listbox" aria-label={tr("Actions")}>{rows.map((row, i) => <button type="button" role="option" tabIndex={-1} aria-selected={i === index} id={actionDomId(i)} key={row.id} className={i === index ? "is-highlighted" : ""} disabled={row.disabled} onMouseEnter={() => setIndex(i)} onClick={() => run(row)}><span>{uiText(row.label)}<small>{uiText(row.group)}</small></span>{row.shortcut && <kbd>{keyText(uiText(row.shortcut))}</kbd>}</button>)}{!rows.length && <p>{tr("No matching action. Try “scale”, “import”, or a tool name.")}</p>}</div>
     <footer>{tr("↑ ↓ to choose · Enter to run · Esc to close")}</footer>
   </dialog>;
 }

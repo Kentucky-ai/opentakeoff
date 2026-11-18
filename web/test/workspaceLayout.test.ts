@@ -8,7 +8,9 @@ test('a locked layout rejects a pending drag, unlocking allows a valid dock only
   assert.equal(moveDock(unlocked, 'tools', 'right').tools, 'right');
   assert.deepEqual(moveDock(unlocked, 'tools', 'offscreen'), unlocked);
   assert.deepEqual(moveDock(unlocked, 'unknown-panel', 'right'), unlocked);
-  assert.equal(unlocked.tools, 'left');
+  assert.equal(unlocked.tools, 'bottom');
+  assert.equal(moveDock(unlocked, 'tools', 'bottom').tools, 'bottom');
+  assert.equal(moveDock(unlocked, 'work', 'bottom').work, 'right');
 });
 test('corrupt, obsolete and out-of-bounds personal layouts recover to usable defaults', () => {
   for (const raw of ['oops', 'null', '{}', '{"version":2,"enabled":true}']) {
@@ -41,4 +43,13 @@ test('premium is the default while a saved Classic choice survives reload', () =
   assert.equal(classic.enabled, false);
   assert.equal(readWorkspacePreferences(JSON.stringify(classic)).enabled, false);
   assert.equal(classic.layout.look, 'light');
+});
+
+test('the tool dock defaults to the canvas foot, and an old saved left is moved there once', () => {
+  assert.equal(DEFAULT_LAYOUT.tools, 'bottom');
+  const old = readWorkspacePreferences(JSON.stringify({ version: 1, layout: { tools: 'left' } }));
+  assert.equal(old.layout.tools, 'bottom');
+  const chosen = readWorkspacePreferences(JSON.stringify({ ...old, layout: { ...old.layout, tools: 'left' } }));
+  assert.equal(chosen.layout.tools, 'left');   // chosen after the move: kept
+  assert.equal(readWorkspacePreferences(JSON.stringify({ version: 1, layout: { tools: 'right' } })).layout.tools, 'right');
 });

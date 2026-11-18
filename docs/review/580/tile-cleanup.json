@@ -1,0 +1,97 @@
+{
+  "browser": "157.0.8103.78",
+  "plan": "bundled sample-finish-plan.pdf",
+  "layout": "Classic",
+  "workers": 5,
+  "snapshots": [
+    {
+      "flips": 0,
+      "fonts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "canvases": [
+        {
+          "width": 6048,
+          "height": 4320,
+          "sha256": "215aaee30789dd85cef274359bb73e9fe0f028775da9196525782ee6f10fc92a"
+        },
+        {
+          "width": 300,
+          "height": 150,
+          "sha256": "ec5a689d3fdf19351fc26dadaae55e6968fe42c9d18d760dd35f74981bd20115"
+        }
+      ]
+    },
+    {
+      "flips": 1,
+      "fonts": [
+        10,
+        10,
+        10,
+        10,
+        10
+      ],
+      "canvases": [
+        {
+          "width": 6048,
+          "height": 4320,
+          "sha256": "a0a011e4538bb3b4977ffcd8684f11f26047930e94a4505c1ffe041823063e17"
+        },
+        {
+          "width": 300,
+          "height": 150,
+          "sha256": "ec5a689d3fdf19351fc26dadaae55e6968fe42c9d18d760dd35f74981bd20115"
+        }
+      ]
+    },
+    {
+      "flips": 10,
+      "fonts": [
+        10,
+        10,
+        10,
+        10,
+        10
+      ],
+      "canvases": [
+        {
+          "width": 6048,
+          "height": 4320,
+          "sha256": "215aaee30789dd85cef274359bb73e9fe0f028775da9196525782ee6f10fc92a"
+        },
+        {
+          "width": 300,
+          "height": 150,
+          "sha256": "ec5a689d3fdf19351fc26dadaae55e6968fe42c9d18d760dd35f74981bd20115"
+        }
+      ]
+    },
+    {
+      "flips": 30,
+      "fonts": [
+        10,
+        10,
+        10,
+        10,
+        10
+      ],
+      "canvases": [
+        {
+          "width": 6048,
+          "height": 4320,
+          "sha256": "215aaee30789dd85cef274359bb73e9fe0f028775da9196525782ee6f10fc92a"
+        },
+        {
+          "width": 300,
+          "height": 150,
+          "sha256": "ec5a689d3fdf19351fc26dadaae55e6968fe42c9d18d760dd35f74981bd20115"
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

@@ -1,61 +1,67 @@
-/* Design tokens — single source of truth, byte-synced between OpenTakeoff and Spline (npm run styles:sync). Change the look here.
-   Brand (2026-08): precision-instrument UI. Light = "ice" — bright white
-   surfaces on a cool field, deep teal the one saturated thing. Dark = "HUD" —
-   true-black cockpit, patch cyan, phosphor glow on the active instrument.
-   2026-10-21: the accent moved from cobalt/electric blue to the Kentucky AI patch
-   cyan (#62d4dc; deep teal #0e636b where it carries white text on light).
-   The --cobalt names are kept so nothing downstream has to change. */
+/* Design tokens — the single source of truth for colour, type, spacing and motion. Change the look here.
+   Brand (2026-11): the OT-01 spec-sheet system, the same look as OpenTakeoff Premium so the open
+   source and Premium read as one product. Dark = the kentucky-ai.com palette: cool patch-black,
+   cream ink, patch cyan #62d4dc. Light = its paper counterpart: warm cream stock, near-black ink,
+   the same cyan (deepened to teal #0e636b where it carries text). Type: Inter Tight for text,
+   Space Mono for labels and numbers. Role names are kept so nothing downstream changes:
+   --cobalt is the ACCENT; paper-bright = base surface, paper-cream = raised card,
+   paper-shadow = hover/pressed. (Was byte-synced with Spline; this file now follows Premium.) */
 
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
   /* surfaces — role names kept from the paper era: bright = base surface,
      cream = raised card, shadow = hover/pressed */
-  --paper-cream: #ffffff;        /* raised card / panel */
-  --paper-bright: #fafcfe;       /* base surface / chrome */
-  --paper-shadow: #e3e9f1;       /* hover / pressed */
+  --paper-cream: #fbf8f0;        /* raised card / panel */
+  --paper-bright: #f4efe3;       /* base surface / chrome */
+  --paper-shadow: #e9e2d0;       /* hover / pressed */
 
   /* ink — cool near-black */
-  --ink:        #0d1526;
-  --ink-soft:   #2a3a52;
-  --ink-muted:  #5c6b82;         /* mono labels */
-  --ink-faint:  #d8e0ec;         /* hairlines */
+  --ink:        #161a1b;
+  --ink-soft:   #343a3b;
+  --ink-muted:  #59625f;         /* mono labels */
+  --ink-faint:  #d3cbb6;         /* hairlines */
 
   /* primary accent */
   --cobalt:     #0e636b;
   --cobalt-deep:#0a4d53;
+  --accent-fill: #62d4dc;        /* patch-cyan surface primary buttons sit on */
+  --accent-fill-hover: #97e6eb;
+  --accent-fill-ink: #111111;    /* text on --accent-fill */
+  --mark: #1f9aa5;               /* the OT scanline mark */
+  --c-aid:      #c4189a;         /* fill aids (split / exclude) — never reads as a takeoff */
 
   /* terrazzo confetti — substrate variant only */
-  --fleck-rust:  #c4502a;
-  --fleck-ochre: #d99a2a;
-  --fleck-moss:  #1f6b4a;
-  --fleck-blue:  #1f3fc7;
+  --fleck-rust:  #0e636b;
+  --fleck-ochre: #c98a1a;
+  --fleck-moss:  #3d6b4a;
+  --fleck-blue:  #4a86ff;
 
   /* semantic — values match the sanctioned SVG literals (lib/ui.js SVG.*) */
-  --c-positive: #1f6b4a;
-  --c-warning:  #c47a10;
-  --c-danger:   #b03a26;
+  --c-positive: #2f6b42;
+  --c-warning:  #8a5a00;
+  --c-danger:   #b3321c;
 
   /* chrome theming — novel colors pulled out of inline styles */
-  --ink-secondary: #4e5d73;      /* secondary readout text */
-  --text-faint:    #8b99ac;      /* faint text/fills — --ink-faint stays hairline-only */
-  --tint-select:   #e3f3f4;      /* checked-row accent tint */
-  --tint-active:   #edf6f1;      /* active-row green tint */
-  --surface-pop:   #ffffff;      /* active chip / lifted fills */
+  --ink-secondary: #49514f;      /* secondary readout text */
+  --text-faint:    #737c79;      /* faint text/fills — --ink-faint stays hairline-only */
+  --tint-select:   #d7ecec;      /* checked-row accent tint */
+  --tint-active:   #e4eddc;      /* active-row green tint */
+  --surface-pop:   #fffdf8;      /* active chip / lifted fills */
   --well:          #ffffff;      /* media wells (PDF thumbs, stamp previews) — light in ALL themes */
   --accent-contrast: #ffffff;    /* text/rules on cobalt surfaces */
-  --hairline-warm: #f0e2c8;      /* calibration-prompt border — stays amber-warm on purpose */
-  --divider-soft:  #e7ecf3;      /* readout divider fill */
-  --scrim:         rgba(13, 21, 38, .45);
-  --shadow-pop:    0 6px 22px rgba(13, 21, 38, .14);
+  --hairline-warm: #e8d9b8;      /* calibration-prompt border — stays amber-warm on purpose */
+  --divider-soft:  #e4dcc8;      /* readout divider fill */
+  --scrim:         rgba(22, 26, 27, .5);
+  --shadow-pop:    0 6px 22px rgba(22, 26, 27, .16);
   --grain-rgb:     0, 0, 0;      /* paper-grain channel triplet */
   --grain-inverse-rgb: 255, 255, 255;
 
   /* type */
-  --f-display: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
-  --f-body:    "Inter", system-ui, sans-serif;
-  --f-mono:    "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
-  --f-mono-draft: "Space Mono", "JetBrains Mono", ui-monospace, monospace;
+  --f-display: "Inter Tight", system-ui, -apple-system, sans-serif;
+  --f-body:    "Inter Tight", system-ui, -apple-system, sans-serif;
+  --f-mono:    "Space Mono", ui-monospace, Menlo, monospace;
+  --f-mono-draft: "Space Mono", ui-monospace, Menlo, monospace;
 
   /* hairlines */
   --rule: 1px solid var(--ink);
@@ -71,11 +77,11 @@
 
   /* depth — shadow-1 = resting chrome; shadow-2 = floating (sheet card,
      popovers, modals). Nothing else. --shadow-pop is a legacy alias. */
-  --shadow-1: 0 1px 2px rgba(13, 21, 38, .05), 0 2px 8px rgba(13, 21, 38, .05);
-  --shadow-2: 0 12px 36px rgba(13, 21, 38, .16);
+  --shadow-1: 0 1px 2px rgba(22, 26, 27, .05), 0 2px 8px rgba(22, 26, 27, .05);
+  --shadow-2: 0 12px 36px rgba(22, 26, 27, .18);
 
   /* focus ring — translucent cobalt, sits outside the border */
-  --ring: 0 0 0 3px rgba(14, 99, 107, .18);
+  --ring: 0 0 0 3px rgba(14, 99, 107, .22);
 
   /* ── instrument scales (2026-08 overhaul) ─────────────────────────── */
   /* spacing — strict 4px grid; 2px stays a literal for hairline nudges */
@@ -97,7 +103,7 @@
      chrome (chips, tooltips, keycaps, qty tags, rail tiles). Panels,
      cards, buttons, inputs stay 0. */
   --r-0: 0;
-  --r-1: 3px;
+  --r-1: 2px;
 
   /* ergonomic control faces */
   --ctl-s: 26px;   /* compact: zoom steppers, tab close */
@@ -108,7 +114,7 @@
   --topbar-h: 44px; --rail-w: 56px; --props-w: 264px; --status-h: 28px;
 
   /* canvas stage — one step below chrome so sheets read as objects */
-  --stage: #edf1f7;
+  --stage: #e8e1cf;
 
   /* accent tints — hover / selected fills */
   --tint-08: rgba(14, 99, 107, .07);
@@ -119,8 +125,8 @@
   --glow: none;
 
   /* status bar (instrument strip) — dark ink even in light theme */
-  --status-bg: #0d1526;
-  --status-fg: #e8eef8;
+  --status-bg: #161a1b;
+  --status-fg: #e8ecea;
   --status-acc: #97e6eb;
 }
 
@@ -140,49 +146,51 @@
   :root[data-theme="dark"] {
     color-scheme: dark;
 
-    /* cockpit surfaces */
-    --paper-bright: #030405;
-    --paper-cream:  #07090c;
-    --paper-shadow: #12161c;
+    /* kentucky-ai.com surfaces */
+    --paper-bright: #0c0e0f;
+    --paper-cream:  #111415;
+    --paper-shadow: #171b1c;
 
     /* ink → cool phosphor text */
-    --ink:        #d6e2f2;
-    --ink-soft:   #a9bbd2;
-    --ink-muted:  #566476;
-    --ink-faint:  #161c24;     /* hairlines only — fails contrast as text */
-    --text-faint: #7e8ca0;
+    --ink:        #e8ecea;
+    --ink-soft:   #c5ccca;
+    --ink-muted:  #9ba4a1;
+    --ink-faint:  #2f3739;     /* hairlines only — fails contrast as text */
+    --text-faint: #848e8b;
 
-    /* accent → true HUD blue */
+    /* accent → patch cyan */
     --cobalt:      #62d4dc;
     --cobalt-deep: #97e6eb;
+    --mark:        #62d4dc;
+    --c-aid:       #f05cc8;
 
     /* semantics, lifted for black */
-    --c-positive: #35d48f;
-    --c-warning:  #ffae42;
-    --c-danger:   #ff6b57;
+    --c-positive: #7fcf9c;
+    --c-warning:  #f0b24a;
+    --c-danger:   #ff7b63;
 
-    --ink-secondary:   #8fa0b8;
-    --tint-select:     #0a1a1c;
-    --tint-active:     #0a1f18;
-    --surface-pop:     #0e1420;
+    --ink-secondary:   #9ba4a1;
+    --tint-select:     #0f2427;
+    --tint-active:     #16231a;
+    --surface-pop:     #171b1c;
     /* --well stays white: PDF thumbnails and stamp previews are light media */
-    --accent-contrast: #000000;
-    --hairline-warm:   #3a2e14;
-    --divider-soft:    #12181f;
-    --scrim:           rgba(0, 0, 0, .65);
+    --accent-contrast: #111111;
+    --hairline-warm:   #2f3739;
+    --divider-soft:    #20272a;
+    --scrim:           rgba(0, 0, 0, .66);
 
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .5);
-    --shadow-2: 0 0 0 1px #161c24, 0 14px 44px rgba(0, 0, 0, .85);
-    --shadow-pop: 0 0 0 1px #161c24, 0 6px 22px rgba(0, 0, 0, .7);
-    --ring: 0 0 0 3px rgba(98, 212, 220, .7);   /* the ring is the only focus indicator */
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .4);
+    --shadow-2: 0 0 0 1px #2f3739, 0 14px 44px rgba(0, 0, 0, .8);
+    --shadow-pop: 0 0 0 1px #2f3739, 0 6px 22px rgba(0, 0, 0, .6);
+    --ring: 0 0 0 3px rgba(98, 212, 220, .5);   /* the ring is the only focus indicator */
 
-    --stage: #000000;
-    --tint-08: rgba(98, 212, 220, .10);
-    --tint-14: rgba(98, 212, 220, .20);
-    --glow: 0 0 9px rgba(98, 212, 220, .55);
+    --stage: #08090a;
+    --tint-08: rgba(98, 212, 220, .09);
+    --tint-14: rgba(98, 212, 220, .18);
+    --glow: none;
 
-    --status-bg: #000000;
-    --status-fg: #a9c3e6;
+    --status-bg: #08090a;
+    --status-fg: #e8ecea;
     --status-acc: #97e6eb;
 
     --grain-rgb: 255, 255, 255;

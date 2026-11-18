@@ -193,6 +193,8 @@ function ProjectHomeGate() {
 //   • permission lapsed  → a one-click re-grant screen (requestPermission
 //     needs a user gesture, so boot can only ask via a button)
 //   • handle dead        → say so, offer "work locally" and "forget folder"
+//   • browser silent     → the same screen: a permission query that never
+//     answers is treated as an unreachable folder after a short wait
 function FolderGate() {
   // status: checking | plain | building | ready | prompt | dead
   const [status, setStatus] = useState("checking");
@@ -255,6 +257,12 @@ function FolderGate() {
       const perm = await queryFolderPermission(l.handle);
       if (!live) return;
       if (perm === "granted") await install(l);
+      else if (perm === "unresponsive") {
+        // The browser never answered about this folder. Without this branch
+        // the gate stays on "checking" and the page is blank with no message.
+        setErr("The browser did not answer when asked about this folder.");
+        setStatus("dead");
+      }
       else setStatus("prompt"); // "denied" also lands here — the button re-asks
     })();
     // Uninstall on unmount so leaving the route restores the plain local store

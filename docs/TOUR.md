@@ -255,7 +255,8 @@ cost/schedule impact flags, exporting as CSV/JSON and as an RFI schedule page in
 ### The Agent panel, in the browser
 Choose **Work** to inspect canvas and imported agent measurements together: search across
 sheets, locate boundaries, inspect provenance, and record an undoable review. Its **Agent**
-tab runs the browser agent. Imported takeoffs need no model connection to review.
+tab is a chat window for the browser agent, saved per project in this browser. Imported
+takeoffs need no model connection to review.
 The same proposer/reviewer split as MCP without leaving the canvas: describe a takeoff in a
 sentence and a model—**yours**, on your key, from your browser—works the sheet with the
 app's own deterministic tools and stages dashed proposals you accept, correct, or reject. It
@@ -308,14 +309,16 @@ app's own tools at it. Open the **Agent** panel and its AI settings, and point i
 **OpenAI-style** endpoint (the default; local runtimes on your own machine speak it and need no
 key) or an **Anthropic-style** one, plus a vision-capable model id.
 
-- **What's sent, and only while a run you started is going:** your goal, the prompts, and what
-  the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF
+- **What's sent, and only while a run you started is going:** your message, the earlier
+  questions and answers in this project's chat, the sheet you're looking at, the prompts, and
+  what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF
   file name), each sheet's size and scale status, the text and schedule rows it reads, and
   images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It
   also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it
   measures. This list isn't complete. Never the whole plan file.
 - **Nothing configured = nothing sent.** Unconfigured builds make zero AI network calls; the
-  Agent panel only offers AI settings. No telemetry either way.
+  Agent chat only offers AI settings (and Connect your AI for MCP clients). No telemetry
+  either way.
 - Shapes the agent finds are **proposals**: each one waits, dashed, until you accept it.
   Conditions it creates are added to your list right away.
 - The key is stored in this browser's localStorage—use one you can revoke. Deployers:
@@ -347,8 +350,7 @@ uploads, and no feature is gated on an operating system.
 
 The **Premium workspace** offers compact controls, searchable actions and sheets, personal panel arrangements, adjustable surfaces and larger sheet previews. It is the default when this browser has no saved layout choice; **Classic layout** remains available. [See the workspace design and research](design/PERSONAL_WORKSPACE.md).
 
-Sheet navigation releases closed PDFs and embedded fonts from the tile workers;
-see the [30-flip rendering check](review/508/README.md).
+A stored PDF is read by byte range: opening a sheet reads the file's index and that sheet's page, not the whole set, and the tile workers share the one stored copy. Each worker keeps a file's document across sheet flips, releases it 20 seconds after its last sheet closes, and starts a fresh one every 24 sheets, so what it holds (fonts, page data) stays bounded; see the [30-flip rendering check](review/508/README.md) and the [large-set benchmark](../web/bench/largeset/README.md).
 Beyond the PDFs in open tabs, at most four idle PDFs stay loaded (two on
 a phone or tablet, or a browser that reports 4 GB of memory or less), least recently used out first; see the [12-PDF check](review/302-doc-lru/README.md).
 

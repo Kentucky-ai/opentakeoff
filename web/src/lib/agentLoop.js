@@ -13,6 +13,12 @@ import { oneClickEnabled } from "./gate.js";
 //     carry tool_calls, results go back as role:"tool" messages (+ a follow-up
 //     user message for image results, which the tool role can't carry).
 //
+// Streaming: each request asks the endpoint to stream (ai.js falls back to a
+// plain request where it can't). Answer text goes out as it is written —
+// onEvent {type:"text_delta", text} per piece — and the reply's whole text
+// still follows as {type:"text"} once it's complete. Tool calls are only
+// executed once the reply has fully arrived; Stop (signal) aborts mid-stream.
+//
 // Failure contract: NOTHING here throws to the caller. A transport error, a
 // malformed model reply, an abort, or the iteration cap all surface as an
 // onEvent + a terminal {status: "error" | "aborted" | "max_iterations"} —
@@ -36,6 +42,8 @@ export function agentSystemPrompt() {
     "- NEVER assume a scale. If a sheet has no scale set, report that (the tool refusal tells you) and stop work on that sheet — the estimator must calibrate it.",
     `- Every proposal MUST cite evidence: the schedule row tag and/or the exact matched text token (a room tag or schedule cell) and/or the ${oneClick ? "one_click seed" : "seed point you measured from"}. propose_shapes rejects uncited shapes.`,
     "- You stage proposals only. A human reviews every shape at the accept gate; nothing you do commits a takeoff.",
+    "",
+    "This is a chat: earlier messages in the conversation may come first. A question that needs no tools gets a short, direct answer. Write answers in plain markdown (short paragraphs, lists, **bold** for codes and quantities).",
     "",
     `Working method: list_sheets first. Read the finish schedule (read_schedule) or the sheet text (read_sheet_text) to ground WHAT to take off; use view_region to look at raster or ambiguous areas. Match or create conditions, ${oneClick ? "measure rooms with one_click" : "trace each room's wall faces from view_region"}, then stage propose_shapes with evidence. Then summarize what you proposed and what you could not do, and stop. If you are blocked (no scale, sheet not open, nothing matches), say so plainly and stop rather than guessing.`,
   ].join("\n");
@@ -126,26 +134,45 @@ function appendToolResults(provider, messages, results) {
   }
 }
 
+// Earlier chat turns (lib/agentChat historyMessages) ride ahead of the new
+// goal as plain text messages — never tool traffic. Both protocols want
+// strict user/assistant alternation that starts with "user" and, since the
+// goal is appended as a user message, ends with "assistant"; anything that
+// breaks that shape is dropped here rather than sent.
+export function priorMessages(history) {
+  const out = [];
+  for (const m of Array.isArray(history) ? history : []) {
+    if (!m || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || !m.content.trim()) continue;
+    const want = out.length % 2 === 0 ? "user" : "assistant";
+    if (m.role !== want) continue;
+    out.push({ role: m.role, content: m.content });
+  }
+  if (out.length % 2 === 1) out.pop();   // a dangling user message would double up with the goal
+  return out;
+}
+
 // ── the loop ─────────────────────────────────────────────────────────────────
 /**
  * @param {{
  *   cfg: { endpoint: string, apiKey?: string, model: string, provider?: string },
  *   goal: string,
+ *   history?: Array<{ role: "user" | "assistant", content: string }>,
  *   tools: Array<{ name: string, description: string, input_schema: any }>,
  *   execute: (name: string, args: any) => Promise<any> | any,
  *   onEvent?: (ev: Record<string, any>) => void,
  *   signal?: AbortSignal,
  *   maxIterations?: number,
  *   fetchFn?: typeof fetch,
+ *   stream?: boolean,
  * }} opts
  * @returns {Promise<{ status: "done" | "aborted" | "error" | "max_iterations", text?: string, message?: string, iterations: number }>}
  */
-export async function runAgentLoop({ cfg, goal, tools, execute, onEvent, signal, maxIterations = MAX_AGENT_ITERATIONS, fetchFn }) {
+export async function runAgentLoop({ cfg, goal, history, tools, execute, onEvent, signal, maxIterations = MAX_AGENT_ITERATIONS, fetchFn, stream = true }) {
   const provider = cfg?.provider === "anthropic" ? "anthropic" : "openai";
   const emit = (ev) => { try { onEvent?.(ev); } catch { /* a status listener must never kill the run */ } };
   const providerTools = toProviderTools(provider, tools);
   const system = agentSystemPrompt();
-  const messages = [{ role: "user", content: goal }];
+  const messages = [...priorMessages(history), { role: "user", content: goal }];
   let iterations = 0;
   const aborted = () => { emit({ type: "aborted" }); return { status: /** @type {const} */ ("aborted"), iterations }; };
 
@@ -153,7 +180,10 @@ export async function runAgentLoop({ cfg, goal, tools, execute, onEvent, signal,
     if (signal?.aborted) return aborted();
     let json;
     try {
-      json = await chatWithTools({ cfg, system, messages, tools: providerTools, signal, fetchFn });
+      json = await chatWithTools({
+        cfg, system, messages, tools: providerTools, signal, fetchFn, stream,
+        onTextDelta: (text) => { if (!signal?.aborted) emit({ type: "text_delta", text }); },
+      });
     } catch (e) {
       if (signal?.aborted || e?.name === "AbortError") return aborted();
       const message = String((e && e.message) || e);

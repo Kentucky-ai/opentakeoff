@@ -96,6 +96,18 @@ You should get two sheets: **AF101** at **1/8" = 1'-0"** and **AF600** with no s
 A detected scale is not yet a set scale; setting it is the first step of every takeoff. From there, the [agent manual](AGENT_GUIDE.md) is how a full takeoff
 runs, and [MCP.md](MCP.md) walks the whole tool surface.
 
+## Talk to your AI from inside the canvas (Assistant window)
+
+Once OpenTakeoff is connected to your AI app, you can talk to that same AI from the canvas's **Assistant** window (right edge of the canvas, or **Help → Assistant**). No API key: the model runs in the app you already use, on your own plan.
+
+1. In your AI app, say: **Open the OpenTakeoff assistant**. It calls `assistant_open` and gives you a link and a 6-character code.
+2. Open the link (it pairs the window automatically), or type the code into the Assistant window.
+3. Type in the window. Your AI answers there, every tool it calls shows up as it works, and the window says which AI is answering (for example, "Powered by Claude Code").
+
+After 10 quiet minutes your AI stops listening, so an idle window doesn't use up your plan. Say **listen** in your AI app to bring it back.
+
+The link is private to your computer: the MCP server listens only on `127.0.0.1` (ports 47615–47619), accepts only the OpenTakeoff app's own web address, and needs the one-time code before it carries a single message. It needs the `opentakeoff-mcp` release that adds the `assistant_*` tools (the first after 0.9.103).
+
 ## Good to know
 
 - **Where your plans go.** The server reads and writes files on your computer only. What

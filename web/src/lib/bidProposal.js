@@ -7,10 +7,14 @@
 // exclusions can change without touching the firm's defaults:
 //   { itemized, scope_note, inclusions, exclusions, terms, valid_days }
 //
-// Prices come from priceEstimate() (lib/estimate.js). An itemized proposal
+// Prices come from priceEstimate() (lib/estimate.js). The scope lists every
+// estimate line — a condition carrying SF, LF and EA is three scope rows, each
+// with its own measured quantity and unit. An itemized proposal
 // shows each line's SELL price: the base bid spread over the lines in
 // proportion to their cost, in cents, the rounding remainder on the largest
-// line, so the printed lines always add up to the printed base bid.
+// line, so the printed lines always add up to the printed base bid. A bordered
+// run's optional derived line that nobody priced is carried in the main line's
+// price, so it prints "Included" rather than a $0.00 that reads like a mistake.
 
 import { round2 } from "./num.js";
 import { TEXT_FIELDS, TEXT_LIMIT, DEFAULT_VALID_DAYS } from "./companySetup.js";
@@ -87,6 +91,7 @@ export function buildBidProposal({ est, conditions = [], company = {}, clientInf
     scope: est.lines.map((l, i) => ({
       tag: l.finish_tag, description: scopeDescription(byId.get(l.id)),
       qty: l.labor_qty, unit: l.unit, price: sell[i],
+      ...(l.status === "optional" && !(sell[i] > 0) ? { included: true } : {}),
     })),
     base_bid: est.total,
     scope_note: p.scope_note.trim(),

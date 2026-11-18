@@ -390,11 +390,10 @@ const cases = {
     await writeFile(right, await readFile(plan));
     t.extraPlans = [right];
     record.shapes[0].sheet_id = "stitch:fixture";
-    record.sheets.push({ sheet_id: "stitch:fixture", units_per_px: 0.1, scale_confirmed: false });
+    record.sheets.push({ sheet_id: "stitch:fixture", units_per_px: 0.1, scale_source: "upp", scale_confirmed: false });
     const { exported } = await roundtrip(await archive(record), t);
-    assert.deepEqual(exported.shapes, record.shapes); assert.equal(exported.stitches, undefined);
-    assert.equal(exported.sheets.some(x => x.sheet_id === "stitch:fixture"), false);
-    assert.throws(() => activeRelations(exported), /missing calibrated frame/);
+    sameMeasurements(record, exported);
+    assert.deepEqual(exported.stitches, record.stitches);
   },
   async "extensions-mcp"(t) {
     const s = await session(); s.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });

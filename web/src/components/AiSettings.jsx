@@ -4,12 +4,13 @@ import { localizeText as uiText } from "../lib/i18n/core.js";
 import { useState } from "react";
 import { ScanStar } from "../brand/marks.jsx";
 import { aiConfig, saveAiConfig } from "../lib/ai.js";
+import { clampHistoryTurns, HISTORY_TURNS, HISTORY_TURNS_MAX, memoryPhrase } from "../lib/agentChat.js";
 
 export default function AiSettings({ onClose }) {
   const [cfg, setCfg] = useState(aiConfig);
   const set = (k) => (e) => setCfg((c) => ({ ...c, [k]: e.target.value }));
   const save = () => { saveAiConfig(cfg); onClose(true); };
-  const clear = () => { saveAiConfig({ endpoint: "", apiKey: "", model: "", provider: "" }); onClose(true); };
+  const clear = () => { saveAiConfig({ endpoint: "", apiKey: "", model: "", provider: "", historyTurns: "" }); onClose(true); };
 
   return (
     <div onClick={() => onClose(false)} style={{ position: "absolute", inset: 0, zIndex: 60, background: "rgba(14,26,46,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -22,7 +23,9 @@ export default function AiSettings({ onClose }) {
           <p style={{ marginTop: 0 }}>
             {uiText("The in-canvas takeoff agent runs on a vision model ")}<strong>{uiText("you")}</strong> {uiText("provide. Point it at an OpenAI-style or Anthropic-style endpoint: a hosted API, or a local runtime on your own machine (most local runtimes speak the OpenAI style and need no key).")}</p>
           <p style={{ margin: "0 0 10px", color: "var(--c-positive)", fontWeight: 600 }}>
-            {uiText("What's sent, and only while an agent run you started is going: your goal, the prompts, and what the agent's tools return. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file.")}</p>
+            {uiText("What's sent, and only while an agent run you started is going: your message,")}{" "}
+            {uiText(memoryPhrase(cfg.historyTurns))}{uiText(", the prompts, the sheet you're looking at, and what the agent's tools return. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file.")}
+          </p>
           <label style={{ display: "block", margin: "6px 0" }}>
             <span className="field-label">{uiText("Endpoint")}</span>
             <input value={cfg.endpoint} onChange={set("endpoint")} placeholder={uiText("https://… or http://localhost:1234")}
@@ -45,6 +48,22 @@ export default function AiSettings({ onClose }) {
             <input type="password" value={cfg.apiKey} onChange={set("apiKey")} placeholder={uiText("stored in this browser only")}
               className="field-input" style={{ marginTop: 4 }} />
           </label>
+          <label style={{ display: "block", margin: "6px 0" }}>
+            <span className="field-label">Conversation memory (earlier turns sent with each message, 0–{HISTORY_TURNS_MAX})</span>
+            <input type="number" name="ai-history-turns" min={0} max={HISTORY_TURNS_MAX} step={1}
+              value={cfg.historyTurns} onChange={set("historyTurns")}
+              onBlur={() => setCfg((c) => ({ ...c, historyTurns: clampHistoryTurns(c.historyTurns) }))}
+              className="field-input" style={{ marginTop: 4, width: 96 }} />
+            <span style={{ display: "block", fontSize: 12, color: "var(--ink-muted)", marginTop: 2 }}>
+              Default {HISTORY_TURNS}. 0 sends each message on its own. More turns give the model more context and
+              send more text per message.
+            </span>
+          </label>
+          <p style={{ background: "var(--paper-shadow)", padding: "8px 10px", fontSize: 12.5, marginTop: 10 }}>
+            <strong>Chats stay in this browser.</strong> The Agent conversation is saved per project in this
+            browser's local storage only. It is not in the project file, any export, or Drive sync, and
+            another browser or computer won't see it. <strong>New chat</strong> clears it.
+          </p>
           <p style={{ background: "var(--paper-shadow)", padding: "8px 10px", fontSize: 12.5, marginTop: 10 }}>
             {uiText("The key is stored ")}<strong>{uiText("in this browser")}</strong> {uiText("(localStorage) — anyone with access to this browser profile can read it, so use a key you can revoke. Leave everything blank and the AI features stay out of your way entirely. The endpoint must allow requests from a browser (CORS); local runtimes generally allow localhost.")}</p>
         </div>

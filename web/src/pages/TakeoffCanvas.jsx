@@ -21,12 +21,14 @@ import ReferencePins, { PinButton } from "../components/ReferencePins.jsx";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keyText } from "../lib/keys.ts";
 import { nextHatchId } from "../lib/takeoffConstants.ts";
+import { TRADE_SUITES, ALL_TRADES, tradeHiddenIds, tradeCounts, sanitizeViewTrade, suiteById, conditionTrade } from "../lib/tradeSuites.ts";
 import { buildTakeoffDocument, sheetEntry } from "../lib/takeoffDocument.js";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut, metaDelete } from "../lib/store.js";
+import { isPdfSource, rangeParams } from "../lib/pdfSource";
+import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut, metaDelete, sha256Hex } from "../lib/store.js";
 import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
@@ -45,10 +47,12 @@ import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfi
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
+import ToolTray from "../components/ToolTray.jsx";
+import AssistantWindow from "../components/AssistantWindow.jsx";
 import ConnectAI from "../components/ConnectAI.jsx";
 import CompanySetup from "../components/CompanySetup.jsx";
 import EstimatePanel from "../components/EstimatePanel.jsx";
-import { sanitizeEstimateSettings } from "../lib/estimate.js";
+import { sanitizeEstimateSettings, priceEstimate } from "../lib/estimate.js";
 import { sanitizeBidProposal } from "../lib/bidProposal.js";
 import { loadEstimatingDefaults } from "../lib/companySetup.js";
 import { advanceTour, countFloorShapes, currentStep } from "../lib/firstTakeoff.js";
@@ -99,9 +103,11 @@ import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
 import { normalizeTag, newScheduleRows } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
 // this file only calls it from the material write paths and the condition deletes.
-import { mintTwin, variantTag,
+import {
+  mintTwin, variantTag,
   propagateRowPatch, propagateRowAdd, propagateRowRemove,
-  markRowLocal, dropRowLocal, followFamily, splitFromFamily, promoteOnDelete } from "../lib/variants.ts";
+  markRowLocal, dropRowLocal, followFamily, splitFromFamily, promoteOnDelete
+} from "../lib/variants.ts";
 import { isGoogleConfigured } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { tidyRing, axisLockPoint } from "../lib/ringTidy";
@@ -130,6 +136,8 @@ import { buildLayerInfos, effectiveLayerRoles, layerRoleCodes, segRoles, sanitiz
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { deriveTransitionRuns, transitionRefusal } from "../lib/transitions";
 import { conditionTotals, verticalWallSf, downloadText } from "../lib/totals.js";
+import { rotatePdfPage, reorderPdfPages, deletePdfPage, extractPdfPages, mergePdfDocuments, insertPdfPages } from "../lib/pdfPageTools.ts";
+import { rotateTakeoffOnSheet, remapWorkspaceState, buildKeyRemap, formatSheetKey } from "../lib/pageTransforms.ts";
 import { measurementBreakdown } from "../lib/measurementBreakdown.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
@@ -159,11 +167,14 @@ import { NOTE_PT, inkPx, layoutNote, noteBox, canvasMeasure } from "../lib/marku
 import { snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
 import { nextRfiNumber } from "../lib/rfi.js";
 import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch } from "../lib/materials.js";
+import { assemblyRows } from "../lib/assemblies.js";
 import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import MaterialUnitSelector from '../components/MaterialUnitSelector.jsx';
 import { getMaterialUnit, setMaterialUnit } from '../lib/materialUnits.js';
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
+import DoorsSuitePanel from "../components/DoorsSuitePanel.jsx";
+import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL, countMarkPoints, openingLine, heldBack, DOOR_KIND_LABEL } from "../lib/doorSuite.ts";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
@@ -177,12 +188,16 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // registry of deterministic tools (lib/agentTools); this file provides the
 // CAPABILITIES those tools close over and the review gate their proposals
 // pass through. AiSettings is the config surface for the ai.js seam.
-import AgentPanel from "../components/AgentPanel.jsx";
-import { ScanStar } from "../brand/marks.jsx";
+import AgentChat from "../components/AgentChat.jsx";
+import "../styles/agentChat.css";
+import { useAgentChat } from "../lib/useAgentChat.js";
+import { historyMessages, notReadyMessage, withViewContext } from "../lib/agentChat.js";
+import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
-import { openPremiumPricing } from "../lib/premiumPlans.js";
 import "../styles/premiumWorkspace.css";
-import { WorkspaceChrome, WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
+import { WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
+import { PremiumRail, PremiumTopBar, CanvasSideTabs } from "../components/PremiumChrome.jsx";
+import ConditionsDock from "../components/ConditionsDock.jsx";
 import { useWorkspaceLayout, WorkspaceLayoutDialog, DockHandle, DockTargets } from "../components/WorkspaceLayout.jsx";
 import AiSettings from "../components/AiSettings.jsx";
 import { agentToolDefs, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
@@ -218,6 +233,7 @@ import { repairConditionMultipliers, describeMultiplierRepair } from "../lib/mul
 // long-lived compositor instance. Replaces the old single-raster base +
 // threshold-gated detail-overlay effects below.
 import { createTileCompositor } from "../lib/tileCompositor";
+import { createTilePool, TEXT_SCAN_WORKERS } from "../lib/tilePool";
 import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // Shape provenance policy now lives in ONE place: lib/shapeCommands.js. Every
 // meaningful mutation of `shapes` (create / reshape / reassign / relabel /
@@ -267,6 +283,12 @@ function hitShapeC(s, x, y, w, h, thr) {
 }
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+// What opens a sheet (#580): a byte-range source where the store keeps the
+// file as a Blob, so pdf.js reads the cross-reference table and the pages on
+// screen, not the whole set; else the file's bytes, as before (cloud mode).
+// What needs every byte (export, page tools) still asks for loadPdfData.
+const pdfSourceOf = (file) => (typeof store.loadPdfSource === "function" ? store.loadPdfSource(file) : store.loadPdfData(file));
+const openPdf = (data) => pdfjsLib.getDocument(isPdfSource(data) ? rangeParams(pdfjsLib.PDFDataRangeTransport, data.blob) : { data });
 
 // Hatch templates, palette, NO_FILL, and the HatchPattern/HatchSwatch pieces
 // live in components/hatches.jsx — shared with the TakeoffsPanel.
@@ -418,6 +440,13 @@ export default function TakeoffCanvas() {
   // Stitches (#161): persisted match-line composites (lib/stitches.ts) — a
   // stitch opens as ONE panel; its members are a render-time concern only.
   const [stitches, setStitches] = useState([]);
+  // Doors suite answers (lib/doorSuite.ts question id → the answer picked), saved with the project
+  const [doorAnswers, setDoorAnswers] = useState({});
+  // PDF rotation tracking (#591): sheetKey -> { angle, hash } where hash is original file SHA-256
+  const [sheetRotations, setSheetRotations] = useState({});
+  const sheetRotationsRef = useRef(sheetRotations);
+  sheetRotationsRef.current = sheetRotations;
+  const [rotatingKey, setRotatingKey] = useState(null); // sheetKey currently reloading rotated tiles (prevents flash)
   const [alignPt, setAlignPt] = useState(null);       // stitch-align first click (stage px) — ephemeral, never persisted
   const [zoneCheck, setZoneCheck] = useState(null);   // ephemeral zone-check region {key, pts (norm)} — never persisted (buildPayload doesn't read it)
   const [zoneExpand, setZoneExpand] = useState(null); // zone panel: condition id with materials expanded
@@ -451,6 +480,23 @@ export default function TakeoffCanvas() {
   const [leftTab, setLeftTab] = useState(null);
   const [showMarkups, setShowMarkups] = useState(true);       // markup SVG layer visibility (orthogonal to the export checkbox)
   const [hiddenConds, setHiddenConds] = useState(() => new Set()); // condition ids whose takeoffs are hidden on the canvas (#440) — VIEW STATE: never persisted, never touches totals/report/exports
+  // the status bar's Trade view (lib/tradeSuites.ts): shows one trade's conditions and shapes, and books new
+  // conditions to it. Per-user VIEW STATE in localStorage — never a quantity, never in the project file.
+  const [viewTrade, setViewTrade] = useState(() => { try { return sanitizeViewTrade(localStorage.getItem("opentakeoff_view_trade")); } catch { return ALL_TRADES; } });
+  useEffect(() => { try { localStorage.setItem("opentakeoff_view_trade", viewTrade); } catch { /* private mode */ } }, [viewTrade]);
+  // switching trades moves the active condition to that trade's first one, when it has any
+  const pickViewTrade = (raw) => {
+    const v = sanitizeViewTrade(raw);
+    setViewTrade(v);
+    if (v === ALL_TRADES) return;
+    const cs = agentStateRef.current.conditions.length ? agentStateRef.current.conditions : conditions;
+    const cur = cs.find((c) => c.id === activeCond);
+    if (cur && conditionTrade(cur) === v) return;
+    const first = cs.find((c) => conditionTrade(c) === v);
+    if (first) activateCondition(first.id, { reassign: false });
+  };
+  const viewTradeRef = useRef(viewTrade);   // mintCondition reads the live value (the agent can mint mid-run on a stale closure)
+  viewTradeRef.current = viewTrade;
   const [editor, setEditor] = useState(null);                 // inline on-canvas text editor { left, top, value, multiline, commit } (retires window.prompt; screen-space overlay, NOT an SVG child)
   const [panelEditId, setPanelEditId] = useState(null);       // markup id whose text is being edited inline in the markup panel (off-screen fallback for the ✎ button)
   const [captureQuery, setCaptureQuery] = useState("");       // always-on name filter over the GLOBAL Captures list (transient, mirrors condQuery)
@@ -477,6 +523,8 @@ export default function TakeoffCanvas() {
   const templatesRef = useRef([]);                            // readable inside hydrate (seeding a fresh workspace)
   const [matLib, setMatLib] = useState([]);                   // material library (browser-global; conditions COPY on attach + carry lib_id)
   const labeledFileRef = useRef("");             // which file we've already title-block-scanned
+  const textScanRef = useRef(null);       // the running whole-file text scan's token: a new scan, or unmount, ends the old one
+  const scanHoldRef = useRef(0);          // performance.now() until which the text scan starts no new read: a sheet is changing
   const wantSheetRef = useRef(new URLSearchParams(window.location.search).get("sheet") || "");
   const [status, setStatus] = useState("loading");
   const [err, setErr] = useState("");
@@ -615,6 +663,17 @@ export default function TakeoffCanvas() {
   }, [panelPrefs]);
   const panelW = clampPanelW(Number(panelPrefs.w) || PANEL_DEFAULTS.w);
   const takeoffsOpen = !panelPrefs.collapsed;
+  // Premium layout: the Conditions dock on the right (list + settings card). Open
+  // by default, remembered in this browser; the classic table stays one ⋯ away.
+  const [condDockOpen, setCondDockOpenRaw] = useState(() => { try { return localStorage.getItem("opentakeoff_conditions_dock") !== "0"; } catch { return true; } });
+  const setCondDockOpen = useCallback((v) => setCondDockOpenRaw((cur) => {
+    const next = typeof v === "function" ? v(cur) : v;
+    try { localStorage.setItem("opentakeoff_conditions_dock", next ? "1" : "0"); } catch { /* session only */ }
+    return next;
+  }), []);
+  // the classic Takeoffs table (library, materials, columns) in the Premium layout:
+  // session-only, so a table left open in the classic layout never covers the dock
+  const [fullTableOpen, setFullTableOpen] = useState(false);
   const toggleTakeoffs = () => setPanelPrefs((p) => ({ ...p, collapsed: !p.collapsed }));
   // Panel resize lives INSIDE TakeoffsPanel (mid-drag width goes straight to
   // its DOM node; the pref commits ONCE on release via setPanelPrefs). Each
@@ -723,6 +782,9 @@ export default function TakeoffCanvas() {
   const [tour, setTour] = useState(null);
   const [tourSampleBusy, setTourSampleBusy] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);   // Connect your AI (components/ConnectAI.jsx)
+  // the Assistant window (components/AssistantWindow.jsx): the person's own AI app, talking here
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const openAssistant = useCallback(() => setAssistantOpen(true), []);
   const [companySetupOpen, setCompanySetupOpen] = useState(false);   // Company setup (components/CompanySetup.jsx)
   const [companyRev, setCompanyRev] = useState(0);   // bumped on every Company setup save so an open report's masthead re-reads
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
@@ -763,8 +825,22 @@ export default function TakeoffCanvas() {
   const workspacePrefs = useWorkspaceLayout();
   const workspaceLayout = workspacePrefs.enabled;
   const workspaceArrangement = workspacePrefs.layout;
+  // the tool dock floating at the canvas foot (Premium's position; default since 2026-11)
+  const dockBottom = workspaceLayout && workspaceArrangement.tools === "bottom";
+  // the dock's ⋯ tray — every tool that isn't on the dock itself, laid out at once (Premium's layout)
+  const [trayOpen, setTrayOpen] = useState(false);
+  const dockWrapRef = useRef(null);
+  useEffect(() => {
+    if (!trayOpen) return undefined;
+    const onDown = (e) => { if (dockWrapRef.current && !dockWrapRef.current.contains(e.target)) setTrayOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setTrayOpen(false); };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
+  }, [trayOpen]);
   const [workspaceNavigationOpen, setWorkspaceNavigationOpen] = useState(false);
 
+  const [workspaceControlsOpen, setWorkspaceControlsOpen] = useState(false);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
   const [workspaceLayoutOpen, setWorkspaceLayoutOpen] = useState(false);
@@ -777,7 +853,7 @@ export default function TakeoffCanvas() {
   const [rollEdit, setRollEdit] = useState(false);        // cut-edit mode — cuts take pointer events (slide / resize / double-click reset)
   const [rollPanelOpen, setRollPanelOpen] = useState(false); // docked Roll panel (diagram + reorder)
   const rollDragRef = useRef(null);                       // live cut-drag gesture; commit is ONE rollcut command on release
-  const [agentLog, setAgentLog] = useState([]);           // streaming run status [{kind, text}]
+  const agentChat = useAgentChat(projectIdFromUrl());    // the Agent tab's conversation, persisted per project (lib/useAgentChat)
   const [agentRunning, setAgentRunning] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false); // BYO-key config modal (ai.js seam)
   const agentAbortRef = useRef(null);                     // live AbortController while a run is in flight
@@ -875,6 +951,11 @@ export default function TakeoffCanvas() {
       redoStackRef.current = [...redoStackRef.current, { family: "approval", cmd: res.inverse, inverse: entry.inverse }];
       return;
     }
+    if (entry.family === "page_tool" || typeof entry.undo === "function") {
+      entry.undo?.();
+      redoStackRef.current = [...redoStackRef.current, entry];
+      return;
+    }
     const res = applyShapeCommand(shapes, entry.inverse);
     setShapes(res.shapes);
     redoStackRef.current = [...redoStackRef.current, { cmd: res.inverse, inverse: entry.inverse }];
@@ -893,6 +974,12 @@ export default function TakeoffCanvas() {
       const res = applyApprovalCommand(approvals, entry.cmd);
       setApprovals(res.approvals);
       undoStackRef.current = [...undoStackRef.current, { family: "approval", cmd: entry.cmd, inverse: res.inverse }];
+      return;
+    }
+    if (entry.family === "page_tool" || typeof entry.redo === "function") {
+      entry.redo?.();
+      undoStackRef.current = [...undoStackRef.current, entry];
+      // Do not duplicate push: entry.redo() already pushes its own undo entry
       return;
     }
     const res = applyShapeCommand(shapes, entry.cmd);
@@ -1101,8 +1188,8 @@ export default function TakeoffCanvas() {
   const pinsRef = useRef({ files: new Set(), stitchById: {} });
   const readerRef = useRef(null);
   const [docCache] = useState(() => createDocCache({
-    load: (file) => store.loadPdfData(file),
-    open: (data) => pdfjsLib.getDocument({ data }),
+    load: pdfSourceOf,
+    open: openPdf,
     hashing: (file) => (ocrEnabled() && typeof store.beginPdfHash === "function" ? store.beginPdfHash(file) : null),
     // asked live: a stopped read's page may still be rasterizing
     pinned: () => {
@@ -1181,6 +1268,7 @@ export default function TakeoffCanvas() {
   const aimSeqRef = useRef(0);         // bumps with every lastPtrRef write — the deixis freshness clock (no second tracker, just a tick on the existing one)
   const voiceAimMarkRef = useRef(0);   // aim is LIVE for deixis only while aimSeq > this; re-marked at utterance begin (Command box focus / every run) and on canvas-leave + tab-hide, so a parked-off-canvas or refocus ghost seed can never place a trace
   const pendingClickRef = useRef(null); // deferred draw click {p,cx,cy} — drag >5px converts to a pan
+  const rectDragRef = useRef(false);    // Rectangle by drag (Premium tool feel): the press is corner 1, the release corner 2
   const hoverRef = useRef(null);        // hover tooltip div (DOM-direct like the crosshair)
   const insGhostRef = useRef(null);     // edge-insert ghost "+" badge (DOM-direct like the hover readout)
   const hoverIdRef = useRef("");        // shape id currently described by the tooltip
@@ -1646,10 +1734,15 @@ export default function TakeoffCanvas() {
   // what the renderer paints and what the pickers scan, so a hidden shape
   // can't be seen or clicked — while visibleShapes (totals, tally, transition
   // sources) still carries it. Hiding changes the view, never a number.
+  // the Trade view hides other trades the same way, on top of the eye toggles (which it never rewrites)
+  // the active condition always shows: what you are drawing under never goes invisible
+  const tradeHidden = useMemo(() => { const h = tradeHiddenIds(conditions, viewTrade); h.delete(activeCond); return h; }, [conditions, viewTrade, activeCond]);
+  const tradeCountMap = useMemo(() => tradeCounts(conditions), [conditions]);
+  const viewHidden = useMemo(() => (tradeHidden.size ? new Set([...hiddenConds, ...tradeHidden]) : hiddenConds), [hiddenConds, tradeHidden]);
   const stackedShapes = useMemo(() => {
-    const drawn = hiddenConds.size ? visibleShapes.filter((s) => !hiddenConds.has(s.condition_id)) : visibleShapes;
+    const drawn = viewHidden.size ? visibleShapes.filter((s) => !viewHidden.has(s.condition_id)) : visibleShapes;
     return [...drawn].sort((a, b) => tierOf(a) - tierOf(b));
-  }, [visibleShapes, hiddenConds]);
+  }, [visibleShapes, viewHidden]);
   // Reference-pane shapes (split screen, Task 5): deliberately NOT filtered
   // through `visibleShapes` — the reference pane can frame a sheet the
   // primary's sheetGroup doesn't include at all (the tab-drop gesture from
@@ -1661,8 +1754,8 @@ export default function TakeoffCanvas() {
   // drop out here too (#440 parity): a condition hidden on the primary never
   // reappears in the mirror.
   const refStackedShapes = useMemo(
-    () => (effectiveRefKey ? shapes.filter((s) => s.sheet_id === effectiveRefKey && !hiddenConds.has(s.condition_id)).sort((a, b) => tierOf(a) - tierOf(b)) : []),
-    [shapes, effectiveRefKey, hiddenConds]
+    () => (effectiveRefKey ? shapes.filter((s) => s.sheet_id === effectiveRefKey && !viewHidden.has(s.condition_id)).sort((a, b) => tierOf(a) - tierOf(b)) : []),
+    [shapes, effectiveRefKey, viewHidden]
   );
   const visibleMarkups = useMemo(() => {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
@@ -1940,6 +2033,20 @@ export default function TakeoffCanvas() {
     onChange: (m) => { knownPagesRef.current = m; setKnownPages(m); },
   }));
   const rememberPages = useCallback((name, count) => pageCounts.remember(name, count), [pageCounts]);
+  const rotationCacheKey = "sheet_rotations:" + (projectIdFromUrl() || "local");
+  useEffect(() => {
+    metaGet(rotationCacheKey).then((r) => {
+      if (r && typeof r === "object") {
+        setSheetRotations(r);
+        sheetRotationsRef.current = r;
+      }
+    }).catch(() => {});
+  }, [rotationCacheKey]);
+  const saveSheetRotations = useCallback((rots) => {
+    setSheetRotations(rots);
+    sheetRotationsRef.current = rots;
+    metaPut(rotationCacheKey, rots).catch(() => {});
+  }, [rotationCacheKey]);
   // Import from schedule's plan set (#498), rebuilt only when the dialog's
   // read or the set's pages change: the dialog re-checks every row against
   // every sheet's index whenever this object changes, so a fresh one per
@@ -1948,8 +2055,8 @@ export default function TakeoffCanvas() {
   const importPlanSet = useMemo(() => (importRead
     ? { ...planSetKeys(), indexes: planIndexRef.current, sourceKey: importRead.sourceKey, boxTerms: importRead.boxTerms }
     : undefined),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [importRead, sheets, active, pageCount, knownPages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [importRead, sheets, active, pageCount, knownPages]);
   const forgetPages = useCallback((names) => {
     // a file whose bytes are leaving (or changing) takes its thumbnails with it
     forgetThumbs(names, thumbCacheRef.current);
@@ -2077,6 +2184,8 @@ export default function TakeoffCanvas() {
     const prof = incoming.find((f) => isProfileFile(f.name));
     if (prof) { await importProfileFile(prof); return; }
     setCommitMsg(uiText("Reading files…"));
+    // the render workers boot while the files are read and stored (#580)
+    try { getCompositor().prewarm(); } catch { /* no Worker here: the first sheet starts them */ }
     let pdfs = [], skipped = [];
     try { ({ pdfs, skipped } = await ingestFiles(incoming, { onProgress: setCommitMsg })); }
     catch (e) { setCommitMsg(uiText(`Couldn't read those files: ${e.message || e}`)); return; }
@@ -2087,7 +2196,30 @@ export default function TakeoffCanvas() {
       return;
     }
     const results = [];
-    for (const f of pdfs) { try { results.push(await store.addPdf(f)); } catch (e) { setCommitMsg(uiText(`Couldn't open ${f.name}: ${e.message || e}`)); } }
+    for (const f of pdfs) {
+      try {
+        let fileToAdd = f;
+        const matchingRots = Object.entries(sheetRotationsRef.current).filter(([k, r]) => {
+          return parseSheetKey(k).file === f.name && r && r.angle > 0;
+        });
+        if (matchingRots.length > 0) {
+          const incomingBytes = await f.arrayBuffer();
+          const incomingHash = await sha256Hex(incomingBytes);
+          // Only re-apply stored rotation when the re-added bytes are the original file (#591)
+          if (incomingHash === matchingRots[0][1].hash) {
+            let curBytes = new Uint8Array(incomingBytes);
+            for (const [k, rot] of matchingRots) {
+              const { page: pageNum } = parseSheetKey(k);
+              curBytes = await rotatePdfPage(curBytes, pageNum, rot.angle);
+            }
+            fileToAdd = new File([curBytes], f.name, { type: "application/pdf" });
+          }
+        }
+        results.push(await store.addPdf(fileToAdd));
+      } catch (e) {
+        setCommitMsg(uiText(`Couldn't open ${f.name}: ${e.message || e}`));
+      }
+    }
     // A re-added name's search entry, OCR reads and thumbnail records (whose
     // text-layer flag seeds the index) start over unless its bytes are known
     // to be the same (readdEffects); a cached read goes back into the
@@ -2240,9 +2372,11 @@ export default function TakeoffCanvas() {
     // snapshot load must not inherit the replaced project's deletion tallies).
     // Object gate mirrors client_info; number filter keeps the counts trustable.
     const pcIn = a.provenance_counters?.shapes_deleted;
-    setProvCounters({ shapes_deleted: Object.fromEntries(Object.entries(
-      pcIn && typeof pcIn === "object" && !Array.isArray(pcIn) ? pcIn : {}
-    ).filter(([, v]) => Number.isFinite(v) && v > 0)) });
+    setProvCounters({
+      shapes_deleted: Object.fromEntries(Object.entries(
+        pcIn && typeof pcIn === "object" && !Array.isArray(pcIn) ? pcIn : {}
+      ).filter(([, v]) => Number.isFinite(v) && v > 0))
+    });
     // additive `sheet_levels` key (multi-floor gallery grouping) — old payloads
     // lack it and must clear any pre-load levels (the sheet_group else-clear
     // rule: a snapshot load must not inherit the replaced project's levels).
@@ -2264,6 +2398,9 @@ export default function TakeoffCanvas() {
     // legitimate group of one while its stitch actually exists.
     const loadedStitches = sanitizeStitches(a.stitches, MAX_GROUP);
     setStitches(loadedStitches);
+    // additive `door_answers`: string answers only; else-clear like stitches
+    setDoorAnswers(a.door_answers && typeof a.door_answers === "object" && !Array.isArray(a.door_answers)
+      ? Object.fromEntries(Object.entries(a.door_answers).filter(([k, v]) => typeof k === "string" && typeof v === "string").slice(0, 5000)) : {});
     setAlignPt(null);
     // else-clear matters at runtime (snapshot load): a payload without groups/
     // tabs must not inherit the pre-load ones — autosave would persist a hybrid.
@@ -2521,7 +2658,7 @@ export default function TakeoffCanvas() {
     // evict just dropped (removed or revised) would load it afresh before
     // the canvas re-renders
     const { file } = parseSheetKey(key);
-    return { page, release: page && docCache.has(file) ? docCache.lease(file) : () => {} };
+    return { page, release: page && docCache.has(file) ? docCache.lease(file) : () => { } };
   }
   async function withSheetPage(key, fn) {
     const { page, release } = holdSheetPage(key);
@@ -2595,7 +2732,7 @@ export default function TakeoffCanvas() {
   const readableSig = readableShown.join("\n");
   useEffect(() => {
     if (!readableShown.length) return;
-    ocrAvailability().catch(() => {});
+    ocrAvailability().catch(() => { });
     for (const k of readableShown) lookupSheet(k);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- readableSig stands for readableShown
   }, [readableSig, readTick, ocrAvailability, lookupSheet]);
@@ -2671,7 +2808,7 @@ export default function TakeoffCanvas() {
         if (cancelled) return;
         const viewport = pageObj.getViewport({ scale: RENDER_SCALE });
         const w = Math.ceil(viewport.width), h = Math.ceil(viewport.height);
-        getCompositor().openSheet(`ref::${refKey}`, pn, store.loadPdfData(file), w, h);
+        getCompositor().openSheet(`ref::${refKey}`, pn, pdfSourceOf(file), w, h);
         refDimsRef.current = { key: refKey, w, h };
         // preserve object identity when dims didn't actually change (the
         // common groupSig-resync case) — see the sameKey comment above
@@ -2759,7 +2896,7 @@ export default function TakeoffCanvas() {
     if (renderKey === refDetailKeyRef.current) return;
     refDetailKeyRef.current = renderKey;
     try { refDetailCancelRef.current?.cancel(); } catch { /* done */ }
-    refDetailCancelRef.current = getCompositor().paintDetail(canvasEl, drawKey, xBase, x0, y0, x1, y1, density, darkMode, () => {}, yBase);
+    refDetailCancelRef.current = getCompositor().paintDetail(canvasEl, drawKey, xBase, x0, y0, x1, y1, density, darkMode, () => { }, yBase);
   }, [darkMode]);
 
   // dark toggle: repaint the base layer of every already-loaded panel at the
@@ -2792,6 +2929,7 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
+    scanHoldRef.current = performance.now() + 500; // the whole-file text scan waits for this sheet
     // each shown file's generation as this render starts (spec §5.3): text
     // read below is offered under it, so a re-drop meanwhile discards it
     const nameGens = new Map();
@@ -2816,6 +2954,13 @@ export default function TakeoffCanvas() {
     sheetStatsRef.current.clear();
     rasterMaskCacheRef.current.clear();
     canvasInvertedRef.current.clear();
+    // The sheets leaving the screen: let pdf.js free what each page cached
+    // (its operator list, its decoded images). The document outlives the
+    // sheet, so without this every sheet visited in a big set stayed in
+    // memory until its file closed (#580). A page still being read (a
+    // thumbnail, an OCR raster) frees itself when that finishes; one shown
+    // again reads its operator list again.
+    for (const pg of new Set(pageObjsRef.current.values())) { try { pg.cleanup(); } catch { /* its document is already gone */ } }
     pageObjsRef.current.clear();
     renderScalesRef.current.clear();
     getCompositor().resetAll();
@@ -2834,6 +2979,13 @@ export default function TakeoffCanvas() {
     try { refDetailCancelRef.current?.cancel(); } catch { /* done */ }
     refDetailCancelRef.current = null;
     refDetailKeyRef.current = null;
+    // The render workers start on each file's document now, while the main
+    // thread opens its own and finds the page: the two used to run one after
+    // the other (#580). A file the workers already hold costs nothing.
+    if (typeof store.loadPdfSource === "function") {
+      const files = new Set(groupKeys.flatMap((k) => (stitchById[k] ? stitchById[k].members.map((m) => parseSheetKey(m.key).file) : [parseSheetKey(k).file])));
+      for (const f of files) store.loadPdfSource(f).then((src) => { if (!stale()) getCompositor().warm(src); }).catch(() => { /* the open below reports it */ });
+    }
     (async () => {
       // resolve one drawable source: doc → page → viewport at the FIXED logical
       // scale. Every file here is pinned (groupKeys), so docFor holds; a stale
@@ -2898,7 +3050,7 @@ export default function TakeoffCanvas() {
       // pool now (not one shared canvas context), so there's no reason to
       // serialize them the way the old left-to-right raster loop had to.
       await Promise.all(metas.flatMap((m) => m.sources.map(async (s) => {
-        getCompositor().openSheet(s.drawKey, s.pageNum, store.loadPdfData(s.file), s.w, s.h);
+        getCompositor().openSheet(s.drawKey, s.pageNum, pdfSourceOf(s.file), s.w, s.h);
         let canvas = panelCanvasRefs.current.get(s.drawKey);
         for (let t = 0; !canvas && t < 10; t++) {
           await new Promise((r) => requestAnimationFrame(r)); if (stale()) return;
@@ -2942,7 +3094,7 @@ export default function TakeoffCanvas() {
             offerSheetText(m.sources[0].file, m.sources[0].pageNum, nameGenOf(m.sources[0].file), tc, m.sources[0].viewport);
             const det = detectScale(tc, m.sources[0].viewport);
             if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
-          }).catch(() => {});
+          }).catch(() => { });
           continue;
         }
         // snap-to-vector index per panel (best-effort; off until the user enables it)
@@ -3032,10 +3184,11 @@ export default function TakeoffCanvas() {
           if (marks.length) { textMarksRef.current.set(m.key, marks); maskCacheRef.current.delete(m.key); }
           const dts = extractDimTexts(tc, m.viewport);
           if (dts.length) { dimTextsRef.current.set(m.key, dts); maskCacheRef.current.delete(m.key); }
-        }).catch(() => {});
+        }).catch(() => { });
       }
       if (stale()) return;
       setStatus("ready");
+      setRotatingKey(null);
       // title-block labels — current page now, then once per file scan the rest so
       // the pager + pinned tabs + provenance deep-jump can show real sheet numbers
       const lead = metas.find((m) => m.file === active);
@@ -3050,32 +3203,95 @@ export default function TakeoffCanvas() {
         // built only where the entry would take a pass without pictures
         // (planSearch acceptsTextPass; the measured pass above brings those)
         if (acceptsTextPass(planIndexRef.current.get(lead.key))) onIndexed(lead.key, pageTextIndex(lead.key, tc, lead.viewport));
-      }).catch(() => {});
+      }).catch(() => { });
       if (labeledFileRef.current !== active) {
         labeledFileRef.current = active;
         setLabelsByFile((m) => labelsOnFileChange(m, active)); // drop other files' labels
+        // Every other page's text, for the tree's sheet numbers, the noted
+        // scales and plan search. The scan belongs to the FILE, not to this
+        // render: it runs on through sheet flips, and stops when another file
+        // becomes active, this one is re-dropped, or the canvas unmounts.
+        // (It used to stop at the first flip and never start again, leaving
+        // the tree half numbered.) Where the store gives a byte-range source
+        // the pages are read in the render workers, one per worker at a
+        // time, and only while no tile is owed (#580); else on the main
+        // document, one at a time, as before.
+        textScanRef.current?.end?.(); // a scan of another file: its workers go now
+        const scan = textScanRef.current = {};
+        const scanLive = () => textScanRef.current === scan && labeledFileRef.current === active && labelsLive();
+        const nameGen = nameGenOf(active);
         (async () => {
-          const pdf = await docFor(active);   // pinned while active; a switch stops the loop (stale)
+          const pdf = await docFor(active);   // pinned while active
+          const total = pdf.numPages || 1;
+          const source = typeof store.loadPdfSource === "function" ? await store.loadPdfSource(active).catch(() => null) : null;
           const found = {};
-          for (let n = 1; n <= (pdf.numPages || 1); n++) {
-            if (stale()) return;
-            if (n === lead.pageNum) continue;
-            try {
-              const p2 = await pdf.getPage(n);
-              const tc = await p2.getTextContent();
-              const vp2 = p2.getViewport({ scale: RENDER_SCALE });
-              const lbl = extractSheetNumber(tc, vp2);
-              offerSheetText(active, n, nameGenOf(active), tc, vp2);
-              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0 && labelsLive()) setLabelsByFile((m) => withFoundLabels(m, active, found)); }
-              const key = n > 1 ? `${active}#${n}` : active;
-              const det = detectScale(tc, vp2);
-              if (det) setDetectedScales((d) => (d[key]?.label === det.label ? d : { ...d, [key]: det }));
-              if (stale()) return;
-              if (acceptsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp2));
-            } catch { /* skip */ }
-          }
-          if (!stale() && labelsLive() && Object.keys(found).length) setLabelsByFile((m) => withFoundLabels(m, active, found));
-        })();
+          let dirty = 0;
+          const flush = () => { if (dirty && scanLive()) { dirty = 0; setLabelsByFile((m) => withFoundLabels(m, active, { ...found })); } };
+          const scales = {};
+          const flushScales = () => {
+            const batch = Object.entries(scales); if (!batch.length || !scanLive()) return;
+            for (const k of Object.keys(scales)) delete scales[k];
+            setDetectedScales((d) => { let next = d; for (const [k, det] of batch) if (next[k]?.label !== det.label) { if (next === d) next = { ...d }; next[k] = det; } return next; });
+          };
+          const take = (n, tc, vp) => {
+            const lbl = extractSheetNumber(tc, vp);
+            offerSheetText(active, n, nameGen, tc, vp);
+            if (lbl) { found[n] = lbl; dirty++; }
+            const key = n > 1 ? `${active}#${n}` : active;
+            const det = detectScale(tc, vp);
+            if (det) scales[key] = det;
+            if (acceptsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp));
+          };
+          const readOnMain = async (n) => {
+            const p2 = await pdf.getPage(n);
+            const tc = await p2.getTextContent();
+            take(n, tc, p2.getViewport({ scale: RENDER_SCALE }));
+          };
+          // The scan gives way to the sheet: no read starts while a tile is
+          // owed or a sheet change is under way (scanHoldRef, set as each
+          // render begins), and a page's text is taken up in an idle period
+          // of the main thread, so a flip or a scroll never waits on it.
+          const idleTiles = async () => { while (scanLive() && (getCompositor().busy() || performance.now() < scanHoldRef.current)) await new Promise((r) => setTimeout(r, 40)); };
+          const idleMain = () => new Promise((r) => { if (typeof requestIdleCallback === "function") requestIdleCallback(() => r(), { timeout: 250 }); else setTimeout(r, 0); });
+          // The scan's own workers (lib/tilePool TEXT_SCAN_WORKERS), ended with
+          // it: the render pool keeps every one of its workers for the sheet.
+          const scanPool = source && TEXT_SCAN_WORKERS > 0 ? createTilePool(TEXT_SCAN_WORKERS) : null;
+          scan.end = () => { try { scanPool?.dispose(); } catch { /* already gone */ } };
+          const readText = scanPool ? scanPool.requestText : (src, n, scale) => getCompositor().readText(src, n, scale);
+          const lanes = !source ? 1 : scanPool ? TEXT_SCAN_WORKERS : Math.max(1, getCompositor().workers - 1);
+          let next = 1;
+          const lane = async () => {
+            for (;;) {
+              const n = next++;
+              if (n > total || !scanLive()) return;
+              if (n === lead.pageNum) continue;
+              try {
+                if (source) {
+                  await idleTiles(); if (!scanLive()) return;
+                  const r0 = performance.now();
+                  const t = await readText(source, n, RENDER_SCALE);
+                  const r1 = performance.now();
+                  await idleMain();
+                  if (!scanLive()) return;
+                  const r2 = performance.now();
+                  take(n, t, t.viewport);
+                  if (window.__OT_SCAN_DEBUG) (window.__scanT ??= []).push([r1 - r0, r2 - r1, performance.now() - r2, t.items.length]);
+                } else {
+                  await readOnMain(n); if (!scanLive()) return;
+                }
+              } catch { /* skip */ }
+              // the tree and the scale chips fill in as the scan goes, in
+              // batches: one state update per page was most of its cost
+              if (dirty >= 24) flush();
+              if (Object.keys(scales).length >= 24) flushScales();
+            }
+          };
+          const t0 = performance.now();
+          try { performance.mark("sheet-text-scan-start"); } catch { /* unsupported */ }
+          try { await Promise.all(Array.from({ length: lanes }, lane)); } finally { scan.end(); }
+          flush(); flushScales();
+          if (scanLive()) { try { performance.measure("sheet-text-scan", { start: t0, detail: { pages: total } }); } catch { /* unsupported */ } }
+        })().catch(() => { });
       }
     })().catch((e) => { if (stale() || e?.name === "RenderingCancelledException") return; setErr(String(e.message || e)); setStatus("error"); });
     // cleanup MUST read the LIVE refs, not a mount-time copy: bumping the current
@@ -3111,7 +3327,7 @@ export default function TakeoffCanvas() {
   // crop. So scheduleSync calls syncTilePanelsRef.current() on EVERY tick,
   // state-mirror-skip or not, and this effect is just the "also run it after
   // a structural render" path (load, dark toggle, group change, panel resize).
-  const syncTilePanelsRef = useRef(() => {});
+  const syncTilePanelsRef = useRef(() => { });
   useEffect(() => {
     syncTilePanelsRef.current = () => {
       const cont = containerRef.current;
@@ -3151,7 +3367,7 @@ export default function TakeoffCanvas() {
         // three atomically on reveal — setting them here first would show a
         // correctly-positioned canvas with the OLD crop's (wrongly scaled)
         // pixels for a frame, which is its own flavor of flicker.
-        const cancel = getCompositor().paintDetail(cv, d.drawKey, xBase, x0, y0, x1, y1, density, darkModeRef.current, () => {}, yBase);
+        const cancel = getCompositor().paintDetail(cv, d.drawKey, xBase, x0, y0, x1, y1, density, darkModeRef.current, () => { }, yBase);
         detailCancelsRef.current.set(d.drawKey, cancel);
       }
     };
@@ -3163,7 +3379,7 @@ export default function TakeoffCanvas() {
   useEffect(() => { syncTilePanelsRef.current(); }, [tf, groupSig, status, panelW, takeoffsOpen, darkMode, repaintTick, splitView]);
   // Chrome reflows need the same existing viewport refresh as a dock resize.
   // This does not change coordinates, scale, tile rendering, or stored geometry.
-  useEffect(() => { scheduleSync(); }, [workspaceLayout, workspaceArrangement, workspaceNavigationOpen, workspaceDetailsOpen, agentOpen, scheduleSync]);
+  useEffect(() => { scheduleSync(); }, [workspaceLayout, workspaceArrangement, workspaceNavigationOpen, workspaceControlsOpen, workspaceDetailsOpen, agentOpen, scheduleSync]);
 
   // Primary recovery for a stalled tile fetch: a hidden tab can suspend
   // in-flight work indefinitely with no error (Chrome throttles rAF-gated
@@ -3201,6 +3417,8 @@ export default function TakeoffCanvas() {
   // pair was observed to cause; see getCompositor's comment).
   useEffect(() => () => {
     docCache.clear();
+    textScanRef.current?.end?.();
+    textScanRef.current = null; labeledFileRef.current = ""; // the text scan reads through this pool
     try { compositorRef.current?.dispose(); } catch { /* half-built pool */ }
     compositorRef.current = null;
   }, [docCache]);
@@ -3279,18 +3497,37 @@ export default function TakeoffCanvas() {
   // ── autosave (debounced) ──────────────────────────────────────────────────
   // buildPayload is the single serializer — autosave and snapshots must write
   // identical records for the same state (byte-stability matters downstream).
-  const buildPayload = () => buildTakeoffDocument({
+  const buildPayload = (overrides = {}) => buildTakeoffDocument({
     // the envelope — key order, omit-when-empty, the units/palette rules — is
     // decided in lib/takeoffDocument.js, the same writer the MCP server uses
-    project_name: projectName, units, client_info: clientInfo, estimate_settings: estimateSettings, bid_proposal: bidProposal,
-    sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
-    conditions, condition_columns: conditionColumns, shape_labels: shapeLabels, palette,
-    shapes, markups, rfis, approvals, proposals, condition_edit_proposals: conditionEditProposals, rules,
-    sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, stitches,
+    project_name: overrides.project_name ?? projectName,
+    units: overrides.units ?? units,
+    client_info: overrides.client_info ?? clientInfo,
+    estimate_settings: overrides.estimate_settings ?? estimateSettings,
+    bid_proposal: overrides.bid_proposal ?? bidProposal,
+    sheets: overrides.sheets ?? Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
+    conditions: overrides.conditions ?? conditions,
+    condition_columns: overrides.condition_columns ?? conditionColumns,
+    shape_labels: overrides.shape_labels ?? shapeLabels,
+    palette: overrides.palette ?? palette,
+    shapes: overrides.shapes ?? shapes,
+    markups: overrides.markups ?? markups,
+    rfis: overrides.rfis ?? rfis,
+    approvals: overrides.approvals ?? approvals,
+    proposals: overrides.proposals ?? proposals,
+    condition_edit_proposals: overrides.condition_edit_proposals ?? conditionEditProposals,
+    rules: overrides.rules ?? rules,
+    sheet_group: overrides.sheet_group ?? sheetGroup,
+    last_group: overrides.last_group ?? lastGroup,
+    sheet_tabs: overrides.sheet_tabs ?? openTabs,
+    stitches: overrides.stitches ?? stitches,
     // additive `split_view` (read-only reference pane): the writer omits it when
     // null, so a project that never split persists byte-identical to before.
-    split_view: serializeSplitView(splitView),
-    sheet_levels: sheetLevels, layer_overrides: layerOverrides, provenance_counters: provCounters,
+    split_view: overrides.split_view !== undefined ? serializeSplitView(overrides.split_view) : serializeSplitView(splitView),
+    sheet_levels: overrides.sheet_levels ?? sheetLevels,
+    layer_overrides: overrides.layer_overrides ?? layerOverrides,
+    provenance_counters: overrides.provenance_counters ?? provCounters,
+    door_answers: overrides.door_answers ?? doorAnswers,
   });
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -3373,6 +3610,746 @@ export default function TakeoffCanvas() {
   // snapshotted first, so the work is one Revisions-panel restore away — the
   // PDFs themselves are gone either way (local plans aren't stored elsewhere);
   // restored shapes re-attach by sheet name when the same files are re-opened.
+  // ── PDF Page Tools (#578) ────────────────────────────────────────────────
+  const rotateCurrentSheet = async (angle, targetKey = sheetKey) => {
+    const target = targetKey || sheetKey;
+    if (!target) return;
+    if (isStitchKey(target)) {
+      setCommitMsg("To rotate a stitched plan, rotate its source sheets.");
+      return;
+    }
+    const stitchWithTakeoffs = stitches.find(
+      (st) =>
+        (st.members || []).some((m) => m.key === target) &&
+        (shapes.some((s) => s.sheet_id === st.id) ||
+          markups.some((m) => m.sheet_id === st.id) ||
+          approvals.some((a) => a.sheet_id === st.id))
+    );
+    if (stitchWithTakeoffs) {
+      const msg = `Cannot rotate "${target}": it belongs to stitched plan "${stitchWithTakeoffs.name || stitchWithTakeoffs.id}" which has active takeoffs. Remove stitch takeoffs first.`;
+      alert(msg);
+      setCommitMsg(msg);
+      return;
+    }
+    const { file, page: targetPage } = parseSheetKey(target);
+    setRotatingKey(target);
+    try {
+      setCommitMsg(`Rotating ${target} ${angle}° clockwise…`);
+      const origBytes = await store.loadPdfData(file);
+      const rotatedBytes = await rotatePdfPage(new Uint8Array(origBytes), targetPage, angle);
+
+      const prevShapes = shapes;
+      const prevMarkups = markups;
+      const prevApprovals = approvals;
+
+      // Track cumulative rotation and baseline content hash (#591)
+      const prevRotations = { ...sheetRotationsRef.current };
+      const prevRot = prevRotations[target];
+      const origHash = prevRot?.hash || (await sha256Hex(origBytes));
+      const nextAngle = ((prevRot?.angle || 0) + angle) % 360;
+      const nextRotations = { ...prevRotations };
+      if (nextAngle === 0) {
+        delete nextRotations[target];
+      } else {
+        nextRotations[target] = { angle: nextAngle, hash: origHash };
+      }
+      saveSheetRotations(nextRotations);
+
+      const dims = panelImgs[target] || { w: stage.w, h: stage.h };
+      const rotated = rotateTakeoffOnSheet({ shapes, markups, approvals }, target, angle, dims);
+
+      await store.addPdf(new File([rotatedBytes], file, { type: "application/pdf" }));
+      evictDoc(file);
+      forgetPages([file]);
+      dropDoorReads(file);
+
+      setShapes(rotated.shapes);
+      setMarkups(rotated.markups);
+      setApprovals(rotated.approvals);
+
+      undoStackRef.current = [
+        ...undoStackRef.current,
+        {
+          family: "page_tool",
+          undo: async () => {
+            saveSheetRotations(prevRotations);
+            await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
+            evictDoc(file);
+            forgetPages([file]);
+            dropDoorReads(file);
+            setShapes(prevShapes);
+            setMarkups(prevMarkups);
+            setApprovals(prevApprovals);
+            setDocEpoch((e) => e + 1);
+            await refreshSheets();
+            goToSheet(target);
+            setCommitMsg(`Undid rotation on ${target}.`);
+          },
+          redo: async () => {
+            await rotateCurrentSheet(angle, target);
+          },
+        },
+      ];
+
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      setTimeout(() => setRotatingKey(null), 800);
+      const count = rotated.shapes?.filter((s) => s.sheet_id === target).length || 0;
+      setCommitMsg(`Rotated ${target} ${angle}° clockwise — ${count} takeoff(s) followed.`);
+    } catch (e) {
+      setRotatingKey(null);
+      setCommitMsg(`Couldn't rotate sheet: ${e?.message || e}`);
+    }
+  };
+
+  const deleteCurrentSheet = async (targetKey = sheetKey) => {
+    const target = targetKey || sheetKey;
+    if (!target) return;
+    if (isStitchKey(target)) {
+      setCommitMsg("To delete a sheet, delete from its source document.");
+      return;
+    }
+    const stitchWithTakeoffs = stitches.find(
+      (st) =>
+        (st.members || []).some((m) => m.key === target) &&
+        (shapes.some((s) => s.sheet_id === st.id) ||
+          markups.some((m) => m.sheet_id === st.id) ||
+          approvals.some((a) => a.sheet_id === st.id))
+    );
+    if (stitchWithTakeoffs) {
+      const msg = `Cannot delete "${target}": it belongs to stitched plan "${stitchWithTakeoffs.name || stitchWithTakeoffs.id}" which has active takeoffs. Remove stitch takeoffs first.`;
+      alert(msg);
+      setCommitMsg(msg);
+      return;
+    }
+    const { file, page: targetPage } = parseSheetKey(target);
+    const origBytes = await store.loadPdfData(file);
+    const { PDFDocument } = await import("pdf-lib");
+    const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+    const curDocPages = srcDoc.getPageCount();
+    if (curDocPages <= 1) {
+      alert("Cannot delete the only page in the document. Close the PDF instead.");
+      return;
+    }
+
+    const takeoffsOnPage =
+      shapes.filter((s) => s.sheet_id === target).length +
+      markups.filter((m) => m.sheet_id === target).length +
+      approvals.filter((a) => a.sheet_id === target).length;
+
+    if (takeoffsOnPage > 0) {
+      const ok = window.confirm(
+        `Sheet "${target}" has ${takeoffsOnPage} takeoff measurement(s)/markup(s). Delete this page? (Undo restores both page and takeoffs)`
+      );
+      if (!ok) return;
+    }
+
+    try {
+      setCommitMsg(`Deleting ${target}…`);
+      const origBytes = await store.loadPdfData(file);
+      const { PDFDocument } = await import("pdf-lib");
+      const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+      const curDocPages = srcDoc.getPageCount();
+      if (curDocPages <= 1) {
+        alert("Cannot delete the only page in the document. Close the PDF instead.");
+        return;
+      }
+      const newBytes = await deletePdfPage(new Uint8Array(origBytes), targetPage);
+
+      const prevShapes = shapes;
+      const prevMarkups = markups;
+      const prevApprovals = approvals;
+      const prevScales = scales;
+      const prevScaleSources = scaleSources;
+      const prevScaleUnconfirmed = scaleUnconfirmed;
+      const prevDetectedScales = detectedScales;
+      const prevDoorAnswers = doorAnswers;
+      const prevSheetLevels = sheetLevels;
+      const prevSheetGroup = sheetGroup;
+      const prevLastGroup = lastGroup;
+      const prevOpenTabs = openTabs;
+      const prevStitches = stitches;
+      const prevLayerOverrides = layerOverrides;
+      const prevRfis = rfis;
+      const prevRotations = sheetRotationsRef.current;
+
+      const remap = buildKeyRemap(
+        file,
+        (p) => (p === targetPage ? null : p > targetPage ? p - 1 : p),
+        curDocPages
+      );
+      const remapped = remapWorkspaceState(
+        {
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
+          sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+          sheetRotations: prevRotations, doorAnswers,
+        },
+        remap
+      );
+
+      await store.addPdf(new File([newBytes], file, { type: "application/pdf" }));
+      evictDoc(file);
+      forgetPages([file]);
+      dropDoorReads(file);
+
+      setShapes(remapped.shapes);
+      setMarkups(remapped.markups);
+      setApprovals(remapped.approvals);
+      setScales(remapped.scales);
+      setScaleSources(remapped.scaleSources);
+      setScaleUnconfirmed(remapped.scaleUnconfirmed);
+      setDetectedScales(remapped.detectedScales || {});
+      setDoorAnswers(remapped.doorAnswers || {});
+      setSheetLevels(remapped.sheetLevels);
+      setSheetGroup(remapped.sheetGroup);
+      setLastGroup(remapped.lastGroup);
+      setOpenTabs(remapped.openTabs);
+      setStitches(remapped.stitches);
+      setLayerOverrides(remapped.layerOverrides);
+      setRfis(remapped.rfis);
+      saveSheetRotations(remapped.sheetRotations || {});
+
+      const nextPage = Math.max(1, Math.min(targetPage, curDocPages - 1));
+      setPage(nextPage);
+
+      undoStackRef.current = [
+        ...undoStackRef.current,
+        {
+          family: "page_tool",
+          undo: async () => {
+            saveSheetRotations(prevRotations);
+            await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
+            evictDoc(file);
+            forgetPages([file]);
+            dropDoorReads(file);
+            setShapes(prevShapes);
+            setMarkups(prevMarkups);
+            setApprovals(prevApprovals);
+            setScales(prevScales);
+            setScaleSources(prevScaleSources);
+            setScaleUnconfirmed(prevScaleUnconfirmed);
+            setDetectedScales(prevDetectedScales);
+            setDoorAnswers(prevDoorAnswers);
+            setSheetLevels(prevSheetLevels);
+            setSheetGroup(prevSheetGroup);
+            setLastGroup(prevLastGroup);
+            setOpenTabs(prevOpenTabs);
+            setStitches(prevStitches);
+            setLayerOverrides(prevLayerOverrides);
+            setRfis(prevRfis);
+            setDocEpoch((e) => e + 1);
+            await refreshSheets();
+            goToSheet(target);
+            setCommitMsg(`Restored page ${targetPage} and its takeoffs.`);
+          },
+          redo: async () => {
+            await deleteCurrentSheet(target);
+          },
+        },
+      ];
+
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      setCommitMsg(`Deleted page ${targetPage} from ${file}. ⌘Z restores it.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't delete page: ${e?.message || e}`);
+    }
+  };
+
+  const reorderDocumentPages = async (fileName, fromPage, toPage) => {
+    const file = fileName || active;
+    if (!file || fromPage === toPage) return;
+    try {
+      setCommitMsg(`Reordering pages in ${file}…`);
+      const origBytes = await store.loadPdfData(file);
+      const { PDFDocument } = await import("pdf-lib");
+      const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+      const totalPages = srcDoc.getPageCount();
+      if (totalPages <= 1) return;
+
+      const order = Array.from({ length: totalPages }, (_, i) => i + 1);
+      const [moved] = order.splice(fromPage - 1, 1);
+      order.splice(toPage - 1, 0, moved);
+
+      const reorderedBytes = await reorderPdfPages(new Uint8Array(origBytes), order);
+
+      const prevShapes = shapes;
+      const prevMarkups = markups;
+      const prevApprovals = approvals;
+      const prevScales = scales;
+      const prevScaleSources = scaleSources;
+      const prevScaleUnconfirmed = scaleUnconfirmed;
+      const prevDetectedScales = detectedScales;
+      const prevDoorAnswers = doorAnswers;
+      const prevSheetLevels = sheetLevels;
+      const prevSheetGroup = sheetGroup;
+      const prevLastGroup = lastGroup;
+      const prevOpenTabs = openTabs;
+      const prevStitches = stitches;
+      const prevLayerOverrides = layerOverrides;
+      const prevRfis = rfis;
+      const prevRotations = sheetRotationsRef.current;
+
+      const oldToNew = new Map();
+      order.forEach((oldP, idx) => oldToNew.set(oldP, idx + 1));
+      const remap = buildKeyRemap(file, (oldP) => oldToNew.get(oldP), totalPages);
+      const remapped = remapWorkspaceState(
+        {
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
+          sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+          sheetRotations: prevRotations, doorAnswers,
+        },
+        remap
+      );
+
+      await store.addPdf(new File([reorderedBytes], file, { type: "application/pdf" }));
+      evictDoc(file);
+      forgetPages([file]);
+      dropDoorReads(file);
+
+      setShapes(remapped.shapes);
+      setMarkups(remapped.markups);
+      setApprovals(remapped.approvals);
+      setScales(remapped.scales);
+      setScaleSources(remapped.scaleSources);
+      setScaleUnconfirmed(remapped.scaleUnconfirmed);
+      setDetectedScales(remapped.detectedScales || {});
+      setDoorAnswers(remapped.doorAnswers || {});
+      setSheetLevels(remapped.sheetLevels);
+      setSheetGroup(remapped.sheetGroup);
+      setLastGroup(remapped.lastGroup);
+      setOpenTabs(remapped.openTabs);
+      setStitches(remapped.stitches);
+      setLayerOverrides(remapped.layerOverrides);
+      setRfis(remapped.rfis);
+      saveSheetRotations(remapped.sheetRotations || {});
+
+      undoStackRef.current = [
+        ...undoStackRef.current,
+        {
+          family: "page_tool",
+          undo: async () => {
+            saveSheetRotations(prevRotations);
+            await store.addPdf(new File([origBytes], file, { type: "application/pdf" }));
+            evictDoc(file);
+            forgetPages([file]);
+            dropDoorReads(file);
+            setShapes(prevShapes);
+            setMarkups(prevMarkups);
+            setApprovals(prevApprovals);
+            setScales(prevScales);
+            setScaleSources(prevScaleSources);
+            setScaleUnconfirmed(prevScaleUnconfirmed);
+            setDetectedScales(prevDetectedScales);
+            setDoorAnswers(prevDoorAnswers);
+            setSheetLevels(prevSheetLevels);
+            setSheetGroup(prevSheetGroup);
+            setLastGroup(prevLastGroup);
+            setOpenTabs(prevOpenTabs);
+            setStitches(prevStitches);
+            setLayerOverrides(prevLayerOverrides);
+            setRfis(prevRfis);
+            setDocEpoch((e) => e + 1);
+            await refreshSheets();
+            goToSheet(formatSheetKey(file, fromPage));
+            setCommitMsg(`Undid page reorder in ${file}.`);
+          },
+          redo: async () => {
+            await reorderDocumentPages(file, fromPage, toPage);
+          },
+        },
+      ];
+
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      setCommitMsg(`Reordered ${file} (page ${fromPage} → ${toPage}). Takeoffs followed.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't reorder pages: ${e?.message || e}`);
+    }
+  };
+
+  const extractPageRange = async (fileName = active) => {
+    const file = fileName || active;
+    if (!file) return;
+    const origBytes = await store.loadPdfData(file);
+    const { PDFDocument } = await import("pdf-lib");
+    const srcDoc = await PDFDocument.load(new Uint8Array(origBytes), { updateMetadata: false });
+    const totalPages = srcDoc.getPageCount();
+
+    const input = window.prompt(
+      `Enter page numbers or ranges to extract (1-${totalPages}), e.g. 1-2, 4:`,
+      String(page)
+    );
+    if (!input) return;
+
+    const pages = new Set();
+    for (const part of input.split(/[\s,]+/)) {
+      if (!part) continue;
+      const m = part.match(/^(\d+)(?:-(\d+))?$/);
+      if (!m) continue;
+      const s = parseInt(m[1], 10);
+      const e = m[2] ? parseInt(m[2], 10) : s;
+      for (let p = Math.min(s, e); p <= Math.max(s, e); p++) {
+        if (p >= 1 && p <= totalPages) pages.add(p);
+      }
+    }
+    const pageList = [...pages].sort((a, b) => a - b);
+    if (!pageList.length) {
+      alert("No valid pages specified.");
+      return;
+    }
+
+    try {
+      setCommitMsg(`Extracting ${pageList.length} page(s) from ${file}…`);
+      const extractedBytes = await extractPdfPages(new Uint8Array(origBytes), pageList);
+      const baseName = file.replace(/\.pdf$/i, "");
+      const outName = `${baseName}_extracted.pdf`;
+      const otkName = `${baseName}_extracted.otk`;
+
+      const remap = new Map();
+      for (let p = 1; p <= totalPages; p++) {
+        const oldKey = formatSheetKey(file, p);
+        const idx = pageList.indexOf(p);
+        remap.set(oldKey, idx >= 0 ? formatSheetKey(outName, idx + 1) : null);
+      }
+      for (const sh of sheets) {
+        if (sh.name !== file) {
+          const docB = await store.loadPdfData(sh.name);
+          const docD = await PDFDocument.load(new Uint8Array(docB), { updateMetadata: false });
+          const count = docD.getPageCount();
+          for (let p = 1; p <= count; p++) {
+            remap.set(formatSheetKey(sh.name, p), null);
+          }
+        }
+      }
+
+      const carriedState = remapWorkspaceState(
+        {
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
+          sheetLevels, layerOverrides, rfis, stitches, doorAnswers,
+        },
+        remap
+      );
+
+      const extractedPayload = buildPayload({
+        project_name: `${projectName || "project"} - Extracted`,
+        sheets: Object.entries(carriedState.scales || {}).map(([sheet_id, units_per_px]) =>
+          sheetEntry({
+            sheet_id,
+            units_per_px,
+            scale_source: carriedState.scaleSources?.[sheet_id],
+            scale_confirmed: carriedState.scaleUnconfirmed?.[sheet_id],
+          })
+        ),
+        shapes: carriedState.shapes || [],
+        markups: carriedState.markups || [],
+        approvals: carriedState.approvals || [],
+        rfis: carriedState.rfis || [],
+        sheet_levels: carriedState.sheetLevels || {},
+        layer_overrides: carriedState.layerOverrides || {},
+        sheet_group: [],
+        sheet_tabs: [outName],
+        stitches: carriedState.stitches || [],
+        door_answers: carriedState.doorAnswers || carriedState.door_answers || {},
+      });
+
+      const otkData = await buildProjectArchive({
+        takeoff: extractedPayload,
+        sheets: [{ name: outName }],
+        loadPdfData: async () => extractedBytes,
+        projectName: `${projectName || "project"} - Extracted`,
+        onProgress: setCommitMsg,
+      });
+
+      // Download PDF
+      const pdfBlob = new Blob([extractedBytes], { type: "application/pdf" });
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const aPdf = document.createElement("a");
+      aPdf.href = pdfUrl;
+      aPdf.download = outName;
+      document.body.appendChild(aPdf);
+      aPdf.click();
+      aPdf.remove();
+      setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+
+      // Download .otk
+      downloadArchive(otkName, otkData);
+
+      // Open project remains completely unchanged
+      setCommitMsg(`Extracted ${pageList.length} page(s) to ${outName} and ${otkName}. Current project unchanged.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't extract pages: ${e?.message || e}`);
+    }
+  };
+
+  const mergePdfSets = async () => {
+    if (sheets.length < 2) {
+      alert("Open at least 2 PDF files to merge them.");
+      return;
+    }
+    const outName = `${(projectName || "merged").trim().replace(/[^\w.\- ]+/g, "") || "merged"}_set.pdf`;
+    try {
+      setCommitMsg(`Merging ${sheets.length} PDFs into ${outName}…`);
+      const byteList = [];
+      const sourceDocs = [];
+      const { PDFDocument } = await import("pdf-lib");
+      for (const s of sheets) {
+        const b = await store.loadPdfData(s.name);
+        const u8 = new Uint8Array(b);
+        byteList.push(u8);
+        const doc = await PDFDocument.load(u8, { updateMetadata: false });
+        sourceDocs.push({ name: s.name, pageCount: doc.getPageCount(), bytes: u8 });
+      }
+
+      const mergedBytes = await mergePdfDocuments(byteList);
+      let curNewPage = 1;
+      const remap = new Map();
+      for (const s of sourceDocs) {
+        for (let p = 1; p <= s.pageCount; p++) {
+          remap.set(formatSheetKey(s.name, p), formatSheetKey(outName, curNewPage));
+          curNewPage++;
+        }
+      }
+
+      const prevShapes = shapes;
+      const prevMarkups = markups;
+      const prevApprovals = approvals;
+      const prevScales = scales;
+      const prevScaleSources = scaleSources;
+      const prevScaleUnconfirmed = scaleUnconfirmed;
+      const prevDetectedScales = detectedScales;
+      const prevDoorAnswers = doorAnswers;
+      const prevSheetLevels = sheetLevels;
+      const prevSheetGroup = sheetGroup;
+      const prevLastGroup = lastGroup;
+      const prevOpenTabs = openTabs;
+      const prevStitches = stitches;
+      const prevLayerOverrides = layerOverrides;
+      const prevRfis = rfis;
+      const prevRotations = sheetRotationsRef.current;
+      const prevActive = active;
+      const prevPage = page;
+
+      const remapped = remapWorkspaceState(
+        {
+          shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
+          sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+          sheetRotations: prevRotations, doorAnswers,
+        },
+        remap
+      );
+
+      // Merge replaces its source files in one undoable step:
+      for (const s of sourceDocs) {
+        await store.removePdf(s.name);
+        evictDoc(s.name);
+      }
+      await store.addPdf(new File([mergedBytes], outName, { type: "application/pdf" }));
+      evictDoc(outName);
+      forgetPages([...sourceDocs.map((s) => s.name), outName]);
+      dropDoorReads([...sourceDocs.map((s) => s.name), outName]);
+
+      setShapes(remapped.shapes);
+      setMarkups(remapped.markups);
+      setApprovals(remapped.approvals);
+      setScales(remapped.scales);
+      setScaleSources(remapped.scaleSources);
+      setScaleUnconfirmed(remapped.scaleUnconfirmed);
+      setDetectedScales(remapped.detectedScales || {});
+      setDoorAnswers(remapped.doorAnswers || {});
+      setSheetLevels(remapped.sheetLevels);
+      setSheetGroup(remapped.sheetGroup);
+      setLastGroup(remapped.lastGroup);
+      setOpenTabs(remapped.openTabs.length ? remapped.openTabs : [outName]);
+      setStitches(remapped.stitches);
+      setLayerOverrides(remapped.layerOverrides);
+      setRfis(remapped.rfis);
+      saveSheetRotations(remapped.sheetRotations || {});
+
+      undoStackRef.current = [
+        ...undoStackRef.current,
+        {
+          family: "page_tool",
+          undo: async () => {
+            saveSheetRotations(prevRotations);
+            await store.removePdf(outName);
+            evictDoc(outName);
+            for (const s of sourceDocs) {
+              await store.addPdf(new File([s.bytes], s.name, { type: "application/pdf" }));
+              evictDoc(s.name);
+            }
+            forgetPages([...sourceDocs.map((s) => s.name), outName]);
+            dropDoorReads([...sourceDocs.map((s) => s.name), outName]);
+            setShapes(prevShapes);
+            setMarkups(prevMarkups);
+            setApprovals(prevApprovals);
+            setScales(prevScales);
+            setScaleSources(prevScaleSources);
+            setScaleUnconfirmed(prevScaleUnconfirmed);
+            setDetectedScales(prevDetectedScales);
+            setDoorAnswers(prevDoorAnswers);
+            setSheetLevels(prevSheetLevels);
+            setSheetGroup(prevSheetGroup);
+            setLastGroup(prevLastGroup);
+            setOpenTabs(prevOpenTabs);
+            setStitches(prevStitches);
+            setLayerOverrides(prevLayerOverrides);
+            setRfis(prevRfis);
+            setDocEpoch((e) => e + 1);
+            await refreshSheets();
+            setActive(prevActive);
+            setPage(prevPage);
+            setCommitMsg(`Undid merge: restored original ${sourceDocs.length} files and takeoffs.`);
+          },
+          redo: async () => {
+            await mergePdfSets();
+          },
+        },
+      ];
+
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      setActive(outName);
+      setPage(1);
+      setCommitMsg(`Merged ${sheets.length} files into ${outName} (${curNewPage - 1} pages).`);
+      setCommitMsg(`Merged ${sourceDocs.length} files into ${outName} (${curNewPage - 1} pages). Takeoffs remapped.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't merge documents: ${e?.message || e}`);
+    }
+  };
+
+  const insertPagesFromPdf = () => {
+    if (!active) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf";
+    input.onchange = async (e) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+      try {
+        setCommitMsg(`Inserting pages from ${file.name}…`);
+        const insertBytes = new Uint8Array(await file.arrayBuffer());
+        const curBytes = new Uint8Array(await store.loadPdfData(active));
+        const res = await insertPdfPages(curBytes, insertBytes, page);
+
+        const { PDFDocument } = await import("pdf-lib");
+        const activeDoc = await PDFDocument.load(curBytes, { updateMetadata: false });
+        const curDocPages = activeDoc.getPageCount();
+        const insertedCount = res.insertedCount;
+
+        const prevShapes = shapes;
+        const prevMarkups = markups;
+        const prevApprovals = approvals;
+        const prevScales = scales;
+        const prevScaleSources = scaleSources;
+        const prevScaleUnconfirmed = scaleUnconfirmed;
+        const prevDetectedScales = detectedScales;
+        const prevDoorAnswers = doorAnswers;
+        const prevSheetLevels = sheetLevels;
+        const prevSheetGroup = sheetGroup;
+        const prevLastGroup = lastGroup;
+        const prevOpenTabs = openTabs;
+        const prevStitches = stitches;
+        const prevLayerOverrides = layerOverrides;
+        const prevRfis = rfis;
+        const prevRotations = sheetRotationsRef.current;
+
+        const remap = buildKeyRemap(
+          active,
+          (p) => (p <= page ? p : p + insertedCount),
+          curDocPages
+        );
+        const remapped = remapWorkspaceState(
+          {
+            shapes, markups, approvals, scales, scaleSources, scaleUnconfirmed, detectedScales,
+            sheetLevels, sheetGroup, lastGroup, openTabs, stitches, layerOverrides, rfis,
+            sheetRotations: prevRotations, doorAnswers,
+          },
+          remap
+        );
+
+        await store.addPdf(new File([res.pdfBytes], active, { type: "application/pdf" }));
+        evictDoc(active);
+        forgetPages([active]);
+        dropDoorReads(active);
+
+        setShapes(remapped.shapes);
+        setMarkups(remapped.markups);
+        setApprovals(remapped.approvals);
+        setScales(remapped.scales);
+        setScaleSources(remapped.scaleSources);
+        setScaleUnconfirmed(remapped.scaleUnconfirmed);
+        setDetectedScales(remapped.detectedScales || {});
+        setDoorAnswers(remapped.doorAnswers || {});
+        setSheetLevels(remapped.sheetLevels);
+        setSheetGroup(remapped.sheetGroup);
+        setLastGroup(remapped.lastGroup);
+        setOpenTabs(remapped.openTabs);
+        setStitches(remapped.stitches);
+        setLayerOverrides(remapped.layerOverrides);
+        setRfis(remapped.rfis);
+        saveSheetRotations(remapped.sheetRotations || {});
+
+        undoStackRef.current = [
+          ...undoStackRef.current,
+          {
+            family: "page_tool",
+            undo: async () => {
+              saveSheetRotations(prevRotations);
+              await store.addPdf(new File([curBytes], active, { type: "application/pdf" }));
+              evictDoc(active);
+              forgetPages([active]);
+              dropDoorReads(active);
+              setShapes(prevShapes);
+              setMarkups(prevMarkups);
+              setApprovals(prevApprovals);
+              setScales(prevScales);
+              setScaleSources(prevScaleSources);
+              setScaleUnconfirmed(prevScaleUnconfirmed);
+              setDetectedScales(prevDetectedScales);
+              setDoorAnswers(prevDoorAnswers);
+              setSheetLevels(prevSheetLevels);
+              setSheetGroup(prevSheetGroup);
+              setLastGroup(prevLastGroup);
+              setOpenTabs(prevOpenTabs);
+              setStitches(prevStitches);
+              setLayerOverrides(prevLayerOverrides);
+              setRfis(prevRfis);
+              setDocEpoch((e) => e + 1);
+              await refreshSheets();
+              setCommitMsg(`Undid page insertion in ${active}.`);
+            },
+            redo: async () => {
+              // file picker cannot be triggered programmatically without user gesture
+            },
+          },
+        ];
+
+        setDocEpoch((e) => e + 1);
+        await refreshSheets();
+        setCommitMsg(`Inserted ${insertedCount} page(s) after page ${page}.`);
+      } catch (err) {
+        setCommitMsg(`Couldn't insert pages: ${err?.message || err}`);
+      }
+    };
+    input.click();
+  };
+
+  const exportEditedPdf = async () => {
+    if (!active) {
+      setCommitMsg("No active plan to export.");
+      return;
+    }
+    try {
+      const bytes = await store.loadPdfData(active);
+      const base = active.replace(/\.pdf$/i, "");
+      downloadArchive(`${base}-edited.pdf`, new Uint8Array(bytes));
+      setCommitMsg(`Exported ${base}-edited.pdf.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't export PDF: ${e?.message || e}`);
+    }
+  };
+
   const clearWorkspace = async () => {
     const names = sheets.map((s) => s.name);
     let saved = false;
@@ -3532,7 +4509,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, bidProposal, units, splitView]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, bidProposal, units, splitView, doorAnswers]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -3549,7 +4526,7 @@ export default function TakeoffCanvas() {
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       if (hydrated.current && saveStateRef.current === "saving" && saveDataRef.current) {
-        mountStore.saveAnnotations(saveDataRef.current).catch(() => {});   // best-effort flush
+        mountStore.saveAnnotations(saveDataRef.current).catch(() => { });   // best-effort flush
       }
     };
   }, []);
@@ -3871,6 +4848,16 @@ export default function TakeoffCanvas() {
         setCommitMsg(uiText(`${label} armed${tag ? ` under ${tag}` : ""}${plan.curve ? " · Curve" : ""} — trace the next one.`));
         return;
       }
+      if (e.key === "]" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        rotateCurrentSheet(90);
+        return;
+      }
+      if (e.key === "[" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        rotateCurrentSheet(270);
+        return;
+      }
       const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension", y: "symbol" };
       const t = map[lower];
       if (t === "oneclick" && !oneClickEnabled()) { setCommitMsg(ONE_CLICK_GATE_MESSAGE); return; }   // the gate (lib/gate.js)
@@ -4155,7 +5142,11 @@ export default function TakeoffCanvas() {
     const res = alignMembers(st.members, dims, [alignPt[0], alignPt[1]], [p[0], p[1]]);
     setAlignPt(null);
     if (res.error) { setCommitMsg(res.error); return; }
-    setStitches((list) => list.map((s) => (s.id === st.id ? { ...s, members: res.members } : s)));
+    setStitches((list) => list.map((s) => {
+      if (s.id !== st.id) return s;
+      const { aligned: _aligned, seam_check: _seamCheck, ...rest } = s;
+      return { ...rest, members: res.members };
+    }));
     setTool("select");
     setCommitMsg(uiText("Match line joined — the sheets now read as one surface. Trace straight across it."));
   }
@@ -4350,8 +5341,8 @@ export default function TakeoffCanvas() {
       // large image never shadows another markup from selection (an image shields
       // shapes beneath it like a highlight box does; move it to reach what's under).
       const mHit = rev.find((m) => m.type !== "highlight" && m.type !== "image" && hitMarkup(m, p, thr))
-                || rev.find((m) => m.type === "highlight" && hitMarkup(m, p, thr))
-                || rev.find((m) => m.type === "image" && hitMarkup(m, p, thr));
+        || rev.find((m) => m.type === "highlight" && hitMarkup(m, p, thr))
+        || rev.find((m) => m.type === "image" && hitMarkup(m, p, thr));
       if (mHit) {
         selectMarkup(mHit.id);
         // arm a move drag — snapshot the markup's current normalized coords (all four
@@ -4360,9 +5351,9 @@ export default function TakeoffCanvas() {
         // first click of a double-click re-edit) never nudges the markup.
         const orig = (mHit.type === "highlight" && Array.isArray(mHit.pts)) ? { pts: mHit.pts.map((v) => [...v]) }
           : (mHit.type === "cloud" || mHit.type === "highlight") ? { rect: mHit.rect }
-          : mHit.type === "callout" ? { at: mHit.at, target: mHit.target }
-            : (mHit.type === "arrow" || mHit.type === "dimension") ? { from: mHit.from, to: mHit.to }
-              : { at: mHit.at };   // text + bubble
+            : mHit.type === "callout" ? { at: mHit.at, target: mHit.target }
+              : (mHit.type === "arrow" || mHit.type === "dimension") ? { from: mHit.from, to: mHit.to }
+                : { at: mHit.at };   // text + bubble
         // raw start (markups don't snap/angle-lock; matches the raw tracking point in
         // onPointerMove so the delta can't be contaminated by a stale snap/angle ref)
         dragRef.current = { kind: "markupMove", markupId: mHit.id, sheetId: mHit.sheet_id, start: toImage(e.clientX, e.clientY), orig, moved: false };
@@ -4507,7 +5498,7 @@ export default function TakeoffCanvas() {
     // rubber band thickens, chip shows the angle) — no extra chrome on the sheet.
     const anchor = (drawing && poly.length > 0) ? poly[poly.length - 1]
       : (tool === "calibrate" && calib.length === 1 ? calib[0]
-      : (tool === "check" && check.length === 1 ? check[0] : null));
+        : (tool === "check" && check.length === 1 ? check[0] : null));
     angleRef.current = null;
     let lock = null;
     if (angleOn && anchor && !bowOpen && !snapRef.current && !panRef.current) {
@@ -4917,7 +5908,12 @@ export default function TakeoffCanvas() {
     // a held draw-click that moves becomes a pan (point placement waits for up)
     if (pendingClickRef.current && !panRef.current) {
       const pc = pendingClickRef.current;
-      if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5) {
+      if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5 && (tool === "rect" || tool === "deduct-rect") && poly.length === 0) {
+        // a held Rectangle press that moves draws the box (corner 1 now, corner 2 on release)
+        pendingClickRef.current = null;
+        rectDragRef.current = true;
+        performClick(pc.p, e);
+      } else if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5) {
         promoteStage();
         panRef.current = { sx: pc.cx, sy: pc.cy, ox: tfRef.current.x, oy: tfRef.current.y };
         pendingClickRef.current = null;
@@ -5053,9 +6049,18 @@ export default function TakeoffCanvas() {
           .map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]);
         // width as a FRACTION of panel width — the stroke scales with the plan like ink,
         // and survives raster-budget changes (screen px ÷ scale ÷ panel width at draw time)
-        addMarkup({ type: "highlight", pts, color: hlStyle.color,
-                    w: (hlStyle.size / tfRef.current.scale) / tp.img.w, tip: hlStyle.tip }, tp.key);
+        addMarkup({
+          type: "highlight", pts, color: hlStyle.color,
+          w: (hlStyle.size / tfRef.current.scale) / tp.img.w, tip: hlStyle.tip
+        }, tp.key);
       }
+      return;
+    }
+    if (rectDragRef.current) {
+      rectDragRef.current = false;
+      const q = (snapOn && snapRef.current) ? snapRef.current : toImage(e.clientX, e.clientY);
+      if (tool === "rect" || tool === "deduct-rect") performClick(q, e);
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ }
       return;
     }
     if (pendingClickRef.current) {
@@ -5079,7 +6084,7 @@ export default function TakeoffCanvas() {
       // too, so an interrupted drag still lands as a stamped command, never as
       // orphaned preview state.)
       if ((d.kind === "vertex" || d.kind === "edge" || d.kind === "move")
-          && d.lastVerts && !vertsEqual(d.lastVerts, d.prev.verts_norm)) {
+        && d.lastVerts && !vertsEqual(d.lastVerts, d.prev.verts_norm)) {
         dispatchShape({
           type: "geom", id: d.shapeId, editKind: d.kind,
           verts_norm: d.lastVerts,
@@ -5439,13 +6444,15 @@ export default function TakeoffCanvas() {
     const h = Number(aCond?.height_ft) || 0;
     if (!(h > 0)) { setCommitMsg(uiText(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the condition editor) — Surface Area = traced LF × height.`)); return; }
     const LF = openLen(points) * upp;
-    dispatchShape({ type: "add", shapes: [{
-      sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
-      verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
-      computed: { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) },
-      ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "manual", ...(baked ? { curved: true } : {}) },
-    }] });
+    dispatchShape({
+      type: "add", shapes: [{
+        sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
+        verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
+        computed: { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) },
+        ...(activeLabel ? { label: activeLabel } : {}),
+        origin: { method: "manual", ...(baked ? { curved: true } : {}) },
+      }]
+    });
   }
   // ── the Symbol tool (#264): marquee one instance → the engine finds every
   // placement; matches light up, near-misses ask, and nothing commits until
@@ -5562,12 +6569,14 @@ export default function TakeoffCanvas() {
     if (!rows.length) { setCommitMsg(uiText("Nothing to commit — no matches and no accepted questions.")); return; }
     // ONE dispatch = one undo step, the whole gesture — same batch discipline
     // as the MCP's set-wide commit
-    dispatchShape({ type: "add", shapes: rows.map((m) => ({
-      sheet_id: sw.key, condition_id: activeCond, measure_role: "count",
-      verts_norm: [[m.at[0] / sw.img.w, m.at[1] / sw.img.h]], computed: { count: 1 },
-      ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "symbol_sweep", symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: "instance", sheet: sw.key, ...(m.seedRow ? { seed_instance: true } : {}) } } },
-    })) });
+    dispatchShape({
+      type: "add", shapes: rows.map((m) => ({
+        sheet_id: sw.key, condition_id: activeCond, measure_role: "count",
+        verts_norm: [[m.at[0] / sw.img.w, m.at[1] / sw.img.h]], computed: { count: 1 },
+        ...(activeLabel ? { label: activeLabel } : {}),
+        origin: { method: "symbol_sweep", symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: "instance", sheet: sw.key, ...(m.seedRow ? { seed_instance: true } : {}) } } },
+      }))
+    });
     const skippedN = sw.matches.length - sw.matches.filter((m) => !off.has(tagKey(m))).length;
     setCommitMsg(uiText(`Committed ${rows.length} EA under ${condById[activeCond]?.finish_tag || "condition"}${sw.includeSeed ? " — seed included" : ""}${skippedN ? ` · ${skippedN} excluded by label` : ""} · one undo step (${keyText(uiText("⌘Z"))}).`));
     setSweep(null);
@@ -5576,10 +6585,12 @@ export default function TakeoffCanvas() {
   function commitCount(p) {
     if (!activeCond) { setCommitMsg(uiText("Pick or add a condition first.")); return; }
     const tp = panelAt(p[0]);
-    dispatchShape({ type: "add", shapes: [{
-      sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
-      verts_norm: [[(p[0] - tp.xOffset) / tp.img.w, p[1] / tp.img.h]], computed: { count: 1 }, ...(activeLabel ? { label: activeLabel } : {}), origin: { method: "manual" },
-    }] });
+    dispatchShape({
+      type: "add", shapes: [{
+        sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
+        verts_norm: [[(p[0] - tp.xOffset) / tp.img.w, p[1] / tp.img.h]], computed: { count: 1 }, ...(activeLabel ? { label: activeLabel } : {}), origin: { method: "manual" },
+      }]
+    });
   }
 
   // ── One-Click Area — click inside a room; the linework bounds it ──────────
@@ -5629,10 +6640,10 @@ export default function TakeoffCanvas() {
       // rescale so text and ink share a frame whatever the Hi-Res toggle says
       const dtk = rsNow === RENDER_SCALE ? dimTextsRef.current.get(key) : (dimTextsRef.current.get(key) || []).map((t) => ({ ...t, x: t.x * rsNow / RENDER_SCALE, y: t.y * rsNow / RENDER_SCALE, wPx: t.wPx * rsNow / RENDER_SCALE }));
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
-                     pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
-                     pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
-                     rolesForSheet(key),
-                     { subpaths: subpathsRef.current.get(key) || null, texts: textMarksRef.current.get(key) || null, dimTexts: dtk && dtk.length ? dtk : null });
+        pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
+        pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
+        rolesForSheet(key),
+        { subpaths: subpathsRef.current.get(key) || null, texts: textMarksRef.current.get(key) || null, dimTexts: dtk && dtk.length ? dtk : null });
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -6192,9 +7203,11 @@ export default function TakeoffCanvas() {
   };
   // the clipboard payload for one shape: verts deep-copied, provenance kept,
   // `from` remembers the source sheet so paste knows same-sheet vs cross-sheet
-  const clipEntry = (sel) => ({ condition_id: sel.condition_id, measure_role: sel.measure_role,
-                                verts_norm: sel.verts_norm.map((v) => [...v]), from: sel.sheet_id, height_ft: sel.height_ft,
-                                ...(sel.height_override ? { height_override: true } : {}), ...(sel.label ? { label: sel.label } : {}), ...cloneOrigin(sel.origin) });
+  const clipEntry = (sel) => ({
+    condition_id: sel.condition_id, measure_role: sel.measure_role,
+    verts_norm: sel.verts_norm.map((v) => [...v]), from: sel.sheet_id, height_ft: sel.height_ft,
+    ...(sel.height_override ? { height_override: true } : {}), ...(sel.label ? { label: sel.label } : {}), ...cloneOrigin(sel.origin)
+  });
   function copySelected() {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel) { setCommitMsg(uiText("Select a takeoff to copy.")); return; }
@@ -6537,7 +7550,7 @@ export default function TakeoffCanvas() {
       }
     }
   }
-  function updateMarkup(mid, patch) { setMarkups((ms) => ms.map((m) => (m.id === mid ? { ...m, ...patch, ...(m.annotation_style ? { annotation_style: { ...m.annotation_style, ...(patch.line_style ? {line_style:patch.line_style}:{}), ...(patch.weight != null ? {stroke_pt:Math.max(.5,Math.min(6,1.5*patch.weight))}:{}), ...(patch.color ? {color:patch.color}:{}), } } : {}) } : m))); }
+  function updateMarkup(mid, patch) { setMarkups((ms) => ms.map((m) => (m.id === mid ? { ...m, ...patch, ...(m.annotation_style ? { annotation_style: { ...m.annotation_style, ...(patch.line_style ? { line_style: patch.line_style } : {}), ...(patch.weight != null ? { stroke_pt: Math.max(.5, Math.min(6, 1.5 * patch.weight)) } : {}), ...(patch.color ? { color: patch.color } : {}), } } : {}) } : m))); }
   function deleteMarkup(mid) { setMarkups((ms) => ms.filter((m) => m.id !== mid)); }
 
   // ── stamps — reusable annotations dropped click-to-place (#40). The library
@@ -6784,6 +7797,34 @@ export default function TakeoffCanvas() {
   // markup on the source sheet to resolve (only a synthetic {sheet_id, rect}),
   // so centerOnMarkup/flyToMarkup can't express this — this is why traceSource
   // doesn't reuse them.
+  // Symbol sweep review: bring the selected question into view. q.at is in the
+  // sheet's own pixels (the overlay draws it at q.at[0] + xOffset), and the
+  // sweep panel floats over the canvas's right side, so center within the part
+  // of the canvas left of the panel — otherwise the ring lands under the panel.
+  function centerOnSweepQuestion(sw, i) {
+    const q = sw?.questions?.[i];
+    const sp = q && panelByKey(sw.key);
+    const el = containerRef.current;
+    if (!q || !sp?.img?.w || !el) return false;
+    const r = el.getBoundingClientRect();
+    const panelLeft = window.innerWidth - FLOAT_GAP - SWEEP_PANEL_W;
+    const visibleW = Math.max(120, Math.min(r.right, panelLeft) - r.left);
+    const scale = tfRef.current.scale;
+    const sx = q.at[0] + sp.xOffset, sy = q.at[1];
+    setTfNow({ x: visibleW / 2 - sx * scale, y: r.height / 2 - sy * scale, scale });
+    return true;
+  }
+  // Follow the review cursor: ↵ / X advance it and → / ← step it, so whenever
+  // qIndex moves the view goes with it. Not on the sweep's first render — the
+  // person is still looking at the seed they just marqueed.
+  const sweepFocusRef = useRef(null);
+  useEffect(() => {
+    if (!sweep) { sweepFocusRef.current = null; return; }
+    const id = `${sweep.key}#${sweep.qIndex}`;
+    const prev = sweepFocusRef.current;
+    sweepFocusRef.current = id;
+    if (prev && prev !== id && prev.startsWith(`${sweep.key}#`)) centerOnSweepQuestion(sweep, sweep.qIndex);
+  }, [sweep?.key, sweep?.qIndex]); // eslint-disable-line react-hooks/exhaustive-deps
   function centerOnPanelPoint(sp, nx, ny) {
     if (!sp?.img?.w) return false;
     const el = containerRef.current;
@@ -6848,6 +7889,447 @@ export default function TakeoffCanvas() {
     pendingSourceRef.current = { sheet_id: src, rect, token, attempts: 0 };
     openSheets([src], false);
   }
+
+  // ── Doors suite (Trade: Doors & Windows) ──────────────────────────────────
+  // Picking the doors trade reads every door on the open sheet from its own
+  // linework (lib/doorReader.ts, WebAssembly), matches each to the door
+  // schedule by its tag and to the hardware sets in spec 08 71 00
+  // (lib/doorSuite.ts), and asks only what the documents leave open. Reads are
+  // cached per sheet and run off the paint path; nothing is a quantity until
+  // "Add to estimate".
+  const doorSuiteOn = viewTrade === "doors" && view === "canvas";
+  const doorRunsRef = useRef(new Map());            // sheet key → text runs in the door frame (unrotated page points)
+  const doorSegsRef = useRef(new Map());            // sheet key → the sheet's linework, flat [x0,y0,x1,y1,…], same frame
+  const [doorReads, setDoorReads] = useState({});   // sheet key → { status, doors, withheld, rot, w0, h0 }
+  // "Find more doors": the door detector (lib/doorDetect), off by default. The switch is remembered; the model
+  // downloads once, on the click that turns it on, and runs on WebGPU in a worker. Nothing is uploaded.
+  const [doorDetectOn, setDoorDetectOn] = useState(() => { try { return localStorage.getItem("opentakeoff_doors_detector") === "on"; } catch { return false; } });
+  const [doorDetect, setDoorDetect] = useState({ gpu: null, cached: null, load: "idle", progress: null, error: null });
+  const [doorFound, setDoorFound] = useState({});   // sheet key → { status, doors, withheld, hidden, added, … } (lib/doorDetect/apply.ts)
+  const doorDetectClientRef = useRef(null);
+  const doorDetectConsentRef = useRef(false);        // the switch was clicked on in this session: the download is allowed
+  const doorFoundBusyRef = useRef(new Set());
+  // Drop cached door linework and positions for a file after a page mutation (reorder, rotate, delete, merge).
+  // The suite reads the sheet again on its own.
+  const dropDoorReads = (fileOrFiles) => {
+    const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
+    for (const f of files) {
+      for (const k of Array.from(doorRunsRef.current.keys())) {
+        if (k === f || k.startsWith(`${f}#`)) doorRunsRef.current.delete(k);
+      }
+      for (const k of Array.from(doorSegsRef.current.keys())) {
+        if (k === f || k.startsWith(`${f}#`)) doorSegsRef.current.delete(k);
+      }
+    }
+    const dropFor = (prev) => {
+      let changed = false;
+      const next = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (files.some((f) => k === f || k.startsWith(`${f}#`))) {
+          changed = true;
+        } else {
+          next[k] = v;
+        }
+      }
+      return changed ? next : prev;
+    };
+    setDoorReads(dropFor);
+    setDoorFound(dropFor);
+  };
+  const [doorDocs, setDoorDocs] = useState(null);   // { status, schedule, sets } read once per loaded set
+  const [doorSel, setDoorSel] = useState(null);     // { key, i } — the door open in the card
+  const [doorTab, setDoorTab] = useState("review");
+  const [doorCoach, setDoorCoach] = useState(() => { try { return localStorage.getItem("opentakeoff_doors_coach") !== "seen"; } catch { return true; } });
+  const doorFileSig = sheets.map((s) => s.name).join("|");
+  // the set-wide read: the door schedule (first sheet that has one) and the 08 71 00 hardware sets
+  // Reads finish even if the view changes underneath them: a result is keyed by
+  // what it read (the file list / the sheet), so it is never stale, and an
+  // abandoned read would otherwise leave the suite "reading" for good.
+  const doorDocsBusyRef = useRef(null);
+  const doorReadBusyRef = useRef(new Set());
+  useEffect(() => {
+    if (!doorSuiteOn || !sheets.length) return;
+    if ((doorDocs && doorDocs.sig === doorFileSig && doorDocs.status === "done") || doorDocsBusyRef.current === doorFileSig) return;
+    const sig = doorFileSig;
+    doorDocsBusyRef.current = sig;
+    setDoorDocs({ sig, status: "reading", schedule: null, sets: [] });
+    (async () => {
+      const { readDoorSchedule, readHardwareSets, textRuns } = await import("../lib/doorSuite.ts");
+      // every page of every loaded file, counted from the documents themselves
+      const keys = [];
+      for (const f of sheets.map((x) => x.name)) {
+        try {
+          const n = await docCache.withDoc(f, async (pdf) => pdf.numPages || 1);
+          for (let i = 0; i < n; i++) keys.push(i ? `${f}#${i + 1}` : f);
+        } catch { /* an image or a file that won't open has no text to read */ }
+      }
+      let schedule = null, sets = [], setsKey = null;
+      for (const k of keys) {
+        if (schedule && sets.length) break;
+        const t = parseSheetKey(k);
+        try {
+          await docCache.withDoc(t.file, async (pdf) => {
+            const pg = await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+            const tc = await pg.getTextContent();
+            const raw = tc.items.map((it) => it.str).join(" ");
+            if (!schedule && /DOOR\s+SCHEDULE/i.test(raw)) {
+              const vp = pg.getViewport({ scale: 1 });
+              const s = readDoorSchedule(textRuns(tc.items, vp.transform));
+              if (s) {
+                // the door-type elevations' labels ("F", "FG 2") on the same sheet, for "Show source elevation"
+                const runs = textRuns(tc.items, vp.transform);
+                const hs = runs.map((r) => r.h).sort((a, b) => a - b);
+                const big = hs[Math.floor(hs.length * 0.9)] || 0;
+                const types = runs.filter((r) => r.h >= big && r.h > 0 && /^[A-Z]{1,3}\s?\d?$/.test(r.str.trim()));
+                schedule = { key: k, rows: s.rows, box: s.box, w: vp.width, h: vp.height, types };
+              }
+            }
+            if (!sets.length && /08\s?71\s?00/.test(raw) && /\bSET\b/i.test(raw)) {
+              let text = "", lastY = null;
+              for (const it of tc.items) { if (lastY != null && Math.abs(it.transform[5] - lastY) > 2) text += "\n"; text += it.str; lastY = it.transform[5]; if (it.hasEOL) { text += "\n"; lastY = null; } }
+              const got = readHardwareSets(text);
+              if (got.length) { sets = got; setsKey = k; }
+            }
+          });
+        } catch { /* a page that can't be read is skipped; the suite still runs */ }
+      }
+      if (doorDocsBusyRef.current === sig) doorDocsBusyRef.current = null;
+      setDoorDocs((prev) => (prev && prev.sig !== sig && prev.status === "done" ? prev : { sig, status: "done", schedule, sets, setsKey }));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorFileSig]);
+  // per open sheet: the doors themselves
+  const doorPanelSig = panels.map((p) => p.key).join("|");
+  useEffect(() => {
+    if (!doorSuiteOn) return;
+    (async () => {
+      for (const p of panels) {
+        const have = doorReads[p.key]?.status;
+        if (isStitchKey(p.key) || have === "done" || have === "failed" || doorReadBusyRef.current.has(p.key)) continue;
+        doorReadBusyRef.current.add(p.key);
+        setDoorReads((prev) => ({ ...prev, [p.key]: { status: "reading" } }));
+        try {
+          const [{ extractDoorVectors }, { readDoors, DOOR_CUTOFFS }, { textRuns }, { extractVectorGeometry, SEG_CURVE }] = await Promise.all([import("../lib/doorVectors.ts"), import("../lib/doorReader.ts"), import("../lib/doorSuite.ts"), import("../lib/oneclick.ts")]);
+          const t = parseSheetKey(p.key);
+          const out = await docCache.withDoc(t.file, async (pdf) => {
+            const pg = pageObjsRef.current.get(p.key) || await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+            const vp0 = pg.getViewport({ scale: 1, rotation: 0 });
+            const [ol, tc] = await Promise.all([pg.getOperatorList(), pg.getTextContent()]);
+            const reading = await readDoors(extractDoorVectors(ol, vp0.transform, pdfjsLib.OPS));
+            // not counted until answered: unsure swings, and toilet-partition stall doors (Division 10)
+            const held = heldBack(reading.doors, DOOR_CUTOFFS.foundFirst);
+            doorRunsRef.current.set(p.key, textRuns(tc.items, vp0.transform));
+            // the sheet's linework in the same frame: door-tag symbols around
+            // tag text, and each swing's stroke tone (gray = likely existing)
+            const geo = extractVectorGeometry(ol, vp0.transform, pdfjsLib.OPS);
+            doorSegsRef.current.set(p.key, geo.segs);
+            const lums = reading.doors.map((d) => {
+              const v = [];
+              for (let i = 0, n = 0; i + 3 < geo.segs.length; i += 4, n++) {
+                if (!(geo.meta[n] & SEG_CURVE) || !geo.lum) continue;
+                const x = (geo.segs[i] + geo.segs[i + 2]) / 2, y = (geo.segs[i + 1] + geo.segs[i + 3]) / 2;
+                if (x >= d.box[0] - 1 && x <= d.box[2] + 1 && y >= d.box[1] - 1 && y <= d.box[3] + 1) v.push(geo.lum[n]);
+              }
+              v.sort((a, b) => a - b);
+              return v.length ? v[v.length >> 1] : null;
+            });
+            const known = lums.filter((x) => x != null).sort((a, b) => a - b);
+            const typical = known.length ? known[known.length >> 1] : null;
+            const tone = lums.map((l) => (l == null || typical == null ? null : l >= 100 && l >= typical + 45 ? "gray" : "dark"));
+            return { status: "done", doors: reading.doors, withheld: held, tone, rot: ((pg.rotate || 0) % 360 + 360) % 360, w0: vp0.width, h0: vp0.height, fpp: reading.fpp };
+          });
+          setDoorReads((prev) => ({ ...prev, [p.key]: out }));
+        } catch (e) {
+          setDoorReads((prev) => ({ ...prev, [p.key]: { status: "failed", error: String(e?.message || e) } }));
+        } finally {
+          doorReadBusyRef.current.delete(p.key);
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorPanelSig]);
+  // Find more doors. Probe once per suite visit: is there WebGPU, is the model already in this browser.
+  useEffect(() => {
+    if (!doorSuiteOn) return;
+    let live = true;
+    (async () => {
+      const { webGpuAvailable, modelCached } = await import("../lib/doorDetect/client.ts");
+      const [gpu, cached] = await Promise.all([webGpuAvailable(), modelCached()]);
+      if (live) setDoorDetect((d) => ({ ...d, gpu, cached }));
+    })();
+    return () => { live = false; };
+  }, [doorSuiteOn]);
+  const toggleDoorDetect = () => {
+    const on = !doorDetectOn;
+    if (on) doorDetectConsentRef.current = true;
+    else { doorDetectClientRef.current?.cancel(); setDoorDetect((d) => (d.load === "loading" || d.load === "error" ? { ...d, load: "idle", progress: null, error: null } : d)); }
+    setDoorDetectOn(on);
+    try { localStorage.setItem("opentakeoff_doors_detector", on ? "on" : "off"); } catch { /* private mode */ }
+  };
+  // Switch on: load the model (from the cache, or downloading it when the switch was clicked in this session),
+  // then run it on each open sheet the reader has finished.
+  useEffect(() => {
+    if (!doorSuiteOn || !doorDetectOn || doorDetect.gpu !== true || doorDetect.load === "error") return;
+    let live = true;
+    (async () => {
+      const { DoorDetectClient, findMoreDoors } = await import("../lib/doorDetect/client.ts");
+      const client = (doorDetectClientRef.current ??= new DoorDetectClient());
+      if (doorDetect.load !== "ready") {
+        if (doorDetect.load === "idle") setDoorDetect((d) => ({ ...d, load: "loading", progress: null, error: null }));
+        try {
+          await client.load(doorDetectConsentRef.current, (pr) => { if (live) setDoorDetect((d) => ({ ...d, progress: pr })); });
+          setDoorDetect((d) => ({ ...d, load: "ready", cached: true, progress: null }));
+        } catch (e) {
+          if (e?.code === "consent-required") {
+            // remembered "on" from an earlier visit, but the model is no longer in this browser: never download unasked
+            setDoorDetectOn(false);
+            setDoorDetect((d) => ({ ...d, load: "idle", cached: false, progress: null }));
+          } else if (e?.code === "aborted") setDoorDetect((d) => ({ ...d, load: "idle", progress: null }));
+          else setDoorDetect((d) => ({ ...d, load: "error", progress: null, error: e?.code === "no-webgpu" ? "no-webgpu" : String(e?.message || e) }));
+        }
+        return;   // the state change runs this effect again
+      }
+      for (const p of panels) {
+        const rd = doorReads[p.key];
+        if (isStitchKey(p.key) || rd?.status !== "done" || !rd.doors.length || doorFound[p.key] || doorFoundBusyRef.current.has(p.key)) continue;
+        doorFoundBusyRef.current.add(p.key);
+        setDoorFound((prev) => ({ ...prev, [p.key]: { status: "running", stage: "render" } }));
+        try {
+          if (!(rd.fpp > 0)) throw new Error("the sheet's scale could not be read from its doors");
+          const t = parseSheetKey(p.key);
+          const out = await docCache.withDoc(t.file, async (pdf) => {
+            const pg = pageObjsRef.current.get(p.key) || await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+            return findMoreDoors(pg, rd.doors, rd.fpp, pdfjsLib.OPS, client, (pr) => setDoorFound((prev) => (prev[p.key]?.status === "running" ? { ...prev, [p.key]: { status: "running", ...pr } } : prev)));
+          });
+          // dev builds only: the last pass per sheet, for the parity check against the Python runner (bench/doors/browserParity.mjs)
+          if (import.meta.env.DEV) (window.__otDoorFound ||= {})[p.key] = { ppf: 1 / rd.fpp, det: out.det, preds: out.result.preds, dropped: out.result.dropped.map((d) => ({ ...d.pred, why: d.why })), stats: out.result.stats, tiles: out.tiles, seconds: out.seconds, added: out.added };
+          setDoorFound((prev) => ({ ...prev, [p.key]: { status: "done", doors: out.doors, withheld: out.withheld, hidden: out.hidden, added: out.added, rescued: out.rescued, setAside: out.setAside, byKind: out.byKind, tiles: out.tiles, seconds: out.seconds, det: out.det } }));
+        } catch (e) {
+          setDoorFound((prev) => ({ ...prev, [p.key]: { status: "failed", error: String(e?.message || e) } }));
+        } finally {
+          doorFoundBusyRef.current.delete(p.key);
+        }
+      }
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorDetectOn, doorDetect.gpu, doorDetect.load, doorPanelSig, doorReads]);
+  useEffect(() => () => { doorDetectClientRef.current?.dispose(); doorDetectClientRef.current = null; }, []);
+  // What the suite shows: the reader's doors, or with the switch on and the sheet done, the detector's list
+  // (the reader's doors in place, some set aside or hidden, plus the doors the detector added).
+  const doorReadsEff = useMemo(() => {
+    if (!doorDetectOn) return doorReads;
+    const out = { ...doorReads };
+    for (const [k, f] of Object.entries(doorFound)) {
+      const rd = out[k];
+      if (f?.status !== "done" || rd?.status !== "done") continue;
+      out[k] = { ...rd, doors: f.doors, withheld: f.withheld, hidden: f.hidden, tone: f.doors.map((_, i) => rd.tone?.[i] ?? null) };
+    }
+    return out;
+  }, [doorDetectOn, doorReads, doorFound]);
+  // unrotated page point → this panel's image pixels (the frame shapes and overlays draw in)
+  const doorToImg = (rd, p, [x, y]) => {
+    const { rot, w0, h0 } = rd;
+    const [X, Y, W, H] = rot === 90 ? [h0 - y, x, h0, w0] : rot === 180 ? [w0 - x, h0 - y, w0, h0] : rot === 270 ? [y, w0 - x, h0, w0] : [x, y, w0, h0];
+    return [(X / W) * p.img.w, (Y / H) * p.img.h];
+  };
+  // The suite works on the PLAN sheet: a sheet with no doors of its own (the
+  // schedule sheet, opened by "Show schedule row") keeps the last plan.
+  const [doorPlanKey, setDoorPlanKey] = useState(null);
+  const hereKey = panels.find((p) => doorReads[p.key]?.status === "done" && doorReads[p.key].doors.length)?.key || null;   // the reader's own doors decide which sheet is the plan
+  useEffect(() => { if (hereKey && hereKey !== doorPlanKey) setDoorPlanKey(hereKey); }, [hereKey, doorPlanKey]);
+  const doorKey = hereKey || (doorPlanKey && doorReads[doorPlanKey] ? doorPlanKey : null) || panels[0]?.key || null;
+  // Fly to a region of any sheet and flash it: centred in the canvas left of
+  // the doors panel, zoomed so the region is plainly visible.
+  const doorFlyRef = useRef(null);
+  const flyDoorRect = (key, rect, fill = 0.35) => {
+    const sp = panels.find((p) => p.key === key);
+    const el = containerRef.current;
+    if (!sp?.img?.w || !el) { doorFlyRef.current = { key, rect, fill, tries: 0 }; if (!panelKeySet.has(key)) openSheets([key], false); return; }
+    doorFlyRef.current = null;
+    const r = el.getBoundingClientRect();
+    const visibleW = r.width;
+    const [[x0, y0], [x1, y1]] = rect;
+    const w = Math.max(1, (x1 - x0) * sp.img.w), h = Math.max(1, (y1 - y0) * sp.img.h);
+    const scale = Math.min(8, Math.max(tfRef.current.scale, Math.min((visibleW * fill) / w, (r.height * fill) / h)));
+    const sx = ((x0 + x1) / 2) * sp.img.w + sp.xOffset, sy = ((y0 + y1) / 2) * sp.img.h;
+    setTfNow({ x: visibleW / 2 - sx * scale, y: r.height / 2 - sy * scale, scale });
+    flashSource(key, rect, ++sourceTraceSeqRef.current);
+  };
+  useEffect(() => {
+    const f = doorFlyRef.current;
+    if (!f) return;
+    if (++f.tries > 40) { doorFlyRef.current = null; return; }
+    if (panels.find((p) => p.key === f.key)?.img?.w) flyDoorRect(f.key, f.rect, f.fill);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelImgs, groupSig]);
+  const doorView = useMemo(() => {
+    const rd = doorKey && doorReadsEff[doorKey];
+    if (!doorSuiteOn || !rd || rd.status !== "done") return null;
+    const schedule = doorDocs?.schedule ? { rows: doorDocs.schedule.rows, box: doorDocs.schedule.box } : null;
+    const tm = matchDoorTags(rd.doors, doorRunsRef.current.get(doorKey) || [], new Set((schedule?.rows || []).map((r) => r.mark)), { segs: doorSegsRef.current.get(doorKey) || null, skip: rd.hidden });
+    return buildDoorSuite({ doors: rd.doors, withheld: rd.withheld, hidden: rd.hidden, marks: tm.marks, ambiguous: tm.ambiguous, tone: rd.tone, fpp: rd.fpp, schedule, sets: doorDocs?.sets || [], answers: doorAnswers, sheetLabel: sheetBaseLabel(doorKey) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doorSuiteOn, doorKey, doorReadsEff, doorDocs, doorAnswers]);
+  const doorSetOrder = useMemo(() => {
+    const fromSpec = (doorDocs?.sets || []).map((s) => s.set);
+    const fromSched = (doorDocs?.schedule?.rows || []).map((r) => String(r.hwSet || "").toUpperCase()).filter(Boolean);
+    return [...new Set([...fromSpec, ...fromSched])].sort((a, b) => (parseFloat(a) - parseFloat(b)) || a.localeCompare(b));
+  }, [doorDocs]);
+  const answerDoor = (id, a) => setDoorAnswers((prev) => ({ ...prev, [id]: a }));
+  const undoDoor = (id) => setDoorAnswers((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  const showDoor = (i, key = doorKey) => {
+    const rd = doorReadsEff[key]; const p = panelByKey(key);
+    if (!rd?.doors?.[i] || !p?.img?.w) return;
+    const d = rd.doors[i];
+    const a = doorToImg(rd, p, [d.box[0], d.box[1]]), b = doorToImg(rd, p, [d.box[2], d.box[3]]);
+    const pad = 0.01;
+    flyDoorRect(key, [[Math.min(a[0], b[0]) / p.img.w - pad, Math.min(a[1], b[1]) / p.img.h - pad], [Math.max(a[0], b[0]) / p.img.w + pad, Math.max(a[1], b[1]) / p.img.h + pad]], 0.18);
+    setDoorSel({ key, i });
+  };
+  const showScheduleRow = (mark) => {
+    const s = doorDocs?.schedule; const r = s?.rows.find((x) => x.mark === mark);
+    if (!s || !r) return;
+    flyDoorRect(s.key, [[r.box[0] / s.w - 0.004, r.box[1] / s.h - 0.003], [r.box[2] / s.w + 0.004, r.box[3] / s.h + 0.003]], 0.85);
+  };
+  const showElevation = (type) => {
+    const s = doorDocs?.schedule; if (!s) return;
+    const want = String(type).replace(/\s+/g, "").toUpperCase().split(",")[0];
+    const lab = s.types.find((r) => r.str.replace(/\s+/g, "").toUpperCase() === want);
+    if (!lab) { setCommitMsg(`No door-type elevation labeled ${type} found on the schedule sheet.`); return; }
+    // the elevation sits above its label
+    const h = lab.h * 22;
+    flyDoorRect(s.key, [[(lab.x - lab.h * 8) / s.w, (lab.y - h) / s.h], [(lab.x + lab.w + lab.h * 8) / s.w, (lab.y + lab.h * 1.5) / s.h]], 0.6);
+  };
+  // Add (or update) the doors in the estimate: frames per opening, door leaves
+  // per leaf, hardware sets per opening, as count marks placed inside each
+  // swing (never on the tag). An update replaces the marks the last add made
+  // on this sheet, so a second press never double-counts.
+  function addDoorsToEstimate() {
+    const v = doorView, rd = doorReadsEff[doorKey], p = panelByKey(doorKey);
+    if (!v || !rd || !p?.img?.w) return;
+    const groups = estimateGroups(v.openings);
+    const cs = agentStateRef.current.conditions;
+    const condFor = (tag) => cs.find((c) => c.finish_tag === tag) || mintCondition(tag);
+    const markSet = new Set((doorDocs?.schedule?.rows || []).map((r) => r.mark));
+    const tags = (doorRunsRef.current.get(doorKey) || []).filter((r) => markSet.has(r.str.trim().toUpperCase()) || /^[A-Z]?\d{2,4}[A-Z]{0,2}$/.test(r.str.trim()));
+    const norm = ([x, y]) => { const [ix, iy] = doorToImg(rd, p, [x, y]); return [ix / p.img.w, iy / p.img.h]; };
+    const add = [];
+    for (const g of groups) {
+      const label = `${g.type} ${g.size}`.trim();
+      // a group of cased openings has frames and no leaves: no empty leaf condition for it
+      const frame = condFor(`DR FRAME ${label}`), leaf = g.leaves ? condFor(`DR LEAF ${label}`) : null;
+      for (const o of g.openings) {
+        const d = rd.doors[o.door];
+        const origin = { method: "door_reader", door: o.mark || `door-${o.door}` };
+        const pts = countMarkPoints(d, tags);
+        add.push({ sheet_id: doorKey, condition_id: frame.id, measure_role: "count", verts_norm: [norm(pts.frame)], computed: { count: 1 }, origin });
+        const leafPts = pts.leaves.length >= o.leaves ? pts.leaves.slice(0, o.leaves) : Array.from({ length: o.leaves }, (_, k) => pts.leaves[k] || pts.frame);
+        for (const lp of leafPts) add.push({ sheet_id: doorKey, condition_id: leaf.id, measure_role: "count", verts_norm: [norm(lp)], computed: { count: 1 }, origin });
+        const set = o.row?.hwSet;
+        if (set) add.push({ sheet_id: doorKey, condition_id: condFor(`HW SET ${set}`).id, measure_role: "count", verts_norm: [norm(pts.hardware)], computed: { count: 1 }, origin });
+      }
+    }
+    if (!add.length) return;
+    const prior = shapes.filter((s) => s.sheet_id === doorKey && s.origin?.method === "door_reader").map((s) => s.id);
+    // one base for both steps (dispatchShape reads the render's `shapes`, so two
+    // dispatches in a row would have the second undo the first)
+    let base = shapes;
+    const step = (cmd) => {
+      const res = applyShapeCommand(base, cmd);
+      base = res.shapes;
+      if (res.inverse) { const st = recordCommand(undoStackRef.current, { cmd, inverse: res.inverse }); undoStackRef.current = st.undo; redoStackRef.current = st.redo; }
+    };
+    if (prior.length) step({ type: "delete", ids: prior, noCount: true });
+    step({ type: "add", shapes: add });
+    setShapes(base);
+    setDoorAnswers((prev) => ({ ...prev, [`added:${doorKey}`]: nowIso() }));
+    setCommitMsg(`${prior.length ? "Updated" : "Added"} ${v.counts.openings} openings (frames), ${v.counts.leaves} door leaves and their hardware sets in the estimate · ${prior.length ? "two undo steps" : "one undo step"} (${keyText("⌘Z")}).`);
+  }
+
+  // ── Compare with schedule: the real door schedule sheet beside the plan ──
+  // A read-only reference pane (SplitLayout) frames the schedule; each row is
+  // boxed in its door's hardware-set colour (dashed amber: no door found on
+  // the plan), and a row and its door select each other. Rows are checked off
+  // with one click; checks and notes ride `door_answers` with the project.
+  const doorSchedKey = doorDocs?.schedule?.key || null;
+  const doorCompareOn = !!(splitView && doorSchedKey && splitView.refKey === doorSchedKey);
+  const [doorRefFocus, setDoorRefFocus] = useState(null);
+  const [doorHover, setDoorHover] = useState(null);   // a schedule mark hovered in the panel or on the sheet
+  const doorRefSeqRef = useRef(0);
+  const toggleDoorCompare = () => {
+    if (doorCompareOn) { setSplitView(null); return; }
+    if (!doorSchedKey) return;
+    if (splitView) { setSplitView((s) => ({ ...s, refKey: doorSchedKey, refSet: [...new Set([...(s.refSet || [s.refKey]), doorSchedKey])] })); return; }
+    if (refuseIfOverCap(1)) return;
+    // plan above, schedule below: a schedule is a wide, short table
+    setSplitView({ orientation: "h", ratio: 0.58, refKey: doorSchedKey, refSet: [doorSchedKey] });
+  };
+  const doorRowRect = (r, pad = 1) => {
+    const s = doorDocs?.schedule;
+    return s ? [[(r.box[0] - 3 * pad) / s.w, (r.box[1] - 1.5 * pad) / s.h], [(r.box[2] + 3 * pad) / s.w, (r.box[3] + 1.5 * pad) / s.h]] : null;
+  };
+  const focusDoorRow = (mark) => {
+    const r = doorDocs?.schedule?.rows.find((x) => x.mark === mark);
+    if (!r) return;
+    // the row plus its check box, centred in the schedule pane
+    const rect = doorRowRect(r, 4);
+    if (doorCompareOn && rect) setDoorRefFocus({ rect: [rect[0], [rect[1][0] + 30 / doorDocs.schedule.w, rect[1][1]]], token: ++doorRefSeqRef.current, fill: 0.92 });
+  };
+  // a row picked (panel list or the sheet): its door is selected and the plan flies there
+  const pickDoorRow = (mark) => {
+    const o = doorView?.openings.find((x) => x.mark === mark);
+    if (o) showDoor(o.door); else if (!doorCompareOn) showScheduleRow(mark);
+    focusDoorRow(mark);
+  };
+  // a door picked on the plan: its row follows in the schedule pane
+  const doorSelMark = doorSel && doorView && doorSel.key === doorKey ? doorView.openings.find((o) => o.door === doorSel.i)?.mark || null : null;
+  useEffect(() => {
+    if (doorSelMark && doorCompareOn) focusDoorRow(doorSelMark);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- follow the selection only; focusDoorRow is a fresh closure every render
+  }, [doorSelMark, doorCompareOn]);
+  const doorCheck = (mark) => doorAnswers[`check:${mark}`] || null;
+  const setDoorCheck = (mark, v) => setDoorAnswers((prev) => {
+    const n = { ...prev };
+    if (!v || n[`check:${mark}`] === v) { delete n[`check:${mark}`]; if (v === "Needs a look" || !v) delete n[`note:${mark}`]; } else n[`check:${mark}`] = v;
+    return n;
+  });
+  const setDoorNote = (mark, text) => setDoorAnswers((prev) => { const n = { ...prev }; if (text) n[`note:${mark}`] = text.slice(0, 500); else delete n[`note:${mark}`]; return n; });
+  const doorPlaced = useMemo(() => new Set((doorView?.openings || []).filter((o) => o.mark && !o.leftOut).map((o) => o.mark)), [doorView]);
+  // the schedule rows, boxed — drawn on the schedule sheet wherever it is shown
+  // (the reference pane, or the main canvas when it's the open sheet)
+  const doorRowBoxes = (img, scale, xOffset = 0) => {
+    const s = doorDocs?.schedule;
+    if (!s || !img?.w) return null;
+    const k = 1 / scale;
+    return s.rows.map((r) => {
+      const placed = doorPlaced.has(r.mark);
+      const color = placed ? doorSetColor(r.hwSet, doorSetOrder) : "#d97706";
+      const sel = r.mark === doorSelMark, hot = r.mark === doorHover;
+      const x = (r.box[0] / s.w) * img.w + xOffset - 3 * k, y = (r.box[1] / s.h) * img.h - 1.5 * k;
+      const w = ((r.box[2] - r.box[0]) / s.w) * img.w + 6 * k, h = ((r.box[3] - r.box[1]) / s.h) * img.h + 3 * k;
+      const chk = doorCheck(r.mark);
+      const g = Math.min(h * 0.9, 14 * k);
+      return (
+        <g key={`drow-${r.mark}`}>
+          <rect x={x} y={y} width={w} height={h} fill={color} fillOpacity={sel ? 0.28 : hot ? 0.2 : 0.1}
+            stroke={color} strokeWidth={(sel ? 3 : 1.6) * k} strokeOpacity={0.9} strokeDasharray={placed ? undefined : `${5 * k} ${3 * k}`}
+            style={{ pointerEvents: "all", cursor: "pointer" }}
+            onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); pickDoorRow(r.mark); }}
+            onPointerEnter={() => setDoorHover(r.mark)} onPointerLeave={() => setDoorHover((m) => (m === r.mark ? null : m))}>
+            <title>{`Door ${r.mark}${placed ? "" : " — not found on the plan"}${chk ? ` · ${chk}` : ""}`}</title>
+          </rect>
+          <g transform={`translate(${x + w + 3 * k},${y + (h - g) / 2})`} style={{ pointerEvents: "all", cursor: "pointer" }}
+            onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setDoorCheck(r.mark, "Checked"); }}>
+            <title>{chk === "Checked" ? `Row ${r.mark} checked — click to clear` : `Mark row ${r.mark} checked`}</title>
+            <rect width={g} height={g} rx={2 * k} fill={chk === "Checked" ? "#0f9d8a" : chk ? "#d97706" : darkMode ? "#1b1f22" : "#ffffff"} stroke={chk ? "none" : color} strokeWidth={1.4 * k} />
+            {chk === "Checked" && <path d={`M${g * 0.22},${g * 0.52} L${g * 0.42},${g * 0.72} L${g * 0.8},${g * 0.3}`} fill="none" stroke="#fff" strokeWidth={2 * k} strokeLinecap="round" strokeLinejoin="round" />}
+            {chk === "Needs a look" && <text x={g / 2} y={g * 0.78} textAnchor="middle" fontSize={g * 0.8} fontWeight={800} fill="#fff">!</text>}
+          </g>
+        </g>
+      );
+    });
+  };
 
   function finishShape() {
     if (tool === "zone") {
@@ -7023,6 +8505,9 @@ export default function TakeoffCanvas() {
       multiplier: 1,        // ×N for identical repeated units (measure one, multiply)
       waste_pct: 0,         // flooring waste allowance (manual) — applied in the Report
       materials: [],        // supporting materials (adhesive, grout, …) with coverage rates
+      // booked to the trade the canvas is showing, so it stays visible; "All trades" books nothing
+      // (the tag prefix, else Finishes, decides — lib/tradeSuites.ts conditionTrade)
+      ...(viewTradeRef.current !== ALL_TRADES ? { trade: viewTradeRef.current } : {}),
     };
     agentStateRef.current = { ...agentStateRef.current, conditions: [...cs, c] };
     setConditions((prev) => [...prev, c]);
@@ -7173,9 +8658,11 @@ export default function TakeoffCanvas() {
       if (!rmo) return { error: "Couldn't read this scan — the estimator will have to trace it by hand." };
       const r = floodRegionSealed(rmo, local[0], local[1], undefined, sealRadiiFor(rmo.ws / upp), doorWedgeCapPx(rmo.ws / upp), minPassRadiusFor(rmo.ws / upp));
       if (r.status !== "ok") {
-        return { error: r.status === "leak"
-          ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot."
-          : "Landed on dense scan ink (text or hatching). Seed an open spot inside the room." };
+        return {
+          error: r.status === "leak"
+            ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot."
+            : "Landed on dense scan ink (text or hatching). Seed an open spot inside the room."
+        };
       }
       f = r; raster = true;
     }
@@ -7421,8 +8908,8 @@ export default function TakeoffCanvas() {
     } catch (err) {
       setCommitMsg(
         err?.reason === "mic_denied" ? "Couldn't start dictation — microphone permission denied. Allow the mic and try again."
-        : err?.reason === "no_mic_device" ? "Couldn't start dictation — no microphone found."
-        : "Couldn't start dictation — microphone unavailable.",
+          : err?.reason === "no_mic_device" ? "Couldn't start dictation — no microphone found."
+            : "Couldn't start dictation — microphone unavailable.",
       );
     }
   }
@@ -7742,38 +9229,31 @@ export default function TakeoffCanvas() {
   const rejectAllAgentProposals = () => setAgentProposals([]);
 
   // ── the run ────────────────────────────────────────────────────────────────
-  const trimJson = (v, n) => { let s; try { s = JSON.stringify(v); } catch { s = String(v); } return s && s.length > n ? `${s.slice(0, n)}…` : s || ""; };
-  function appendAgentLog(ev) {
-    const entry =
-      ev.type === "text" ? { kind: "text", text: ev.text }
-      : ev.type === "tool_start" ? { kind: "tool", text: `→ ${ev.name} ${trimJson(ev.args, 120)}` }
-      : ev.type === "tool_end" ? (ev.result?.error
-          ? { kind: "error", text: `✗ ${ev.name}: ${ev.result.error}` }
-          : { kind: "status", text: `✓ ${ev.name} ${trimJson({ ...ev.result, image_data_url: undefined, items: Array.isArray(ev.result?.items) ? `${ev.result.items.length} items` : undefined }, 160)}` })
-      : ev.type === "error" ? { kind: "error", text: `Error: ${ev.message}` }
-      : ev.type === "aborted" ? { kind: "status", text: "Stopped." }
-      : ev.type === "max_iterations" ? { kind: "status", text: `Stopped at the ${ev.limit}-step cap — review what's staged.` }
-      : ev.type === "done" ? { kind: "status", text: "Done — review the dashed proposals." }
-      : null;
-    if (entry) setAgentLog((l) => [...l.slice(-199), entry]);
-  }
+  // One chat message = one agent-loop run. Earlier turns ride along as plain
+  // text context (lib/agentChat historyMessages, as many as the Conversation
+  // memory setting allows); the loop's events — streamed text deltas
+  // included — fold into the message's turn (steps, answer, staged count).
   async function runAgent(goal) {
     if (agentRunning) return;
     if (!isAiConfigured()) { setShowAiSettings(true); return; }
-    if (agentStateRef.current.status !== "ready") { setCommitMsg(uiText("Sheet still loading — try again in a moment.")); return; }
+    const notReady = notReadyMessage(agentStateRef.current.status);
+    if (notReady) { agentChat.apply(agentChat.begin(goal), { type: "error", message: uiText(notReady) }); return; }
     const ctl = new AbortController();
     agentAbortRef.current = ctl;
     setAgentRunning(true);
-    setAgentLog([{ kind: "status", text: `Goal: ${goal}` }]);
+    const cfg = aiConfig();
+    const history = historyMessages(agentChat.turnsRef.current, cfg.historyTurns);   // "Conversation memory" (AI settings)
+    const turnId = agentChat.begin(goal);
     const ctx = buildAgentCtx();
     try {
       await runAgentLoop({
-        cfg: aiConfig(), goal, tools: agentToolDefs(),
+        cfg, goal: withViewContext(goal, { sheetKey, sheetLabel: sheetKey ? tabLabel(sheetKey) : "" }), history, tools: agentToolDefs(),
         execute: (name, args) => executeAgentTool(ctx, name, args),
-        onEvent: appendAgentLog,
+        onEvent: (ev) => agentChat.apply(turnId, ev),
         signal: ctl.signal,
       });
     } finally {
+      agentChat.settle(turnId);
       setAgentRunning(false);
       agentAbortRef.current = null;
     }
@@ -7954,7 +9434,7 @@ export default function TakeoffCanvas() {
     ocrReadRef.current = mine;
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
     const isCurrent = () => ocrReadRef.current === mine && !mine.ctl.signal.aborted && seq === renderSeqRef.current;
-    let release = () => {};
+    let release = () => { };
     try {
       if (status !== "ready") { setCommitMsg(uiText("Sheet still loading — try again in a moment.")); return; }
       const panel = panelAt(a[0]);
@@ -8349,6 +9829,16 @@ export default function TakeoffCanvas() {
     // (minted with no origin_id, so nothing upstream ever touches it)
     return isFamilyParent(cs, activeCond) ? propagateRowAdd(next, activeCond, row, uid) : next;
   });
+  // a saved assembly (lib/assemblies.js) → new rows on the active condition, through the same
+  // family seam as one added row; items the condition already names are skipped
+  const applyAssembly = (assembly) => setConditions((cs) => {
+    const cur = cs.find((c) => c.id === activeCond);
+    const { rows } = assemblyRows(assembly, uid, cur?.materials);
+    if (!cur || !rows.length) return cs;
+    let next = cs.map((c) => (c.id === activeCond ? { ...c, materials: [...(c.materials || []), ...rows], updated_at: nowIso() } : c));
+    if (isFamilyParent(cs, activeCond)) for (const row of rows) next = propagateRowAdd(next, activeCond, row, uid);
+    return next;
+  });
   const updateMaterial = (mid, patch) => setConditions((cs) => {
     const cur = cs.find((c) => c.id === activeCond);
     // NAME edits re-classify a geometry-less line's kind
@@ -8468,7 +9958,7 @@ export default function TakeoffCanvas() {
   // early helpers) because it reads shapeFill(aCond) — both defined just above.
   const draftFill = DS.draft.fillMode === "condition" ? shapeFill(aCond)
     : DS.draft.fillMode === "tint" ? rgbaFromHex(DS.accent, DS.draft.tintAlpha ?? 0.08)
-    : "none";
+      : "none";
   // When the "outline area while drawing" preference is on, the ring tools draw
   // as an OPEN outline (no fill, not auto-closed) while in progress — they still
   // commit CLOSED on Enter/dbl-click (commitPoly is untouched). Off ⇒ today's
@@ -8505,6 +9995,12 @@ export default function TakeoffCanvas() {
   // exist only in the Report/exports). Same conditionTotals rules, no filter.
   const projRows = useMemo(() => conditionTotals(conditions, shapes, seamCtx), [conditions, shapes, seamCtx]);
   const projRowById = useMemo(() => new Map(projRows.map((r) => [r.id, r])), [projRows]);
+  // the Premium top bar's running $ — the same engine as the Estimate panel, on
+  // the project's markups (or the Company setup defaults until the estimate opens)
+  const estTotal = useMemo(() => {
+    if (!workspaceLayout) return 0;
+    try { return priceEstimate({ rows: projRows, conditions, settings: estimateSettings || loadEstimatingDefaults() }).total; } catch { return 0; }
+  }, [workspaceLayout, projRows, conditions, estimateSettings]);
   // {{qty}} in a note (#474) — the linked condition's measured quantity,
   // whole project, in the display unit system. Resolved at draw time only.
   const noteQtyLabels = useMemo(() => qtyLabels(projRows, units), [projRows, units]);
@@ -8767,7 +10263,8 @@ export default function TakeoffCanvas() {
     return next;
   });
   const openConditionInPanel = (id) => {
-    setPanelPrefs((p) => (p.collapsed ? { ...p, collapsed: false } : p));   // reveal the docked panel; no-op if already open
+    if (workspaceLayout && !fullTableOpen) setCondDockOpen(true);   // Premium layout: the Conditions dock is the panel
+    else setPanelPrefs((p) => (p.collapsed ? { ...p, collapsed: false } : p));   // reveal the docked panel; no-op if already open
     activateCondition(id);   // highlight the row (reassigns a selected shape iff Select is armed, like every activation surface)
     // scroll the docked row into view AFTER the uncollapse paints — two rAFs so
     // the panel has mounted its list (the row carries data-cond-id)
@@ -8920,7 +10417,7 @@ export default function TakeoffCanvas() {
     onActivate: activateCondition, onLocate: locateCondition,
     onAddCondition: addCondition, onDeleteCondition: deleteCondition,
     onUpdateCond: updateCond, onSetCondParam: setCondParam, onAssignAttr: assignAttr,
-    onAddMaterial: addMaterial, onUpdateMaterial: updateMaterial, onRemoveMaterial: removeMaterial,
+    onAddMaterial: addMaterial, onUpdateMaterial: updateMaterial, onRemoveMaterial: removeMaterial, onApplyAssembly: applyAssembly,
     onDuplicateCondition: duplicateCondition, onSplitCondition: splitCondition,
     onDeriveTransitions: deriveTransitionsOnto,   // returns its result synchronously — the panel renders the withheld report from it
     onLocateTransition: locateSheetPoint,
@@ -8935,7 +10432,7 @@ export default function TakeoffCanvas() {
     onUpdateLibMaterial: updateLibMaterial, onPushLibUpdate: pushLibUpdate,
     onDeleteLibMaterial: deleteLibMaterial, onAddLibMaterial: addLibMaterial,
     matFieldOverridden,   // pure helper, not an event handler — the forwarder returns its result
-    onToggleCollapse: toggleTakeoffs, onTogglePin: togglePin, onToggleHidden: toggleCondHidden,
+    onToggleCollapse: () => (workspaceLayout ? setFullTableOpen((v) => !v) : toggleTakeoffs()), onTogglePin: togglePin, onToggleHidden: toggleCondHidden,
     // these three are ALREADY stable on their own (setState identity, and
     // holdPanelGesture is a useCallback with an empty dep array) — routed
     // through the registry anyway so the memo contract has exactly ONE
@@ -9008,7 +10505,9 @@ export default function TakeoffCanvas() {
       </button>
     );
   };
-  const railLabel = (text) => (
+  const railLabel = (text) => dockBottom
+    ? (text === "SEL" ? null : <span key={`sep-${text}`} aria-hidden="true" style={{ width: 1, height: 22, background: "var(--ink-faint)", margin: "0 var(--sp-1)", flexShrink: 0 }} />)
+    : (
     <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "var(--ink-muted)", userSelect: "none", margin: "var(--sp-2) 0 2px" }}>{tr(text)}</span>
   );
 
@@ -9102,6 +10601,57 @@ export default function TakeoffCanvas() {
     id: "export-project", icon: "document", label: tr("Export project archive…"),
     title: uiText("Save the WHOLE job as one portable .otk file — every plan PDF plus the full takeoff. Open it on any machine (drop it like a plan, or Add plans), archive it, or hand it to another estimator; unlike Export takeoff, the plans travel inside."),
     onSelect: exportProjectArchive,
+  });
+  sheetMenuItems.push({ section: "Page tools" });
+  sheetMenuItems.push({
+    id: "rotate-page-cw", icon: "redo", label: "Rotate page 90° clockwise",
+    title: "Rotate current page 90° clockwise — every takeoff and markup stays locked to the drawing",
+    shortcut: "]",
+    disabled: !active,
+    onSelect: () => rotateCurrentSheet(90),
+  });
+  sheetMenuItems.push({
+    id: "rotate-page-180", icon: "redo", label: "Rotate page 180°",
+    title: "Rotate current page 180°",
+    disabled: !active,
+    onSelect: () => rotateCurrentSheet(180),
+  });
+  sheetMenuItems.push({
+    id: "rotate-page-ccw", icon: "undo", label: "Rotate page 270° clockwise",
+    title: "Rotate current page 270° clockwise (90° counter-clockwise)",
+    shortcut: "[",
+    disabled: !active,
+    onSelect: () => rotateCurrentSheet(270),
+  });
+  sheetMenuItems.push({
+    id: "delete-page", icon: "cross", label: "Delete current page…",
+    title: "Delete this page from the document — asks before removing takeoffs, and undo restores them",
+    disabled: !active || pageCount <= 1,
+    onSelect: () => deleteCurrentSheet(),
+  });
+  sheetMenuItems.push({
+    id: "extract-pages", icon: "document", label: "Extract pages from set…",
+    title: "Extract a range of pages into a new PDF, carrying takeoffs along",
+    disabled: !active,
+    onSelect: () => extractPageRange(),
+  });
+  sheetMenuItems.push({
+    id: "merge-docs", icon: "sheets", label: "Merge PDF sets…",
+    title: "Combine multiple open PDF files into one set, remapping all takeoffs",
+    disabled: sheets.length < 2,
+    onSelect: mergePdfSets,
+  });
+  sheetMenuItems.push({
+    id: "insert-pages", icon: "document", label: "Insert pages from PDF…",
+    title: "Insert pages from another PDF file into the active document",
+    disabled: !active,
+    onSelect: insertPagesFromPdf,
+  });
+  sheetMenuItems.push({
+    id: "export-edited-pdf", icon: "document", label: "Export edited PDF…",
+    title: "Export the modified PDF with all rotations, reordering and page edits applied",
+    disabled: !active,
+    onSelect: exportEditedPdf,
   });
   sheetMenuItems.push({ section: tr("Profile — your templates, stamps & report setup") });
   sheetMenuItems.push({
@@ -9227,27 +10777,35 @@ export default function TakeoffCanvas() {
         ...DRAW_STYLE_IDS.map((id) => {
           const t = DRAW_STYLES[id];
           const on = id === drawStyleId;
-          return { id: `ds-${id}`, custom: (
-            <button type="button" aria-pressed={on} data-ds={id} onClick={() => setDrawStyle(id)}
-              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 12px", border: "none", textAlign: "left", cursor: "pointer", background: on ? "var(--tint-select)" : "transparent", color: "var(--ink)", fontFamily: "var(--f-body)", fontSize: 13, fontWeight: on ? 600 : 400 }}
-              onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = "var(--paper-shadow)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = on ? "var(--tint-select)" : "transparent"; }}>
-              <StylePreview t={t} />
+          return {
+            id: `ds-${id}`, custom: (
+              <button type="button" aria-pressed={on} data-ds={id} onClick={() => setDrawStyle(id)}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 12px", border: "none", textAlign: "left", cursor: "pointer", background: on ? "var(--tint-select)" : "transparent", color: "var(--ink)", fontFamily: "var(--f-body)", fontSize: 13, fontWeight: on ? 600 : 400 }}
+                onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = "var(--paper-shadow)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = on ? "var(--tint-select)" : "transparent"; }}>
+                <StylePreview t={t} />
               <span style={{ flex: 1 }}>{uiText(t.label)}</span>
-              <span style={{ display: "inline-flex", width: 14, justifyContent: "center", color: "var(--cobalt)", visibility: on ? "visible" : "hidden" }} aria-hidden="true">✓</span>
-            </button>
-          ) };
+                <span style={{ display: "inline-flex", width: 14, justifyContent: "center", color: "var(--cobalt)", visibility: on ? "visible" : "hidden" }} aria-hidden="true">✓</span>
+              </button>
+            )
+          };
         }),
         "divider",
-        { id: "draftoutline", checked: draftOutline, stayOpen: true, icon: "area", label: tr("Outline area while drawing"), onSelect: () => setDraftOutline(!draftOutline),
-          title: uiText("Draw Area / Deduct / Zone as an open outline (no fill) while tracing — it still commits closed on Enter or double-click.") },
+        {
+          id: "draftoutline", checked: draftOutline, stayOpen: true, icon: "area", label: tr("Outline area while drawing"), onSelect: () => setDraftOutline(!draftOutline),
+          title: uiText("Draw Area / Deduct / Zone as an open outline (no fill) while tracing — it still commits closed on Enter or double-click.")
+        },
         "divider",
         { section: tr("Bend") },
-        { id: "straight", checked: !curveMode, stayOpen: true, disabled: !curvable, label: tr("Straight"), onSelect: () => setCurveMode(false),
-          title: tr("Straight places corners.") },
-        { id: "curve", checked: curveMode, stayOpen: true, disabled: !curvable, icon: "curve", label: tr("Curve"), shortcut: "Q", onSelect: () => setCurveMode(true),
-          title: uiText("Curve takes two clicks — one anywhere ON the bow, then its far end — and lays the unique circle through those and the vertex you were on, so it sits on a radius wall instead of near it. Q flips it once a trace is going; ⌥-click places the OTHER kind for one point.") },
-        { note: curvable ? tr("Switch as often as you like inside one measurement.") : tr("Arm Area, Line, Cut Out or Surface Area to bend a trace.") },
+        {
+          id: "straight", checked: !curveMode, stayOpen: true, disabled: !curvable, label: tr("Straight"), onSelect: () => setCurveMode(false),
+          title: tr("Straight places corners.")
+        },
+        {
+          id: "curve", checked: curveMode, stayOpen: true, disabled: !curvable, icon: "curve", label: tr("Curve"), shortcut: "Q", onSelect: () => setCurveMode(true),
+          title: tr("Curve takes two clicks — one anywhere ON the bow, then its far end — and lays the unique circle through those and the vertex you were on, so it sits on a radius wall instead of near it. Q flips it once a trace is going; ⌥-click places the OTHER kind for one point.")
+        },
+        { note: curvable ? "Switch as often as you like inside one measurement." : "Arm Area, Line, Cut Out or Surface Area to bend a trace." },
       ]}
     />
   );
@@ -9326,183 +10884,183 @@ export default function TakeoffCanvas() {
   // height:100% make it self-sizing off its parent's box (percent-flex or
   // full-bleed, whichever SplitLayout gave that pane).
   const primaryViewport = (
-       <div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}
-         onDragOver={(e) => {
-           // Filter on the tab MIME so this never fires for a dragged condition
-           // chip (CONDITION_DND_MIME) or an OS file drag (dataTransfer.files) —
-           // both must fall through untouched to their own handlers (the
-           // quick-access palette's onDrop, and the app-shell's file-drop
-           // onDrop — `handleFiles(e.dataTransfer?.files)` on the top-level
-           // .app-shell div — neither of which this element sits between).
-           if (![...e.dataTransfer.types].includes(SHEET_TAB_DND_MIME)) return;
-           e.preventDefault(); e.stopPropagation();
-           e.dataTransfer.dropEffect = "copy"; // negotiate the cursor — a bare preventDefault() without this leaves the browser showing "no-drop" over a valid target
-           const r = e.currentTarget.getBoundingClientRect();
-           // Task 8: edges are ALSO disabled (center-join-only) when the
-           // device can't split — same rule the menu's referenceCandidate
-           // uses, so the drag gesture and its menu fallback never disagree
-           // about whether split creation is currently offered.
-           setDragZone(dropZoneAt({ w: r.width, h: r.height }, e.clientX - r.left, e.clientY - r.top, { edgesDisabled: !!splitView || !deviceCanSplit }));
-         }}
-         onDragLeave={(e) => {
-           if (![...e.dataTransfer.types].includes(SHEET_TAB_DND_MIME)) return;
-           // dragenter/dragleave fire at every child boundary too (the stage's
-           // canvases, the panel rail buttons) — only clear when the pointer
-           // actually left this wrapper, not when it crossed onto a descendant,
-           // or the overlay would strobe on every pixel of internal movement.
-           if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
-           setDragZone(null);
-         }}
-         onDrop={(e) => {
-           if (![...e.dataTransfer.types].includes(SHEET_TAB_DND_MIME)) return;
-           e.preventDefault(); e.stopPropagation();
-           const droppedKey = e.dataTransfer.getData(SHEET_TAB_DND_MIME);
-           setDragZone(null);
-           if (!droppedKey) return;
-           // recompute the zone from THIS event's own coordinates rather than
-           // trusting the dragZone state from the last dragover render — the
-           // drop must honor where the pointer actually released, not lag a
-           // render behind it.
-           const r = e.currentTarget.getBoundingClientRect();
-           const zone = dropZoneAt({ w: r.width, h: r.height }, e.clientX - r.left, e.clientY - r.top, { edgesDisabled: !!splitView || !deviceCanSplit });
-           if (zone === "center") { toggleInGroup(droppedKey); return; } // join primary group (existing behavior)
-           const orientation = zoneToOrientation(zone); // "v" | "h"
-           if (refuseIfOverCap(1)) return; // Task 8: refuse rather than silently drop when this would exceed the total-sheet budget
-           // dropped sheet frames the reference pane; primary keeps its content
-           setSplitView({ orientation, ratio: 0.5, refKey: droppedKey, refSet: [droppedKey] });
-         }}>
-        <div ref={containerRef} onPointerDownCapture={annotations.onPointerDownCapture} onPointerMoveCapture={annotations.onPointerMoveCapture} onPointerUpCapture={annotations.onPointerUpCapture} onPointerCancelCapture={annotations.onPointerCancelCapture} onDoubleClickCapture={annotations.onDoubleClickCapture} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp} onPointerLeave={leaveCanvas} onContextMenu={(e) => e.preventDefault()}
-          onDoubleClick={(e) => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone") finishShape(); else if (tool === "select") editMarkupAt(e); }}
-          style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "annotation" ? "crosshair" : tool === "select" ? "default" : "none", touchAction: "none" }}>
-          {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
+    <div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}
+      onDragOver={(e) => {
+        // Filter on the tab MIME so this never fires for a dragged condition
+        // chip (CONDITION_DND_MIME) or an OS file drag (dataTransfer.files) —
+        // both must fall through untouched to their own handlers (the
+        // quick-access palette's onDrop, and the app-shell's file-drop
+        // onDrop — `handleFiles(e.dataTransfer?.files)` on the top-level
+        // .app-shell div — neither of which this element sits between).
+        if (![...e.dataTransfer.types].includes(SHEET_TAB_DND_MIME)) return;
+        e.preventDefault(); e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy"; // negotiate the cursor — a bare preventDefault() without this leaves the browser showing "no-drop" over a valid target
+        const r = e.currentTarget.getBoundingClientRect();
+        // Task 8: edges are ALSO disabled (center-join-only) when the
+        // device can't split — same rule the menu's referenceCandidate
+        // uses, so the drag gesture and its menu fallback never disagree
+        // about whether split creation is currently offered.
+        setDragZone(dropZoneAt({ w: r.width, h: r.height }, e.clientX - r.left, e.clientY - r.top, { edgesDisabled: !!splitView || !deviceCanSplit }));
+      }}
+      onDragLeave={(e) => {
+        if (![...e.dataTransfer.types].includes(SHEET_TAB_DND_MIME)) return;
+        // dragenter/dragleave fire at every child boundary too (the stage's
+        // canvases, the panel rail buttons) — only clear when the pointer
+        // actually left this wrapper, not when it crossed onto a descendant,
+        // or the overlay would strobe on every pixel of internal movement.
+        if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+        setDragZone(null);
+      }}
+      onDrop={(e) => {
+        if (![...e.dataTransfer.types].includes(SHEET_TAB_DND_MIME)) return;
+        e.preventDefault(); e.stopPropagation();
+        const droppedKey = e.dataTransfer.getData(SHEET_TAB_DND_MIME);
+        setDragZone(null);
+        if (!droppedKey) return;
+        // recompute the zone from THIS event's own coordinates rather than
+        // trusting the dragZone state from the last dragover render — the
+        // drop must honor where the pointer actually released, not lag a
+        // render behind it.
+        const r = e.currentTarget.getBoundingClientRect();
+        const zone = dropZoneAt({ w: r.width, h: r.height }, e.clientX - r.left, e.clientY - r.top, { edgesDisabled: !!splitView || !deviceCanSplit });
+        if (zone === "center") { toggleInGroup(droppedKey); return; } // join primary group (existing behavior)
+        const orientation = zoneToOrientation(zone); // "v" | "h"
+        if (refuseIfOverCap(1)) return; // Task 8: refuse rather than silently drop when this would exceed the total-sheet budget
+        // dropped sheet frames the reference pane; primary keeps its content
+        setSplitView({ orientation, ratio: 0.5, refKey: droppedKey, refSet: [droppedKey] });
+      }}>
+      <div ref={containerRef} onPointerDownCapture={annotations.onPointerDownCapture} onPointerMoveCapture={annotations.onPointerMoveCapture} onPointerUpCapture={annotations.onPointerUpCapture} onPointerCancelCapture={annotations.onPointerCancelCapture} onDoubleClickCapture={annotations.onDoubleClickCapture} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp} onPointerLeave={leaveCanvas} onContextMenu={(e) => e.preventDefault()}
+        onDoubleClick={(e) => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone") finishShape(); else if (tool === "select") editMarkupAt(e); }}
+        style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "annotation" ? "crosshair" : tool === "select" ? "default" : "none", touchAction: "none" }}>
+        {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
               crosshair IS the cursor. Two crisp full-page hairlines riding the
               EFFECTIVE point (angle-locked / endpoint-snapped), the SPLINE STAR at
               the crossing, and a small readout chip in the house style. The 45°
               lock reads as a quiet state change (hairlines brighten, star swells
               cobalt, rubber band thickens) — no extra chrome on the sheet. All
               positioned imperatively in moveCrosshair. */}
-          {DS.crosshair !== "none" && (<>
-            <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
-            <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
-          </>)}
-          <div ref={aimMarkRef} style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, pointerEvents: "none", display: "none", zIndex: 6, willChange: "transform" }}>
-            {/* the aim mark at the crossing — the theme's cursor glyph; it swells
+        {DS.crosshair !== "none" && (<>
+          <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
+          <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
+        </>)}
+        <div ref={aimMarkRef} style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, pointerEvents: "none", display: "none", zIndex: 6, willChange: "transform" }}>
+          {/* the aim mark at the crossing — the theme's cursor glyph; it swells
                 and glows while the 45° lock holds (drafting: the house star) */}
-            <svg width={22} height={22} viewBox="0 0 22 22" style={{ position: "absolute", left: -11, top: -11, transition: "transform 120ms ease, filter 120ms ease", filter: "drop-shadow(0 1px 2px rgba(14,26,46,.3))" }}>
-              {DS.aimMark === "ring"
-                ? <circle cx={11} cy={11} r={6.5} fill="none" stroke={DS.aimMarkColor} strokeWidth={1.6} />
-                : <path d={markerPath(DS.aimMark, 11, 11, DS.aimMark === "star" ? 8.5 : 6)} fill={DS.aimMarkColor} stroke="#fff" strokeWidth={1.4} />}
-            </svg>
-          </div>
-          <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: DS.chip.bg, border: `1px solid ${DS.chip.border}`, boxShadow: "var(--shadow-1)", fontFamily: DS.chip.font === "mono" ? "var(--f-mono)" : "var(--f-body)", fontSize: 10.5, fontWeight: 600, color: DS.chip.fg, whiteSpace: "nowrap", willChange: "transform" }} />
-          {/* hover readout — what takeoff is under the cursor (DOM-direct) */}
-          <div ref={hoverRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", padding: "4px 8px", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", whiteSpace: "nowrap" }} />
-          {/* edge-insert ghost — the "+" that rides the selected shape's edge under
+          <svg width={22} height={22} viewBox="0 0 22 22" style={{ position: "absolute", left: -11, top: -11, transition: "transform 120ms ease, filter 120ms ease", filter: "drop-shadow(0 1px 2px rgba(14,26,46,.3))" }}>
+            {DS.aimMark === "ring"
+              ? <circle cx={11} cy={11} r={6.5} fill="none" stroke={DS.aimMarkColor} strokeWidth={1.6} />
+              : <path d={markerPath(DS.aimMark, 11, 11, DS.aimMark === "star" ? 8.5 : 6)} fill={DS.aimMarkColor} stroke="#fff" strokeWidth={1.4} />}
+          </svg>
+        </div>
+        <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: DS.chip.bg, border: `1px solid ${DS.chip.border}`, boxShadow: "var(--shadow-1)", fontFamily: DS.chip.font === "mono" ? "var(--f-mono)" : "var(--f-body)", fontSize: 10.5, fontWeight: 600, color: DS.chip.fg, whiteSpace: "nowrap", willChange: "transform" }} />
+        {/* hover readout — what takeoff is under the cursor (DOM-direct) */}
+        <div ref={hoverRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", padding: "4px 8px", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", whiteSpace: "nowrap" }} />
+        {/* edge-insert ghost — the "+" that rides the selected shape's edge under
               the cursor; pressing there inserts a vertex at that exact spot */}
-          <div ref={insGhostRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, width: 16, height: 16, alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "#1f3fc7", border: "1.5px solid #fff", boxShadow: "var(--shadow-1)", color: "#fff", fontFamily: "var(--f-mono)", fontSize: 12, lineHeight: 1 }}>+</div>
-          {/* inline on-canvas text editor — a screen-space overlay pinned to its anchor
+        <div ref={insGhostRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, width: 16, height: 16, alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "#1f3fc7", border: "1.5px solid #fff", boxShadow: "var(--shadow-1)", color: "#fff", fontFamily: "var(--f-mono)", fontSize: 12, lineHeight: 1 }}>+</div>
+        {/* inline on-canvas text editor — a screen-space overlay pinned to its anchor
               (pan/zoom is frozen while open). Enter commits, Esc cancels, blur commits;
               all on the input's OWN handlers so the global keydown (which returns early
               for INPUT) never interferes. cursor:text overrides the stage's cursor:none. */}
-          {editor && (
-            <input name="inline-editor" autoComplete="off" ref={editorInputRef} autoFocus defaultValue={editor.value}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finishEditor(true); } else if (e.key === "Escape") { e.preventDefault(); finishEditor(false); } }}
-              onBlur={() => finishEditor(true)}
+        {editor && (
+          <input name="inline-editor" autoComplete="off" ref={editorInputRef} autoFocus defaultValue={editor.value}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finishEditor(true); } else if (e.key === "Escape") { e.preventDefault(); finishEditor(false); } }}
+            onBlur={() => finishEditor(true)}
               placeholder={uiText("Type, Enter to place · Esc cancels")}
-              style={{ position: "absolute", left: editor.left, top: editor.top, zIndex: 9, minWidth: 160, padding: "3px 6px", font: "13px var(--f-body, sans-serif)", color: "var(--ink)", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "0 2px 10px rgba(0,0,0,.18)", borderRadius: 0, cursor: "text", outline: "none" }} />
-          )}
-          {/* No permanent will-change here: the stage is compositor-promoted only
+            style={{ position: "absolute", left: editor.left, top: editor.top, zIndex: 9, minWidth: 160, padding: "3px 6px", font: "13px var(--f-body, sans-serif)", color: "var(--ink)", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "0 2px 10px rgba(0,0,0,.18)", borderRadius: 0, cursor: "text", outline: "none" }} />
+        )}
+        {/* No permanent will-change here: the stage is compositor-promoted only
               for the duration of a gesture (promoteStage / syncTilePanels demote).
               A permanent promotion froze the layer's raster scale and pixelated
               every drawn boundary after a zoom-in. */}
-          <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", width: stage.w || undefined, height: stage.h || undefined }}>
-            {/* base layer — a small, bounded coarse pyramid placeholder CSS-stretched
+        <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", width: stage.w || undefined, height: stage.h || undefined }}>
+          {/* base layer — a small, bounded coarse pyramid placeholder CSS-stretched
                 to the panel's full logical footprint (see tileCompositor.ts's
                 paintBase); the backing store is NOT sheet-sized, only its CSS box is,
                 which is what keeps this a bounded canvas regardless of sheet size */}
-            {drawPanels.filter((d) => !d.clip).map((d) => (
-              <canvas key={d.drawKey} ref={(el) => { if (el) panelCanvasRefs.current.set(d.drawKey, el); else panelCanvasRefs.current.delete(d.drawKey); }}
-                style={{ position: "absolute", left: d.x, top: d.y, width: d.w || undefined, height: d.h || undefined, boxShadow: "0 2px 20px rgba(0,0,0,.18)" }} />
-            ))}
-            {/* detail layer — one PER SOURCE, a crop of the visible region + margin
+          {drawPanels.filter((d) => !d.clip).map((d) => (
+            <canvas key={d.drawKey} ref={(el) => { if (el) panelCanvasRefs.current.set(d.drawKey, el); else panelCanvasRefs.current.delete(d.drawKey); }}
+              style={{ position: "absolute", left: d.x, top: d.y, width: d.w || undefined, height: d.h || undefined, boxShadow: "0 2px 20px rgba(0,0,0,.18)" }} />
+          ))}
+          {/* detail layer — one PER SOURCE, a crop of the visible region + margin
                 composited from cached tiles at the current zoom (see the detail-view
                 effect); group mode no longer shares a single global detail canvas */}
-            {drawPanels.filter((d) => !d.clip).map((d) => (
-              <canvas key={`detail-${d.drawKey}`} ref={(el) => { if (el) detailCanvasRefs.current.set(d.drawKey, el); else detailCanvasRefs.current.delete(d.drawKey); }}
-                style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
-            ))}
-            {/* stitch members (#161): base + detail together inside a seam-clip
+          {drawPanels.filter((d) => !d.clip).map((d) => (
+            <canvas key={`detail-${d.drawKey}`} ref={(el) => { if (el) detailCanvasRefs.current.set(d.drawKey, el); else detailCanvasRefs.current.delete(d.drawKey); }}
+              style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
+          ))}
+          {/* stitch members (#161): base + detail together inside a seam-clip
                 wrapper — the div does ALL clipping (overflow:hidden at the member's
                 visible box), so the neighbor's margin/border strip near the match
                 line can't overpaint the plan. The shadow rides the wrapper: the
                 composite reads as one sheet of paper, not N taped panels. */}
-            {drawPanels.filter((d) => d.clip).map((d) => (
-              <div key={`wrap-${d.drawKey}`} style={{ position: "absolute", left: d.clip.x, top: d.clip.y, width: d.clip.w, height: d.clip.h, overflow: "hidden", boxShadow: "0 2px 20px rgba(0,0,0,.18)" }}>
-                <canvas ref={(el) => { if (el) panelCanvasRefs.current.set(d.drawKey, el); else panelCanvasRefs.current.delete(d.drawKey); }}
-                  style={{ position: "absolute", left: d.x - d.clip.x, top: d.y - d.clip.y, width: d.w || undefined, height: d.h || undefined }} />
-                <canvas ref={(el) => { if (el) detailCanvasRefs.current.set(d.drawKey, el); else detailCanvasRefs.current.delete(d.drawKey); }}
-                  style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
-              </div>
-            ))}
-            <svg width={stage.w} height={stage.h} viewBox={`0 0 ${stage.w} ${stage.h}`} style={{ position: "absolute", top: 0, left: 0, overflow: "visible", pointerEvents: "none" }}>
-              <defs>
-                {conditions.map((c) => <HatchPattern key={patId(c)} id={patId(c)} type={c.hatch || "solid"} line={c.color} fill={c.fill} dark={darkMode} />)}
-              </defs>
-              {/* committed shapes + markups, one group per panel in its local frame */}
-              {panels.map((p) => {
-                const pShapes = stackedShapes.filter((s) => s.sheet_id === p.key);
-                const dn = (vn) => vn.map(([x, y]) => [x * p.img.w, y * p.img.h]);
-                const label = labelFor(p);
-                return (
-                  <g key={p.key} transform={`translate(${p.xOffset},0)`}>
-                    {panels.length > 1 && <text x={0} y={-26} fontSize={64} fontWeight={700} fill={darkMode ? "#9a917f" : "#6b6256"}>{uiText(label)}</text>}
-                    {/* Fill/stroke logic for one shape lives in shapeGlyphs.jsx,
+          {drawPanels.filter((d) => d.clip).map((d) => (
+            <div key={`wrap-${d.drawKey}`} style={{ position: "absolute", left: d.clip.x, top: d.clip.y, width: d.clip.w, height: d.clip.h, overflow: "hidden", boxShadow: "0 2px 20px rgba(0,0,0,.18)" }}>
+              <canvas ref={(el) => { if (el) panelCanvasRefs.current.set(d.drawKey, el); else panelCanvasRefs.current.delete(d.drawKey); }}
+                style={{ position: "absolute", left: d.x - d.clip.x, top: d.y - d.clip.y, width: d.w || undefined, height: d.h || undefined }} />
+              <canvas ref={(el) => { if (el) detailCanvasRefs.current.set(d.drawKey, el); else detailCanvasRefs.current.delete(d.drawKey); }}
+                style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
+            </div>
+          ))}
+          <svg width={stage.w} height={stage.h} viewBox={`0 0 ${stage.w} ${stage.h}`} style={{ position: "absolute", top: 0, left: 0, overflow: "visible", pointerEvents: "none" }}>
+            <defs>
+              {conditions.map((c) => <HatchPattern key={patId(c)} id={patId(c)} type={c.hatch || "solid"} line={c.color} fill={c.fill} dark={darkMode} />)}
+            </defs>
+            {/* committed shapes + markups, one group per panel in its local frame */}
+            {panels.map((p) => {
+              const pShapes = stackedShapes.filter((s) => s.sheet_id === p.key);
+              const dn = (vn) => vn.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+              const label = labelFor(p);
+              return (
+                <g key={p.key} transform={`translate(${p.xOffset},0)`} style={{ opacity: rotatingKey === p.key ? 0 : 1, transition: "opacity 120ms ease" }}>
+                  {panels.length > 1 && <text x={0} y={-26} fontSize={64} fontWeight={700} fill={darkMode ? "#9a917f" : "#6b6256"}>{uiText(label)}</text>}
+                  {/* Fill/stroke logic for one shape lives in shapeGlyphs.jsx,
                         shared byte-for-byte with the reference pane's read-only
                         mirror (ReferencePane.jsx) — see that module for the full
                         measure_role switch. `sel`/`DS.selection` only matter when
                         `sel` is true, which never happens on the reference side. */}
                     {uiText(pShapes.map((s) => renderShapeGlyph(s, {
-                      dn, cond: condById[s.condition_id], sel: s.id === selectedId,
-                      z: tf.scale, darkMode, selection: DS.selection, patId,
+                    dn, cond: condById[s.condition_id], sel: s.id === selectedId,
+                    z: tf.scale, darkMode, selection: DS.selection, patId,
                     })))}
-                    {/* vertex handles for the selected shape (drag to reshape) */}
-                    {selectedId && (() => {
-                      const sel = pShapes.find((s) => s.id === selectedId);
-                      if (!sel || sel.measure_role === "count") return null;
-                      const qs = dn(sel.verts_norm);
-                      const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
-                      const s = tf.scale;
-                      const grip = darkMode ? "#0b0e14" : "#faf6ea";
-                      const edges = closed ? qs.length : qs.length - 1;
-                      return (
-                        <g>
-                          {/* edge grips — drag moves the whole line; Shift-click inserts a point */}
-                          {Array.from({ length: edges }, (_, i) => {
-                            const a = qs[i], b = qs[(i + 1) % qs.length];
-                            const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-                            const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
-                            const ew = 14 / s, eh = 6 / s;
+                  {/* vertex handles for the selected shape (drag to reshape) */}
+                  {selectedId && (() => {
+                    const sel = pShapes.find((s) => s.id === selectedId);
+                    if (!sel || sel.measure_role === "count") return null;
+                    const qs = dn(sel.verts_norm);
+                    const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
+                    const s = tf.scale;
+                    const grip = darkMode ? "#0b0e14" : "#faf6ea";
+                    const edges = closed ? qs.length : qs.length - 1;
+                    return (
+                      <g>
+                        {/* edge grips — drag moves the whole line; Shift-click inserts a point */}
+                        {Array.from({ length: edges }, (_, i) => {
+                          const a = qs[i], b = qs[(i + 1) % qs.length];
+                          const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+                          const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+                          const ew = 14 / s, eh = 6 / s;
                             return <rect key={tr("m") + i} x={mx - ew / 2} y={my - eh / 2} width={ew} height={eh} rx={eh / 2}
-                              transform={`rotate(${ang} ${mx} ${my})`} fill={grip} stroke={DS.selection.color} strokeWidth={1.6 / s} />;
-                          })}
-                          {/* corner handles — click selects (Delete removes just that point), drag moves.
+                            transform={`rotate(${ang} ${mx} ${my})`} fill={grip} stroke={DS.selection.color} strokeWidth={1.6 / s} />;
+                        })}
+                        {/* corner handles — click selects (Delete removes just that point), drag moves.
                               The theme's handle glyph (drafting: paper-filled diamond); a "hollow" theme
                               draws the mark unfilled, the selection color as its outline. */}
-                          {qs.map(([x, y], i) => {
-                            const isSel = selVert === i;
-                            const sz = (isSel ? 6.5 : 5.5) / s;
-                            const hollow = DS.selection.handleFill === "hollow";
-                            return <g key={"h" + i}>
-                              {isSel && <circle cx={x} cy={y} r={9 / s} fill="none" stroke={DS.selection.color} strokeWidth={1.2 / s} opacity={0.5} />}
-                              <path d={markerPath(DS.selection.handleShape, x, y, sz)}
-                                fill={hollow ? "none" : (isSel ? grip : DS.selection.color)} stroke={hollow ? DS.selection.color : (isSel ? DS.selection.color : "#fff")} strokeWidth={(isSel ? 2 : 1.4) / s} />
-                            </g>;
-                          })}
-                        </g>
-                      );
-                    })()}
-                    {/* markup layer — clouds / callouts / text notes / dimensions / arrows /
+                        {qs.map(([x, y], i) => {
+                          const isSel = selVert === i;
+                          const sz = (isSel ? 6.5 : 5.5) / s;
+                          const hollow = DS.selection.handleFill === "hollow";
+                          return <g key={"h" + i}>
+                            {isSel && <circle cx={x} cy={y} r={9 / s} fill="none" stroke={DS.selection.color} strokeWidth={1.2 / s} opacity={0.5} />}
+                            <path d={markerPath(DS.selection.handleShape, x, y, sz)}
+                              fill={hollow ? "none" : (isSel ? grip : DS.selection.color)} stroke={hollow ? DS.selection.color : (isSel ? DS.selection.color : "#fff")} strokeWidth={(isSel ? 2 : 1.4) / s} />
+                          </g>;
+                        })}
+                      </g>
+                    );
+                  })()}
+                  {/* markup layer — clouds / callouts / text notes / dimensions / arrows /
                         highlights / bubbles / captured images / vector stamps on this panel.
                         The ink itself lives in markupGlyphs.jsx, shared byte-for-byte with the
                         reference pane's read-only mirror; the paint order and the per-panel
@@ -9512,76 +11070,76 @@ export default function TakeoffCanvas() {
                         inner) — `selected` is the only thing this side adds. Layer hides via
                         showMarkups. */}
                     {uiText(showMarkups && paintOrderedMarkups(visibleMarkups.filter((m) => m.sheet_id === p.key)).map((m0) =>
-                      renderMarkupGlyph(m0, {
-                        img: p.img, z: tf.scale, darkMode, condById, rfis, noteQtyLabels, sheetBaseLabel,
-                        selected: m0.id === selectedMarkupId, premiumInk: annotations.render,
+                    renderMarkupGlyph(m0, {
+                      img: p.img, z: tf.scale, darkMode, condById, rfis, noteQtyLabels, sheetBaseLabel,
+                      selected: m0.id === selectedMarkupId, premiumInk: annotations.render,
                       })))}
-                    {/* approval seals — ink over pencil (lib/approvals.js): the
+                  {/* approval seals — ink over pencil (lib/approvals.js): the
                         estimator's APPROVED ring, the agent's AGENT diamond. Its
                         own layer above markups and NOT gated on showMarkups — a
                         seal is the record of review, so it never hides with the
                         annotations. Sizes are sheet-normalized (the bubble
                         convention) so seals print proportionally; inks are token
                         literals via approvalInk (SVG attrs don't resolve CSS vars). */}
-                    {approvals.filter((a) => a.sheet_id === p.key).map((a) => {
-                      const cx = a.at[0] * p.img.w, cy = a.at[1] * p.img.h;
-                      const rad = APPROVAL_R * p.img.w;
-                      const ink = approvalInk(a.actor, darkMode);
-                      const backing = darkMode ? "rgba(12,15,20,.72)" : "rgba(255,255,255,.72)";
-                      if (a.actor === "agent") {
-                        const dia = (k) => `M${cx},${cy - rad * k} L${cx + rad * k},${cy} L${cx},${cy + rad * k} L${cx - rad * k},${cy} Z`;
-                        return (
-                          <g key={a.id} style={{ pointerEvents: "none" }}>
-                            <path d={dia(1)} fill={backing} stroke={ink} strokeWidth={rad * 0.07} strokeLinejoin="round" />
-                            <path d={dia(0.72)} fill="none" stroke={ink} strokeWidth={rad * 0.035} strokeLinejoin="round" />
-                            <text x={cx} y={cy} fill={ink} fontSize={rad * 0.3} fontWeight="700" letterSpacing={rad * 0.02} textAnchor="middle" dominantBaseline="central">{uiText("AGENT")}</text>
-                          </g>
-                        );
-                      }
+                  {approvals.filter((a) => a.sheet_id === p.key).map((a) => {
+                    const cx = a.at[0] * p.img.w, cy = a.at[1] * p.img.h;
+                    const rad = APPROVAL_R * p.img.w;
+                    const ink = approvalInk(a.actor, darkMode);
+                    const backing = darkMode ? "rgba(12,15,20,.72)" : "rgba(255,255,255,.72)";
+                    if (a.actor === "agent") {
+                      const dia = (k) => `M${cx},${cy - rad * k} L${cx + rad * k},${cy} L${cx},${cy + rad * k} L${cx - rad * k},${cy} Z`;
                       return (
                         <g key={a.id} style={{ pointerEvents: "none" }}>
-                          <circle cx={cx} cy={cy} r={rad} fill={backing} stroke={ink} strokeWidth={rad * 0.07} />
-                          <circle cx={cx} cy={cy} r={rad * 0.78} fill="none" stroke={ink} strokeWidth={rad * 0.035} />
-                          <text x={cx} y={cy} fill={ink} fontSize={rad * 0.26} fontWeight="700" letterSpacing={rad * 0.03} textAnchor="middle" dominantBaseline="central">{uiText("APPROVED")}</text>
+                          <path d={dia(1)} fill={backing} stroke={ink} strokeWidth={rad * 0.07} strokeLinejoin="round" />
+                          <path d={dia(0.72)} fill="none" stroke={ink} strokeWidth={rad * 0.035} strokeLinejoin="round" />
+                            <text x={cx} y={cy} fill={ink} fontSize={rad * 0.3} fontWeight="700" letterSpacing={rad * 0.02} textAnchor="middle" dominantBaseline="central">{uiText("AGENT")}</text>
                         </g>
                       );
-                    })}
-                    {/* zone check — transparent dashed region + a cobalt trace on every counted shape */}
-                    {zoneCheck && zoneCheck.key === p.key && (
-                      <g style={{ pointerEvents: "none" }}>
-                        <polygon points={zoneCheck.pts.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ")}
-                          fill="rgba(31,63,199,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale}
-                          strokeDasharray={`${7 / tf.scale} ${5 / tf.scale}`} />
-                        {zoneIds && pShapes.filter((sh) => zoneIds.has(sh.id)).map((sh) => {
-                          const vs = sh.verts_norm || [];
-                          if (vs.length < 2) {
-                            return <circle key={"zc" + sh.id} cx={(vs[0]?.[0] || 0) * p.img.w} cy={(vs[0]?.[1] || 0) * p.img.h}
-                              r={7 / tf.scale} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={2.5 / tf.scale} />;
-                          }
-                          // Closed roles (floor_area/deduct) get a <polygon> like the
-                          // main shape renderer — a <polyline> never draws the
-                          // closing edge back to the first vertex, so a 4-vertex
-                          // room's glow was missing 25% of its outline. linear/
-                          // surface_area are genuinely open runs, so they keep
-                          // <polyline>, also matching the main renderer.
-                          const closed = sh.measure_role !== "linear" && sh.measure_role !== "surface_area";
-                          const pts = vs.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ");
-                          return closed
-                            ? <polygon key={"zc" + sh.id} points={pts} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />
-                            : <polyline key={"zc" + sh.id} points={pts} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />;
-                        })}
+                    }
+                    return (
+                      <g key={a.id} style={{ pointerEvents: "none" }}>
+                        <circle cx={cx} cy={cy} r={rad} fill={backing} stroke={ink} strokeWidth={rad * 0.07} />
+                        <circle cx={cx} cy={cy} r={rad * 0.78} fill="none" stroke={ink} strokeWidth={rad * 0.035} />
+                          <text x={cx} y={cy} fill={ink} fontSize={rad * 0.26} fontWeight="700" letterSpacing={rad * 0.03} textAnchor="middle" dominantBaseline="central">{uiText("APPROVED")}</text>
                       </g>
-                    )}
-                    {/* One-Click proposal preview — dashed cobalt selection, red dashed carve.
+                    );
+                  })}
+                  {/* zone check — transparent dashed region + a cobalt trace on every counted shape */}
+                  {zoneCheck && zoneCheck.key === p.key && (
+                    <g style={{ pointerEvents: "none" }}>
+                      <polygon points={zoneCheck.pts.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ")}
+                        fill="rgba(31,63,199,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale}
+                        strokeDasharray={`${7 / tf.scale} ${5 / tf.scale}`} />
+                      {zoneIds && pShapes.filter((sh) => zoneIds.has(sh.id)).map((sh) => {
+                        const vs = sh.verts_norm || [];
+                        if (vs.length < 2) {
+                          return <circle key={"zc" + sh.id} cx={(vs[0]?.[0] || 0) * p.img.w} cy={(vs[0]?.[1] || 0) * p.img.h}
+                            r={7 / tf.scale} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={2.5 / tf.scale} />;
+                        }
+                        // Closed roles (floor_area/deduct) get a <polygon> like the
+                        // main shape renderer — a <polyline> never draws the
+                        // closing edge back to the first vertex, so a 4-vertex
+                        // room's glow was missing 25% of its outline. linear/
+                        // surface_area are genuinely open runs, so they keep
+                        // <polyline>, also matching the main renderer.
+                        const closed = sh.measure_role !== "linear" && sh.measure_role !== "surface_area";
+                        const pts = vs.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ");
+                        return closed
+                          ? <polygon key={"zc" + sh.id} points={pts} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />
+                          : <polyline key={"zc" + sh.id} points={pts} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />;
+                      })}
+                    </g>
+                  )}
+                  {/* One-Click proposal preview — dashed cobalt selection, red dashed carve.
                         Handles (corner diamonds + edge grips) rise on the hovered/selected
                         region: drag a corner, drag an edge to move the whole line, Shift-click
                         an edge to add a point, select a corner + Delete to remove it. */}
-                    {proposal && proposal.key === p.key && proposal.regions.map((r, i) => {
-                      const col = r.kind === "neg" ? "#b03a26" : "#1f3fc7";
-                      const s = tf.scale;
-                      const grip = darkMode ? "#0b0e14" : "#faf6ea";
-                      const show = i === ocHover || (ocSel && ocSel.ri === i);
-                      return (
+                  {proposal && proposal.key === p.key && proposal.regions.map((r, i) => {
+                    const col = r.kind === "neg" ? "#b03a26" : "#1f3fc7";
+                    const s = tf.scale;
+                    const grip = darkMode ? "#0b0e14" : "#faf6ea";
+                    const show = i === ocHover || (ocSel && ocSel.ri === i);
+                    return (
                       <g key={"oc" + i}>
                         <path d={[r.poly, ...(r.holes || [])].map((ring) => `M${ring.map((q) => q.join(",")).join("L")}Z`).join(" ")} fillRule="evenodd"
                           fill={r.kind === "neg" ? "rgba(176,58,38,.18)" : "rgba(31,63,199,.10)"}
@@ -9605,61 +11163,61 @@ export default function TakeoffCanvas() {
                           </g>;
                         })}
                       </g>
-                      );
-                    })}
-                    {/* Agent proposals — DASHED pencil pending the accept gate. A
+                    );
+                  })}
+                  {/* Agent proposals — DASHED pencil pending the accept gate. A
                         finer dash than one-click's selection so the two proposal
                         kinds read apart; the seed star marks the flood seed. The
                         native SVG <title> is the evidence tooltip. Click-to-accept
                         only under the non-drawing tools (select/pan) so a live
                         trace over a proposal is never swallowed; the panel rows
                         and ⏎ accept regardless of tool. */}
-                    {agentProposals.filter((ap) => ap.sheet_id === p.key).map((ap) => {
-                      const s = tf.scale;
-                      const pts = ap.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
-                      const ded = ap.measure_role === "deduct";
-                      const col = ded ? "#b03a26" : "#1f3fc7";
-                      const clickable = tool === "select";
-                      const ev = ap.evidence || {};
-                      const evBits = [
-                        ev.schedule_row_tag ? `schedule ${ev.schedule_row_tag}` : "",
-                        ev.matched_text && ev.matched_text !== ev.schedule_row_tag ? `matched "${ev.matched_text}"` : "",
-                        Array.isArray(ev.seed_norm) ? "seeded by one-click" : "",
-                      ].filter(Boolean).join(", ");
-                      return (
-                        <g key={ap.id} style={{ pointerEvents: clickable ? "auto" : "none", cursor: clickable ? "pointer" : undefined }}
-                          onPointerDown={(e) => { if (clickable) e.stopPropagation(); }}
-                          onClick={(e) => { if (clickable) { e.stopPropagation(); acceptAgentProposal(ap.id); } }}>
+                  {agentProposals.filter((ap) => ap.sheet_id === p.key).map((ap) => {
+                    const s = tf.scale;
+                    const pts = ap.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+                    const ded = ap.measure_role === "deduct";
+                    const col = ded ? "#b03a26" : "#1f3fc7";
+                    const clickable = tool === "select";
+                    const ev = ap.evidence || {};
+                    const evBits = [
+                      ev.schedule_row_tag ? `schedule ${ev.schedule_row_tag}` : "",
+                      ev.matched_text && ev.matched_text !== ev.schedule_row_tag ? `matched "${ev.matched_text}"` : "",
+                      Array.isArray(ev.seed_norm) ? "seeded by one-click" : "",
+                    ].filter(Boolean).join(", ");
+                    return (
+                      <g key={ap.id} style={{ pointerEvents: clickable ? "auto" : "none", cursor: clickable ? "pointer" : undefined }}
+                        onPointerDown={(e) => { if (clickable) e.stopPropagation(); }}
+                        onClick={(e) => { if (clickable) { e.stopPropagation(); acceptAgentProposal(ap.id); } }}>
                           <title>{uiText(`Agent proposal — ${condById[ap.condition_id]?.finish_tag || "?"}${ded ? " (deduct)" : ""}, ${fa(ap.area_sf)}. ${evBits ? `Evidence: ${evBits}. ` : ""}Click to accept (⏎ accepts all visible); reject from the Agent panel.`)}</title>
-                          <path d={[pts, ...(ap.verts_norm_holes || []).map((h) => h.map(([x, y]) => [x * p.img.w, y * p.img.h]))].map((ring) => `M${ring.map((q) => q.join(",")).join("L")}Z`).join(" ")} fillRule="evenodd"
-                            fill={ded ? "rgba(176,58,38,.10)" : "rgba(31,63,199,.07)"}
-                            stroke={col} strokeOpacity={0.9} strokeWidth={2 / s}
-                            strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
-                          {Array.isArray(ap.seed_norm) && (
-                            <path d={starPath(ap.seed_norm[0] * p.img.w, ap.seed_norm[1] * p.img.h, 4.5 / s)}
-                              fill={col} fillOpacity={0.85} stroke="#fff" strokeWidth={1 / s} />
-                          )}
-                        </g>
-                      );
-                    })}
-                    {/* staged rule-propagation candidates (#88): dashed danger
+                        <path d={[pts, ...(ap.verts_norm_holes || []).map((h) => h.map(([x, y]) => [x * p.img.w, y * p.img.h]))].map((ring) => `M${ring.map((q) => q.join(",")).join("L")}Z`).join(" ")} fillRule="evenodd"
+                          fill={ded ? "rgba(176,58,38,.10)" : "rgba(31,63,199,.07)"}
+                          stroke={col} strokeOpacity={0.9} strokeWidth={2 / s}
+                          strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
+                        {Array.isArray(ap.seed_norm) && (
+                          <path d={starPath(ap.seed_norm[0] * p.img.w, ap.seed_norm[1] * p.img.h, 4.5 / s)}
+                            fill={col} fillOpacity={0.85} stroke="#fff" strokeWidth={1 / s} />
+                        )}
+                      </g>
+                    );
+                  })}
+                  {/* staged rule-propagation candidates (#88): dashed danger
                         pencil until Apply — the same review-before-ink contract
                         as agent proposals. Non-interactive on the canvas; the
                         banner owns Apply/Cancel (ONE decision for the batch,
                         matching the one-command undo). */}
-                    {ruleStage && ruleStage.candidates.filter((c) => c.sheet_id === p.key).map((c, i) => {
-                      const s = tf.scale;
-                      const pts = c.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
-                      return (
-                        <g key={`rulecand-${i}`} style={{ pointerEvents: "none" }}>
+                  {ruleStage && ruleStage.candidates.filter((c) => c.sheet_id === p.key).map((c, i) => {
+                    const s = tf.scale;
+                    const pts = c.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+                    return (
+                      <g key={`rulecand-${i}`} style={{ pointerEvents: "none" }}>
                           <title>{uiText(`Rule candidate — −${fa(c.area_sf)} deduct. ${ruleStage.rule.label}.`)}</title>
-                          <polygon points={pts.map((q) => q.join(",")).join(" ")}
-                            fill="rgba(176,58,38,.10)" stroke="#b03a26" strokeOpacity={0.9}
-                            strokeWidth={2 / s} strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
-                        </g>
-                      );
-                    })}
-                    {/* Roll-goods cut overlay (#136) — every figured cut drawn to
+                        <polygon points={pts.map((q) => q.join(",")).join(" ")}
+                          fill="rgba(176,58,38,.10)" stroke="#b03a26" strokeOpacity={0.9}
+                          strokeWidth={2 / s} strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
+                      </g>
+                    );
+                  })}
+                  {/* Roll-goods cut overlay (#136) — every figured cut drawn to
                         scale over its room in the MATERIAL-TRUE color (carpet tan,
                         vinyl/rubber grey — the engine's own palette, so cuts never
                         mimic a condition's takeoff look), numbered in cutting
@@ -9669,46 +11227,46 @@ export default function TakeoffCanvas() {
                         pull the run ends, double-click resets to the figured
                         layout. Adjacent cuts overlapping IS the seam (physical
                         pieces carry the seam allowance). */}
-                    {rollShow && (rollCutsByPanel.get(p.key) || []).map((ct) => {
-                      const s = tf.scale;
-                      const col = rollColorForType(ct.material);
-                      const runY = ct.laneAxis === "x";     // strips run along screen y; lanes tile across x
-                      const hs = 5 / s;
-                      const showNum = ct.w * s > 16 && ct.h * s > 16;
-                      const strokeCol = ct.overRoll ? "#b03a26" : col;
-                      return (
-                        <g key={"roll" + ct.id}
-                          style={{ pointerEvents: rollEdit ? "auto" : "none", cursor: rollEdit ? "grab" : undefined }}
-                          onPointerDown={(e) => beginRollCut(e, ct, "body")}
-                          onPointerMove={moveRollCut} onPointerUp={endRollCut} onPointerCancel={endRollCut}
-                          onDoubleClick={() => rollEdit && resetRollCut(ct)}>
+                  {rollShow && (rollCutsByPanel.get(p.key) || []).map((ct) => {
+                    const s = tf.scale;
+                    const col = rollColorForType(ct.material);
+                    const runY = ct.laneAxis === "x";     // strips run along screen y; lanes tile across x
+                    const hs = 5 / s;
+                    const showNum = ct.w * s > 16 && ct.h * s > 16;
+                    const strokeCol = ct.overRoll ? "#b03a26" : col;
+                    return (
+                      <g key={"roll" + ct.id}
+                        style={{ pointerEvents: rollEdit ? "auto" : "none", cursor: rollEdit ? "grab" : undefined }}
+                        onPointerDown={(e) => beginRollCut(e, ct, "body")}
+                        onPointerMove={moveRollCut} onPointerUp={endRollCut} onPointerCancel={endRollCut}
+                        onDoubleClick={() => rollEdit && resetRollCut(ct)}>
                           <title>{uiText(`Cut ${ct.num} — ${condById[ct.condId]?.finish_tag || "?"}: ${fmtCheckLen(ct.lenFt, units)} × ${fmtCheckLen(ct.widthFt, units)}${ct.multi ? ` · lane ${ct.laneIndex + 1}/${ct.laneCount}` : ""}${ct.overRoll ? " · LONGER THAN ONE ROLL — needs a cross-seam" : ""}${rollEdit ? " · drag to slide, pull the square handles to resize, double-click to reset" : ""}`)}</title>
-                          <rect x={ct.x} y={ct.y} width={ct.w} height={ct.h}
-                            fill={col + "38"} stroke={strokeCol}
-                            strokeWidth={(ct.overRoll ? 2.6 : 1.8) / s}
-                            strokeDasharray={ct.multi ? `${6 / s} ${4 / s}` : undefined} />
-                          {showNum && (
-                            <g style={{ pointerEvents: "none" }}>
-                              <circle cx={ct.x + 11 / s} cy={ct.y + 11 / s} r={7.5 / s} fill={strokeCol} stroke="#fff" strokeWidth={1 / s} />
+                        <rect x={ct.x} y={ct.y} width={ct.w} height={ct.h}
+                          fill={col + "38"} stroke={strokeCol}
+                          strokeWidth={(ct.overRoll ? 2.6 : 1.8) / s}
+                          strokeDasharray={ct.multi ? `${6 / s} ${4 / s}` : undefined} />
+                        {showNum && (
+                          <g style={{ pointerEvents: "none" }}>
+                            <circle cx={ct.x + 11 / s} cy={ct.y + 11 / s} r={7.5 / s} fill={strokeCol} stroke="#fff" strokeWidth={1 / s} />
                               <text x={ct.x + 11 / s} y={ct.y + 14.4 / s} fontSize={10 / s} fontWeight={700} fill="#fff" textAnchor="middle" fontFamily="var(--f-mono,monospace)">{uiText(ct.num)}</text>
-                            </g>
-                          )}
-                          {rollEdit && (
-                            <>
-                              <rect x={runY ? ct.x + ct.w / 2 - hs : ct.x - hs} y={runY ? ct.y - hs : ct.y + ct.h / 2 - hs}
-                                width={hs * 2} height={hs * 2} fill="#fff" stroke={strokeCol} strokeWidth={1.4 / s}
-                                style={{ cursor: runY ? "ns-resize" : "ew-resize" }}
-                                onPointerDown={(e) => beginRollCut(e, ct, "start")} />
-                              <rect x={runY ? ct.x + ct.w / 2 - hs : ct.x + ct.w - hs} y={runY ? ct.y + ct.h - hs : ct.y + ct.h / 2 - hs}
-                                width={hs * 2} height={hs * 2} fill="#fff" stroke={strokeCol} strokeWidth={1.4 / s}
-                                style={{ cursor: runY ? "ns-resize" : "ew-resize" }}
-                                onPointerDown={(e) => beginRollCut(e, ct, "end")} />
-                            </>
-                          )}
-                        </g>
-                      );
-                    })}
-                    {/* Source-trace flash (◎, wired by slice 3) — a transient highlight
+                          </g>
+                        )}
+                        {rollEdit && (
+                          <>
+                            <rect x={runY ? ct.x + ct.w / 2 - hs : ct.x - hs} y={runY ? ct.y - hs : ct.y + ct.h / 2 - hs}
+                              width={hs * 2} height={hs * 2} fill="#fff" stroke={strokeCol} strokeWidth={1.4 / s}
+                              style={{ cursor: runY ? "ns-resize" : "ew-resize" }}
+                              onPointerDown={(e) => beginRollCut(e, ct, "start")} />
+                            <rect x={runY ? ct.x + ct.w / 2 - hs : ct.x + ct.w - hs} y={runY ? ct.y + ct.h - hs : ct.y + ct.h / 2 - hs}
+                              width={hs * 2} height={hs * 2} fill="#fff" stroke={strokeCol} strokeWidth={1.4 / s}
+                              style={{ cursor: runY ? "ns-resize" : "ew-resize" }}
+                              onPointerDown={(e) => beginRollCut(e, ct, "end")} />
+                          </>
+                        )}
+                      </g>
+                    );
+                  })}
+                  {/* Source-trace flash (◎, wired by slice 3) — a transient highlight
                         drawn in the SOURCE panel's own <g>, so it inherits xOffset like
                         every other overlay here. `key={sourceFlash.token}` is load-bearing:
                         a CSS keyframes animation only (re)starts on mount, so without a
@@ -9717,8 +11275,8 @@ export default function TakeoffCanvas() {
                         tick, per the plan's no-live-tick rule. The guard on `rect` shape
                         matches the try-wrap the export side uses: a malformed value from a
                         future caller must not take the canvas down. */}
-                    {sourceFlash && sourceFlash.sheet_id === p.key
-                      && Array.isArray(sourceFlash.rect) && sourceFlash.rect.length === 2 && (() => {
+                  {sourceFlash && sourceFlash.sheet_id === p.key
+                    && Array.isArray(sourceFlash.rect) && sourceFlash.rect.length === 2 && (() => {
                       const [[fnx0, fny0], [fnx1, fny1]] = sourceFlash.rect;
                       const fx0 = Math.min(fnx0, fnx1) * p.img.w, fy0 = Math.min(fny0, fny1) * p.img.h;
                       const fx1 = Math.max(fnx0, fnx1) * p.img.w, fy1 = Math.max(fny0, fny1) * p.img.h;
@@ -9729,32 +11287,35 @@ export default function TakeoffCanvas() {
                           style={{ pointerEvents: "none", animation: "sourceFlashPulse .85s ease-in-out 3 forwards" }} />
                       );
                     })()}
-                  </g>
-                );
-              })}
-              {/* IN-PROGRESS work draws in the INSTRUMENT color — the house cobalt pencil
+                </g>
+              );
+            })}
+            {/* IN-PROGRESS work draws in the INSTRUMENT color — the house cobalt pencil
                   (deduct keeps its danger red). Committed shapes wear the condition's own
                   color; the draft never mimics anyone's takeoff look. Solid, no dashes. */}
-              {DS.casing && <line ref={rubberCasingRef} data-draft="casing" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeLinecap="round" style={{ display: "none" }} />}
-              <line ref={rubberRef} stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.rubber.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeDasharray={drawDashFor(DS.rubber.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
-              <path ref={arcRef} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.lineWidth / tf.scale} strokeLinecap="round" style={{ display: "none" }} />
-              {/* rect/marquee preview shares one ref across four tools, so its paint
+            {DS.casing && <line ref={rubberCasingRef} data-draft="casing" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeLinecap="round" style={{ display: "none" }} />}
+            <line ref={rubberRef} stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.rubber.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeDasharray={drawDashFor(DS.rubber.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
+            <path ref={arcRef} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.lineWidth / tf.scale} strokeLinecap="round" style={{ display: "none" }} />
+            {/* rect/marquee preview shares one ref across four tools, so its paint
                   is a 3-way branch: deduct-rect (AND ring deduct) = danger red;
                   schedule = a NEUTRAL selection gesture, left cobalt + condition
                   fill; rect & symbol marquees are measure tools, themed via DS. */}
-              {(() => {
-                const rectDeduct = tool === "deduct" || tool === "deduct-rect";
-                const rectNeutral = tool === "schedule" || tool === "textcopy";   // selection gestures, not measurement — never themed
-                return <rect ref={rectRef}
-                  fill={rectDeduct ? "rgba(176,58,38,.22)" : rectNeutral ? shapeFill(aCond) : draftFill}
-                  stroke={rectDeduct ? "#b03a26" : rectNeutral ? "#1f3fc7" : DS.accent}
-                  strokeWidth={(rectNeutral ? 2 : DS.draft.width) / tf.scale} style={{ display: "none" }} />;
-              })()}
-              <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
-              <rect ref={highlightRef} fill="rgba(196,122,16,.18)" stroke="#c47a10" strokeWidth={2 / tf.scale} style={{ display: "none" }} />
-              <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
-              <path ref={hlPathRef} style={{ display: "none" }} />
-              {/* Symbol sweep review overlay (#264) — the same glyph language the
+            {(() => {
+              const rectDeduct = tool === "deduct" || tool === "deduct-rect";
+              const rectNeutral = tool === "schedule" || tool === "textcopy";   // selection gestures, not measurement — never themed
+              return <rect ref={rectRef}
+                fill={rectDeduct ? "rgba(176,58,38,.22)" : rectNeutral ? shapeFill(aCond) : draftFill}
+                stroke={rectDeduct ? "#b03a26" : rectNeutral ? "#1f3fc7" : DS.accent}
+                strokeWidth={(rectNeutral ? 2 : DS.draft.width) / tf.scale} style={{ display: "none" }} />;
+            })()}
+            <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
+            <rect ref={highlightRef} fill="rgba(196,122,16,.18)" stroke="#c47a10" strokeWidth={2 / tf.scale} style={{ display: "none" }} />
+            <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
+            <path ref={hlPathRef} style={{ display: "none" }} />
+            {/* Symbol sweep review overlay (#264) — the same glyph language the
+                  MCP renders ship: seed = violet double ring, question = orange
+                  ?-circle, accepted/committed-to-be = the condition color. */}
+            {/* Symbol sweep review overlay (#264) — the same glyph language the
                   MCP renders ship: seed = violet double ring, question = orange
                   ?-circle, accepted/committed-to-be = the condition color. */}
               {sweep && (() => {
@@ -9791,6 +11352,64 @@ export default function TakeoffCanvas() {
                   </g>
                 );
               })()}
+              {/* Doors suite overlay: each door's own swing and leaf, coloured by
+                  hardware set; dashed = needs an answer; the schedule's rows boxed
+                  in the same colours on the schedule sheet. Screen-constant widths. */}
+              {doorSuiteOn && panels.map((p) => {
+                const k = 1 / tf.scale;
+                const out = [];
+                const rd = doorReadsEff[p.key];
+                if (rd?.status === "done") {
+                  const marks = p.key === doorKey && doorView ? doorView.openings : null;
+                  rd.doors.forEach((d, i) => {
+                    if (rd.hidden?.[i]) return;   // a second find of an opening already drawn
+                    const o = marks ? marks[i] : null;
+                    const color = o?.row ? doorSetColor(o.row.hwSet, doorSetOrder) : DOOR_NEUTRAL;
+                    const asked = rd.withheld[i] || (doorView && p.key === doorKey && doorView.questions.some((q) => q.door === i && !doorAnswers[q.id]));
+                    const faded = o?.leftOut && !rd.withheld[i];
+                    const sel = (doorSel && doorSel.key === p.key && doorSel.i === i) || (!!o?.mark && o.mark === doorHover);
+                    const paths = d.leaves.map((l, j) => {
+                      const h = l.hinge, t = l.tip, r = l.radiusPt, sw = (l.sweepDeg || 90) * Math.PI / 180;
+                      const a0 = Math.atan2(t[1] - h[1], t[0] - h[0]);
+                      const ends = [1, -1].map((sg) => [h[0] + r * Math.cos(a0 + sg * sw), h[1] + r * Math.sin(a0 + sg * sw)]);
+                      const inBox = (q) => q[0] >= d.box[0] - r * 0.15 && q[0] <= d.box[2] + r * 0.15 && q[1] >= d.box[1] - r * 0.15 && q[1] <= d.box[3] + r * 0.15;
+                      const sg = inBox(ends[0]) || !inBox(ends[1]) ? 0 : 1;
+                      const e = ends[sg];
+                      const H = doorToImg(rd, p, h), T = doorToImg(rd, p, t), E = doorToImg(rd, p, e);
+                      const R = Math.hypot(T[0] - H[0], T[1] - H[1]);
+                      // sweep direction survives the page rotation: decide it in image space
+                      const cross = (T[0] - H[0]) * (E[1] - H[1]) - (T[1] - H[1]) * (E[0] - H[0]);
+                      return <path key={j} d={`M${H[0] + p.xOffset},${H[1]} L${T[0] + p.xOffset},${T[1]} A${R},${R} 0 0 ${cross > 0 ? 1 : 0} ${E[0] + p.xOffset},${E[1]}`} />;
+                    });
+                    // the opening itself: the jamb-to-jamb line across the wall
+                    const [ja, jb] = openingLine(d).map((q) => doorToImg(rd, p, q));
+                    paths.push(<path key="jamb" d={`M${ja[0] + p.xOffset},${ja[1]} L${jb[0] + p.xOffset},${jb[1]}`} />);
+                    // a door the detector added with no swing to trace (a cased opening, a slider): its box, dotted
+                    if (d.added && !d.leaves.length) {
+                      const q = [[d.box[0], d.box[1]], [d.box[2], d.box[1]], [d.box[2], d.box[3]], [d.box[0], d.box[3]]].map((v) => doorToImg(rd, p, v));
+                      paths.push(<path key="box" strokeDasharray={`${2 * k} ${4 * k}`} d={`M${q.map((v) => `${v[0] + p.xOffset},${v[1]}`).join(" L")} Z`} />);
+                    }
+                    const c = doorCenter(d);
+                    const C = doorToImg(rd, p, [c.x, c.y]);
+                    const rPx = Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[0] - C[0]) + Math.abs(doorToImg(rd, p, [c.x + c.r, c.y])[1] - C[1]);
+                    out.push(
+                      <g key={`door-${p.key}-${i}`} opacity={faded ? 0.3 : 1}>
+                        <g fill="none" stroke={color} strokeWidth={(sel ? 4 : 2.6) * k} strokeOpacity={0.9} strokeDasharray={asked ? `${6 * k} ${4 * k}` : undefined} strokeLinecap="round">{paths}</g>
+                        <circle cx={C[0] + p.xOffset} cy={C[1]} r={Math.max(rPx * 0.75, 10 * k)} fill="transparent" stroke="none" style={{ pointerEvents: "all", cursor: "pointer" }}
+                          onPointerDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); setDoorSel({ key: p.key, i }); }}>
+                          <title>{o?.mark ? `Door ${o.mark}` : d.added ? `${DOOR_KIND_LABEL[d.added.kind] || "Door"} found by the door detector, no number` : "Door with no number"}</title>
+                        </circle>
+                        {o?.mark && rPx * tf.scale > 16 && (
+                          <text x={C[0] + p.xOffset} y={C[1] - rPx * 0.9} textAnchor="middle" fontSize={11 * k} fontWeight={700} fontFamily="JetBrains Mono, monospace"
+                            fill={color} stroke={darkMode ? "#0b0e14" : "#ffffff"} strokeWidth={3 * k} paintOrder="stroke" style={{ pointerEvents: "none" }}>{o.mark}</text>
+                        )}
+                      </g>,
+                    );
+                  });
+                }
+                if (doorDocs?.schedule && doorDocs.schedule.key === p.key) out.push(<g key="drows">{doorRowBoxes(p.img, tf.scale, p.xOffset)}</g>);
+                return out.length ? <g key={`doors-${p.key}`}>{out}</g> : null;
+              })}
               {/* casing under-stroke (Site Glass): a JSX twin BEHIND each draft
                   stroke, tracing the SAME geometry (arc-flattened where a bow is
                   set). Width ownership is DUAL like the rubber core — this twin
@@ -9799,165 +11418,165 @@ export default function TakeoffCanvas() {
                   The polygon's strokeDasharray MUST mirror the accent polygon's
                   four lines below — same expression, same dash, so a dashed
                   zone accent never rides a solid casing ribbon. */}
-              {DS.casing && poly.length >= 2 && tool !== "surface" && (tool === "linear"
-                ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" strokeLinejoin="round" />
-                : ringOutline
+            {DS.casing && poly.length >= 2 && tool !== "surface" && (tool === "linear"
+              ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" strokeLinejoin="round" />
+              : ringOutline
                 ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
                 : <polygon data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinejoin="round" />)}
-              {poly.length >= 2 && (tool === "linear" || tool === "surface"
-                ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : DS.accent} strokeWidth={(tool === "surface" ? 3.5 : DS.draft.lineWidth) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
-                : ringOutline
+            {poly.length >= 2 && (tool === "linear" || tool === "surface"
+              ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : DS.accent} strokeWidth={(tool === "surface" ? 3.5 : DS.draft.lineWidth) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
+              : ringOutline
                 ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
                 : <polygon points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? rgbaFromHex(DS.accent, 0.06) : draftFill) : "none"} stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} />)}
-              {/* outline mode: dotted ghost of the on-commit closing edge (last vertex → first), so the loop is visible without a fill. */}
-              {ringOutline && poly.length >= 3 && !bowOpen && (
-                <line x1={poly[poly.length - 1][0]} y1={poly[poly.length - 1][1]} x2={poly[0][0]} y2={poly[0][1]}
-                  stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale}
-                  strokeLinecap="round" strokeDasharray={`${1 / tf.scale} ${5 / tf.scale}`} />
-              )}
-              {/* Bold the most recent segment so you see where you just clicked.
+            {/* outline mode: dotted ghost of the on-commit closing edge (last vertex → first), so the loop is visible without a fill. */}
+            {ringOutline && poly.length >= 3 && !bowOpen && (
+              <line x1={poly[poly.length - 1][0]} y1={poly[poly.length - 1][1]} x2={poly[0][0]} y2={poly[0][1]}
+                stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale}
+                strokeLinecap="round" strokeDasharray={`${1 / tf.scale} ${5 / tf.scale}`} />
+            )}
+            {/* Bold the most recent segment so you see where you just clicked.
                   A closed arc bolds AS the arc — a straight chord drawn across
                   the bow would read as the boundary and it isn't one. Nothing
                   bolds while a bow is still open; the live preview is the
                   segment then. */}
-              {poly.length >= 2 && !bowOpen && DS.lastSegWidth != null && (
-                polyCurve[poly.length - 2] && poly.length >= 3
-                  ? <>
-                      {DS.casing && tool !== "surface" && <path data-draft="casing" d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
-                        stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
-                      <path d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
-                        stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
-                    </>
-                  : <>
-                      {DS.casing && tool !== "surface" && <line data-draft="casing" x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
-                        stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
-                      <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
-                        stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
-                    </>
-              )}
-              {/* close preview — the ring tools' ghost cursor→first edge (theme-
+            {poly.length >= 2 && !bowOpen && DS.lastSegWidth != null && (
+              polyCurve[poly.length - 2] && poly.length >= 3
+                ? <>
+                  {DS.casing && tool !== "surface" && <path data-draft="casing" d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
+                    stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
+                  <path d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
+                    stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
+                </>
+                : <>
+                  {DS.casing && tool !== "surface" && <line data-draft="casing" x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
+                    stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
+                  <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
+                    stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
+                </>
+            )}
+            {/* close preview — the ring tools' ghost cursor→first edge (theme-
                   gated; positioned by moveCrosshair). Width AND dash dual-owned with
                   the mover: both declared here from the tf mirror, both re-written
                   there from tfRef — always the same scale read, both cadences. */}
-              {DS.closePreview && (tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 2 && (
-                <line ref={closeRef} data-draft="close-preview" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.closePreview.width / tf.scale} strokeDasharray={drawDashFor(DS.closePreview.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
-              )}
-              {poly.map((p, i) => {
-                const isLast = i === poly.length - 1;
-                // Preserve the affordance: a CURVE point reads as a round handle,
-                // a corner as the theme's vertex glyph (drafting: the house star).
-                // Only the CORNER shape is themed — curve points stay circles so
-                // the ⌥-curve gesture is always legible, whatever the theme.
-                // casing backing (Site Glass): the same glyph fattened in the
-                // casing color, so each vertex carries a sheet-contrast halo. When
-                // off (every other style), the bare element is returned EXACTLY as
-                // before — no wrapper — so Drafting Table is byte-identical.
-                const cased = DS.vertex.casing && DS.casing;
-                if (polyCurve[i]) {
-                  const dot = <circle key={i} cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
-                    fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />;
-                  if (!cased) return dot;
-                  return (
-                    <g key={i}>
-                      <circle data-draft="casing" cx={p[0]} cy={p[1]} r={((isLast ? 4.5 : 3.4) + 1.5) / tf.scale} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={1 / tf.scale} />
-                      <circle cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
-                        fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />
-                    </g>
-                  );
-                }
-                const d = markerPath(DS.vertex.shape, p[0], p[1], (isLast ? DS.vertex.lastR : DS.vertex.r) / tf.scale);
-                if (!d) return null;   // "none" — this theme places no corner marks
-                if (!cased) return <path key={i} d={d}
-                  fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
+            {DS.closePreview && (tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 2 && (
+              <line ref={closeRef} data-draft="close-preview" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.closePreview.width / tf.scale} strokeDasharray={drawDashFor(DS.closePreview.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
+            )}
+            {poly.map((p, i) => {
+              const isLast = i === poly.length - 1;
+              // Preserve the affordance: a CURVE point reads as a round handle,
+              // a corner as the theme's vertex glyph (drafting: the house star).
+              // Only the CORNER shape is themed — curve points stay circles so
+              // the ⌥-curve gesture is always legible, whatever the theme.
+              // casing backing (Site Glass): the same glyph fattened in the
+              // casing color, so each vertex carries a sheet-contrast halo. When
+              // off (every other style), the bare element is returned EXACTLY as
+              // before — no wrapper — so Drafting Table is byte-identical.
+              const cased = DS.vertex.casing && DS.casing;
+              if (polyCurve[i]) {
+                const dot = <circle key={i} cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
+                  fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />;
+                if (!cased) return dot;
                 return (
                   <g key={i}>
-                    <path data-draft="casing" d={d} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={3 / tf.scale} />
-                    <path d={d} fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />
+                    <circle data-draft="casing" cx={p[0]} cy={p[1]} r={((isLast ? 4.5 : 3.4) + 1.5) / tf.scale} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={1 / tf.scale} />
+                    <circle cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
+                      fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />
                   </g>
                 );
-              })}
-              {/* edge labels (Precision "all" / Site Glass "last2"): placed-edge
+              }
+              const d = markerPath(DS.vertex.shape, p[0], p[1], (isLast ? DS.vertex.lastR : DS.vertex.r) / tf.scale);
+              if (!d) return null;   // "none" — this theme places no corner marks
+              if (!cased) return <path key={i} d={d}
+                fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
+              return (
+                <g key={i}>
+                  <path data-draft="casing" d={d} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={3 / tf.scale} />
+                  <path d={d} fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />
+                </g>
+              );
+            })}
+            {/* edge labels (Precision "all" / Site Glass "last2"): placed-edge
                   midpoints priced with the draft's own sheet scale, in the check
                   tool's white-halo idiom. Surface keeps its own readout; a segment
                   touching a curve control is skipped — its chord would float off
                   the flattened arc and misstate the length. */}
-              {DS.edgeLabels && tool !== "surface" && poly.length >= 2 && liveUpp ? (() => {
-                const z = tf.scale;
-                const start = DS.edgeLabels === "last2" ? Math.max(0, poly.length - 3) : 0;
-                const kids = [];
-                for (let i = start; i < poly.length - 1; i++) {
-                  if (polyCurve[i] || polyCurve[i + 1]) continue;   // arc segment — chord label would misstate
-                  const a = poly[i], b = poly[i + 1];
-                  kids.push(
-                    <text key={i} data-draft="edge-label" x={(a[0] + b[0]) / 2} y={(a[1] + b[1]) / 2 - 6 / z} fontSize={10.5 / z} fontWeight={600}
-                      fill={DS.accent} textAnchor="middle" stroke="#fff" strokeWidth={3 / z} paintOrder="stroke">
+            {DS.edgeLabels && tool !== "surface" && poly.length >= 2 && liveUpp ? (() => {
+              const z = tf.scale;
+              const start = DS.edgeLabels === "last2" ? Math.max(0, poly.length - 3) : 0;
+              const kids = [];
+              for (let i = start; i < poly.length - 1; i++) {
+                if (polyCurve[i] || polyCurve[i + 1]) continue;   // arc segment — chord label would misstate
+                const a = poly[i], b = poly[i + 1];
+                kids.push(
+                  <text key={i} data-draft="edge-label" x={(a[0] + b[0]) / 2} y={(a[1] + b[1]) / 2 - 6 / z} fontSize={10.5 / z} fontWeight={600}
+                    fill={DS.accent} textAnchor="middle" stroke="#fff" strokeWidth={3 / z} paintOrder="stroke">
                       {uiText(fmtCheckLen(Math.hypot(b[0] - a[0], b[1] - a[1]) * liveUpp, units))}
-                    </text>
-                  );
-                }
-                return <g>{uiText(kids)}</g>;
-              })() : null}
-              {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} />}
-              {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
-              {alignPt && <path d={starPath(alignPt[0], alignPt[1], 4.5 / tf.scale)} fill={DS.accent} stroke="#fff" strokeWidth={1 / tf.scale} />}
-              {/* check tool — dashed so it never reads as calibrate's solid line */}
-              {tool === "check" && check.length === 2 && !checkCross && (
-                <>
-                  <line x1={check[0][0]} y1={check[0][1]} x2={check[1][0]} y2={check[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} strokeDasharray={`${6 / tf.scale} ${4 / tf.scale}`} />
-                  {checkFeet != null && (
-                    <text x={(check[0][0] + check[1][0]) / 2} y={(check[0][1] + check[1][1]) / 2 - 8 / tf.scale}
-                      fontSize={12.5 / tf.scale} fontWeight={700} fill={DS.accent} textAnchor="middle"
-                      stroke="#fff" strokeWidth={3 / tf.scale} paintOrder="stroke">{uiText(fmtCheckLen(checkFeet, units))}</text>
-                  )}
-                </>
-              )}
-              {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
-              {/* scale-acceptance guide — an ephemeral calibrated ruler so a 2×-off
-                  scale is visually obvious against known elements (a door is ~3′) */}
-              {SHOW_SCALE_GUIDE && scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
-                const [gx, gy] = scaleGuide.at;
-                const z = tf.scale;
-                const unitPx = scaleGuide.px / (units === "metric" ? scaleGuide.feet * M_PER_FT : scaleGuide.feet); // one ft (or 1 m) in px
-                const step = unitPx * z >= 6 ? 1 : unitPx * z * 5 >= 6 ? 5 : 0;
-                const nUnits = units === "metric" ? Math.round(scaleGuide.feet * M_PER_FT) : scaleGuide.feet;
-                const ticks = step ? Array.from({ length: Math.floor(nUnits / step) + 1 }, (_, i) => i * step) : [0, nUnits];
-                // "at 1/8″ = 1′-0″" reads right for a scale string; a source word ("calibrated", "custom") reads better parenthesized
-                const scaleTxt = /[=:]/.test(scaleGuide.label) ? `at ${scaleGuide.label}` : `(${scaleGuide.label})`;
-                const lbl = units === "metric" ? `${nUnits} m ${scaleTxt}` : `${scaleGuide.feet}′ ${scaleTxt}`;
-                const cap = units === "metric" ? "a door is about 0.9 m — if this bar looks wildly off, the scale is wrong" : "a door opening is about 3′ — if this bar looks wildly off, the scale is wrong";
-                return (
-                  <g style={{ pointerEvents: "none" }}>
-                    <line x1={gx} y1={gy} x2={gx + scaleGuide.px} y2={gy} stroke="#fff" strokeWidth={7 / z} strokeLinecap="round" />
-                    <line x1={gx} y1={gy} x2={gx + scaleGuide.px} y2={gy} stroke="#1f3fc7" strokeWidth={3 / z} />
-                    {ticks.map((u) => (
-                      <line key={u} x1={gx + u * unitPx} y1={gy - (u % 5 === 0 ? 8 : 5) / z} x2={gx + u * unitPx} y2={gy}
-                        stroke="#1f3fc7" strokeWidth={(u % 5 === 0 ? 2 : 1.2) / z} />
-                    ))}
-                    <text x={gx + scaleGuide.px / 2} y={gy - 14 / z} fontSize={13 / z} fontWeight={700} fill="#1f3fc7"
-                      textAnchor="middle" stroke="#fff" strokeWidth={3.5 / z} paintOrder="stroke">{uiText(lbl)}</text>
-                    <text x={gx + scaleGuide.px / 2} y={gy + 16 / z} fontSize={10.5 / z} fill="#5b544a"
-                      textAnchor="middle" stroke="#fff" strokeWidth={3 / z} paintOrder="stroke">{uiText(cap)}</text>
-                  </g>
+                  </text>
                 );
-              })()}
-              {/* snap-to-vector indicator (star) */}
-              <path ref={snapMarkRef} fill="#1f6b4a" stroke="#fff" strokeWidth={1 / tf.scale} style={{ display: "none" }} />
-              {/* markup draft marker (first click of cloud/callout) */}
-              {markupDraft && <path d={starPath(markupDraft[0], markupDraft[1], 5 / tf.scale)} fill="#1f3fc7" />}
+              }
+                return <g>{uiText(kids)}</g>;
+            })() : null}
+            {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} />}
+            {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
+            {alignPt && <path d={starPath(alignPt[0], alignPt[1], 4.5 / tf.scale)} fill={DS.accent} stroke="#fff" strokeWidth={1 / tf.scale} />}
+            {/* check tool — dashed so it never reads as calibrate's solid line */}
+            {tool === "check" && check.length === 2 && !checkCross && (
+              <>
+                <line x1={check[0][0]} y1={check[0][1]} x2={check[1][0]} y2={check[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} strokeDasharray={`${6 / tf.scale} ${4 / tf.scale}`} />
+                {checkFeet != null && (
+                  <text x={(check[0][0] + check[1][0]) / 2} y={(check[0][1] + check[1][1]) / 2 - 8 / tf.scale}
+                    fontSize={12.5 / tf.scale} fontWeight={700} fill={DS.accent} textAnchor="middle"
+                      stroke="#fff" strokeWidth={3 / tf.scale} paintOrder="stroke">{uiText(fmtCheckLen(checkFeet, units))}</text>
+                )}
+              </>
+            )}
+            {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
+            {/* scale-acceptance guide — an ephemeral calibrated ruler so a 2×-off
+                  scale is visually obvious against known elements (a door is ~3′) */}
+            {SHOW_SCALE_GUIDE && scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
+              const [gx, gy] = scaleGuide.at;
+              const z = tf.scale;
+              const unitPx = scaleGuide.px / (units === "metric" ? scaleGuide.feet * M_PER_FT : scaleGuide.feet); // one ft (or 1 m) in px
+              const step = unitPx * z >= 6 ? 1 : unitPx * z * 5 >= 6 ? 5 : 0;
+              const nUnits = units === "metric" ? Math.round(scaleGuide.feet * M_PER_FT) : scaleGuide.feet;
+              const ticks = step ? Array.from({ length: Math.floor(nUnits / step) + 1 }, (_, i) => i * step) : [0, nUnits];
+              // "at 1/8″ = 1′-0″" reads right for a scale string; a source word ("calibrated", "custom") reads better parenthesized
+              const scaleTxt = /[=:]/.test(scaleGuide.label) ? `at ${scaleGuide.label}` : `(${scaleGuide.label})`;
+              const lbl = units === "metric" ? `${nUnits} m ${scaleTxt}` : `${scaleGuide.feet}′ ${scaleTxt}`;
+              const cap = units === "metric" ? "a door is about 0.9 m — if this bar looks wildly off, the scale is wrong" : "a door opening is about 3′ — if this bar looks wildly off, the scale is wrong";
+              return (
+                <g style={{ pointerEvents: "none" }}>
+                  <line x1={gx} y1={gy} x2={gx + scaleGuide.px} y2={gy} stroke="#fff" strokeWidth={7 / z} strokeLinecap="round" />
+                  <line x1={gx} y1={gy} x2={gx + scaleGuide.px} y2={gy} stroke="#1f3fc7" strokeWidth={3 / z} />
+                  {ticks.map((u) => (
+                    <line key={u} x1={gx + u * unitPx} y1={gy - (u % 5 === 0 ? 8 : 5) / z} x2={gx + u * unitPx} y2={gy}
+                      stroke="#1f3fc7" strokeWidth={(u % 5 === 0 ? 2 : 1.2) / z} />
+                  ))}
+                  <text x={gx + scaleGuide.px / 2} y={gy - 14 / z} fontSize={13 / z} fontWeight={700} fill="#1f3fc7"
+                      textAnchor="middle" stroke="#fff" strokeWidth={3.5 / z} paintOrder="stroke">{uiText(lbl)}</text>
+                  <text x={gx + scaleGuide.px / 2} y={gy + 16 / z} fontSize={10.5 / z} fill="#5b544a"
+                      textAnchor="middle" stroke="#fff" strokeWidth={3 / z} paintOrder="stroke">{uiText(cap)}</text>
+                </g>
+              );
+            })()}
+            {/* snap-to-vector indicator (star) */}
+            <path ref={snapMarkRef} fill="#1f6b4a" stroke="#fff" strokeWidth={1 / tf.scale} style={{ display: "none" }} />
+            {/* markup draft marker (first click of cloud/callout) */}
+            {markupDraft && <path d={starPath(markupDraft[0], markupDraft[1], 5 / tf.scale)} fill="#1f3fc7" />}
             {uiText(annotations.layer)}
-            </svg>
-          </div>
+          </svg>
+        </div>
 
-          {status !== "ready" && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-muted)", fontSize: 15 }}>
+        {status !== "ready" && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-muted)", fontSize: 15 }}>
               {uiText(status === "loading" && "Loading sheets…")}
               {uiText(status === "rendering" && "Rendering sheet…")}
               {uiText(status === "empty" && "No PDFs yet — click “Open PDF” or drag a plan onto the canvas.")}
               {status === "error" && <span style={{ color: "var(--c-danger)" }}>{uiText("Error: ")}{uiText(err)}</span>}
-            </div>
-          )}
+          </div>
+        )}
 
-          {/* corner cluster — fit + sheet-invert only. Zoom buttons are gone:
+        {/* corner cluster — fit + sheet-invert only. Zoom buttons are gone:
               wheel-notch/pinch zoom toward the cursor already owns zooming
               (precision-instrument rule: no control that duplicates a gesture).
               Left presses stop here (the container's onPointerDown
@@ -9965,47 +11584,65 @@ export default function TakeoffCanvas() {
               so the composed click never reaches these buttons); right/middle/
               Space presses still bubble so a pan can start on top, and dblclick
               is stopped so rapid clicks can't finishShape() */}
-          <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
-            style={{ position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={tr("Fit sheet to view")} style={{ minWidth: language === "ru" ? 114 : 34, padding: "0 8px", height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>{language === "ru" ? "Лист целиком" : "fit"}</button>
-            <button onClick={() => setDarkMode((d) => !d)} title={uiText(darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)")}
-              style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${darkMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: darkMode ? "var(--cobalt)" : "var(--paper-bright)", color: darkMode ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>
-              {uiText(darkMode ? "☀" : "☾")}</button>
-            <button onClick={() => toggleFocusMode()} title={uiText(focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)")}
-              style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${focusMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: focusMode ? "var(--cobalt)" : "var(--paper-bright)", color: focusMode ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>⛶</button>
+          <div data-view-controls onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
+            style={dockBottom
+              ? { position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 2, padding: 4, border: "1px solid var(--ink-faint)", borderRadius: 10, background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", zIndex: 24 }
+              : { position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+            {(() => {
+              // Premium's view group: zoom in / out about the canvas centre, fit, focus, and the
+              // open source's sheet invert. The wheel and pinch still zoom toward the cursor.
+              const face = (on) => dockBottom
+                ? { width: 32, height: 32, borderRadius: 7, border: "1px solid transparent", background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }
+                : { width: 34, height: 34, borderRadius: 0, border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`, background: on ? "var(--cobalt)" : "var(--paper-bright)", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 };
+              const zoomStep = (f) => {
+                const el = containerRef.current;
+                if (!el) return;
+                promoteStage();                                    // same opening as a wheel gesture
+                gestureUntilRef.current = performance.now() + GESTURE_MS;
+                const r = el.getBoundingClientRect();
+                zoomAround(r.width / 2, r.height / 2, f);           // about the visible canvas centre
+              };
+              return (<>
+                {dockBottom && <button onClick={() => zoomStep(1.25)} title={tr("Zoom in")} aria-label={tr("Zoom in")} style={face(false)}><Icon name="zoomIn" size={16} /></button>}
+                {dockBottom && <button onClick={() => zoomStep(0.8)} title={tr("Zoom out")} aria-label={tr("Zoom out")} style={face(false)}><Icon name="zoomOut" size={16} /></button>}
+                <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={tr("Fit sheet to view")} aria-label={tr("Fit sheet to view")} style={{ ...face(false), ...(!dockBottom && language === "ru" ? { width: "auto", minWidth: 114, padding: "0 8px", whiteSpace: "nowrap" } : {}) }}>{dockBottom ? <Icon name="fit" size={16} /> : (language === "ru" ? "Лист целиком" : "fit")}</button>
+                <button onClick={() => toggleFocusMode()} title={uiText(focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)")} aria-label={tr("Focus mode")} aria-pressed={focusMode} style={face(focusMode)}>{dockBottom ? <Icon name="focus" size={16} /> : "⛶"}</button>
+                <button onClick={() => setDarkMode((d) => !d)} title={uiText(darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)")} aria-label={tr("Invert sheet")} aria-pressed={darkMode} style={face(darkMode)}>{dockBottom ? <Icon name="invert" size={16} /> : (darkMode ? "☀" : "☾")}</button>
+              </>);
+            })()}
           </div>
 
-          {/* Read page text (#471) and Read picture text (#489) — beside the
+        {/* Read page text (#471) and Read picture text (#489) — beside the
               corner cluster, above the status bar (and above the rule banner
               while one shows): one row per scan or hybrid on screen (named in
               a group), and a
               Cancel row for a read still running on a sheet that left the
               screen. Same press handling as the cluster. */}
-          <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
-            style={{ ...readControlPlacement({ bannerHeight: ruleBannerH }), zIndex: Z.canvasUi, maxWidth: `calc(100% - ${READ_CONTROL_LEFT + CANVAS_EDGE}px)` }}>
-            <PageReadControl
-              rows={[
-                ...panels.filter((p) => !isStitchKey(p.key)).map((p) => ({
-                  key: p.key,
-                  label: labelFor(p),
-                  view: pageReadView({ textless: readableByKey[p.key] === undefined ? undefined : readableByKey[p.key] !== null, avail: ocrAvail, status: pageReader.status(p.key) }),
-                  what: readableByKey[p.key] === "picture" ? "picture" : "page",
-                })),
-                ...backgroundRows(pageReader.active(), groupKeys, tabLabel).map((r) => ({ ...r, background: true })),
-              ]}
-              onRead={(key) => { readSheet(key); }}
-              onReadAgain={(key) => { readSheet(key, { force: true }); }}
-              onCancel={(key) => pageReader.cancel(key)}
-              onRetry={() => { ocrAvailability().catch(() => {}); }} />
-          </div>
+        <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
+          style={{ ...readControlPlacement({ bannerHeight: ruleBannerH }), zIndex: Z.canvasUi, maxWidth: `calc(100% - ${READ_CONTROL_LEFT + CANVAS_EDGE}px)` }}>
+          <PageReadControl
+            rows={[
+              ...panels.filter((p) => !isStitchKey(p.key)).map((p) => ({
+                key: p.key,
+                label: labelFor(p),
+                view: pageReadView({ textless: readableByKey[p.key] === undefined ? undefined : readableByKey[p.key] !== null, avail: ocrAvail, status: pageReader.status(p.key) }),
+                what: readableByKey[p.key] === "picture" ? "picture" : "page",
+              })),
+              ...backgroundRows(pageReader.active(), groupKeys, tabLabel).map((r) => ({ ...r, background: true })),
+            ]}
+            onRead={(key) => { readSheet(key); }}
+            onReadAgain={(key) => { readSheet(key, { force: true }); }}
+            onCancel={(key) => pageReader.cancel(key)}
+            onRetry={() => { ocrAvailability().catch(() => { }); }} />
         </div>
+      </div>
 
-        {/* correction-rule banner (#88): offer after a qualifying Cut Out, then
+      {/* correction-rule banner (#88): offer after a qualifying Cut Out, then
             the staged batch's Apply/Cancel. Floats alone bottom-center (the
             transient commitMsg text lives in the status bar now); Dismiss/
             Cancel are always one click — a rule is never applied silently. */}
-        {(ruleOffer || ruleStage) && (
-        <div ref={ruleBannerRef} style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
+      {(ruleOffer || ruleStage) && (
+        <div ref={ruleBannerRef} style={{ position: "absolute", left: "50%", bottom: dockBottom ? 70 : 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
         {(ruleOffer || ruleStage) && (
           <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
             {ruleOffer ? (<>
@@ -10028,188 +11665,190 @@ export default function TakeoffCanvas() {
           </div>
         )}
         </div>
-        )}
-        {/* top-center stack: accept pill + dictation chip share one flex column
+      )}
+      {/* top-center stack: accept pill + dictation chip share one flex column
             so simultaneous voice + pending proposals can never overlap. */}
-        {(voiceChip || pendingCommitted.length > 0) && (
+      {(voiceChip || pendingCommitted.length > 0) && (
         <div style={{ position: "absolute", left: "50%", top: 12, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, pointerEvents: "none" }}>
-        {/* accept pill — visible while committed-but-unreviewed shapes (an
+          {/* accept pill — visible while committed-but-unreviewed shapes (an
             imported MCP takeoff) are on the visible sheets; they render dashed
             pencil until accepted. One click, one undo entry. */}
-        {/* proposals (#365): one pill per BATCH. A forty-room detect run the
+          {/* proposals (#365): one pill per BATCH. A forty-room detect run the
             agent proposed under one label is one Accept and one Reject, not
             forty; un-batched pending shapes keep the original pill. */}
-        {pendingGroups.map((g) => {
-          const n = g.ids.length;
+          {pendingGroups.map((g) => {
+            const n = g.ids.length;
           const label = g.proposal ? g.proposal.label : formatMessage("Proposed measurements: {0}", [n]);
-          const key = g.proposal ? g.proposal.id : "_loose";
-          return (
-            <div key={key} data-proposal-pill={key} style={{ pointerEvents: "auto", display: "flex", alignItems: "stretch", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)" }}>
-              <button onClick={() => acceptProposalGroup(g)}
+            const key = g.proposal ? g.proposal.id : "_loose";
+            return (
+              <div key={key} data-proposal-pill={key} style={{ pointerEvents: "auto", display: "flex", alignItems: "stretch", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)" }}>
+                <button onClick={() => acceptProposalGroup(g)}
                 title={uiText(g.proposal
-                  ? `Proposal “${g.proposal.label}”${g.proposal.rationale ? ` — ${g.proposal.rationale}` : ""}. ${n} shape${n === 1 ? "" : "s"} render${n === 1 ? "s" : ""} dashed pending your review. Accept makes the whole batch ink in one step (⌘Z undoes).`
+                    ? `Proposal “${g.proposal.label}”${g.proposal.rationale ? ` — ${g.proposal.rationale}` : ""}. ${n} shape${n === 1 ? "" : "s"} render${n === 1 ? "s" : ""} dashed pending your review. Accept makes the whole batch ink in one step (⌘Z undoes).`
                   : `${n} machine-proposed shape${n === 1 ? "" : "s"} render${n === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`)}
-                style={{ padding: "6px 12px", border: "none", background: "transparent", color: "inherit", font: "inherit", cursor: "pointer" }}>
+                  style={{ padding: "6px 12px", border: "none", background: "transparent", color: "inherit", font: "inherit", cursor: "pointer" }}>
                 {uiText("Accept ")}{g.proposal ? <>“{label}” <span style={{ fontWeight: 500, color: "var(--ink-muted)" }}>· {uiText(n)}</span></> : label}
-              </button>
-              <button onClick={() => rejectProposalGroup(g)}
+                </button>
+                <button onClick={() => rejectProposalGroup(g)}
                 title={uiText(`Reject ${g.proposal ? `“${g.proposal.label}”` : "these shapes"} — removes ${n === 1 ? "the pending shape" : `all ${n} pending shapes`} (⌘Z restores).`)}
                 aria-label={uiText("Reject proposal")}
-                style={{ padding: "6px 9px", border: "none", borderLeft: "1px dashed var(--cobalt)", background: "transparent", color: "var(--c-danger)", font: "inherit", cursor: "pointer" }}>✕</button>
-            </div>
-          );
-        })}
-        {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
+                  style={{ padding: "6px 9px", border: "none", borderLeft: "1px dashed var(--cobalt)", background: "transparent", color: "var(--c-danger)", font: "inherit", cursor: "pointer" }}>✕</button>
+              </div>
+            );
+          })}
+          {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
             cursor-following, the cursor is busy aiming for deixis. Shows the
             hold state, decode state, and a brief flash of the heard transcript
             (the receipt); outcomes land in the commitMsg bar like every command. */}
-        {voiceChip && (
-          <div style={{ padding: "5px 12px", background: "var(--surface-pop)", border: `1px solid ${voiceChip.tone === "live" || voiceChip.tone === "offer" ? "var(--cobalt)" : "var(--ink-faint)"}`, boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-            {voiceChip.tone === "live" && <span className="pip" />}
+          {voiceChip && (
+            <div style={{ padding: "5px 12px", background: "var(--surface-pop)", border: `1px solid ${voiceChip.tone === "live" || voiceChip.tone === "offer" ? "var(--cobalt)" : "var(--ink-faint)"}`, boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+              {voiceChip.tone === "live" && <span className="pip" />}
             {uiText(voiceChip.text)}
-          </div>
-        )}
+            </div>
+          )}
         </div>
-        )}
+      )}
 
-        {/* live readout — top-right, at right:56 so it clears the panel rail's
+      {/* live readout — top-right, at right:56 so it clears the panel rail's
             column entirely (right:14, 34px wide — same clearance the zone panel
             uses) instead of the old magic maxHeight tuned to the rail's height. */}
-        <div data-quantity-readout style={{ display: (workspaceLayout && !workspaceArrangement.readout) || (tool === "select" && agentOpen) ? "none" : undefined, position: "absolute", ...(isNarrow
+      <div data-quantity-readout style={{
+        display: (workspaceLayout && !workspaceArrangement.readout) || (tool === "select" && agentOpen) ? "none" : undefined, position: "absolute", ...(isNarrow
           // phones: a bottom strip — the top-right box plus the panel rail was
           // covering the entire screen. bottom:64 clears the bottom-center toast.
           ? { left: 10, right: 10, bottom: 64, maxHeight: "36%", padding: "8px 12px" }
           : { right: RAIL_CLEAR, top: CANVAS_EDGE, minWidth: 200, maxWidth: 260, maxHeight: `calc(100% - ${2 * CANVAS_EDGE}px)`, padding: "12px 16px" }),
-          background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition"))}</div>
-          {tool === "oneclick" && proposal?.regions.length ? (() => {
-            const pos = proposal.regions.filter((r) => r.kind === "pos");
-            const neg = proposal.regions.filter((r) => r.kind === "neg");
-            const sf = pos.reduce((n, r) => n + r.area_sf, 0) - neg.reduce((n, r) => n + r.area_sf, 0);
-            return (
-              <>
+        background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi
+      }}>
+        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition"))}</div>
+        {tool === "oneclick" && proposal?.regions.length ? (() => {
+          const pos = proposal.regions.filter((r) => r.kind === "pos");
+          const neg = proposal.regions.filter((r) => r.kind === "neg");
+          const sf = pos.reduce((n, r) => n + r.area_sf, 0) - neg.reduce((n, r) => n + r.area_sf, 0);
+          return (
+            <>
                 <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{uiText(num(areaVal(sf, units)))} <span style={{ fontSize: 13, fontWeight: 600 }}>{uiText(areaUnit(units))} {uiText("selected")}</span></div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{uiText(pos.length)} {uiText("space")}{uiText(pos.length === 1 ? "" : "s")}{uiText(neg.length ? ` − ${neg.length} cutout${neg.length === 1 ? "" : "s"}` : "")}{uiText(units === "metric" ? "" : ` · ${num(sf / 9)} SY`)}</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{uiText(ocSel ? "drag to move · Delete drops this point · Esc deselects" : "hover a fill to edit: drag a corner or edge · shift-click an edge adds a point")}</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>{uiText("click adds a space · ⌥-click carves a cutout · ⏎ Create · ⌫ undo · Esc cancel")}</div>
-                {proposal.regions.some((r) => r.rt) && (
+              {proposal.regions.some((r) => r.rt) && (
                   <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>{uiText("Traced from scan pixels — verify edges before Create.")}</div>
-                )}
-              </>
-            );
-          })() : tool === "surface" && poly.length >= 2 && liveUpp ? (
-            (() => {
-              const liveLF = openLen(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly) * liveUpp;
-              return condH > 0 ? (
-                <>
+              )}
+            </>
+          );
+        })() : tool === "surface" && poly.length >= 2 && liveUpp ? (
+          (() => {
+            const liveLF = openLen(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly) * liveUpp;
+            return condH > 0 ? (
+              <>
                   <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{uiText(num(areaVal(liveLF * condH, units)))} <span style={{ fontSize: 13, fontWeight: 600 }}>{uiText(areaUnit(units))} {uiText("wall")}</span></div>
                   <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{uiText(fl(liveLF))} × {uiText(num(heightVal(condH, units), 2))} {uiText(heightUnit(units))}</div>
-                </>
+              </>
               ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{uiText("Set a height for ")}{uiText(aCond?.finish_tag || "this condition")} {uiText("— H in the condition editor")}</div>;
-            })()
-          ) : tool === "zone" && poly.length >= 1 ? (
-            zoneTraceCross ? (
+          })()
+        ) : tool === "zone" && poly.length >= 1 ? (
+          zoneTraceCross ? (
               <span style={{ color: "var(--c-danger)", fontSize: 12.5 }}>{uiText("Zone on one sheet — that point landed on a different sheet. Finish is disabled; Esc or Undo last point to fix it.")}</span>
-            ) : (
-              <>
+          ) : (
+            <>
                 {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{uiText(num(areaVal(liveArea, units)))} <span style={{ fontSize: 13, fontWeight: 600 }}>{uiText(areaUnit(units))} {uiText("in zone")}</span></div>}
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{uiText("⏎, double-click, or the Finish button closes the zone and lists everything inside · Esc cancels")}</div>
-              </>
-            )
-          ) : liveArea != null && poly.length >= 3 ? (
-            <>
+            </>
+          )
+        ) : liveArea != null && poly.length >= 3 ? (
+          <>
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "var(--c-danger)" : "var(--ink)" }}>{uiText(tool === "deduct" ? "−" : "")}{uiText(num(areaVal(liveArea, units)))} <span style={{ fontSize: 13, fontWeight: 600 }}>{uiText(areaUnit(units))}</span></div>
               <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{uiText(units === "metric" ? `${fl(livePerim)} perim` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF perim`)}</div>
               {uiText(dimsLine(fdims(curveIdx.length ? flattenArcRing(poly, curveIdx, !bowOpen) : poly, liveUpp), condH))}
               {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {uiText(num(heightVal(condH, units), 2))}{uiText(units === "metric" ? " m" : "′")}: {uiText(fa(livePerim * condH))} {uiText("vert · ")}{uiText(fv(liveArea * condH))}</div>}
               {CURVABLE.has(tool) && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{uiText(bowOpen ? "Bow set — click the far END of the arc" : curveMode && poly.length ? "Click a point ON the bow, then its far end" : curveIdx.length ? `${curveIdx.length} arc${curveIdx.length === 1 ? "" : "s"} — each one a true circle through 3 points` : "Q or Draft ▾ Curve draws an arc · ⌥-click flips one point")}</div>}
-            </>
-          ) : selShape ? (
-            // #283 — a FINISHED takeoff reads the same as it did mid-trace.
-            // The perimeter is already computed and stored on every closed
-            // shape (shapeMetrics); before this it simply had nowhere to be
-            // read, so an estimator who wanted the footprint's LF traced the
-            // ring a second time with the linear tool.
-            (() => {
-              const c = selShape.computed || {};
-              const a = c.area_sf || 0, lf = c.perimeter_lf || 0;
-              const shTag = condById[selShape.condition_id]?.finish_tag || "—";
-              const big = (txt, unit, col) => (
+          </>
+        ) : selShape ? (
+          // #283 — a FINISHED takeoff reads the same as it did mid-trace.
+          // The perimeter is already computed and stored on every closed
+          // shape (shapeMetrics); before this it simply had nowhere to be
+          // read, so an estimator who wanted the footprint's LF traced the
+          // ring a second time with the linear tool.
+          (() => {
+            const c = selShape.computed || {};
+            const a = c.area_sf || 0, lf = c.perimeter_lf || 0;
+            const shTag = condById[selShape.condition_id]?.finish_tag || "—";
+            const big = (txt, unit, col) => (
                 <div style={{ fontSize: 22, fontWeight: 700, color: col || "var(--ink)" }}>{uiText(txt)} <span style={{ fontSize: 13, fontWeight: 600 }}>{uiText(unit)}</span></div>
-              );
+            );
               const sub = (txt) => <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{uiText(txt)}</div>;
               const foot = <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{uiText(shTag)} {uiText("· selected")}{uiText(selShape.origin === "agent" ? " · agent" : "")}</div>;
               if (selShape.measure_role === "count") return <>{uiText(big(num(c.count || 1, 0), "EA"))}{uiText(foot)}</>;
-              if (selShape.measure_role === "linear") {
-                // #441 — a run with vertical legs reads as its parts: plan + ↑rise + ↓drop = total
-                const vert = Number(c.vertical_lf) || 0;
-                const { rise, drop } = vert > 0 ? linearVerticalFt(selShape, condById[selShape.condition_id]) : { rise: 0, drop: 0 };
-                const legs = [`${fl(Number(c.plan_lf) || 0)} plan`, rise > 0 ? `↑ ${fl(rise)}` : "", drop > 0 ? `↓ ${fl(drop)}` : ""].filter(Boolean).join(" + ");
+            if (selShape.measure_role === "linear") {
+              // #441 — a run with vertical legs reads as its parts: plan + ↑rise + ↓drop = total
+              const vert = Number(c.vertical_lf) || 0;
+              const { rise, drop } = vert > 0 ? linearVerticalFt(selShape, condById[selShape.condition_id]) : { rise: 0, drop: 0 };
+              const legs = [`${fl(Number(c.plan_lf) || 0)} plan`, rise > 0 ? `↑ ${fl(rise)}` : "", drop > 0 ? `↓ ${fl(drop)}` : ""].filter(Boolean).join(" + ");
                 return <>{uiText(big(num(lenVal(lf, units)), lenUnit(units)))}{uiText(vert > 0 ? sub(legs) : null)}{uiText(a > 0 ? sub(`${fa(a)} border`) : null)}{uiText(foot)}</>;
-              }
-              if (selShape.measure_role === "surface_area") {
-                const h = selShape.height_override === true
-                  ? Number(selShape.height_ft) || 0
-                  : Number(selShape.height_ft) || Number(condById[selShape.condition_id]?.height_ft) || 0;
+            }
+            if (selShape.measure_role === "surface_area") {
+              const h = selShape.height_override === true
+                ? Number(selShape.height_ft) || 0
+                : Number(selShape.height_ft) || Number(condById[selShape.condition_id]?.height_ft) || 0;
                 return <>{uiText(big(num(areaVal(a, units)), `${areaUnit(units)} wall`))}{uiText(sub(`${fl(lf)} × ${num(heightVal(h, units), 2)}${units === "metric" ? " m" : " ft"}`))}{uiText(foot)}</>;
-              }
-              const ded = selShape.measure_role === "deduct";
-              const shSp = panelByKey(selShape.sheet_id), shUpp = uppFor(selShape.sheet_id) || 0;
-              const shPx = shSp?.img?.w ? (selShape.verts_norm || []).map(([nx, ny]) => [nx * shSp.img.w, ny * shSp.img.h]) : [];
-              const shH = Number(condById[selShape.condition_id]?.height_ft) || 0;
-              return (
-                <>
+            }
+            const ded = selShape.measure_role === "deduct";
+            const shSp = panelByKey(selShape.sheet_id), shUpp = uppFor(selShape.sheet_id) || 0;
+            const shPx = shSp?.img?.w ? (selShape.verts_norm || []).map(([nx, ny]) => [nx * shSp.img.w, ny * shSp.img.h]) : [];
+            const shH = Number(condById[selShape.condition_id]?.height_ft) || 0;
+            return (
+              <>
                   {uiText(big(`${ded ? "−" : ""}${num(areaVal(a, units))}`, areaUnit(units), ded ? "var(--c-danger)" : undefined))}
                   {uiText(sub(units === "metric" ? `${fl(lf)} perim` : `${num(a / 9)} SY  ·  ${num(lf)} LF perim`))}
                   {uiText(dimsLine(fdims(shPx, shUpp), shH))}
                   {shH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {uiText(num(heightVal(shH, units), 2))}{uiText(units === "metric" ? " m" : "′")}: {uiText(fa(lf * shH))} {uiText("vert · ")}{uiText(fv(a * shH))}</div>}
                   {uiText(foot)}
-                </>
-              );
-            })()
-          ) : (
+              </>
+            );
+          })()
+        ) : (
             <div style={{ fontSize: 12.5, opacity: 0.6 }}>{uiText(!unitsPerPx ? tr("Set scale first") : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? tr("Pick a condition") : tool === "oneclick" ? tr("Click inside a room — it selects itself") : tool === "surface" ? tr("Trace the wall run") : tr("Click to trace an area"))}</div>
-          )}
-          {selShape?.measure_role === "surface_area" && (
+        )}
+        {selShape?.measure_role === "surface_area" && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title={uiText("Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.")}>
-              <Icon name="height" size={12} />
+            <Icon name="height" size={12} />
               <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{uiText("this wall")}</span>
-              <input name="shape-height-ft" type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")}
-                onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }}
-                onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }}
-                style={{ width: 56, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+            <input name="shape-height-ft" type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")}
+              onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }}
+              onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }}
+              style={{ width: 56, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
               <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{uiText(heightUnit(units))} → {uiText(fa(selShape.computed?.area_sf || 0))}</span>
-              {condH > 0 && Number(selShape.height_ft) !== condH && (
+            {condH > 0 && Number(selShape.height_ft) !== condH && (
                 <button onClick={clearShapeHeight} title={uiText("Set this wall to the condition height")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>
-              )}
-            </div>
-          )}
-          {selShape?.measure_role === "linear" && (() => {
-            // #441 — vertical legs for THIS run: the fields shown are what the
-            // run resolves to (its own override, else the condition default).
-            const shCond = condById[selShape.condition_id];
-            const own = selShape.rise_ft != null || selShape.drop_ft != null;
-            const { rise, drop } = linearVerticalFt(selShape, shCond);
-            const vInput = (field, val, label, glyph) => (
+            )}
+          </div>
+        )}
+        {selShape?.measure_role === "linear" && (() => {
+          // #441 — vertical legs for THIS run: the fields shown are what the
+          // run resolves to (its own override, else the condition default).
+          const shCond = condById[selShape.condition_id];
+          const own = selShape.rise_ft != null || selShape.drop_ft != null;
+          const { rise, drop } = linearVerticalFt(selShape, shCond);
+          const vInput = (field, val, label, glyph) => (
               <label style={{ display: "flex", alignItems: "center", gap: 3 }} title={uiText(`${label} (${heightUnit(units)}) for THIS run only — the vertical leg added to its plan length. Blank the field or press ↺ to use the condition's default.`)}>
                 <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{uiText(glyph)} {uiText(label)}</span>
-                <input name={`shape-${field}`} type="number" min="0" step={heightStep(units)} value={shapeVertDraft[field] ?? dimInputStr(val, units, "height")}
-                  onChange={(e) => { setShapeVertDraft((d) => ({ ...d, [field]: e.target.value })); setShapeVertical(field, e.target.value); }}
-                  onBlur={() => { if (shapeVertDraft[field] != null) setShapeVertical(field, shapeVertDraft[field]); setShapeVertDraft((d) => ({ ...d, [field]: null })); }}
-                  style={{ width: 52, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              </label>
-            );
-            return (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <input name={`shape-${field}`} type="number" min="0" step={heightStep(units)} value={shapeVertDraft[field] ?? dimInputStr(val, units, "height")}
+                onChange={(e) => { setShapeVertDraft((d) => ({ ...d, [field]: e.target.value })); setShapeVertical(field, e.target.value); }}
+                onBlur={() => { if (shapeVertDraft[field] != null) setShapeVertical(field, shapeVertDraft[field]); setShapeVertDraft((d) => ({ ...d, [field]: null })); }}
+                style={{ width: 52, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+            </label>
+          );
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{uiText("this run")}</span>
                 {uiText(vInput("rise_ft", rise, "rise", "↑"))}
                 {uiText(vInput("drop_ft", drop, "drop", "↓"))}
                 <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{uiText(heightUnit(units))} → {uiText(fl(selShape.computed?.perimeter_lf || 0))}</span>
                 {own && <button onClick={clearShapeVertical} title={uiText("Use the condition's rise and drop for this run")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>}
-              </div>
-            );
-          })()}
-          <div style={{ height: 1, background: "var(--divider-soft)", margin: "8px 0" }} />
+            </div>
+          );
+        })()}
+        <div style={{ height: 1, background: "var(--divider-soft)", margin: "8px 0" }} />
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{finishLabel(aCond?.finish_tag || "—")} {uiText("total (")}{uiText(condRow?.shape_count || 0)}{uiText(condMult > 1 ? ` ×${condMult}` : "")})</div>
           {condTotal !== 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{uiText(num(areaVal(condTotal, units)))} <span style={{ fontSize: 12, fontWeight: 600 }}>{uiText(areaUnit(units))}</span> {units === "imperial" && <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-secondary)" }}>· {uiText(num(condTotal / 9))} {uiText("SY")}</span>}</div>}
           {wallTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{uiText(num(areaVal(wallTotal, units)))} <span style={{ fontSize: 12, fontWeight: 600 }}>{uiText(areaUnit(units))} {uiText("wall")}</span></div>}
@@ -10217,90 +11856,90 @@ export default function TakeoffCanvas() {
           {lfTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{uiText(num(lenVal(lfTotal, units)))} <span style={{ fontSize: 12, fontWeight: 600 }}>{uiText(lenUnit(units))}</span></div>}
           {countTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{uiText(num(countTotal, 0))} <span style={{ fontSize: 12, fontWeight: 600 }}>{uiText("EA")}</span></div>}
           {vertTotal > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }} title={uiText("Display only — floor-area perimeters × this condition's height (not committed)")}>{uiText(fa(vertTotal))} {uiText("vert (perim × H)")}</div>}
-          {condTotal === 0 && lfTotal === 0 && countTotal === 0 && wallTotal === 0 && borderTotal === 0 && <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 2 }}>—</div>}
-          {tally.length > 0 && (
-            <>
+        {condTotal === 0 && lfTotal === 0 && countTotal === 0 && wallTotal === 0 && borderTotal === 0 && <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 2 }}>—</div>}
+        {tally.length > 0 && (
+          <>
               <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5, marginTop: 8 }}>{uiText("Measurements")}</div>
-              <div style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, lineHeight: 1.5, marginTop: 2 }}>
-                {tally.map((r) => (
-                  <div key={r.id} style={{ display: "flex", gap: 6, whiteSpace: "nowrap" }}>
+            <div style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, lineHeight: 1.5, marginTop: 2 }}>
+              {tally.map((r) => (
+                <div key={r.id} style={{ display: "flex", gap: 6, whiteSpace: "nowrap" }}>
                     <span style={{ opacity: 0.45 }}>{uiText(String(r.n).padStart(2, "0"))}</span>
-                    <span>
+                  <span>
                       {uiText(fl(r.lf))}
-                      {r.role === "wall"
+                    {r.role === "wall"
                         ? <> × {uiText(num(heightVal(r.h, units), 2))} {uiText(heightUnit(units))} = {uiText(fa(r.sf))}</>
-                        : r.vert > 0
+                      : r.vert > 0
                           ? <span style={{ color: "var(--ink-muted)" }}> = {uiText(fl(r.plan))} {uiText("plan + ")}{uiText(fl(r.vert))} {uiText("vert")}</span>
                           : <span style={{ color: "var(--ink-muted)" }}> {uiText("linear")}</span>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
           <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{uiText(visibleShapes.length)} {uiText("shapes on ")}{uiText(groupKeys.length > 1 ? `${groupKeys.length} sheets` : "sheet")} {uiText("· zoom ")}{uiText((tf.scale * 100).toFixed(0))}%</div>
-        </div>
+      </div>
 
-        {/* zone check results — ephemeral, clears with the tool/outline. Docked at
+      {/* zone check results — ephemeral, clears with the tool/outline. Docked at
             right:56 so it never covers the panel rail (right:14, 34px wide), and
             anchored to the BOTTOM (not top:14 like the original) so it stacks
             vertically with the live readout instead of sitting on top of it —
             the live readout (right:14, top:14, zIndex 6) shows the SAME zone's
             live "SF in zone" figure for the NEXT trace while this panel is open,
             and a top:14 placement here covered all but a ~42px sliver of it. */}
-        {/* Copy text receipt (#471) — in the canvas, bottom-right below the live
+      {/* Copy text receipt (#471) — in the canvas, bottom-right below the live
             readout like the zone panel, moved left of the Sweep panel while a
             sweep is live (lib/copyText receiptPlacement) */}
-        {copyReceipt && (
-          <CopyTextReceipt receipt={copyReceipt} placement={receiptPlacement({ sweepOpen: !!sweep, zoneOpen: !!zoneRows, narrow: isNarrow })}
-            onClose={() => setCopyReceipt(null)}
-            onCopyPage={(key) => copyTextFrom(key, null, "page")}
-            onCopied={() => setCopyReceipt((r) => (r ? { ...r, failed: false } : r))} />
-        )}
-        {zoneRows && (
-          <div style={{ position: "absolute", right: RAIL_CLEAR, bottom: CANVAS_EDGE, width: ZONE_PANEL_W, maxHeight: `calc(100% - ${2 * CANVAS_EDGE}px)`, overflowY: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
+      {copyReceipt && (
+        <CopyTextReceipt receipt={copyReceipt} placement={receiptPlacement({ sweepOpen: !!sweep, zoneOpen: !!zoneRows, narrow: isNarrow })}
+          onClose={() => setCopyReceipt(null)}
+          onCopyPage={(key) => copyTextFrom(key, null, "page")}
+          onCopied={() => setCopyReceipt((r) => (r ? { ...r, failed: false } : r))} />
+      )}
+      {zoneRows && (
+        <div style={{ position: "absolute", right: RAIL_CLEAR, bottom: CANVAS_EDGE, width: ZONE_PANEL_W, maxHeight: `calc(100% - ${2 * CANVAS_EDGE}px)`, overflowY: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
               <b style={{ fontSize: 12.5 }}>{uiText("Zone check")}</b>
               <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)" }}>{uiText("nothing saved")}</span>
-              <button onClick={resetZone} style={{ marginLeft: "auto", border: "none", background: "none", cursor: "pointer", fontSize: 15, lineHeight: 1, color: "var(--ink)" }}>×</button>
-            </div>
-            {zoneRows.length === 0 && (
+            <button onClick={resetZone} style={{ marginLeft: "auto", border: "none", background: "none", cursor: "pointer", fontSize: 15, lineHeight: 1, color: "var(--ink)" }}>×</button>
+          </div>
+          {zoneRows.length === 0 && (
               <div style={{ padding: "10px 12px", color: "var(--ink-muted)", fontSize: 11.5 }}>{uiText("No takeoffs inside this zone on this sheet.")}</div>
-            )}
-            {zoneRows.map((zr) => {
-              const parts = [];
-              if (zr.floor_sf) parts.push(fa(zr.floor_sf));
-              if (zr.wall_sf) parts.push(`${fa(zr.wall_sf)} wall`);
-              if (zr.border_sf) parts.push(`${fa(zr.border_sf)} border`);
-              if (zr.lf) parts.push(fl(zr.lf));
-              if (zr.ea) parts.push(`${num(zr.ea, 0)} EA`);
-              const open = zoneExpand === zr.id;
-              return (
-                <div key={zr.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={zr.hatch || "solid"} line={zr.color} fill={zr.fill} /></span>
+          )}
+          {zoneRows.map((zr) => {
+            const parts = [];
+            if (zr.floor_sf) parts.push(fa(zr.floor_sf));
+            if (zr.wall_sf) parts.push(`${fa(zr.wall_sf)} wall`);
+            if (zr.border_sf) parts.push(`${fa(zr.border_sf)} border`);
+            if (zr.lf) parts.push(fl(zr.lf));
+            if (zr.ea) parts.push(`${num(zr.ea, 0)} EA`);
+            const open = zoneExpand === zr.id;
+            return (
+              <div key={zr.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={zr.hatch || "solid"} line={zr.color} fill={zr.fill} /></span>
                     <b style={{ fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{finishLabel(zr.finish_tag || "—")}</b>
                     {zr.multiplier > 1 && <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>×{uiText(zr.multiplier)}</span>}
                     <span style={{ marginLeft: "auto", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)" }}>{uiText(parts.join(" · ") || "—")}</span>
-                  </div>
-                  {zr.materials.length > 0 && (
-                    <button onClick={() => setZoneExpand(open ? null : zr.id)}
-                      style={{ marginTop: 4, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
+                </div>
+                {zr.materials.length > 0 && (
+                  <button onClick={() => setZoneExpand(open ? null : zr.id)}
+                    style={{ marginTop: 4, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
                       {uiText(open ? "▾" : "▸")} {uiText("materials · ")}{uiText(zr.materials.length)}
-                    </button>
-                  )}
-                  {open && zr.materials.map((m, i) => (
-                    <div key={i} style={{ display: "flex", gap: 8, marginTop: 3, marginLeft: 12, fontSize: 11, color: "var(--ink-secondary)" }}>
+                  </button>
+                )}
+                {open && zr.materials.map((m, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, marginTop: 3, marginLeft: 12, fontSize: 11, color: "var(--ink-secondary)" }}>
                       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(m.name)}</span>
                       <span style={{ fontFamily: "var(--f-mono)" }}>{uiText(num(m.qty))} {uiText(m.unit)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-            <div style={{ padding: "7px 12px", fontSize: 10, color: "var(--ink-muted)" }}>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          <div style={{ padding: "7px 12px", fontSize: 10, color: "var(--ink-muted)" }}>
               {uiText("Shapes counted by their center point · same sheet only · counted shapes glow cobalt.")}{zoneRows.some((r) => (r.multiplier || 1) > 1) && <> {uiText("Rows marked ×N already have the condition's multiplier applied — the same convention as the Report's Groups section, not its base-quantity by-sheet rows.")}</>}
-              {/* A deduct classifies by its OWN center, independent of its positive
+            {/* A deduct classifies by its OWN center, independent of its positive
                   area's center (same rule the Report's by-sheet "negative slices"
                   note already documents for a cross-sheet split) — a zone edge
                   can split a deduct from the shape it cuts, producing a negative
@@ -10309,15 +11948,15 @@ export default function TakeoffCanvas() {
                   containment pairing would guess wrong for nested/overlapping
                   positives. */}
               {zoneRows.some((r) => r.total_sf < 0 || r.floor_sf < 0) && <> {uiText("A negative row means a deduct here counted but its positive area's center fell outside the zone (or vice-versa) — the zone edge split a deduct from its shape.")}</>}
-            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* panel rail — markup/takeoffs toggles on the right edge (zoom-cluster
+      {/* panel rail — markup/takeoffs toggles on the right edge (zoom-cluster
             style). Moved out of the toolbar so it never wraps a third row. The
             takeoffs toggle mirrors the DOCKED panel's collapsed pref — the rail
             rides the canvas edge, so it stays visible either way. */}
-        <div data-panel-rail style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", display: workspaceLayout && !focusMode ? "none" : "flex", flexDirection: "column", gap: 6, zIndex: 8 }}>
+      <div data-panel-rail style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", display: workspaceLayout && !focusMode ? "none" : "flex", flexDirection: "column", gap: 6, zIndex: 8 }}>
           {uiText(panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "document", tr("Markup list — existing clouds, callouts, and notes"), leftTab === "markup", markupCount))}
           {uiText(panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", tr("Stamps — reusable annotations dropped click-to-place"), leftTab === "stamp", stampLib.stamps.length))}
           {uiText(panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", tr("RFI register — raise, track, and export Requests For Information"), leftTab === "rfi", rfis.length))}
@@ -10326,15 +11965,19 @@ export default function TakeoffCanvas() {
           {uiText(rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size))}
           {uiText(layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", "PDF layers — what this drawing's own layer table states each ink is; set what One-Click treats as wall and what it ignores", layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0)))}
           {uiText(panelBtn(() => setShowRevisions(true), "revisions", tr("Revisions — save the takeoff at each bid revision, compare what moved"), showRevisions))}
-        </div>
+      </div>
 
+        {workspaceLayout && !focusMode && view === "canvas" && !showReport && <CanvasSideTabs
+          conditionsOpen={condDockOpen && !fullTableOpen} conditionCount={conditions.length}
+          onConditions={() => { if (fullTableOpen) { setFullTableOpen(false); setCondDockOpen(true); } else setCondDockOpen((v) => !v); }}
+          assistantOpen={assistantOpen} onAssistant={() => (assistantOpen ? setAssistantOpen(false) : openAssistant())} working={agentRunning} />}
         <DropZoneOverlay zone={dragZone} />
        </div>
   );
   return (
     // .app-shell: the print stylesheet collapses this 100vh flex column while the report is open
     <div
-      className={`app-shell${workspaceLayout ? " workspace-calm premium-workspace" : ""}`}
+      className={`app-shell${workspaceLayout ? " workspace-calm premium-workspace" : ""}${workspaceLayout && !focusMode ? " pc-on" : ""}`}
       data-workspace-look={workspaceLayout ? workspaceArrangement.look : undefined}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer?.files); }}
@@ -10363,51 +12006,77 @@ export default function TakeoffCanvas() {
           as "Export is unclickable". The row therefore SCROLLS itself; its
           menus open position:fixed off the trigger rect (ToolMenu) so this
           overflow cannot clip them. */}
-      {!focusMode && workspaceLayout && <WorkspaceChrome
-        title={projectName || active} onOpen={() => fileInputRef.current?.click()}
-        onNavigate={() => setWorkspaceNavigationOpen((v) => !v)} navigationOpen={workspaceNavigationOpen}
-        onTakeoffs={toggleTakeoffs} takeoffsOpen={takeoffsOpen} onWork={() => setAgentOpen((v) => !v)} workOpen={agentOpen} workButtonRef={workButtonRef}
-        pending={shapes.filter((shape) => shape.origin?.reviewed === false).length} running={agentRunning}
-        onPremium={openPremiumPricing} onReport={() => setShowReport(true)} onEstimate={openEstimate} onFocus={toggleFocusMode} onClassic={() => workspacePrefs.setEnabled(false)}
-        onControls={() => setWorkspaceSearchOpen(true)} controlsOpen={false} onSearch={() => setWorkspaceSearchOpen(true)}
-        languageControl={<LanguageSwitcher />} pinControl={pinButton}
-        panelTools={<div className="calm-panel-tools" role="group" aria-label={tr("Quantity and review tools")}>
-          {uiText(panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "document", tr("Markup list — existing clouds, callouts, and notes"), leftTab === "markup", markupCount))}
-          {uiText(panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", tr("Stamps — reusable annotations dropped click-to-place"), leftTab === "stamp", stampLib.stamps.length))}
-          {uiText(panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", tr("RFI register — raise, track, and export Requests For Information"), leftTab === "rfi", rfis.length))}
-          {uiText(rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size))}
-          {uiText(layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", "PDF layers — drawing layers", layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0)))}
-          {uiText(panelBtn(() => setShowRevisions(true), "revisions", tr("Revisions — save the takeoff at each bid revision, compare what moved"), showRevisions))}
-        </div>}
-        layoutMenu={<button type="button" onClick={() => setWorkspaceLayoutOpen(true)} title={tr("Arrange panels, lock positions, and save layouts")}><Icon name="sliders" size={16} />{tr("Layout")}</button>}
-        helpMenu={<ToolMenu title={tr("Learn OpenTakeoff, or connect an AI agent")} face={<span>{tr("Help")}</span>} onOpenChange={onMenuDepth} items={[
+      {!focusMode && workspaceLayout && <PremiumRail running={agentRunning} onMenuDepth={onMenuDepth}
+        onSearch={() => setWorkspaceSearchOpen(true)}
+        onSheets={() => setWorkspaceNavigationOpen((v) => !v)} sheetsOpen={workspaceNavigationOpen}
+        onOpenPlans={() => fileInputRef.current?.click()}
+        onCollapse={toggleFocusMode} onLayout={() => setWorkspaceLayoutOpen(true)}
+        helpItems={[
           { id: "tour", label: tr("Guided first takeoff"), onSelect: startTour },
           { id: "guide", label: tr("How OpenTakeoff works"), shortcut: "?", onSelect: () => setGuideOpen(true) },
+          { id: "assistant", label: tr("Assistant — talk to your own AI here"), onSelect: openAssistant },
           { id: "connect-ai", label: tr("Connect your AI"), onSelect: () => setConnectOpen(true) },
         ]} />}
-        fileMenu={<><ToolMenu title={tr("Files and workspace")} face={<span>{tr("File")}</span>} onOpenChange={onMenuDepth} items={sheetMenuItems} /><PresenceChip bridge={store.syncBridge} /><AccountChip note={cloudMode ? tr("Synced to Google Drive") : tr("Local workspace")} onOpenChange={onMenuDepth} /></>}
-        conditionControl={<><label className="calm-condition-label" htmlFor="workspace-condition">{tr("Condition")}</label><select id="workspace-condition" value={activeCond || ""} onChange={(e) => activateCondition(e.target.value)} title={uiText(tool === "select" && selectedId ? tr("Reassign selected measurement") : tr("Condition for the next measurement"))}>
-          {!conditions.length && <option value="">{tr("No conditions")}</option>}{conditions.map((c) => <option key={c.id} value={c.id}>{finishLabel(c.finish_tag)}</option>)}</select>
-          <button type="button" onClick={addCondition} title={tr("Add condition")} aria-label={tr("Add condition")}><Icon name="plus" size={14} /></button>
-          <button type="button" onClick={() => setWorkspaceDetailsOpen((v) => !v)} aria-expanded={workspaceDetailsOpen} disabled={!aCond}>{tr("Properties")}</button></>}
-        history={<><button type="button" onClick={() => poly.length ? dropLastPoint() : undoShapeCommand()} title={tr("Undo (⌘Z)")} aria-label={tr("Undo")}><Icon name="undo" size={16} /></button><button type="button" onClick={redoShapeCommand} title={tr("Redo (⇧⌘Z)")} aria-label={tr("Redo")}><span style={{ display: "flex", transform: "scaleX(-1)" }}><Icon name="undo" size={16} /></span></button></>}
-        aids={<><button type="button" aria-pressed={tool === "zone"} onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))} title={tr("Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool.")}><Icon name="zone" size={15} />{tr("Zone")}</button><button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((v) => !v)} title={tr("Snap to plan lines/corners (beta)")}><Icon name="snap" size={15} />{tr("Snap")}</button><button type="button" aria-pressed={angleOn} onClick={() => setAngleOn((v) => !v)} title={tr("45°/90° angle guides")}><Icon name="angle" size={15} />45°</button>{uiText(draftMenu)}<span className="calm-separator" />{uiText(annotations.control)}</>}
-        action={finishOk && <button type="button" onClick={finishShape}>{tr("Finish shape")} ({uiText(poly.length)})</button>}
-        scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title={tr("Switch display units")}>{uiText(units === "metric" ? (language === "ru" ? "Метры" : "m") : (language === "ru" ? "Футы и дюймы" : "ft"))}</button><ToolMenu title={uiText(scaleTitle)} onOpenChange={onScaleMenuDepth} face={<span data-tour="scale">{uiText(scaleFace)}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 290, maxHeight: "min(600px, 70vh)", overflowY: "auto" }} items={scaleItems} /></>}
-      />}
+      {!focusMode && workspaceLayout && (() => {
+        const kept = shapes.filter((sh) => sh.origin?.reviewed !== false).length;
+        const pendingN = shapes.filter((sh) => sh.origin?.reviewed === false).length;
+        const moreItems = [
+          { section: tr("Plans") },
+          { id: "open-plans", icon: "plus", label: tr("Open plans…"), onSelect: () => fileInputRef.current?.click() },
+          // the sheet switcher already lists pages and files; keep the set operations and file moves
+          ...sheetMenuItems.filter((it) => it !== "divider" && !/^(pg|f)-/.test(it.id || "") && (!it.section || it.section.startsWith("Profile"))),
+          "divider",
+          { section: tr("Panels") },
+          { id: "work", icon: "target", label: tr("Work and review"), checked: agentOpen, onSelect: () => setAgentOpen((v) => !v) },
+          { id: "full-takeoffs", icon: "takeoffs", label: tr("Takeoffs table — library, materials, columns"), checked: fullTableOpen, onSelect: () => setFullTableOpen((v) => !v) },
+          { id: "markups", icon: "document", label: tr("Markup list") + `${markupCount ? ` (${markupCount})` : ""}`, checked: leftTab === "markup", onSelect: () => setLeftTab((t) => (t === "markup" ? null : "markup")) },
+          { id: "stamps", icon: "stamp", label: tr("Stamps"), checked: leftTab === "stamp", onSelect: () => setLeftTab((t) => (t === "stamp" ? null : "stamp")) },
+          { id: "rfis", icon: "rfi", label: tr("RFI register") + `${rfis.length ? ` (${rfis.length})` : ""}`, checked: leftTab === "rfi", onSelect: () => setLeftTab((t) => (t === "rfi" ? null : "rfi")) },
+          ...(rollByCond.size > 0 ? [{ id: "roll", icon: "roll", label: tr("Roll goods"), checked: rollPanelOpen, onSelect: () => setRollPanelOpen((o) => !o) }] : []),
+          ...(layerEntries.length > 0 ? [{ id: "layers", icon: "layers", label: tr("PDF layers"), checked: layersOpen, onSelect: () => setLayersOpen((o) => !o) }] : []),
+          { id: "revisions", icon: "revisions", label: tr("Revisions"), onSelect: () => setShowRevisions(true) },
+          { id: "estimate", label: tr("Estimate"), onSelect: openEstimate },
+          { id: "report", icon: "document", label: tr("Report"), onSelect: () => setShowReport(true) },
+          "divider",
+          { section: tr("Drawing") },
+          ...(panels.length === 1 && isStitchKey(panels[0].key) ? [{ id: "stitch-align", icon: "calibrate", label: tr("Align match line"), active: tool === "stitch-align", onSelect: () => setTool((t) => (t === "stitch-align" ? "select" : "stitch-align")) }] : []),
+          { id: "snap", label: tr("Snap to plan lines"), checked: snapOn, stayOpen: true, onSelect: () => setSnapOn((v) => !v) },
+          { id: "angle", label: tr("45° / 90° guides"), checked: angleOn, stayOpen: true, onSelect: () => setAngleOn((v) => !v) },
+          { id: "zone", icon: "zone", label: tr("Zone check"), active: tool === "zone", onSelect: () => setTool((t) => (t === "zone" ? "select" : "zone")) },
+          { id: "schedule", icon: "rectTool", label: tr("Import from schedule"), active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
+          { id: "units", label: tr(units === "metric" ? "Units: metric (switch to ft)" : "Units: feet (switch to metric)"), onSelect: () => setUnits((u) => (u === "metric" ? "imperial" : "metric")) },
+          "divider",
+          { section: tr("Workspace") },
+          { id: "layout", icon: "sliders", label: tr("Layout…"), onSelect: () => setWorkspaceLayoutOpen(true) },
+          { id: "focus", icon: "focus", label: tr("Focus mode"), shortcut: "F", onSelect: toggleFocusMode },
+          { id: "controls", label: tr(workspaceControlsOpen ? "Hide classic toolbar" : "Classic toolbar"), checked: workspaceControlsOpen, onSelect: () => setWorkspaceControlsOpen((v) => !v) },
+          { id: "classic", label: tr("Classic layout"), onSelect: () => workspacePrefs.setEnabled(false) },
+          ...(cloudMode ? [{ id: "closeproj", label: tr("Close project"), onSelect: closeProject }] : []),
+        ];
+        return <PremiumTopBar
+          title={projectName || active}
+          subtitle={uiText(pendingN ? `${pendingN} to review · ${kept} kept` : kept ? `${kept} shape${kept === 1 ? "" : "s"} kept` : "Nothing kept yet")}
+          onBack={() => setView("gallery")} onGallery={() => setView("gallery")}
+          sheets={workspaceSheets} current={treeCurrent} onSheet={(key) => openSheets([key], false)} onMenuDepth={onMenuDepth}
+          scaleMenu={<ToolMenu title={scaleTitle} onOpenChange={onScaleMenuDepth} face={<span data-tour="scale" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="scaleRule" size={16} />{uiText(scaleFace)}</span>} faceStyle={{ fontFamily: "var(--f-body)", fontSize: 13.5, fontWeight: 500, ...scaleFaceStyle }} menuStyle={{ minWidth: 250 }} items={scaleItems} />}
+          action={finishOk && <button type="button" className="cd-btn" style={{ flex: "0 0 auto", marginLeft: 6 }} onClick={finishShape}>{tr("Finish")} ({poly.length})</button>}
+          onList={() => setShowReport(true)} total={estTotal} onEstimate={openEstimate}
+          moreItems={moreItems}
+          onBell={() => setAgentOpen((v) => !v)} pending={pendingN} languageControl={<LanguageSwitcher />} />;
+      })()}
       {workspaceLayout && !workspaceArrangement.readout && selShape?.measure_role === "surface_area" && <div className="calm-property-editor"><label>{tr("Selected wall height")} <input aria-label={tr("Selected wall height")} type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")} onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }} onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }} /></label><span>{uiText(heightUnit(units))} → {uiText(fa(selShape.computed?.area_sf || 0))}</span><button type="button" onClick={clearShapeHeight}>{tr("Use condition height")}</button></div>}
       {!focusMode && workspaceLayout && workspaceDetailsOpen && aCond && <div className="calm-property-editor"><strong>{finishLabel(aCond.finish_tag)}</strong><ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} /><button type="button" onClick={() => setWorkspaceDetailsOpen(false)}>{tr("Close properties")}</button></div>}
       {workspaceLayout && <><WorkspaceCommandMenu open={workspaceSearchOpen} onClose={() => setWorkspaceSearchOpen(false)} actions={workspaceActions} onOpenChange={onMenuDepth} /><WorkspaceLayoutDialog open={workspaceLayoutOpen} onClose={() => setWorkspaceLayoutOpen(false)} prefs={workspacePrefs} onOpenChange={onMenuDepth} /></>}
-      {!focusMode && !workspaceLayout && (
-      <div data-topbar style={{ display: "flex", gap: 7, alignItems: "center", padding: "0 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
-        {/* The working controls scroll as one region when the window is
+      {!focusMode && (!workspaceLayout || workspaceControlsOpen) && (
+        <div data-topbar style={{ display: "flex", gap: 7, alignItems: "center", padding: "0 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
+          {/* The working controls scroll as one region when the window is
             narrower than the row (1440-class laptops); Report, ⋯, presence and
             account sit OUTSIDE that region so they are on screen at every
             width — the row's contract (#61: nothing wraps or shifts) holds,
             and nothing important is ever past the right edge. paddingTop 16
             keeps the cluster captions (top:-13) inside the scroll box. */}
         <div data-topbar-scroll style={{ display: "flex", gap: 7, alignItems: "center", flex: "1 1 0", minWidth: 0, padding: "16px 0 0", overflowX: "auto", overflowY: "hidden", scrollbarWidth: "thin", overscrollBehaviorX: "contain" }}>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em", whiteSpace: "nowrap" }}><ScanStar size={13} reach={1.6} working={agentRunning} style={{ color: "var(--cobalt)", margin: "-2px 6px 0 0" }} />open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
+        <strong style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap" }} title={tr("OpenTakeoff")}><OtLockup size={15} />{agentRunning && <ScanStar size={13} reach={1.6} working style={{ color: "var(--cobalt)", marginLeft: 8 }} title={tr("The agent is working")} />}</strong>
         <button type="button" onClick={() => fileInputRef.current?.click()} title={tr("Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)")}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
           <Icon name="plus" size={14} />{tr("Open")}</button>
@@ -10417,205 +12086,205 @@ export default function TakeoffCanvas() {
           <Icon name="sheets" size={15} />{tr("Sheets")}
         </button>
         {uiText(pinButton)}
-        {sheets.length > 0 && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            {sheets.length > 0 && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!!sheetGroup.length || page <= 1} title={tr("Previous sheet")}
-              style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page <= 1) ? 0.4 : 1 }}><Icon name="chevronLeft" size={12} /></button>
-            <ToolMenu
+                  style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page <= 1) ? 0.4 : 1 }}><Icon name="chevronLeft" size={12} /></button>
+                <ToolMenu
               title={uiText("Sheet — the sheets in this set, files, grouping, and the gallery")}
-              onOpenChange={onMenuDepth}
+                  onOpenChange={onMenuDepth}
               face={<span style={{ display: "inline-block", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uiText(sheetChipLabel)}</span>}
-              faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 400, padding: "6px 8px" }}
-              menuStyle={{ minWidth: 260, maxHeight: "min(480px, 60vh)", overflowY: "auto" }}
-              items={sheetMenuItems}
-            />
+                  faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 400, padding: "6px 8px" }}
+                  menuStyle={{ minWidth: 260, maxHeight: "min(480px, 60vh)", overflowY: "auto" }}
+                  items={sheetMenuItems}
+                />
             <button type="button" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={!!sheetGroup.length || page >= pageCount} title={tr("Next sheet")}
-              style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page >= pageCount) ? 0.4 : 1 }}><Icon name="chevronRight" size={12} /></button>
-          </span>
-        )}
+                  style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page >= pageCount) ? 0.4 : 1 }}><Icon name="chevronRight" size={12} /></button>
+              </span>
+            )}
         {uiText(vRule)}
         {cluster(tr("Edit"), <>
-          <ToolMenu
+              <ToolMenu
             title={tr("Edit takeoffs")}
-            onOpenChange={onMenuDepth}
+                onOpenChange={onMenuDepth}
             face={<span>{tr("Edit")}</span>}
-            items={[
+                items={[
               { id: "copy", icon: "copy", label: tr("Copy"), shortcut: "⌘C", disabled: !selectedId, onSelect: copySelected },
               { id: "paste", icon: "paste", label: tr("Paste"), shortcut: "⌘V", disabled: !clipRef.current.length, onSelect: () => pasteClipboard() },
               { id: "dup", icon: "duplicate", label: tr("Duplicate"), shortcut: "⌘D", disabled: !selectedId, onSelect: duplicateSelected },
-              "divider",
+                  "divider",
               { id: "flipH", label: tr("Flip Horizontal"), disabled: !selectedId, onSelect: () => flipSelected("h") },
               { id: "flipV", label: tr("Flip Vertical"), disabled: !selectedId, onSelect: () => flipSelected("v") },
               { id: "tidy", label: tr("Tidy shape"), disabled: !selectedId, onSelect: tidySelected },
-              "divider",
+                  "divider",
               { id: "finish", icon: "check", label: uiText(`${tr("Finish shape")}${poly.length ? ` (${poly.length})` : ""}`), shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
               { id: "undopt", icon: "undo", label: tr("Undo last point"), shortcut: "⌘Z", disabled: !poly.length, onSelect: dropLastPoint },
               { id: "undoshape", icon: "undo", label: tr("Undo last shape"), disabled: !visibleShapes.length, onSelect: undoLast },
               { id: "redo", label: tr("Redo"), shortcut: "⇧⌘Z", onSelect: redoShapeCommand },
-              "divider",
+                  "divider",
               { id: "del", icon: "close", label: tr("Delete selected"), shortcut: "⌫", disabled: !selectedId, tint: "var(--c-danger)", onSelect: deleteSelected },
-            ]}
-          />
-        </>)}
+                ]}
+              />
+            </>)}
         {uiText(vRule)}
         {cluster(tr("Aids"), <>
-          {panels.length === 1 && isStitchKey(panels[0].key) && (
-            <button onClick={() => setTool((t) => (t === "stitch-align" ? "select" : "stitch-align"))}
+              {panels.length === 1 && isStitchKey(panels[0].key) && (
+                <button onClick={() => setTool((t) => (t === "stitch-align" ? "select" : "stitch-align"))}
               title={uiText("Align the match line — click a point near the joint, then the SAME point where the other sheet draws it; that sheet slides so the two coincide. Do this before tracing (a stitch with takeoffs on it won't re-align).")}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "stitch-align" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "stitch-align" ? "var(--cobalt)" : "transparent", color: tool === "stitch-align" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "stitch-align" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "stitch-align" ? "var(--cobalt)" : "transparent", color: tool === "stitch-align" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
               <Icon name="calibrate" size={15} />{tr("Align")}
-            </button>
-          )}
-          <button onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))}
+                </button>
+              )}
+              <button onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))}
             title={tr("Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool.")}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "zone" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "zone" ? "var(--cobalt)" : "transparent", color: tool === "zone" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "zone" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "zone" ? "var(--cobalt)" : "transparent", color: tool === "zone" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
             <Icon name="zone" size={15} />{tr("Zone")}
-          </button>
+              </button>
           <button onClick={() => setSnapOn((v) => !v)} title={tr("Snap to plan lines/corners (beta)")}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${snapOn ? "var(--c-positive)" : "var(--ink-faint)"}`, background: snapOn ? "var(--c-positive)" : "transparent", color: snapOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${snapOn ? "var(--c-positive)" : "var(--ink-faint)"}`, background: snapOn ? "var(--c-positive)" : "transparent", color: snapOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
             <Icon name="snap" size={15} />{tr("Snap")}
-          </button>
+              </button>
           <button onClick={() => setAngleOn((v) => !v)} title={tr("45°/90° angle guides — the next segment locks to the 45° family as you draw (hold ⇧ to force the lock at any angle)")}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${angleOn ? "var(--cobalt)" : "var(--ink-faint)"}`, background: angleOn ? "var(--cobalt)" : "transparent", color: angleOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="angle" size={15} />45°
-          </button>
-        </>)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${angleOn ? "var(--cobalt)" : "var(--ink-faint)"}`, background: angleOn ? "var(--cobalt)" : "transparent", color: angleOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+                <Icon name="angle" size={15} />45°
+              </button>
+            </>)}
         {uiText(vRule)}
-        {/* Drafting conventions — how a trace looks and where it bends, one
+            {/* Drafting conventions — how a trace looks and where it bends, one
             dropdown. Style and Outline came up from the ⋯ menu, Straight/Curve
             over from the readout (2026-09-12): a convention you set before
             tracing belongs beside the aids, one click from the sheet. */}
         {uiText(cluster(tr("Draft"), draftMenu))}
-        {/* The caption always shows the ACTIVE label (+ the cobalt highlight keyed
+            {/* The caption always shows the ACTIVE label (+ the cobalt highlight keyed
             on it) so what a new trace will get is never hidden — even in Select
             mode, where the dropdown VALUE instead shows the selected shape's label
             so changing it reliably re-labels that shape (a value-always-active
             select couldn't reassign to the already-active label — onChange wouldn't fire). */}
-        {shapeLabels.length > 0 && cluster(
+            {shapeLabels.length > 0 && cluster(
           tool === "select" && selectedId ? `Label · ${activeLabel || "none"} → shape` : (activeLabel ? `Label · ${activeLabel}` : tr("Label")),
-          <select
-            value={tool === "select" && selectedId ? shapeLabelValue(shapes.find((s) => s.id === selectedId)) : (activeLabel || "")}
-            onChange={(e) => activateLabel(e.target.value || null)}
+              <select
+                value={tool === "select" && selectedId ? shapeLabelValue(shapes.find((s) => s.id === selectedId)) : (activeLabel || "")}
+                onChange={(e) => activateLabel(e.target.value || null)}
             title={uiText("Phase/area label. The caption shows the ACTIVE label (what new takeoffs get). With a shape selected (Select tool), the dropdown shows and re-labels that shape. Manage the list in the Columns tab.")}
-            style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: `1px solid ${activeLabel ? "var(--cobalt)" : "var(--ink-faint)"}`, background: activeLabel ? "var(--cobalt)" : "transparent", color: activeLabel ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", maxWidth: 150 }}>
+                style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: `1px solid ${activeLabel ? "var(--cobalt)" : "var(--ink-faint)"}`, background: activeLabel ? "var(--cobalt)" : "transparent", color: activeLabel ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", maxWidth: 150 }}>
             <option value="">{tr("No label")}</option>
             {shapeLabels.map((v) => <option key={v} value={v}>{uiText(v)}</option>)}
-          </select>
-        )}
-        {/* Typed voice command (RFC #59 slice 2): the same grammar push-to-talk
+              </select>
+            )}
+            {/* Typed voice command (RFC #59 slice 2): the same grammar push-to-talk
             will feed — a keyboard command line meanwhile, and the accessibility
             path. Focus suppresses canvas shortcuts via the existing INPUT guards.
             Deixis: focus marks the utterance's start — "this room" then needs an
             aim placed AFTER it (park the pointer on the room, type, Enter). */}
         {commandBoxEnabled() && cluster(tr("Command"),
-          <input
-            type="text"
+              <input
+                type="text"
             placeholder={uiText("cpt 1 · waste 7 · this room")}
             title={uiText('Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", "author <your name>" (new marks sign it — the report can group by author), or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.')}
-            onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              const v = e.currentTarget.value.trim();
-              if (!v) return;
-              const el = e.currentTarget;   // capture: currentTarget nulls after dispatch, and deixis outcomes can resolve async (raster)
-              // router confirm (RFC #59 slice 5): the rejected text is still in
-              // the box (only success clears it) — a second ⏎ on the SAME text
-              // confirms the pending offer instead of re-rejecting in a loop
-              if (pendingAgentOfferRef.current && v === pendingAgentOfferRef.current.transcript) {
-                agentOfferFnsRef.current.confirm();
-                el.value = "";
-                return;
-              }
-              Promise.resolve(onVoiceCommand(v)).then((ok) => { if (ok) el.value = ""; });
-            }}
-            style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", width: 150 }}
-          />
-        )}
-        {/* Push-to-talk (RFC #59 recognizer): hold the button (or M) to dictate
+                onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  const v = e.currentTarget.value.trim();
+                  if (!v) return;
+                  const el = e.currentTarget;   // capture: currentTarget nulls after dispatch, and deixis outcomes can resolve async (raster)
+                  // router confirm (RFC #59 slice 5): the rejected text is still in
+                  // the box (only success clears it) — a second ⏎ on the SAME text
+                  // confirms the pending offer instead of re-rejecting in a loop
+                  if (pendingAgentOfferRef.current && v === pendingAgentOfferRef.current.transcript) {
+                    agentOfferFnsRef.current.confirm();
+                    el.value = "";
+                    return;
+                  }
+                  Promise.resolve(onVoiceCommand(v)).then((ok) => { if (ok) el.value = ""; });
+                }}
+                style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", width: 150 }}
+              />
+            )}
+            {/* Push-to-talk (RFC #59 recognizer): hold the button (or M) to dictate
             into the same grammar the Command box runs. Hidden entirely where
             capture is unsupported — graceful feature-absence, never broken. */}
         {commandBoxEnabled() && captureSupported() && cluster(tr("Voice"),
-          <button
+              <button
             title={uiText('Hold to talk (or hold M anywhere on the canvas): speak a command — "carpet one, waste seven", "label phase two", "note …", or end with "this room" to trace at the cursor. Release to run; Esc discards. Audio is processed on-device and never leaves the browser.')}
-            onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); voiceHoldRef.current = true; voiceFnsRef.current.start(); }}
-            onPointerUp={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(true); } }}
-            onPointerCancel={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(false); } }}
-            style={{ padding: "5px 10px", border: `1px solid ${voiceChip?.tone === "live" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: voiceChip?.tone === "live" ? "var(--cobalt)" : "transparent", color: voiceChip?.tone === "live" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>
+                onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); voiceHoldRef.current = true; voiceFnsRef.current.start(); }}
+                onPointerUp={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(true); } }}
+                onPointerCancel={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(false); } }}
+                style={{ padding: "5px 10px", border: `1px solid ${voiceChip?.tone === "live" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: voiceChip?.tone === "live" ? "var(--cobalt)" : "transparent", color: voiceChip?.tone === "live" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>
             {uiText(voiceChip?.tone === "live" ? "● talking" : "talk · M")}
-          </button>
-        )}
-        <div style={{ flex: 1 }} />
-        {cluster("Action",
-          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 6, minWidth: 150 }}>
+              </button>
+            )}
+            <div style={{ flex: 1 }} />
+            {cluster("Action",
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 6, minWidth: 150 }}>
             {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight" || tool === "dimension") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>{uiText("click the ")}{uiText(tool === "callout" ? "label spot" : tool === "dimension" ? "other end" : "opposite corner")}…</span>}
-            {finishOk && (
+                {finishOk && (
               <button onClick={finishShape} title={uiText("Finish shape (↵ or double-click)")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />{uiText("Finish (")}{uiText(poly.length)})</button>
-            )}
-            {proposal?.regions.length > 0 && (
+                )}
+                {proposal?.regions.length > 0 && (
               <button onClick={createProposal} title={uiText("Create the selected takeoff(s) (↵). ⌫ removes the last click; Esc discards the selection.")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />{uiText("Create (")}{uiText(proposal.regions.length)})</button>
+                )}
+              </span>
             )}
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        </div>
-        <span data-topbar-pinned style={{ display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, paddingTop: 16 }}>
+            <div style={{ flex: 1 }} />
+          </div>
+          <span data-topbar-pinned style={{ display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, paddingTop: 16 }}>
         {!workspaceLayout && <LanguageSwitcher />}
         {cluster(`${tr("Scale")} — ${labelFor(focusPanel)}`,
-          <>
-            <button onClick={() => setUnits((u) => (u === "metric" ? "imperial" : "metric"))}
+              <>
+                <button onClick={() => setUnits((u) => (u === "metric" ? "imperial" : "metric"))}
               title={uiText(units === "metric" ? "Metric display (m² / m) — click for imperial. Calibrate in meters; 1:50-style scales in the list. Display only — stored takeoffs never change." : "Imperial display (SF / LF) — click for metric (m² / m, calibrate in meters, 1:50-style scales). Display only — stored takeoffs never change.")}
-              style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
+                  style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
               {uiText(units === "metric" ? tr("m") : tr("ft"))}
-            </button>
-            <ToolMenu
+                </button>
+                <ToolMenu
               title={uiText(scaleTitle)}
-              onOpenChange={onScaleMenuDepth}
+                  onOpenChange={onScaleMenuDepth}
               face={<span data-tour="scale">{uiText(scaleFace)}</span>}
-              faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }}
+                  faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }}
               menuStyle={{ minWidth: 290, maxHeight: "min(600px, 70vh)", overflowY: "auto" }}
-              items={scaleItems}
-            />
-          </>
-        )}
-        <button type="button" ref={workspaceLayout ? undefined : workButtonRef} aria-expanded={agentOpen} onClick={() => setAgentOpen((v) => !v)}
+                  items={scaleItems}
+                />
+              </>
+            )}
+            <button type="button" ref={workspaceLayout ? undefined : workButtonRef} aria-expanded={agentOpen} onClick={() => setAgentOpen((v) => !v)}
           title={uiText("Work and review — measurements, provenance, and agent proposals")}
-          style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
+              style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
           <ScanStar size={12} working={agentRunning} style={{ marginRight: 6, marginTop: -2 }} />{tr("Work")}{uiText(agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : "")}
-        </button>
+            </button>
         <button onClick={openEstimate} disabled={!conditions.length} title={uiText("Price the takeoff — material and labor per unit, markups, Excel.")}
           style={{ padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: conditions.length ? "var(--ink)" : "var(--text-faint)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>{tr("Estimate")}</button>
         <button data-tour="report" onClick={() => setShowReport(true)} disabled={!conditions.length} title={uiText("Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export.")}
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>{tr("Report")}</button>
-        {/* ⋯ overflow — rarely-used project controls, so the row never wraps
+            {/* ⋯ overflow — rarely-used project controls, so the row never wraps
             and nothing shifts position mid-work (issue #61's contract). */}
-        <ToolMenu
+            <ToolMenu
           title={tr("More — guide, appearance, schedule import, project moves")}
-          onOpenChange={onMenuDepth}
-          face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
-          items={[
-            { id: "premium-plans", label: tr("Premium plans — pricing on kentucky-ai.com"), highlight: true, onSelect: openPremiumPricing },
-            { id: "workspace-preview", label: workspaceLayout ? tr("Classic layout") : tr("Premium layout — compact controls"), onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
-            { id: "guide", label: tr("How OpenTakeoff works"), shortcut: "?", onSelect: () => setGuideOpen(true) },
-            { id: "tour", label: tr("Guided first takeoff"), onSelect: startTour },
-            { id: "connect-ai", label: tr("Connect your AI"), onSelect: () => setConnectOpen(true) },
-            { id: "theme", label: theme === "dark" ? tr("Light chrome") : tr("Dark chrome"), onSelect: toggleTheme },
-            "divider",
+              onOpenChange={onMenuDepth}
+              face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
+              items={[
+                { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Premium layout — compact controls", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
+                { id: "guide", label: tr("How OpenTakeoff works"), shortcut: "?", onSelect: () => setGuideOpen(true) },
+                { id: "tour", label: tr("Guided first takeoff"), onSelect: startTour },
+                { id: "assistant", label: tr("Assistant — talk to your own AI here"), onSelect: openAssistant },
+                { id: "connect-ai", label: tr("Connect your AI"), onSelect: () => setConnectOpen(true) },
+                { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
+                "divider",
             { id: "schedule", icon: "rectTool", label: tr("Import from schedule"), active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
-            ...(cloudMode ? [
-              "divider",
+                ...(cloudMode ? [
+                  "divider",
               { id: "closeproj", label: tr("Close project"), onSelect: closeProject },
               ...(browseProjects ? [{ id: "projects", label: tr("Team projects"), onSelect: browseProjects }] : []),
-            ] : []),
-            ...(!cloudMode && googleUser && isGoogleConfigured() && projectHomeFolderId() ? [
-              "divider",
+                ] : []),
+                ...(!cloudMode && googleUser && isGoogleConfigured() && projectHomeFolderId() ? [
+                  "divider",
               { id: "browse", label: tr("Browse team projects"), onSelect: () => navigate("/projects") },
-            ] : []),
-          ]}
-        />
-        <PresenceChip bridge={store.syncBridge} />
+                ] : []),
+              ]}
+            />
+            <PresenceChip bridge={store.syncBridge} />
         <AccountChip note={cloudMode ? tr("Synced to Google Drive") : tr("Local workspace")} onOpenChange={onMenuDepth} />
-        </span>
-      </div>
+          </span>
+        </div>
       )}
 
       {/* quick-access condition palette — its own slim band under the toolbar
@@ -10687,35 +12356,35 @@ export default function TakeoffCanvas() {
 
       {/* open-sheet tabs — what you opened from the gallery; click to view,
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
-      {!focusMode && openTabs.length > 0 && (
+      {!focusMode && openTabs.length > 0 && !(workspaceLayout && openTabs.length <= 1 && !sheetGroup.length && !splitView) && (
         <div data-sheet-tabs style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: openTabs.length > MANY_TABS ? "nowrap" : "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", minWidth: 0 }}>
           <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)", flexShrink: 0 }}>{tr("Sheets")}</span>
           {openTabs.length > MANY_TABS && (
             <button type="button" onClick={() => scrollTabStrip(-1)} title={uiText("Scroll sheets left")} aria-label={uiText("Scroll sheets left")} style={{ flexShrink: 0, padding: "4px 5px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", display: "inline-flex" }}><Icon name="chevronLeft" size={12} /></button>
           )}
           <div ref={tabStripRef} data-sheet-tab-strip style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: openTabs.length > MANY_TABS ? "nowrap" : "wrap", overflowX: openTabs.length > MANY_TABS ? "auto" : "visible", minWidth: 0, flex: openTabs.length > MANY_TABS ? 1 : "0 1 auto", scrollbarWidth: "none", overscrollBehaviorX: "contain" }}>
-          {openTabs.map((k) => {
-            const inGroup = sheetGroup.includes(k);
-            const on = sheetGroup.length ? inGroup : k === sheetKey;
-            const lbl = tabLabel(k);
-            return (
-              <span key={k} data-sheet-tab={on ? "active" : "idle"} draggable={!isStitchKey(k)}
-                onMouseEnter={() => armSheetDrag(k)}
-                onDragStart={(e) => onSheetTabDragStart(k, e)}
-                // dragend fires exactly once per drag gesture regardless of how
-                // it ended (a real drop, an Escape-cancel, or releasing outside
-                // any valid target) — the one reliable place to guarantee the
-                // overlay never survives a cancelled drag (onDrop only clears
-                // dragZone on an actual drop).
-                onDragEnd={() => setDragZone(null)}
+            {openTabs.map((k) => {
+              const inGroup = sheetGroup.includes(k);
+              const on = sheetGroup.length ? inGroup : k === sheetKey;
+              const lbl = tabLabel(k);
+              return (
+                <span key={k} data-sheet-tab={on ? "active" : "idle"} draggable={!isStitchKey(k)}
+                  onMouseEnter={() => armSheetDrag(k)}
+                  onDragStart={(e) => onSheetTabDragStart(k, e)}
+                  // dragend fires exactly once per drag gesture regardless of how
+                  // it ended (a real drop, an Escape-cancel, or releasing outside
+                  // any valid target) — the one reliable place to guarantee the
+                  // overlay never survives a cancelled drag (onDrop only clears
+                  // dragZone on an actual drop).
+                  onDragEnd={() => setDragZone(null)}
                 title={uiText(!isStitchKey(k) ? "Drag this tab to a screen edge to split, or out of the app to export the marked sheet" : undefined)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
                 <button onClick={() => goToSheet(k)} title={uiText(k)} style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 11.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140, padding: 0 }}>{uiText(lbl)}</button>
                 <button onClick={() => toggleInGroup(k)} title={uiText(inGroup ? "Remove from side-by-side" : "Side-by-side with the current sheet")} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
                 <button onClick={() => closeTab(k)} title={uiText("Close tab")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}><Icon name="close" size={10} /></button>
-              </span>
-            );
-          })}
+                </span>
+              );
+            })}
           </div>
           {openTabs.length > MANY_TABS && (
             <button type="button" onClick={() => scrollTabStrip(1)} title={uiText("Scroll sheets right")} aria-label={uiText("Scroll sheets right")} style={{ flexShrink: 0, padding: "4px 5px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", display: "inline-flex" }}><Icon name="chevronRight" size={12} /></button>
@@ -10819,29 +12488,98 @@ export default function TakeoffCanvas() {
 
       {/* canvas + issue desk */}
       <div data-canvas-workspace style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" /* anchors the narrow-screen panel overlay */ }}>
-       {workspaceLayout && <><WorkspaceNavigator open={!focusMode && workspaceNavigationOpen} items={workspaceSheets} current={treeCurrent} namer={namer} countKnown={countKnown} hold={ocrHold} onSelect={(key) => openSheets([key], false)} onClose={() => setWorkspaceNavigationOpen(false)} onGallery={() => { setView("gallery"); setWorkspaceNavigationOpen(false); }} dockSide={workspaceArrangement.sheets} width={workspaceArrangement.sheetWidth} dockHandle={workspaceDockHandle("sheets", tr("Sheets"))} /><DockTargets dragging={workspaceDragging} /></>}
-       {/* tool rail — machined faces grouped by MCP module (the concept shell).
+        {workspaceLayout && <><WorkspaceNavigator open={!focusMode && workspaceNavigationOpen} items={workspaceSheets} current={treeCurrent} namer={namer} countKnown={countKnown} hold={ocrHold} onSelect={(key) => openSheets([key], false)} onClose={() => setWorkspaceNavigationOpen(false)} onGallery={() => { setView("gallery"); setWorkspaceNavigationOpen(false); }} dockSide={workspaceArrangement.sheets} width={workspaceArrangement.sheetWidth} dockHandle={workspaceDockHandle("sheets", tr("Sheets"))} onReorderPages={(f, fromP, toP) => reorderDocumentPages(f, fromP, toP)} onRotatePage={(k, a) => rotateCurrentSheet(a, k)} onDeletePage={(k) => deleteCurrentSheet(k)} /><DockTargets dragging={workspaceDragging} /></>}
+        {/* tool rail — machined faces grouped by MCP module (the concept shell).
            Individual tiles replace deck 2's Measure/Cut Out menus; Markup keeps
            its variety flyout on one tile (five markup kinds don't earn five
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
-       {view === "canvas" && (
-       <nav data-tool-rail data-dock-side={workspaceLayout ? workspaceArrangement.tools : undefined} role="toolbar" aria-label={tr("Tools")} style={{ order: workspaceLayout ? workspaceArrangement.tools === "right" ? 30 : -30 : undefined, width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
-         {uiText(workspaceDockHandle("tools", tr("Tools")))}
-         {uiText(railLabel(tr("SEL")))}
-         {uiText(railTile("select", "select", tr("Select — pick a takeoff, drag points; drag open canvas to pan"), "V"))}
-         {uiText(railLabel(tr("MEAS")))}
-         {uiText(measureTools.filter((t) => t.id !== "oneclick" || oneClickEnabled()).map((t) => railTile(t.id, t.icon, t.label, t.shortcut)))}
-         {uiText(railLabel(tr("CUT")))}
-         {uiText(cutTools.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" })))}
-         {uiText(railLabel(tr("MARK")))}
+       {view === "canvas" && dockBottom && (() => {
+         // Premium's dock: the five everyday tools and Cut, then ⋯ for everything else, then history
+         const toggleLeft = (id) => setLeftTab((t) => (t === id ? null : id));
+         const trayGroups = [
+           [tr("Measure"), [
+             ...(oneClickEnabled() ? [{ id: "oneclick", icon: "oneClick", label: tr("One-click area — click inside a room"), short: tr("One-click"), shortcut: "O", active: tool === "oneclick", onSelect: () => setTool("oneclick") }] : []),
+             { id: "surface", icon: "surface", label: tr("Surface (wall) area"), short: tr("Wall area"), shortcut: "S", active: tool === "surface", onSelect: () => setTool("surface") },
+             { id: "deduct-rect", icon: "deductRect", label: tr("Rectangle cutout"), short: tr("Rect cutout"), shortcut: "⇧D", active: tool === "deduct-rect", onSelect: () => setTool("deduct-rect") },
+           ]],
+           [tr("Check & find"), [
+             { id: "zone", icon: "zone", label: tr("Zone check — trace a region to read every condition's quantities inside it. Nothing is saved."), short: tr("Zone check"), active: tool === "zone", onSelect: () => setTool((t) => (t === "zone" ? "select" : "zone")) },
+             { id: "symbol", icon: "symbol", label: tr("Symbol sweep — box one example; every match is counted"), short: tr("Symbol sweep"), shortcut: "Y", active: tool === "symbol", onSelect: () => setTool("symbol") },
+             { id: "textcopy", icon: "copyText", label: tr("Copy text — click two corners around a note or schedule"), short: tr("Copy text"), active: tool === "textcopy", onSelect: armCopyText },
+           ]],
+           [tr("Mark up"), [
+             ...annotations.items.map((it) => ({ ...it, short: { "annot-sweep": "Mark all", "annot-selection": "Select notes", "annot-cloud": "Cloud" }[it.id] })),
+             ...MARKUP_TOOLS.filter((t) => !["highlighter", "cloud", "callout"].includes(t.id)).map((t) => ({ id: t.id, icon: t.icon, label: t.label, short: { text: "Text", highlight: "Box", dimension: "Dimension", image: "Image" }[t.id], shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
+             { id: "approve", icon: "approve", label: tr("Approval stamp — your sign-off that a takeoff was checked. Human-only."), short: tr("Approve"), active: tool === "approve", onSelect: () => setTool((t) => (t === "approve" ? "select" : "approve")) },
+             { id: "markup-list", icon: "document", label: tr("Markup list — existing clouds, callouts, and notes"), short: tr("Markup list"), count: markupCount, active: leftTab === "markup", onSelect: () => toggleLeft("markup") },
+             { id: "stamps", icon: "stamp", label: tr("Stamps — reusable annotations dropped click-to-place"), short: tr("Stamp library"), count: stampLib.stamps.length, active: leftTab === "stamp", onSelect: () => toggleLeft("stamp") },
+             { id: "rfis", icon: "rfi", label: tr("RFI register — raise, track, and export Requests For Information"), short: tr("Issues"), count: rfis.length, active: leftTab === "rfi", onSelect: () => toggleLeft("rfi") },
+           ]],
+           [tr("Scale"), [
+             { id: "calibrate", icon: "calibrate", label: tr("Calibrate — click two points of a known dimension"), short: tr("Calibrate"), active: tool === "calibrate", onSelect: () => setTool("calibrate") },
+           ]],
+           [tr("Aids"), [
+             { id: "snap", icon: "snap", label: tr("Snap to plan lines and corners (beta)"), short: tr("Snap"), active: snapOn, stayOpen: true, onSelect: () => setSnapOn((v) => !v) },
+             { id: "angle", icon: "angle", label: tr("45° / 90° angle guides — ⇧ locks"), short: tr("45° / 90°"), active: angleOn, stayOpen: true, onSelect: () => setAngleOn((v) => !v) },
+           ]],
+         ];
+         const trayArmed = trayGroups.some(([, items]) => items.some((it) => it.active && !["snap", "angle", "markup-list", "stamps", "rfis"].includes(it.id)));
+         const sep = (k) => <span key={k} aria-hidden="true" style={{ width: 1, height: 24, background: "var(--ink-faint)", margin: "0 5px", flexShrink: 0 }} />;
+         return (
+           <div ref={dockWrapRef} data-dock-wrap onPointerDown={(e) => e.stopPropagation()}
+             style={{ position: "absolute", left: 0, right: 0, bottom: 14, marginInline: "auto", width: "max-content", maxWidth: "calc(100% - 28px)", zIndex: 25 }}>
+             {trayOpen && <ToolTray groups={trayGroups} onPicked={() => setTrayOpen(false)} />}
+             {tool === "highlighter" && (
+               <div style={{ position: "absolute", left: 0, bottom: "calc(100% + 10px)", zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", gap: 6 }} title={tr("Ink")}>
+                 {HL_INKS.map((c) => <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))} aria-label={uiText(`Ink ${c}`)} style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+               </div>
+             )}
+             <nav data-tool-rail data-dock-side="bottom" role="toolbar" aria-label={tr("Tools")}
+               style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 3, padding: "6px 8px", border: "1px solid var(--ink-faint)", borderRadius: 12, background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", overflowX: "auto" }}>
+               {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
+               {sep("s1")}
+               {railTile("area", "area", "Area", "A")}
+               {railTile("rect", "rectTool", "Rectangle", "R")}
+               {railTile("linear", "linear", "Linear", "L")}
+               {railTile("count", "count", "Count", "C")}
+               {railTile("cut", "scissors", "Cut — polygon cutout (D); click again for a rectangle cutout (⇧D)", "D",
+                 () => setTool((t) => (t === "deduct" ? "deduct-rect" : "deduct")), { armed: tool === "deduct" || tool === "deduct-rect", tint: tool === "deduct" || tool === "deduct-rect" ? "var(--c-danger)" : undefined })}
+               {sep("s2")}
+               <button type="button" onClick={() => setTrayOpen((v) => !v)} aria-expanded={trayOpen} aria-controls="ot-tool-tray" aria-label={tr("More tools")}
+                 title={tr("More tools — measure, check & find, mark up, scale and aids")}
+                 style={{ position: "relative", width: "var(--ctl-l)", height: "var(--ctl-l)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-1)", cursor: "pointer",
+                   border: `1px solid ${trayOpen || trayArmed ? "color-mix(in srgb, var(--cobalt) 45%, transparent)" : "transparent"}`, background: trayOpen ? "var(--tint-select)" : "transparent", color: trayOpen || trayArmed ? "var(--cobalt)" : "var(--ink)" }}>
+                 <Icon name="more" size={18} />
+               </button>
+               {sep("s3")}
+               {railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false })}
+               {railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false })}
+             </nav>
+           </div>
+         );
+       })()}
+       {view === "canvas" && !dockBottom && (
+       <nav data-tool-rail data-dock-side={workspaceLayout ? workspaceArrangement.tools : undefined} role="toolbar" aria-label={tr("Tools")}
+         onPointerDown={dockBottom ? (e) => e.stopPropagation() : undefined}
+         style={dockBottom
+           ? { position: "absolute", left: 0, right: 0, bottom: 14, marginInline: "auto", width: "max-content", zIndex: 25, display: "flex", flexDirection: "row", alignItems: "center", gap: 2, padding: "4px 6px", border: "1px solid var(--ink-faint)", borderRadius: 10, background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", maxWidth: "calc(100% - 28px)", overflowX: "auto", overflowY: "visible" }
+           : { order: workspaceLayout ? workspaceArrangement.tools === "right" ? 30 : -30 : undefined, width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+         {!dockBottom && workspaceDockHandle("tools", "Tools")}
+         {railLabel("SEL")}
+         {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
+         {railLabel("MEAS")}
+         {MEASURE_TOOLS.filter((t) => t.id !== "oneclick" || oneClickEnabled()).map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
+         {railLabel("CUT")}
+         {CUT_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
+         {railLabel("MARK")}
          <span ref={(el) => { if (el) markTileTopRef.current = el.getBoundingClientRect().top; }} style={{ position: "relative", display: "inline-flex" }}>
            <ToolMenu
              title={tr("Create annotation — cloud, callout, text, highlight, or dimension")}
              active={MARKUP_IDS.includes(tool)}
              onOpenChange={onMenuDepth}
-             flyout="right"
-             face={<span className="ot-rail-annotation"><Icon name="markup" size={17} />{language === "ru" && <span>Пометки</span>}</span>}
+             flyout={dockBottom ? "up" : "right"}
+             face={<span className="ot-rail-annotation"><Icon name="markup" size={17} />{language === "ru" && !dockBottom && <span>Пометки</span>}</span>}
              items={[
                { section: tr("Markup — notes on the plan, never measured") },
                ...markupTools.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
@@ -10850,7 +12588,7 @@ export default function TakeoffCanvas() {
            {/* highlighter style popover — fixed beside the rail while armed
                (fixed, not absolute: the rail's scroll box would clip it) */}
            {tool === "highlighter" && (
-             <div style={{ position: "fixed", left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+             <div style={{ position: dockBottom ? "absolute" : "fixed", ...(dockBottom ? { left: 0, bottom: "calc(100% + 10px)" } : { left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200 }), zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
                <div style={{ display: "flex", gap: 6 }} title={uiText("Ink")}>
                  {HL_INKS.map((c) => (
                    <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
@@ -10878,340 +12616,343 @@ export default function TakeoffCanvas() {
          {/* Approval stamp — ink over pencil. Human-only by design: this tile
              is the ONLY way an estimator seal is minted (no MCP tool, no agent
              path), so the mark means a person looked. */}
-         {uiText(railTile("approve", "approve", tr("Approval stamp — the estimator's ink. Click a committed takeoff to approve it, or empty plan to approve the sheet; click a seal to lift it. ⌘Z undoes. Human-only."), null,
-           () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" }))}
-         {uiText(railLabel(tr("READ")))}
-         {uiText(railTile("textcopy", "copyText", tr("Copy text — click two corners around a note or schedule; its text goes on your clipboard"), null, armCopyText))}
-         {uiText(railLabel(tr("CAL")))}
-         {uiText(railTile("calibrate", "calibrate", tr("Calibrate — click two points of a known dimension"), null))}
+         {railTile("approve", "approve", "Approval stamp — the estimator's ink. Click a committed takeoff to approve it, or empty plan to approve the sheet; click a seal to lift it. ⌘Z undoes. Human-only.", null,
+           () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
+         {railLabel("READ")}
+         {railTile("textcopy", "copyText", "Copy text — click two corners around a note or schedule; its text goes on your clipboard", null, armCopyText)}
+         {railLabel("CAL")}
+         {railTile("calibrate", "calibrate", "Calibrate — click two points of a known dimension", null)}
+         {dockBottom && railLabel("HIST")}
+         {dockBottom && railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false })}
+         {dockBottom && railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false })}
        </nav>
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
            canvas (a flex sibling), mirroring the docked Takeoffs panel on the right. */}
-       {leftTab && (
-         <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
-           {/* tab strip */}
-           <div style={{ display: "flex", alignItems: "stretch", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
+        {leftTab && (
+          <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
+            {/* tab strip */}
+            <div style={{ display: "flex", alignItems: "stretch", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
              {[{ id: "markup", label: uiText("Markups"), n: markupCount }, { id: "stamp", label: uiText("Stamps"), n: stampLib.stamps.length }, { id: "rfi", label: uiText("RFIs"), n: rfis.length }].map((t) => (
                <button key={t.id} onClick={() => setLeftTab(t.id)} title={uiText(t.label)}
-                 style={{ flex: 1, padding: "9px 6px", border: "none", borderBottom: leftTab === t.id ? "2px solid var(--accent-contrast)" : "2px solid transparent", background: leftTab === t.id ? "rgba(255,255,255,.18)" : "transparent", color: "var(--accent-contrast)", cursor: "pointer", fontWeight: leftTab === t.id ? 700 : 500, fontSize: 12 }}>
+                  style={{ flex: 1, padding: "9px 6px", border: "none", borderBottom: leftTab === t.id ? "2px solid var(--accent-contrast)" : "2px solid transparent", background: leftTab === t.id ? "rgba(255,255,255,.18)" : "transparent", color: "var(--accent-contrast)", cursor: "pointer", fontWeight: leftTab === t.id ? 700 : 500, fontSize: 12 }}>
                  {uiText(t.label)}{uiText(t.n ? ` · ${t.n}` : "")}
-               </button>
-             ))}
+                </button>
+              ))}
              <button onClick={() => setLeftTab(null)} title={uiText("Close panel")} style={{ padding: "0 12px", border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
-           </div>
-           {/* body of the active tab */}
-           <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-             {leftTab === "markup" && (
-               <div>
-                 {/* layer show/hide — hides the on-canvas markup layer AND its hit-testing
+            </div>
+            {/* body of the active tab */}
+            <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+              {leftTab === "markup" && (
+                <div>
+                  {/* layer show/hide — hides the on-canvas markup layer AND its hit-testing
                      (can't select/delete/fly-to an invisible markup); orthogonal to the
                      marked-set export, which still includes markups. */}
-                 <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
-                   <button
-                     onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
+                    <button
+                      onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
                      title={uiText(showMarkups ? "Hide the markup layer on the canvas" : "Show the markup layer on the canvas")}
-                     style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
+                      style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
                      {uiText(showMarkups ? "Hide layer" : "Show layer")}
-                   </button>
-                 </div>
-                 <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
+                    </button>
+                  </div>
+                  <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
                    {uiText("Open ")}<b>{uiText("Create annotation")}</b> {uiText("in the drawing toolbar to choose a cloud, highlight, callout, text note, or dimension, then click the plan to annotate it. ")}<b>{uiText("🖼 Image")}</b> {uiText("marquees a region (two clicks) — or use ")}<b>{uiText("Upload image…")}</b> {uiText("in Captures below.")}</div>
-                 {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").length === 0 && (
-                   <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>
+                  {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").length === 0 && (
+                    <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>
                      {uiText("No markups ")}{uiText(groupKeys.length > 1 ? "on these sheets" : "on this sheet")} {uiText("yet.")}<div style={{ marginTop: 4, fontSize: 11 }}>{uiText("Images now live in ")}<b>{uiText("Captures")}</b> {uiText("below.")}</div>
-                   </div>
-                 )}
-                 {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").map((m) => (
-                   <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
-                     {/* the header line selects + flies to the markup (parity with the RFI
+                    </div>
+                  )}
+                  {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").map((m) => (
+                    <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
+                      {/* the header line selects + flies to the markup (parity with the RFI
                          register's onFlyTo) — the inner controls stopPropagation so only the
                          label area triggers it, never edit/delete. */}
                      <div onClick={() => flyToMarkup(m)} title={uiText("Select and center this markup")} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--cobalt)", textTransform: "uppercase" }}>{uiText(m.type)}</span>
-                       {/* inline edit — the panel's fallback for the canvas overlay, since a
+                        {/* inline edit — the panel's fallback for the canvas overlay, since a
                            markup here may be off-screen or on another sheet (no click point).
                            Enter/blur commit, Esc cancels; INPUT is guarded from the global keys. */}
-                       {panelEditId === m.id ? (
-                         <input name="markup-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
-                           onClick={(e) => e.stopPropagation()}
-                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
-                           onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
-                           style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
-                       ) : (
-                         (() => {
-                           // shown resolved ({{qty}} → "5 EA", #474); the edit box keeps the template
-                           const rm = resolveMarkup(m, noteQtyLabels);
-                           const warn = rm.unresolved.length > 0;
+                        {panelEditId === m.id ? (
+                          <input name="markup-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
+                            onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
+                            style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
+                        ) : (
+                          (() => {
+                            // shown resolved ({{qty}} → "5 EA", #474); the edit box keeps the template
+                            const rm = resolveMarkup(m, noteQtyLabels);
+                            const warn = rm.unresolved.length > 0;
                            return <span title={uiText(warn ? `Can't fill ${rm.unresolved.join(", ")}: link this note to a condition that has a quantity` : (rm.m !== m ? m.text : undefined))} style={{ flex: 1, color: warn ? "var(--c-danger)" : "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>{uiText("(vector symbol)")}</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", rm.m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>{uiText("(no text)")}</em>)}</span>;
-                         })()
-                       )}
+                          })()
+                        )}
                        {m.type !== "svg" && <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title={uiText("Edit text")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
                        <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title={uiText("Delete markup")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
-                     </div>
-                     {/* appearance — per-markup color (reuse PALETTE) + line style; both
+                      </div>
+                      {/* appearance — per-markup color (reuse PALETTE) + line style; both
                          additive: unset color falls back to the cobalt(linked)/amber default,
                          unset style to solid. The RFI ⬢/number badge stays cobalt regardless. */}
-                     <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7, flexWrap: "wrap" }}>
                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginRight: 2 }}>{uiText("Color")}</span>
                        <button title={uiText("Auto (linkage color)")} onClick={() => updateMarkup(m.id, { color: "" })} style={{ width: 26, height: 15, borderRadius: 4, background: "var(--paper-bright)", border: !m.color ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 8.5, lineHeight: "11px", color: "var(--ink-muted)" }}>{uiText("auto")}</button>
                        {PALETTE.map((c) => <button key={c} title={uiText(c)} onClick={() => updateMarkup(m.id, { color: c })} style={{ width: 15, height: 15, borderRadius: 4, background: c, border: m.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
                        <select name="markup-line-style" value={m.line_style || "solid"} onChange={(e) => updateMarkup(m.id, { line_style: e.target.value })} title={uiText("Line style")} style={{ marginLeft: 4, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{uiText(LINE_STYLES[id].label)}</option>)}
-                       </select>
-                       {/* line weight — a multiplier over the element's base stroke width (default
+                        </select>
+                        {/* line weight — a multiplier over the element's base stroke width (default
                            ×1, clamped 0.5–3); additive, absent = ×1 so legacy markups are unchanged */}
                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }}>{uiText("Weight")}</span>
                        <select name="markup-weight" value={String(snapWeight(m.weight))} onChange={(e) => updateMarkup(m.id, { weight: Number(e.target.value) })} title={uiText("Line weight (× base)")} style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {WEIGHT_STEPS.map((wv) => <option key={wv} value={wv}>{uiText(wv)}×</option>)}
-                       </select>
-                       {/* revision-delta △n — clouds only; blank clears it (no delta drawn) */}
-                       {m.type === "cloud" && (
-                         <>
+                        </select>
+                        {/* revision-delta △n — clouds only; blank clears it (no delta drawn) */}
+                        {m.type === "cloud" && (
+                          <>
                            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }} title={uiText("Revision-delta number (△) drawn at a cloud corner")}>{uiText("Rev △")}</span>
                            <input name="markup-rev" type="number" min="0" step="1" value={Number.isFinite(m.rev) ? m.rev : ""} placeholder={uiText("—")}
-                             onChange={(e) => { const raw = e.target.value; updateMarkup(m.id, { rev: raw === "" ? undefined : Math.max(0, Math.floor(Number(raw) || 0)) }); }}
+                              onChange={(e) => { const raw = e.target.value; updateMarkup(m.id, { rev: raw === "" ? undefined : Math.max(0, Math.floor(Number(raw) || 0)) }); }}
                              title={uiText("Revision number for the △ delta (blank = none)")}
-                             style={{ width: 40, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }} />
-                         </>
-                       )}
-                     </div>
-                     {/* Condition link — which scope this annotation is ABOUT.
+                              style={{ width: 40, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }} />
+                          </>
+                        )}
+                      </div>
+                      {/* Condition link — which scope this annotation is ABOUT.
                          Same one-to-many shape as the RFI link below it. */}
-                     {(() => {
-                       const lc = m.condition_id ? condById[m.condition_id] : null;
-                       const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
-                       return (
-                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                           {lc ? (
-                             <>
+                      {(() => {
+                        const lc = m.condition_id ? condById[m.condition_id] : null;
+                        const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                            {lc ? (
+                              <>
                                <span title={uiText(`Annotation is about ${lc.finish_tag}`)}
-                                 style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
-                                 <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
+                                  <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
                                  {finishLabel(lc.finish_tag)}
-                               </span>
+                                </span>
                                <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={uiText("Make this the active condition")}>{uiText("Select")}</button>
                                <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={uiText("Detach this annotation from its condition")}>{uiText("Detach")}</button>
-                             </>
-                           ) : conditions.length > 0 && (
-                             <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
+                              </>
+                            ) : conditions.length > 0 && (
+                              <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
                                title={uiText("Attach this annotation to a condition")} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
                                <option value="">{uiText("Attach to condition…")}</option>
                                {conditions.map((c) => <option key={c.id} value={c.id}>{finishLabel(c.finish_tag)}</option>)}
-                             </select>
-                           )}
-                         </div>
-                       );
-                     })()}
-                     {/* RFI controls — raise a fresh RFI, link an existing one, or unlink */}
-                     {(() => {
-                       const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
-                       const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
-                       return (
-                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                           {linked ? (
-                             <>
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* RFI controls — raise a fresh RFI, link an existing one, or unlink */}
+                      {(() => {
+                        const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
+                        const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                            {linked ? (
+                              <>
                                <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, color: "var(--cobalt)" }}>⬢ {uiText(String(linked.number ?? ""))}</span>
                                <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={uiText("Open the RFI register")}>{uiText("Open")}</button>
                                <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={uiText("Unlink this markup from its RFI")}>{uiText("Unlink")}</button>
-                             </>
-                           ) : (
-                             <>
+                              </>
+                            ) : (
+                              <>
                                <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title={uiText("Create a new RFI from this markup")}>{uiText("Raise RFI")}</button>
-                               {rfis.length > 0 && (
-                                 <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
+                                {rfis.length > 0 && (
+                                  <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
                                    title={uiText("Link this markup to an existing RFI")} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
                                    <option value="">{uiText("Link existing…")}</option>
                                    {rfis.map((r) => <option key={r.id} value={r.id}>{uiText(r.number)}{uiText(r.subject ? ` · ${r.subject}` : "")}</option>)}
-                                 </select>
-                               )}
-                             </>
-                           )}
-                         </div>
-                       );
-                     })()}
-                   </div>
-                 ))}
-                 {/* Captures — a GLOBAL image-markup library, every sheet, NOT
+                                  </select>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ))}
+                  {/* Captures — a GLOBAL image-markup library, every sheet, NOT
                      filtered to the panels open right now (unlike the per-sheet
                      list above): that global-ness is the whole point of the
                      feature — find, re-place, trace, or caption any capture
                      regardless of which sheet is open. Uploads live here too
                      (no source fields, so ◎ and the caption toggle are hidden
                      — see isTraceable). */}
-                 <div style={{ borderTop: "2px solid var(--ink-faint)" }}>
-                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", gap: 8 }}>
+                  <div style={{ borderTop: "2px solid var(--ink-faint)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", gap: 8 }}>
                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{uiText("Captures")}</span>
-                     {/* hidden input reused by the Upload button — re-encoded through addImageFromFile */}
-                     <input name="markup-image-file" ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }}
-                       onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
-                     <button
-                       onClick={() => imageInputRef.current?.click()}
+                      {/* hidden input reused by the Upload button — re-encoded through addImageFromFile */}
+                      <input name="markup-image-file" ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
+                      <button
+                        onClick={() => imageInputRef.current?.click()}
                        title={uiText("Upload a raster image (PNG or JPEG) as a floating annotation on the current sheet")}
-                       style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
+                        style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
                        {uiText("Upload image…")}</button>
-                   </div>
-                   {/* always-on name search — mirrors the condQuery idiom
+                    </div>
+                    {/* always-on name search — mirrors the condQuery idiom
                        (TakeoffsPanel ~:718/763/1054-1056) */}
-                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
                      <input name="capture-filter" value={captureQuery} onChange={(e) => setCaptureQuery(e.target.value)} placeholder={uiText("filter captures…")}
-                       style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+                        style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
                      {captureQuery && <button onClick={() => setCaptureQuery("")} title={uiText("Clear the filter")} style={{ border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>×</button>}
-                   </div>
-                   {(() => {
-                     // one pass over `markups` for the image subset; the query
-                     // then narrows THAT (small) list instead of re-scanning
-                     // every markup a second time — filterCaptures's own
-                     // type==="image" filter is a no-op on an already-image-only input.
-                     const allCaptures = filterCaptures(markups, "");
-                     const captures = filterCaptures(allCaptures, captureQuery);
-                     if (allCaptures.length === 0) {
+                    </div>
+                    {(() => {
+                      // one pass over `markups` for the image subset; the query
+                      // then narrows THAT (small) list instead of re-scanning
+                      // every markup a second time — filterCaptures's own
+                      // type==="image" filter is a no-op on an already-image-only input.
+                      const allCaptures = filterCaptures(markups, "");
+                      const captures = filterCaptures(allCaptures, captureQuery);
+                      if (allCaptures.length === 0) {
                        return <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>{uiText("No captures yet. Marquee a region with 🖼 or use Upload image… above.")}</div>;
-                     }
-                     if (captures.length === 0) {
+                      }
+                      if (captures.length === 0) {
                        return <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>{uiText("No captures match “")}{uiText(captureQuery)}”.</div>;
-                     }
-                     return captures.map((m) => {
-                       // Captures-only gate for ◎ + the caption toggle — legacy
-                       // pre-slice-1 images and uploads both lack src_sheet_id.
-                       const traceable = isTraceable(m);
-                       return (
-                         <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
-                           {/* header line — thumb, name(✎), sheet badge, age,
+                      }
+                      return captures.map((m) => {
+                        // Captures-only gate for ◎ + the caption toggle — legacy
+                        // pre-slice-1 images and uploads both lack src_sheet_id.
+                        const traceable = isTraceable(m);
+                        return (
+                          <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
+                            {/* header line — thumb, name(✎), sheet badge, age,
                                Place, ◎ trace, caption toggle, delete. Mirrors the
                                per-sheet row's click-to-fly / stopPropagation
                                pattern above. */}
                            <div onClick={() => { if (m.reference_only) { setPinSelectedId(m.id); setPinsOpen(true); } else flyToMarkup(m); }} title={uiText(imageProvenance(m))} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexWrap: "wrap" }}>
-                             {(() => {
-                               const th = ensureThumb(m);
-                               return <span style={{ flex: "0 0 auto", width: 30, height: 30, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                              {(() => {
+                                const th = ensureThumb(m);
+                                return <span style={{ flex: "0 0 auto", width: 30, height: 30, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                                  {th ? <img src={th} alt={uiText("")} style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }} /> : <span style={{ fontSize: 14 }}>🖼</span>}
-                               </span>;
-                             })()}
-                             {panelEditId === m.id ? (
-                               <input name="capture-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
-                                 onClick={(e) => e.stopPropagation()}
-                                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
-                                 onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
-                                 style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
-                             ) : (
+                                </span>;
+                              })()}
+                              {panelEditId === m.id ? (
+                                <input name="capture-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
+                                  onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
+                                  style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
+                              ) : (
                                <span style={{ flex: "0 1 auto", minWidth: 0, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.text || <em style={{ color: "var(--ink-muted)" }}>{uiText("(no name)")}</em>}</span>
-                             )}
+                              )}
                              <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title={uiText("Edit name")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
-                             <span style={{ color: "var(--ink-faint)" }}>·</span>
+                              <span style={{ color: "var(--ink-faint)" }}>·</span>
                              <span title={uiText(`Currently on ${sheetBaseLabel(m.sheet_id)}`)} style={{ fontSize: 10.5, color: "var(--ink-muted)", padding: "1px 6px", border: "1px solid var(--ink-faint)", borderRadius: 4, background: "var(--paper-cream)", whiteSpace: "nowrap" }}>{uiText(sheetBaseLabel(m.sheet_id))}</span>
-                             {/* legacy/imported captures can predate created_at (see
+                              {/* legacy/imported captures can predate created_at (see
                                  imageProvenance's own guard on the same field) — a
                                  blank relativeAge must not leave a dangling "·" */}
-                             {(() => {
-                               const age = relativeAge(m.created_at, Date.now());
-                               return age ? (
-                                 <>
-                                   <span style={{ color: "var(--ink-faint)" }}>·</span>
+                              {(() => {
+                                const age = relativeAge(m.created_at, Date.now());
+                                return age ? (
+                                  <>
+                                    <span style={{ color: "var(--ink-faint)" }}>·</span>
                                    <span style={{ fontSize: 10.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }} title={uiText(absoluteUtc(m.created_at))}>{uiText(age)}</span>
-                                 </>
-                               ) : null;
-                             })()}
+                                  </>
+                                ) : null;
+                              })()}
                              <button onClick={(e) => { e.stopPropagation(); setPinSelectedId(m.id); setPinsOpen(true); }} title={uiText("Keep this capture beside your takeoff while changing sheets")}>{uiText("Pin")}</button>
                              {!m.reference_only && (<button onClick={(e) => { e.stopPropagation(); beginPlace(m); }} title={uiText(panelKeySet.has(m.sheet_id) ? "Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" : "Place this image on the current sheet — it follows the cursor until you click to drop it")} style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>{uiText("Place")}</button>)}
 
-                             {traceable && (
+                              {traceable && (
                                <button onClick={(e) => { e.stopPropagation(); traceSource(m); }} title={uiText("Jump to the source sheet and flash the captured region")} style={{ border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px", whiteSpace: "nowrap" }}>
                                  {uiText(traceLabel(m.src_sheet_id, m.sheet_id, sheetBaseLabel(m.src_sheet_id)))}
-                               </button>
-                             )}
-                             {traceable && (
-                               <button onClick={(e) => { e.stopPropagation(); updateMarkup(m.id, { source_label: !m.source_label }); }}
+                                </button>
+                              )}
+                              {traceable && (
+                                <button onClick={(e) => { e.stopPropagation(); updateMarkup(m.id, { source_label: !m.source_label }); }}
                                  title={uiText("Show/Hide the source caption on the image")}
-                                 style={{ padding: "2px 7px", border: `1px solid ${m.source_label ? "var(--cobalt)" : "var(--ink-faint)"}`, background: m.source_label ? "var(--cobalt)" : "transparent", color: m.source_label ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>
+                                  style={{ padding: "2px 7px", border: `1px solid ${m.source_label ? "var(--cobalt)" : "var(--ink-faint)"}`, background: m.source_label ? "var(--cobalt)" : "transparent", color: m.source_label ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>
                                  {uiText("caption")}</button>
-                             )}
+                              )}
                              <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title={uiText("Delete capture")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
-                           </div>
-                           {/* Condition link — identical block to the per-sheet row's
+                            </div>
+                            {/* Condition link — identical block to the per-sheet row's
                                (8211–8235 pre-slice-4); keys off `m` and works for any
                                markup type, captures included. */}
-                           {(() => {
-                             const lc = m.condition_id ? condById[m.condition_id] : null;
-                             const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
-                             return (
-                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                                 {lc ? (
-                                   <>
+                            {(() => {
+                              const lc = m.condition_id ? condById[m.condition_id] : null;
+                              const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
+                              return (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                                  {lc ? (
+                                    <>
                                      <span title={uiText(`Annotation is about ${lc.finish_tag}`)}
-                                       style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
-                                       <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
+                                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
+                                        <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
                                        {finishLabel(lc.finish_tag)}
-                                     </span>
+                                      </span>
                                      <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={uiText("Make this the active condition")}>{uiText("Select")}</button>
                                      <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={uiText("Detach this annotation from its condition")}>{uiText("Detach")}</button>
-                                   </>
-                                 ) : conditions.length > 0 && (
-                                   <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
+                                    </>
+                                  ) : conditions.length > 0 && (
+                                    <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
                                      title={uiText("Attach this annotation to a condition")} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
                                      <option value="">{uiText("Attach to condition…")}</option>
                                      {conditions.map((c) => <option key={c.id} value={c.id}>{finishLabel(c.finish_tag)}</option>)}
-                                   </select>
-                                 )}
-                               </div>
-                             );
-                           })()}
-                           {/* RFI controls — identical block to the per-sheet row's
+                                    </select>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                            {/* RFI controls — identical block to the per-sheet row's
                                (8237–8262 pre-slice-4). */}
-                           {(() => {
-                             const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
-                             const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
-                             return (
-                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                                 {linked ? (
-                                   <>
+                            {(() => {
+                              const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
+                              const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
+                              return (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                                  {linked ? (
+                                    <>
                                      <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, color: "var(--cobalt)" }}>⬢ {uiText(String(linked.number ?? ""))}</span>
                                      <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={uiText("Open the RFI register")}>{uiText("Open")}</button>
                                      <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={uiText("Unlink this markup from its RFI")}>{uiText("Unlink")}</button>
-                                   </>
-                                 ) : (
-                                   <>
+                                    </>
+                                  ) : (
+                                    <>
                                      <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title={uiText("Create a new RFI from this markup")}>{uiText("Raise RFI")}</button>
-                                     {rfis.length > 0 && (
-                                       <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
+                                      {rfis.length > 0 && (
+                                        <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
                                          title={uiText("Link this markup to an existing RFI")} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
                                          <option value="">{uiText("Link existing…")}</option>
                                          {rfis.map((r) => <option key={r.id} value={r.id}>{uiText(r.number)}{uiText(r.subject ? ` · ${r.subject}` : "")}</option>)}
-                                       </select>
-                                     )}
-                                   </>
-                                 )}
-                               </div>
-                             );
-                           })()}
-                         </div>
-                       );
-                     });
-                   })()}
-                 </div>
-               </div>
-             )}
-             {leftTab === "stamp" && (
-               <StampPanel
-                 docked
-                 library={stampLib} armedStamp={armedStamp}
-                 selectedMarkup={selectedMarkupId ? markups.find((m) => m.id === selectedMarkupId) : null}
-                 onArm={armStamp} onSaveSelected={saveMarkupAsStamp} onDelete={deleteStamp} onRename={renameStamp}
-                 onExport={exportStamps} onImport={importStamps} onImportSvg={importSvgStamp} onClose={() => setLeftTab(null)}
-               />
-             )}
-             {leftTab === "rfi" && (
-               <RfiPanel
-                 docked
-                 rfis={rfis} markups={markups}
-                 onUpdateRfi={updateRfi} onDeleteRfi={deleteRfi} onFlyTo={flyToMarkup}
-                 sheetLabel={(k) => tabLabel(k)} onClose={() => setLeftTab(null)}
-               />
-             )}
-           </div>
-         </div>
-       )}
-       {/* ALWAYS mounted — reference={null} is how "no split" renders (see
+                                        </select>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+              {leftTab === "stamp" && (
+                <StampPanel
+                  docked
+                  library={stampLib} armedStamp={armedStamp}
+                  selectedMarkup={selectedMarkupId ? markups.find((m) => m.id === selectedMarkupId) : null}
+                  onArm={armStamp} onSaveSelected={saveMarkupAsStamp} onDelete={deleteStamp} onRename={renameStamp}
+                  onExport={exportStamps} onImport={importStamps} onImportSvg={importSvgStamp} onClose={() => setLeftTab(null)}
+                />
+              )}
+              {leftTab === "rfi" && (
+                <RfiPanel
+                  docked
+                  rfis={rfis} markups={markups}
+                  onUpdateRfi={updateRfi} onDeleteRfi={deleteRfi} onFlyTo={flyToMarkup}
+                  sheetLabel={(k) => tabLabel(k)} onClose={() => setLeftTab(null)}
+                />
+              )}
+            </div>
+          </div>
+        )}
+        {/* ALWAYS mounted — reference={null} is how "no split" renders (see
            SplitLayout.jsx). This is what keeps primaryViewport's element type
            and tree position stable across every split toggle, so the primary
            canvas subtree never unmounts/remounts on enter/exit/flip/drag. */}
@@ -11240,39 +12981,42 @@ export default function TakeoffCanvas() {
            <ReferencePane refKey={effectiveRefKey} panelImg={refPanelImg} paintBase={paintReferenceBase} paintDetail={paintReferenceDetail} epoch={refEpoch}
              shapes={refStackedShapes} conditions={conditions} condById={condById} darkMode={darkMode} patId={patId}
              markups={refMarkups} rfis={rfis} noteQtyLabels={noteQtyLabels} sheetBaseLabel={sheetBaseLabel}
-             refSet={refSet} activeKey={rawRefKey} tabLabel={tabLabel} onSelectRef={selectRefTab} onRemoveRef={removeRefTab} onDropSheet={dropOntoReference} />
+             refSet={refSet} activeKey={rawRefKey} tabLabel={tabLabel} onSelectRef={selectRefTab} onRemoveRef={removeRefTab} onDropSheet={dropOntoReference}
+             overlay={doorSuiteOn && doorSchedKey && effectiveRefKey === doorSchedKey ? (img, sc) => doorRowBoxes(img, sc) : null}
+             focus={doorCompareOn ? doorRefFocus : null} />
          ) : null}
        />
-        {/* Agent panel — DOCKED right-rail sibling (reflows the canvas like the
-            Takeoffs panel). Honest empty state until the BYO-AI seam is
-            configured; otherwise the goal box, the streaming run log, and the
+        {/* Work and review panel — DOCKED right-rail sibling (reflows the canvas
+            like the Takeoffs panel). Its Agent tab is the chat window
+            (components/AgentChat): a connect state until the BYO-AI seam is
+            configured; otherwise the conversation, every tool step, and the
             per-proposal accept/reject desk. */}
-          <WorkspacePanel dockSide={workspaceLayout ? workspaceArrangement.work : undefined} width={workspaceLayout ? workspaceArrangement.workWidth : undefined} dockHandle={workspaceDockHandle("work", "Work")} open={agentOpen} shapes={shapes} conditions={condById} selectedId={selectedId}
-            sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
-            scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
-            proposalCount={agentProposals.length} onLocate={locateWork}
-            onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
-            onClose={() => { setAgentOpen(false); workButtonRef.current?.focus(); }} onReport={() => setShowReport(true)}>
-          <AgentPanel
-            embedded
+        <WorkspacePanel dockSide={workspaceLayout ? workspaceArrangement.work : undefined} width={workspaceLayout ? workspaceArrangement.workWidth : undefined} dockHandle={workspaceDockHandle("work", "Work")} open={agentOpen} shapes={shapes} conditions={condById} selectedId={selectedId}
+          sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
+          scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
+          proposalCount={agentProposals.length} onLocate={locateWork}
+          onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
+          onClose={() => { setAgentOpen(false); workButtonRef.current?.focus(); }} onReport={() => setShowReport(true)}>
+          <AgentChat
             configured={isAiConfigured()}
+            modelLabel={aiConfig().model}
             running={agentRunning}
-            log={agentLog}
+            turns={agentChat.turns}
             proposals={agentProposals}
             condById={condById}
             sheetLabel={(k) => tabLabel(k)}
-            units={units}
             fmtArea={(sf) => fa(sf)}
-            onRun={runAgent}
+            onSend={runAgent}
             onStop={stopAgent}
             onAccept={acceptAgentProposal}
             onReject={rejectAgentProposal}
             onAcceptAll={acceptAllVisibleAgentProposals}
             onRejectAll={rejectAllAgentProposals}
             onOpenSettings={() => setShowAiSettings(true)}
-            onClose={() => setAgentOpen(false)}
+            onOpenConnect={() => setConnectOpen(true)}
+            onClear={agentChat.clear}
           />
-          </WorkspacePanel>
+        </WorkspacePanel>
 
         {/* Roll panel (#136) — DOCKED right-rail sibling like the Agent panel:
             per-condition cut diagrams (to scale, numbered), drag-to-reorder with
@@ -11313,9 +13057,67 @@ export default function TakeoffCanvas() {
             exactly as it did as canvas state. Collapse/expand keeps the current
             transform — the stage is anchored top-left, so a re-fit would be a
             jarring jump. */}
+      {/* ── Doors suite panel — DOCKED in the layout row while the trade is Doors
+              (takes the Conditions dock's place, so the canvas and the reference
+              pane reflow around it instead of sitting under it) ── */}
+        {doorSuiteOn && (() => {
+          const rd = doorKey ? doorReads[doorKey] : null;
+          const reading = !rd || rd.status === "reading";
+          const found = doorKey ? doorFound[doorKey] : null;
+          const detect = {
+            on: doorDetectOn, gpu: doorDetect.gpu, cached: doorDetect.cached, load: doorDetect.load, progress: doorDetect.progress, error: doorDetect.error,
+            sheet: doorDetectOn && found ? found : null, canRun: !!(rd?.status === "done" && rd.doors.length),
+          };
+          const docsBusy = !doorDocs || doorDocs.status === "reading";
+          const status = rd?.status === "failed" ? { busy: true, text: `Couldn't read this sheet's doors: ${rd.error}` }
+            : reading ? { busy: true, text: "Reading the doors on this sheet…" }
+            : docsBusy ? { busy: false, docsBusy: true, note: "Reading the door schedule and the hardware spec in the loaded files…" }
+            : { busy: false, note: !doorDocs.schedule ? "No door schedule found in the loaded files: doors are counted from the plan alone." : !doorDocs.sets.length ? "No spec section 08 71 00 loaded: hardware sets come from the schedule. Drop the project manual PDF in to add their items." : null };
+          return (
+            <DoorsSuitePanel
+              sheetLabel={doorKey ? sheetBaseLabel(doorKey) : "this sheet"} status={status} view={doorView}
+              schedule={doorDocs?.schedule ? { ...doorDocs.schedule, label: sheetBaseLabel(doorDocs.schedule.key) } : null}
+              sets={doorDocs?.sets || []} setOrder={doorSetOrder} answers={doorAnswers}
+              sel={doorSel && doorSel.key === doorKey ? doorSel.i : null}
+              coach={doorCoach} onDismissCoach={() => { setDoorCoach(false); try { localStorage.setItem("opentakeoff_doors_coach", "seen"); } catch { /* private mode */ } }}
+              tab={doorTab} onTab={(t) => { setDoorTab(t); setDoorSel(null); }}
+              onAnswer={answerDoor} onUndo={undoDoor}
+              onSelect={(i) => { setDoorSel(i == null ? null : { key: doorKey, i }); if (i == null) setDoorTab("doors"); }}
+              onShowDoor={(i) => showDoor(i)} onShowRow={showScheduleRow} onShowElevation={showElevation}
+              onShowSet={(m) => { const o = doorView?.openings.find((x) => x.mark === m); if (o) showDoor(o.door); else showScheduleRow(m); }}
+              onAdd={addDoorsToEstimate} added={!!doorAnswers[`added:${doorKey}`]}
+              compareOn={doorCompareOn} canCompare={!!doorSchedKey} onCompare={toggleDoorCompare}
+              selMark={doorSelMark} hoverMark={doorHover} onHoverRow={setDoorHover} onPickRow={pickDoorRow}
+              placed={doorPlaced} checks={doorAnswers} onCheck={setDoorCheck} onNote={setDoorNote}
+              detect={detect} onToggleDetect={toggleDoorDetect}
+              onRetryDetect={() => { setDoorDetect((d) => ({ ...d, load: "idle", error: null })); if (doorKey) setDoorFound((prev) => { if (prev[doorKey]?.status !== "failed") return prev; const n = { ...prev }; delete n[doorKey]; return n; }); }}
+              onClose={() => pickViewTrade(ALL_TRADES)}
+            />
+          );
+        })()}
+        {!doorSuiteOn && workspaceLayout && !focusMode && (
+          <ConditionsDock
+            open={condDockOpen && !fullTableOpen} onClose={() => setCondDockOpen(false)}
+            sheetLabel={(() => { const l = tabLabel(treeCurrent || sheetKey); const m = /^\s*([A-Z]{1,3}-?\d{1,4}(?:\.\d{1,3})?[A-Z]?)\b/i.exec(l); return m ? m[1] : l; })()}
+            conditions={conditions} activeCond={activeCond} hiddenConds={hiddenConds} tradeHidden={tradeHidden} palette={palette}
+            viewTrade={viewTrade} allTrades={ALL_TRADES}
+            tradeLabel={viewTrade !== ALL_TRADES ? (suiteById(viewTrade)?.label || "This trade") : (suiteById(conditionTrade(aCond || {}))?.label || "This trade")}
+            onTradeThis={() => pickViewTrade(viewTrade !== ALL_TRADES ? viewTrade : (conditionTrade(aCond || {}) || ALL_TRADES))}
+            onTradeAll={() => pickViewTrade(ALL_TRADES)}
+            rowById={projRowById} units={units} conditionColumns={conditionColumns} rollByCond={rollByCond}
+            matLib={matLib} matLibById={matLibById}
+            onActivate={panelHandlers.onActivate} onAddCondition={panelHandlers.onAddCondition} onDeleteCondition={panelHandlers.onDeleteCondition}
+            onDuplicateCondition={panelHandlers.onDuplicateCondition} onUpdateCond={panelHandlers.onUpdateCond} onSetCondParam={panelHandlers.onSetCondParam} onAssignAttr={panelHandlers.onAssignAttr}
+            onToggleHidden={panelHandlers.onToggleHidden} onTogglePin={panelHandlers.onTogglePin} onApplyAssembly={panelHandlers.onApplyAssembly}
+            onAddMaterial={panelHandlers.onAddMaterial} onUpdateMaterial={panelHandlers.onUpdateMaterial} onRemoveMaterial={panelHandlers.onRemoveMaterial}
+            matFieldOverridden={panelHandlers.matFieldOverridden} onRevertMatField={panelHandlers.onRevertMatField}
+            onAttachLibMaterial={panelHandlers.onAttachLibMaterial} onPromoteMaterial={panelHandlers.onPromoteMaterial}
+            onFollowFamilyRow={panelHandlers.onFollowFamilyRow} onRestoreDroppedRow={panelHandlers.onRestoreDroppedRow}
+          />
+        )}
         <TakeoffsPanel
           dockSide={workspaceLayout ? workspaceArrangement.takeoffs : undefined} layoutLocked={workspaceLayout && workspaceArrangement.locked} dockHandle={workspaceDockHandle("takeoffs", "Takeoffs")}
-          open={takeoffsOpen}
+          open={workspaceLayout ? fullTableOpen : takeoffsOpen}
           width={panelW}
           overlay={isNarrow}
           multiSheet={groupKeys.length > 1}
@@ -11330,6 +13132,7 @@ export default function TakeoffCanvas() {
           templates={templates}
           palette={palette}
           hiddenConds={hiddenConds}
+          tradeHidden={tradeHidden} viewTradeLabel={viewTrade !== ALL_TRADES ? suiteById(viewTrade)?.label : null} onShowAllTrades={() => setViewTrade(ALL_TRADES)}
           rollByCond={rollByCond}
           transitionSources={transitionSources}
           matLib={matLib}
@@ -11349,7 +13152,6 @@ export default function TakeoffCanvas() {
       {(view === "gallery" || view === "picker") && (
         <PlanNavigator
           nameGen={namerGen} onSheetText={offerSheetText}
-          onPremium={openPremiumPricing}
           onStartTour={() => { startTour(); loadSampleForTour(); }}
           onConnect={() => setConnectOpen(true)}
           canClose={openTabs.length > 0}
@@ -11525,7 +13327,7 @@ export default function TakeoffCanvas() {
               {sweep.questions.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 150, overflowY: "auto" }}>
                   {sweep.questions.map((q, i) => (
-                    <button key={i} type="button" onClick={() => setSweep((s) => ({ ...s, qIndex: i }))}
+                    <button key={i} type="button" title="Show this spot on the sheet" onClick={() => { setSweep((s) => ({ ...s, qIndex: i })); centerOnSweepQuestion(sweep, i); }}
                       style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", fontFamily: "var(--f-body)", fontSize: "var(--fs-s)", textAlign: "left", background: i === sweep.qIndex ? "var(--tint-select)" : "transparent", border: `1px solid ${i === sweep.qIndex ? "var(--c-warning)" : "var(--ink-faint)"}`, color: q.state === "dismissed" ? "var(--text-faint)" : "var(--ink)", textDecoration: q.state === "dismissed" ? "line-through" : "none", cursor: "pointer" }}>
                       <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: q.state === "accepted" ? "var(--c-positive)" : q.state === "dismissed" ? "var(--text-faint)" : DS.symbol.question }}>{uiText(q.state === "accepted" ? "✓" : q.state === "dismissed" ? "×" : "?")}</span>
                       <span>{uiText(Math.round(q.score * 100))}%{uiText(q.label ? ` · ${q.label.label}` : "")}{uiText(q.readings > 1 ? ` · read ${q.readings} ways` : "")}</span>
@@ -11554,6 +13356,28 @@ export default function TakeoffCanvas() {
         <span ref={statusCoordRef} aria-hidden="true" style={{ minWidth: 150 }} />
         <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
         <span>{uiText(scaleFace)}</span>
+        <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
+        <label data-trade-picker="" style={{ display: "flex", alignItems: "center", gap: 6 }}
+          title={tr("The trade this canvas shows: other trades' conditions and shapes hide (the Report, estimate and exports keep everything), and new conditions are booked to it. Yours only; saved in this browser.")}>
+          <span style={{ opacity: 0.75 }}>{tr("Trade")}</span>
+          <select aria-label={tr("Trade view")} value={viewTrade} onChange={(e) => pickViewTrade(e.target.value)}
+            style={{ font: "inherit", color: "inherit", background: "transparent", border: "1px solid currentColor", borderRadius: 0, padding: "0 4px", cursor: "pointer" }}>
+            <option value={ALL_TRADES}>{tr("All trades")} ({conditions.length})</option>
+            {TRADE_SUITES.map((t) => <option key={t.id} value={t.id}>{tr(t.label)} ({tradeCountMap[t.id] || 0})</option>)}
+          </select>
+        </label>
+        {workspaceLayout && <>
+          <label data-label-picker="" style={{ display: "flex", alignItems: "center", gap: 6 }}
+            title={tr("Phase/area label: new takeoffs get it; with a shape selected (Select tool) it re-labels that shape. Manage the list in the Takeoffs table's Columns tab.")}>
+            <span style={{ opacity: 0.75 }}>{tr("Label")}</span>
+            <select aria-label={tr("Label")} value={tool === "select" && selectedId ? shapeLabelValue(shapes.find((sh) => sh.id === selectedId)) : (activeLabel || "")} onChange={(e) => activateLabel(e.target.value || null)}
+              style={{ font: "inherit", color: "inherit", background: "transparent", border: "1px solid currentColor", borderRadius: 0, padding: "0 4px", cursor: "pointer" }}>
+              <option value="">{tr("No label")}</option>
+              {shapeLabels.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
+          <span data-status-draft="" style={{ display: "inline-flex" }}>{draftMenu}</span>
+        </>}
         {commitMsg && (
           <span title={uiText(commitMsg)} style={{ marginLeft: 8, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
             {uiText(commitMsg)}
@@ -11582,6 +13406,8 @@ export default function TakeoffCanvas() {
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} onTour={startTour} onConnect={() => { setGuideOpen(false); setConnectOpen(true); }} />}
       {connectOpen && <ConnectAI onClose={() => setConnectOpen(false)} />}
+      <AssistantWindow open={assistantOpen} onOpen={openAssistant} onClose={() => setAssistantOpen(false)}
+        launcher={view === "canvas" && !showReport && !focusMode && !workspaceLayout} onConnectHelp={() => setConnectOpen(true)} />
       {companySetupOpen && <CompanySetup onClose={() => setCompanySetupOpen(false)} onSaved={() => setCompanyRev((r) => r + 1)} />}
       {tour && view === "canvas" && !focusMode && !guideOpen && !connectOpen && (
         <FirstTakeoffTour done={tour.done} step={currentStep(tour.done)} sheetOpen={tourSheetOpen}

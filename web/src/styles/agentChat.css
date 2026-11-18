@@ -1,0 +1,212 @@
+/* Agent chat (components/AgentChat.jsx) — the Agent tab of "Work and review".
+   Tokens only (styles/tokens.css), so it follows light / dark and the
+   workspace looks (graphite, HUD) with the cyan accent (--cobalt is #62d4dc
+   in every dark look). Every selector is scoped under .ac-panel so the
+   workspace panel's generic button rules don't leak in. */
+
+.ac-panel {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  background: var(--paper-bright); color: var(--ink);
+  font-family: var(--f-body); font-size: var(--fs-m);
+}
+.ac-panel button { font: inherit; color: inherit; }
+.ac-panel button:focus-visible, .ac-panel textarea:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* ── top bar: whose model, new chat, settings ─────────────────────────────── */
+.ac-panel .ac-bar {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--ink-faint); background: var(--paper-cream); min-height: 40px;
+}
+.ac-panel .ac-gap { flex: 1; }
+.ac-panel .ac-model {
+  display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.04em; color: var(--ink-secondary);
+}
+.ac-panel .ac-model code { font-family: inherit; color: var(--ink); }
+.ac-panel .ac-model-dot { width: 7px; height: 7px; flex-shrink: 0; background: var(--cobalt); box-shadow: var(--glow); }
+.ac-panel .ac-model-off .ac-model-dot { background: var(--ink-muted); box-shadow: none; }
+
+.ac-panel .ac-icon-btn {
+  width: var(--ctl-m); height: var(--ctl-m); min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border: 1px solid transparent; background: transparent; color: var(--ink-soft); cursor: pointer;
+}
+.ac-panel .ac-icon-btn:hover { background: var(--tint-08); color: var(--ink); }
+
+.ac-panel .ac-mini {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; min-height: 0; padding: 0 8px;
+  border: 1px solid var(--ink-faint); background: transparent; color: var(--ink-soft); cursor: pointer;
+  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.04em; white-space: nowrap;
+}
+.ac-panel .ac-mini:hover:not(:disabled) { color: var(--ink); background: var(--tint-08); border-color: var(--ink-muted); }
+.ac-panel .ac-mini:disabled { opacity: 0.4; cursor: default; }
+.ac-panel .ac-mini-ok { color: var(--c-positive); }
+.ac-panel .ac-mini-bad { color: var(--c-danger); }
+
+.ac-panel .ac-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; min-height: 0; padding: 0 12px;
+  border: 1px solid var(--ink-faint); background: var(--paper-cream); color: var(--ink); cursor: pointer;
+  font-size: var(--fs-s); font-weight: 600;
+}
+.ac-panel .ac-btn-primary { background: var(--cobalt); border-color: var(--cobalt); color: var(--accent-contrast); box-shadow: var(--glow); }
+.ac-panel .ac-btn-primary:hover { background: var(--cobalt-deep); border-color: var(--cobalt-deep); }
+.ac-panel .ac-link {
+  border: 0; min-height: 0; padding: 0; background: transparent; color: var(--cobalt); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.ac-panel .ac-link:hover { background: transparent; color: var(--cobalt-deep); }
+
+/* ── message list ─────────────────────────────────────────────────────────── */
+.ac-panel .ac-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  padding: var(--sp-4) var(--sp-4) var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-6);
+}
+.ac-panel .ac-empty { margin: auto 0; display: flex; flex-direction: column; gap: var(--sp-4); padding-bottom: var(--sp-4); }
+.ac-panel .ac-hello h3, .ac-panel .ac-connect h3 {
+  margin: 0 0 6px; font-family: var(--f-display); font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.015em;
+}
+.ac-panel .ac-hello p, .ac-panel .ac-connect p { margin: 0; color: var(--ink-soft); line-height: 1.55; }
+.ac-panel .ac-starters { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.ac-panel .ac-starter {
+  text-align: left; padding: 10px 12px; min-height: 0; border: 1px solid var(--ink-faint); background: var(--paper-cream);
+  cursor: pointer; display: flex; flex-direction: column; gap: 4px; color: var(--ink);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.ac-panel .ac-starter strong { font-size: var(--fs-m); font-weight: 600; }
+.ac-panel .ac-starter span { font-size: var(--fs-s); color: var(--ink-muted); line-height: 1.4; }
+.ac-panel .ac-starter:hover { border-color: var(--cobalt); background: var(--tint-08); }
+
+.ac-panel .ac-connect {
+  margin: auto 0; border: 1px solid var(--ink-faint); background: var(--paper-cream); padding: var(--sp-5);
+  display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start;
+}
+.ac-panel .ac-connect-compact { margin: 0; padding: var(--sp-4); }
+.ac-panel .ac-connect-compact h3 { font-size: var(--fs-l); }
+.ac-panel .ac-connect-ico { width: 40px; height: 40px; display: grid; place-items: center; background: var(--tint-08); color: var(--cobalt); }
+.ac-panel .ac-muted, .ac-panel .ac-connect p.ac-muted { color: var(--ink-muted); font-size: var(--fs-s); }
+
+/* ── a turn ───────────────────────────────────────────────────────────────── */
+.ac-panel .ac-turn { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ac-panel .ac-ask { align-self: flex-end; max-width: 88%; }
+.ac-panel .ac-ask-text {
+  background: var(--paper-shadow); color: var(--ink); border: 1px solid var(--ink-faint); border-right: 2px solid var(--cobalt);
+  padding: 9px 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.ac-panel .ac-reply { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.ac-panel .ac-thinking { display: flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: var(--fs-s); }
+
+.ac-panel .ac-steps { display: flex; flex-direction: column; gap: 6px; }
+.ac-panel .ac-steps-toggle {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+  min-height: 0; padding: 2px 0; border: 0; background: transparent; cursor: pointer; text-align: left;
+  font-size: var(--fs-s); color: var(--ink-soft);
+}
+.ac-panel .ac-steps-toggle:hover { background: transparent; color: var(--ink); }
+.ac-panel .ac-steps-caret { width: 10px; color: var(--cobalt); font-size: 12px; line-height: 1; }
+.ac-panel .ac-steps-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-panel .ac-steps-more { font-family: var(--f-mono); font-size: 10.5px; color: var(--cobalt); white-space: nowrap; }
+.ac-panel .ac-trace {
+  list-style: none; margin: 0; padding: 0 0 0 10px; border-left: 2px solid var(--ink-faint);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.ac-panel .ac-step { display: flex; gap: 8px; align-items: flex-start; font-size: var(--fs-s); color: var(--ink-soft); line-height: 1.45; }
+.ac-panel .ac-step-mark { width: 14px; height: 17px; flex-shrink: 0; display: inline-grid; place-items: center; font-family: var(--f-mono); }
+.ac-panel .ac-step-done .ac-step-mark { color: var(--c-positive); }
+.ac-panel .ac-step-failed, .ac-panel .ac-step-failed .ac-step-mark { color: var(--c-danger); }
+.ac-panel .ac-step-stopped { color: var(--ink-muted); }
+.ac-panel .ac-step-text { min-width: 0; overflow-wrap: anywhere; }
+.ac-panel .ac-step-detail { color: var(--ink-muted); }
+.ac-panel .ac-step-say { font-size: var(--fs-s); color: var(--ink-secondary); font-style: italic; line-height: 1.45; overflow-wrap: anywhere; }
+
+.ac-panel .ac-spin {
+  width: 10px; height: 10px; border: 1.5px solid var(--ink-faint); border-top-color: var(--cobalt);
+  border-radius: 50%; display: inline-block; flex-shrink: 0; animation: ac-spin 0.8s linear infinite;
+}
+@keyframes ac-spin { to { transform: rotate(360deg); } }
+
+.ac-panel .ac-staged {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; font-size: var(--fs-s); line-height: 1.45;
+  border: 1px dashed var(--cobalt); background: var(--tint-08); color: var(--ink);
+}
+.ac-panel .ac-staged-pip { width: 7px; height: 7px; margin-top: 5px; flex-shrink: 0; background: var(--cobalt); box-shadow: var(--glow); }
+.ac-panel .ac-error {
+  padding: 8px 10px; font-size: var(--fs-s); line-height: 1.45; overflow-wrap: anywhere;
+  border: 1px solid color-mix(in srgb, var(--c-danger) 45%, transparent);
+  background: color-mix(in srgb, var(--c-danger) 8%, var(--paper-cream));
+}
+.ac-panel .ac-error-soft {
+  border-color: color-mix(in srgb, var(--c-warning) 50%, transparent);
+  background: color-mix(in srgb, var(--c-warning) 9%, var(--paper-cream));
+}
+.ac-panel .ac-note { font-size: var(--fs-s); color: var(--ink-muted); }
+
+/* ── markdown ─────────────────────────────────────────────────────────────── */
+.ac-panel .ac-md { line-height: 1.6; overflow-wrap: anywhere; color: var(--ink); }
+.ac-panel .ac-md > :first-child { margin-top: 0; }
+.ac-panel .ac-md > :last-child { margin-bottom: 0; }
+.ac-panel .ac-md p { margin: 0 0 10px; }
+.ac-panel .ac-md h3, .ac-panel .ac-md h4, .ac-panel .ac-md h5, .ac-panel .ac-md h6 { font-family: var(--f-display); margin: 14px 0 6px; line-height: 1.3; }
+.ac-panel .ac-md h3 { font-size: var(--fs-l); }
+.ac-panel .ac-md h4 { font-size: var(--fs-m); }
+.ac-panel .ac-md h5, .ac-panel .ac-md h6 { font-size: var(--fs-s); text-transform: uppercase; letter-spacing: 0.06em; }
+.ac-panel .ac-md ul, .ac-panel .ac-md ol { margin: 0 0 10px; padding-left: 20px; }
+.ac-panel .ac-md li { margin: 3px 0; }
+.ac-panel .ac-md li::marker { color: var(--cobalt); }
+.ac-panel .ac-md strong { font-weight: 650; color: var(--ink); }
+.ac-panel .ac-md-code { font-family: var(--f-mono); font-size: 0.88em; padding: 1px 4px; background: var(--paper-shadow); border-radius: var(--r-1); }
+.ac-panel .ac-md-pre {
+  margin: 0 0 10px; padding: 10px 12px; background: var(--status-bg); color: var(--status-fg);
+  font-family: var(--f-mono); font-size: 11.5px; line-height: 1.5; overflow-x: auto; white-space: pre;
+}
+.ac-panel .ac-md-streaming > :last-child::after {
+  content: ""; display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px;
+  background: var(--cobalt); animation: ac-caret 1s steps(2) infinite;
+}
+@keyframes ac-caret { 50% { opacity: 0; } }
+
+/* ── proposals waiting at the gate ────────────────────────────────────────── */
+.ac-panel .ac-tray { border-top: 1px solid var(--ink-faint); background: var(--paper-cream); max-height: 40%; display: flex; flex-direction: column; min-height: 0; }
+.ac-panel .ac-tray-head { display: flex; align-items: center; gap: 6px; padding: 6px var(--sp-3) 6px var(--sp-4); }
+.ac-panel .ac-tray-toggle {
+  flex: 1; min-width: 0; text-align: left; min-height: 0; padding: 2px 0; border: 0; background: transparent; cursor: pointer;
+  font-weight: 600; font-size: var(--fs-s); color: var(--cobalt);
+}
+.ac-panel .ac-tray-toggle:hover { background: transparent; }
+.ac-panel .ac-tray-list { overflow: auto; min-height: 0; }
+.ac-panel .ac-prop { display: flex; align-items: center; gap: 7px; padding: 6px var(--sp-3) 6px var(--sp-4); border-top: 1px solid var(--ink-faint); font-size: 11.5px; }
+.ac-panel .ac-prop-swatch { width: 10px; height: 10px; flex-shrink: 0; border: 1px dashed var(--ink-muted); }
+.ac-panel .ac-prop-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ac-panel .ac-prop-body small { color: var(--ink-muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── composer ─────────────────────────────────────────────────────────────── */
+.ac-panel .ac-composer {
+  margin: var(--sp-2) var(--sp-3) var(--sp-3); border: 1px solid var(--ink-faint); background: var(--paper-cream);
+  transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+}
+.ac-panel .ac-composer:focus-within { border-color: var(--cobalt); box-shadow: var(--ring); }
+.ac-panel .ac-input {
+  display: block; width: 100%; box-sizing: border-box; resize: none; border: 0; outline: none; background: transparent;
+  padding: 11px 12px 4px; font-family: var(--f-body); font-size: var(--fs-m); line-height: 1.5; color: var(--ink);
+  min-height: 44px; max-height: 180px;
+}
+.ac-panel .ac-input:focus-visible { box-shadow: none; }
+.ac-panel .ac-input::placeholder { color: var(--text-faint); }
+.ac-panel .ac-input:disabled { cursor: not-allowed; }
+.ac-panel .ac-toolbar { display: flex; align-items: center; gap: var(--sp-2); padding: 4px 6px 6px 12px; }
+.ac-panel .ac-hint { flex: 1; min-width: 0; font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.04em; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-panel .ac-send {
+  height: 30px; min-height: 0; min-width: 64px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--cobalt); color: var(--accent-contrast); border: 1px solid var(--cobalt); cursor: pointer;
+  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+  box-shadow: var(--glow);
+}
+.ac-panel .ac-send:hover:not(:disabled) { background: var(--cobalt-deep); border-color: var(--cobalt-deep); }
+.ac-panel .ac-send:disabled { background: var(--paper-shadow); border-color: var(--paper-shadow); color: var(--text-faint); cursor: default; box-shadow: none; }
+.ac-panel .ac-send-stop { background: var(--ink); border-color: var(--ink); color: var(--paper-bright); box-shadow: none; }
+.ac-panel .ac-send-stop:hover:not(:disabled) { background: var(--c-danger); border-color: var(--c-danger); }
+
+@media (max-width: 420px) { .ac-panel .ac-starters { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .ac-panel .ac-spin, .ac-panel .ac-md-streaming > :last-child::after { animation: none; }
+}
+@media print { .ac-panel { display: none !important; } }
