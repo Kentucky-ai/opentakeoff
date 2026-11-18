@@ -151,7 +151,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     description: [
       "Open a trade suite: enables that trade's tools (they are hidden until opened) and returns its method and condition names. Open only the trade you are taking off; opening is idempotent and never closes anything. No arguments = the catalog. Suites:",
       ...suiteCatalogLines().map((l) => `- ${l}`),
-      "division opens every suite of a CSI division (\"07\" = roofing + siding + soffit_fascia).",
+      "division opens every suite of a CSI division (\"07\" = roofing + siding + soffit_fascia). \"09\" is finishes; acoustical_ceilings opens by name, or with \"09\" once an ACT- tag is on the job.",
     ].join("\n"),
     inputSchema: {
       suite: z.enum(SUITE_IDS).optional().describe("Suite id"),
@@ -162,7 +162,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     let picked: TradeSuite[] = [];
     if (suite) picked.push(suiteById(suite)!);
     if (division) {
-      const d = suitesForDivision(division);
+      const d = suitesForDivision(division, session.conditions.map((c) => c.finish_tag));
       if (!d.length) throw new UserError(`No suite answers to division ${JSON.stringify(division)}. Divisions with suites: ${Object.entries(DIVISIONS).map(([k, v]) => `${k} ${v}`).join(", ")}.`);
       picked.push(...d);
     }

@@ -35,6 +35,8 @@ export interface TradeSuite {
   presets: SuitePreset[];
   /** finish-tag prefixes that place a condition in this suite when it carries no explicit trade */
   prefixes: string[];
+  /** a division alone does not open it: by name, or with its division once a condition carries one of its prefixes */
+  byName?: boolean;
 }
 
 export const DIVISIONS: Record<string, string> = {
@@ -67,6 +69,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
     label: "Acoustical ceilings",
     prefixes: ["ACT-"],
     divisions: ["09"],
+    byName: true,
     summary: "lay-in tiles, main runners, cross tees, hanger wires and wall angle from areas on the reflected ceiling plan",
     tools: ["ceiling_takeoff"],
     method: [
@@ -223,12 +226,17 @@ export function suiteById(id: string): TradeSuite | undefined {
   return BY_ID.get(id);
 }
 
-/** Two-digit division ("7", "07", "07 46 00", "Div 26") → its suites. */
-export function suitesForDivision(raw: string): TradeSuite[] {
+/**
+ * Two-digit division ("7", "07", "07 46 00", "Div 26") → its suites. A byName
+ * suite comes along only when `tags` (the job's condition tags) already holds
+ * one of its prefixes: "09" on a flooring job is Finishes, not ceilings too.
+ */
+export function suitesForDivision(raw: string, tags: readonly string[] = []): TradeSuite[] {
   const m = String(raw).match(/(\d{1,2})/);
   if (!m) return [];
   const div = m[1].padStart(2, "0");
-  return TRADE_SUITES.filter((s) => s.divisions.includes(div));
+  const onJob = (s: TradeSuite) => tags.some((t) => s.prefixes.some((p) => t.toUpperCase().startsWith(p)));
+  return TRADE_SUITES.filter((s) => s.divisions.includes(div) && (!s.byName || onJob(s)));
 }
 
 /** Every tool any suite adds, sorted. */

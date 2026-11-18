@@ -10,7 +10,9 @@ only where the core cannot already do the job. To add one, follow
 
 1. Read the catalog: `open_suite` with no arguments, or its tool description.
 2. Open only the trade being taken off: `open_suite {suite: "roofing"}`, or a
-   whole CSI division with `open_suite {division: "07"}`.
+   whole CSI division with `open_suite {division: "07"}`. Division 09 opens
+   Finishes only: open `acoustical_ceilings` by name, or pass `"09"` again once
+   an `ACT-` tag is on the job.
 3. Follow the method the reply returns. It names the core tools to measure with
    and the suite tool to call last.
 

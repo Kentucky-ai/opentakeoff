@@ -225,7 +225,9 @@ test("registry: ids unique, every suite has a method, divisions route, tools are
   assert.deepEqual(suitesForDivision("Div 26 05 00").map((s) => s.id), ["electrical"]);
   assert.deepEqual(suitesForDivision("8").map((s) => s.id), ["glazing", "doors"]);
   assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
-  assert.deepEqual(suitesForDivision("09").map((s) => s.id), ["finishes", "acoustical_ceilings"]);
+  assert.deepEqual(suitesForDivision("09").map((s) => s.id), ["finishes"], "a flooring job does not open ceilings");
+  assert.deepEqual(suitesForDivision("09", ["CPT-1", "act-2"]).map((s) => s.id), ["finishes", "acoustical_ceilings"]);
+  assert.deepEqual(suitesForDivision("07", ["ACT-1"]).map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
   assert.equal(suiteCatalogLines().length, TRADE_SUITES.length);
 });
 
