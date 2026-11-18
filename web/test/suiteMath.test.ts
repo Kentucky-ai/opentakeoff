@@ -170,7 +170,9 @@ test("ceilingQuantities: the #614 finish line — a 20 × 30 ft room in 2 × 2 t
   assert.equal(q.waste_pct, 10);
   assert.match(q.waste_source, /allowance/);
   assert.equal(q.tiles_order, 165);                    // 150 × 1.10
-  assert.deepEqual(q.not_figured, []);
+  assert.equal(q.not_figured.length, 2, "density counts say what a laid-out grid would add");
+  assert.ok(q.not_figured.some((s) => s.startsWith("border tiles")));
+  assert.ok(q.not_figured.some((s) => /seismic/.test(s)));
 });
 
 test("ceilingQuantities: 2 × 4 module, an L-shaped room, rounding up, missing hanger spacing", () => {

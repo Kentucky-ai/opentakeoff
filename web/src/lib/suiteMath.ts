@@ -368,6 +368,9 @@ export function ceilingQuantities(inp: CeilingInput) {
   const mainLf = area / S;
   const notFigured: string[] = [];
   if (!inp.hanger_spacing_ft) notFigured.push("hanger wires (pass hanger_spacing_ft from the spec)");
+  // counts are by average density over the area until a grid is laid out
+  notFigured.push("border tiles: counted by area, but each cut border tile uses a whole tile");
+  notFigured.push("perimeter hangers, and seismic splay wires and struts where the spec calls for them");
   return {
     tile_sf: r4(tileSf),
     main_spacing_ft: r4(S),

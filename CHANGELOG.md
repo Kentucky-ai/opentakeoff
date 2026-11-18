@@ -9,7 +9,7 @@
   - long cross tees, and short cross tees in a square module;
   - hanger wires at the spec spacing along the mains.
 - **Where it puts them.** All of the above go on the condition as material rows, updated on a re-run, never duplicated. Each area's perimeter is committed as a wall angle run under `<condition>-WA`, and a re-run skips areas it already derived. A multiplier on the ceiling condition (×3 identical floors) is copied to the `-WA` condition and the runs are stored unmultiplied, so the report reads 3× the wall angle, not 9×.
-- **Missing values.** No module is refused. No hanger spacing is listed under `not_figured`. A 20 × 30 ft room in 2 × 2 tile gives 150 tiles and 100 LF of wall angle.
+- **Missing values.** No module is refused. No hanger spacing is listed under `not_figured`, and so are cut border tiles, perimeter hangers and seismic bracing, which a laid-out grid would add. A 20 × 30 ft room in 2 × 2 tile gives 150 tiles and 100 LF of wall angle.
 - The Trade view books `ACT-` tags to the new suite.
 
 ## 2026-11-17 — the 3D view (Kevin Murphy's, as improved in the Spline viewer)
