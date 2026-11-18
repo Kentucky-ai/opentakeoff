@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-17 — One-Click: a 2 ft ceiling grid is a pattern, not walls
+
+- **A click inside a 2'×2' lay-in ceiling grid fills the room.** The grid pitches at 2 ft, above the 4/3 ft cap that keeps a rhythm of parallel walls hard, so every grid line stayed a wall and the click returned one tile. A family pitched between 4/3 ft and 2.22 ft now reads as pattern when a perpendicular family in the same pen, itself evenly spaced, crosses it at least twice. That is the ceiling-grid signature.
+- **Parallel walls still stop the fill.** A 2 ft rhythm with nothing crossing it, a crossing family drawn in another pen, and a 3 ft or 4 ft grid all stay walls. The 1.6 ft parallel-rhythm test is unchanged. Sheets of unknown scale get no new tier (`HATCH_LATTICE_MAX_PITCH_FT`, `classifyHatchSegs` in `web/src/lib/oneclick.ts`).
+- `npm run bench` gives the same results before and after on every probe (no sheet in the corpus has a crossed grid between the two caps).
+
 ## 2026-11-20 — Public test sheets
 
 - **`demo/public-sheets/`: nine real sheets to test against.** Footing and foundation plan, a fire station floor plan and exterior elevations, a veterans home overall plan with letter-prefixed room numbers, four area plans that meet at match lines, and an overall reflected ceiling plan. All are from Missouri state public bid sets, extracted unchanged with the document metadata removed. The README links each source and records what `main` reads today, including three misses: S-101's sheet number and scale, and no scale on the fire station plan.
