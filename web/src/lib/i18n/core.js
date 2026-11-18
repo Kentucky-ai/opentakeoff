@@ -8,6 +8,10 @@ function readLanguage() {
 }
 let language = readLanguage();
 export const getLanguage = () => language;
+/** True once the person has picked a language (first-run chooser shown until then). */
+export function hasLanguageChoice() {
+  try { return localStorage.getItem(LANGUAGE_KEY) !== null; } catch { return true; }
+}
 export function rfiStatusLabel(id, lang = language) {
   const names = lang === "ru"
     ? { open: "Открыт", answered: "Получен ответ", closed: "Закрыт", void: "Аннулирован" }

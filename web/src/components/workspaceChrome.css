@@ -717,3 +717,6 @@ html[lang="ru"] .calm-property-editor > strong { max-width:220px; overflow:hidde
 }
 html[lang="ru"] [data-takeoffs-header] > span { flex-wrap:wrap; min-width:0; } html[lang="ru"] [data-takeoffs-header] button { white-space:nowrap; font-size:11px!important; padding:3px 6px!important; }
 html[lang="ru"] .calm-header .calm-project { display:block; flex:1 1 140px; min-width:0; max-width:200px; } @media(max-width:1450px) { html[lang="ru"] .calm-header .calm-project { display:none; } }
+
+.ot-first-language { position:fixed; left:50%; bottom:var(--sp-4, 16px); transform:translateX(-50%); z-index:10000; display:flex; gap:var(--sp-2, 8px); align-items:center; flex-wrap:wrap; justify-content:center; max-width:calc(100vw - 32px); padding:var(--sp-2, 8px) var(--sp-3, 12px); background:var(--paper-bright); color:var(--ink); border:1px solid var(--ink-faint); box-shadow:0 4px 16px rgba(0,0,0,.18); font:inherit; }
+.ot-first-language button { font:inherit; color:var(--ink); background:var(--paper); border:1px solid var(--ink-faint); padding:4px 12px; min-height:30px; cursor:pointer; }

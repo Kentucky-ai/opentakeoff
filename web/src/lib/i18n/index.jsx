@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { getLanguage, subscribeLanguage, setLanguage, localizeText } from "./core.js";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { getLanguage, subscribeLanguage, setLanguage, localizeText, hasLanguageChoice } from "./core.js";
 export { LANGUAGE_KEY, setLanguage } from "./core.js";
 export function useTranslation() {
   const language = useSyncExternalStore(subscribeLanguage, getLanguage, () => "en");
@@ -14,4 +14,15 @@ export function LanguageSwitcher() {
       onChange={(event) => setLanguage(event.target.value)}>
       <option value="en" lang="en">English</option><option value="ru" lang="ru">Русский</option>
     </select></label>;
+}
+/** First visit: a small, non-blocking card to pick the interface language. English stays the default. */
+export function FirstRunLanguage() {
+  const [open, setOpen] = useState(() => !hasLanguageChoice());
+  if (!open) return null;
+  const pick = (lang) => { setLanguage(lang); setOpen(false); };
+  return <div className="ot-first-language" role="dialog" aria-label="Choose your language / Выберите язык">
+    <span>Choose your language · Выберите язык</span>
+    <button type="button" lang="en" onClick={() => pick("en")}>English</button>
+    <button type="button" lang="ru" onClick={() => pick("ru")}>Русский</button>
+  </div>;
 }
