@@ -86,6 +86,8 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **Select and review several measurements together.** In **Work and review**, select individual rows or **Select all filtered**, then **Show selected on plan** to highlight and frame the existing measurements. **Mark selected reviewed** uses the existing review command and one-step undo. Quantities and geometry stay unchanged; no new persisted record or review type is introduced.
+
 - **Russian deliverables preserve customer text.** Marked-set PDFs embed Cyrillic fonts and paginate large legends instead of dropping rows. Proposal headers fit long Russian company names, page numbers are localized, and project/company/client text is preserved in proposals, estimates and interface headings. Annotation text stays literal on the canvas. Report filenames retain Cyrillic. Regression tests cover rotated pages, RFI text, 70-condition legends, multi-page proposals and names matching UI commands.
 
 - **Windows checks run without path or locale failures.** Load PDF.js by its module specifier in schedule replay and benchmark runners, preserve LF bytes in CSV snapshots, and check PDF quantities using the host locale. The documentation link checker decodes file URLs and handles CRLF headings; regression tests cover both line endings, paths with spaces and missing anchors. The keyboard reference includes the optional One-Click key.

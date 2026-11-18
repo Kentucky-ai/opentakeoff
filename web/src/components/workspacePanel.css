@@ -55,3 +55,12 @@
   [data-topbar] [data-topbar-scroll] { flex-basis: 100% !important; }
   [data-topbar-pinned] { flex-wrap: wrap; width: 100%; row-gap: var(--sp-4) !important; }
 }
+
+.workspace-bulk { padding: var(--sp-2) var(--sp-4); border-bottom: var(--rule-soft); font-size: var(--fs-s); }
+.workspace-bulk p { margin: var(--sp-2) 0; }
+.workspace-bulk-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.workspace-bulk button:disabled { cursor: default; opacity: .5; }
+.workspace-check-row { display: flex; align-items: center; border-bottom: var(--rule-soft); }
+.workspace-check-row[data-checked=true] { background: var(--tint-select); box-shadow: inset 3px 0 var(--cobalt); }
+.workspace-check-row > input { flex-shrink: 0; margin: var(--sp-3); width: var(--sp-4); height: var(--sp-4); accent-color: var(--cobalt); }
+.workspace-check-row .workspace-row { min-width: 0; border-bottom: 0; padding-left: var(--sp-1); }

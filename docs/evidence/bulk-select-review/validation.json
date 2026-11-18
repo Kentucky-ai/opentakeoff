@@ -1,0 +1,91 @@
+{
+  "base_commit": "3add1846a974aebc8820fa53af9933f75251690a",
+  "branch": "codex/bulk-select-review",
+  "tested_at": "2026-11-18",
+  "browser": "Codex in-app browser (Chromium), local Vite build at http://127.0.0.1:5182/",
+  "viewports": [
+    [
+      1600,
+      1000
+    ],
+    [
+      900,
+      900
+    ],
+    [
+      1280,
+      720
+    ]
+  ],
+  "web_check": [
+    {
+      "name": "web-check",
+      "exit_code": 0
+    }
+  ],
+  "support_checks": [
+    {
+      "name": "protocol",
+      "exit_code": 0
+    },
+    {
+      "name": "tool-count",
+      "exit_code": 0
+    },
+    {
+      "name": "wiki",
+      "exit_code": 0
+    },
+    {
+      "name": "doc-links",
+      "exit_code": 0
+    }
+  ],
+  "browser_observations": {
+    "baseline": {
+      "measurements": 3,
+      "pending": 2,
+      "already_reviewed": 1,
+      "quantity": 3,
+      "unit": "EA"
+    },
+    "select_all": {
+      "checked_rows": 3,
+      "visible_outlines": 3,
+      "reviewable": 2
+    },
+    "uncheck_one": {
+      "visible_outlines": 2
+    },
+    "batch_review": {
+      "pending": 0,
+      "reviewed": 3
+    },
+    "single_undo": {
+      "pending": 2,
+      "reviewed": 1
+    },
+    "filter_QA_2_and_review": {
+      "pending": 1,
+      "reviewed": 2,
+      "QA_3_still_pending": true
+    },
+    "selection_cleared_on_filter_change": true,
+    "already_reviewed_only_action_disabled": true,
+    "explicitly_hidden_condition_revealed": true,
+    "narrow_show_selected_closes_drawer": true,
+    "decisions_persist_after_reload": true,
+    "export_after_undo": {
+      "all_measurement_records_exactly_equal": true,
+      "conditions_exactly_equal": true,
+      "source_calibration_fields_equal": true,
+      "selection_not_exported": true
+    },
+    "browser_console_errors": 0
+  },
+  "limits": [
+    "Browser-tested counts on one bundled sample sheet; cross-sheet framing, curved paths, holes, mixed units, and 75-row selection covered by unit tests, not full browser workflows.",
+    "No complete takeoff accuracy claim. QA-1 reviewed state is synthetic test data.",
+    "A short flow recording and additional browser cases remain before proposing a PR."
+  ]
+}

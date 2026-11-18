@@ -196,6 +196,8 @@ import { useAgentChat } from "../lib/useAgentChat.js";
 import { historyMessages, notReadyMessage, withViewContext } from "../lib/agentChat.js";
 import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
+import WorkSelectionHighlight from "../components/WorkSelectionHighlight.jsx";
+import { workSelection, workSelectionBounds } from "../lib/workSelection.js";
 import "../styles/premiumWorkspace.css";
 import { WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
 import { PremiumRail, PremiumTopBar, CanvasSideTabs } from "../components/PremiumChrome.jsx";
@@ -849,6 +851,9 @@ export default function TakeoffCanvas() {
   const [workspaceDragging, setWorkspaceDragging] = useState(null);
 
   const [workLocateId, setWorkLocateId] = useState(null);
+  const [workSelectionIds, setWorkSelectionIds] = useState([]);
+  const [workSelectionFrame, setWorkSelectionFrame] = useState(null);
+  const selectedWork = useMemo(() => workSelection(shapes, workSelectionIds), [shapes, workSelectionIds]);
   const workButtonRef = useRef(null);
   // ── roll goods (#136) — view state; the figured layouts are a memo below ──
   const [rollShow, setRollShow] = useState(true);         // draw the figured cuts over the plan (on: opting a condition in shows its cuts immediately)
@@ -867,6 +872,7 @@ export default function TakeoffCanvas() {
   const [ocSel, setOcSel] = useState(null);        // selected proposal vertex {ri, vi} — Delete removes just that point
   const [ocHover, setOcHover] = useState(-1);      // proposal region under the cursor — handles reveal on hover
   const [selectedId, setSelectedId] = useState(null);   // selected shape (Select tool)
+  useEffect(() => { if (selectedId) { setWorkSelectionIds([]); setWorkSelectionFrame(null); } }, [selectedId]);
   // raw text of the per-wall height field while it is being edited; null =
   // mirror the stored value. Same reason as DimParamInput's draft: the field
   // round-trips through a rounded unit conversion, so without this a metric
@@ -2355,6 +2361,7 @@ export default function TakeoffCanvas() {
     // epoch and it clears them in place (panel tab + width survive, as they
     // always did). On the mount load this is a no-op (fresh panel state).
     setPanelEpoch((e) => e + 1);
+    setWorkSelectionIds([]); setWorkSelectionFrame(null);
     // hidden conditions (#440) described the replaced project's view — a load
     // always opens with everything showing
     setHiddenConds((h) => (h.size ? new Set() : h));
@@ -8490,6 +8497,7 @@ export default function TakeoffCanvas() {
   }
 
   function locateWork(shape) {
+    setWorkSelectionIds([]); setWorkSelectionFrame(null);
     setWorkLocateId(shape.id);
     if (!panelKeySet.has(shape.sheet_id)) openSheets([shape.sheet_id], false);
     setTool("select");
@@ -8514,6 +8522,48 @@ export default function TakeoffCanvas() {
     }
     setSelectedId(shape.id); setSelectedMarkupId(null); setWorkLocateId(null);
   }, [workLocateId, status, shapes, panels, setTfNow]);
+
+  function revealWorkSelection(rows) {
+    setHiddenConds((hidden) => {
+      const next = new Set(hidden);
+      for (const shape of rows) next.delete(shape.condition_id);
+      return next;
+    });
+    if (rows.some((shape) => tradeHidden.has(shape.condition_id))) setViewTrade(ALL_TRADES);
+  }
+  function changeWorkSelection(ids) {
+    const next = workSelection(shapes, ids);
+    setWorkSelectionIds(next.rows.map((shape) => shape.id)); setWorkSelectionFrame(null);
+    setSelectedId(null); setSelectedMarkupId(null); setWorkLocateId(null);
+    if (next.rows.length) { revealWorkSelection(next.rows); setTool("select"); }
+  }
+  function locateWorkSelection() {
+    if (!selectedWork.sheetIds.length || selectedWork.sheetIds.length > MAX_GROUP) return;
+    revealWorkSelection(selectedWork.rows);
+    setWorkSelectionFrame(selectedWork.sheetIds);
+    if (selectedWork.sheetIds.some((key) => !panelKeySet.has(key))) openSheets(selectedWork.sheetIds, selectedWork.sheetIds.length > 1);
+    if (window.matchMedia("(max-width: 1100px)").matches) setAgentOpen(false);
+  }
+  useEffect(() => {
+    if (!workSelectionFrame || status !== "ready" || !containerRef.current) return;
+    if (workSelectionFrame.some((key) => !panels.some((p) => p.key === key && p.img?.w))) return;
+    const bounds = workSelectionBounds(selectedWork.locatable, panels);
+    if (bounds) {
+      const el = containerRef.current, rect = el.getBoundingClientRect();
+      // Use the existing spacing scale to clear the floating canvas controls.
+      const inset = parseFloat(getComputedStyle(el).getPropertyValue("--sp-8")) * 3;
+      const width = Math.max(1, rect.width - inset * 2), height = Math.max(1, rect.height - inset * 2);
+      const scale = clamp(Math.min(width / Math.max(1, bounds.x1 - bounds.x0), height / Math.max(1, bounds.y1 - bounds.y0), 1.5));
+      setTfNow({ x: rect.width / 2 - (bounds.x0 + bounds.x1) / 2 * scale, y: rect.height / 2 - (bounds.y0 + bounds.y1) / 2 * scale, scale });
+    }
+    setWorkSelectionFrame(null);
+  }, [workSelectionFrame, selectedWork, status, panels, setTfNow]);
+  function reviewWorkSelection() {
+    if (!selectedWork.pendingIds.length) return;
+    dispatchShape({ type: "review", ids: selectedWork.pendingIds });
+    setCommitMsg(uiText(`${selectedWork.pendingIds.length} selected measurements marked reviewed. Undo restores the batch.`));
+    setWorkSelectionIds([]); setWorkSelectionFrame(null);
+  }
 
   // A withheld transition is a QUESTION, and the answer is at a PLACE on the
   // sheet — so its row in the panel jumps there rather than printing raw image
@@ -11321,6 +11371,7 @@ export default function TakeoffCanvas() {
                         tick, per the plan's no-live-tick rule. The guard on `rect` shape
                         matches the try-wrap the export side uses: a malformed value from a
                         future caller must not take the canvas down. */}
+                  <WorkSelectionHighlight shapes={selectedWork.locatable} panel={p} zoom={tf.scale} color={DS.selection.color} />
                   {sourceFlash && sourceFlash.sheet_id === p.key
                     && Array.isArray(sourceFlash.rect) && sourceFlash.rect.length === 2 && (() => {
                       const [[fnx0, fny0], [fnx1, fny1]] = sourceFlash.rect;
@@ -11736,7 +11787,7 @@ export default function TakeoffCanvas() {
           {/* proposals (#365): one pill per BATCH. A forty-room detect run the
             agent proposed under one label is one Accept and one Reject, not
             forty; un-batched pending shapes keep the original pill. */}
-          {pendingGroups.map((g) => {
+          {!selectedWork.rows.length && pendingGroups.map((g) => {
             const n = g.ids.length;
           const label = g.proposal ? g.proposal.label : formatMessage("Proposed measurements: {0}", [n]);
             const key = g.proposal ? g.proposal.id : "_loose";
@@ -13067,6 +13118,8 @@ export default function TakeoffCanvas() {
           sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
           scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
           proposalCount={agentProposals.length} onLocate={locateWork}
+          selectionIds={workSelectionIds} onSelectionChange={changeWorkSelection} onLocateSelection={locateWorkSelection}
+          onReviewSelection={reviewWorkSelection} maxSelectionSheets={MAX_GROUP}
           onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
           onClose={() => { setAgentOpen(false); workButtonRef.current?.focus(); }} onReport={() => setShowReport(true)}>
           <AgentChat
