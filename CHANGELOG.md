@@ -1,5 +1,6 @@
 # Changelog
 
+<<<<<<< HEAD
 ## 2026-11-17 — the 3D view (Kevin Murphy's, as improved in the Spline viewer)
 
 - **A 3D button.** The view cluster gets **3D**: the open sheet's takeoff stood up, read-only. Floors are slabs at their thickness with holes and stacked layers, base stands at its height, transitions lie flush on the higher floor, surface runs stand up, a count with a height is a post, and tile floors with a stated size carry a grout grid.
@@ -17,6 +18,11 @@
 - Localized the actual estimate Excel export, project/company forms, proposal form and PDF, annotation style choices and plan-set copy.
 - Added litre/US-gallon display selection at import and export, reversible metric quantity/rate display, and preservation of source package rounding and costs.
 - Replaced clipped fit text with «Лист целиком», clarified allowance/perimeter column names, and allowed estimate headings to wrap.
+
+## 2026-11-16 — visual revision overlay and compare_sheets (MCP 0.9.111)
+
+- **Compare sheets and revisions over MCP.** `compare_sheets` visualizes drawing changes between two sheets or bid revisions: aligns drawings automatically, computes segment diffs (added/removed/unchanged), groups changed ink into convex hulls, and flags takeoff shapes intersecting modified regions (#579).
+- **Visual Revision Overlay in browser.** Fading revision comparison slider, 2-point manual alignment calibration, raster fallback mode, and one-click slip-sheeting carrying takeoff shapes forward with `Check after revision` review badges on changed areas.
 
 ## 2026-11-15 — large plan sets open and flip faster, in far less memory (#580, part 1)
 
