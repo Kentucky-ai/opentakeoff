@@ -485,6 +485,12 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
           </select>
         </label>
       </div>
+      <label title={uiText("Optional ring diameter on the printed page, in points (72 points = 1 inch). Leave blank for the standard pin. Display only; does not change quantities or review decisions.")}>
+        {uiText("Count ring diameter (pt)")}
+        <input name="condition-count-diameter" type="number" min="0.1" step="0.1" placeholder={uiText("Standard pin")}
+          value={c.count_diameter_pt ?? ""}
+          onChange={(e) => { const n = Number(e.target.value); onUpdateCond({ count_diameter_pt: Number.isFinite(n) && n > 0 ? n : undefined }); }} />
+      </label>
       {uiText(isRow && rule())}
       {isRow ? (
         <div ref={paletteRef} style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>

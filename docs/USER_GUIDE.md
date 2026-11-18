@@ -531,6 +531,19 @@ Trace a wall run in plan; wall SF = traced LF × the condition's **height**. The
 
 One click, one marker, one EA. Counts commit immediately on click and are the one measurement that works without a scale.
 
+To match a count marker to a printed symbol, select its condition and expand
+**More: trade, heights, line style, columns**. Set **Count ring diameter (pt)**
+to the symbol's diameter on the PDF page (72 points equals one printed inch).
+The hollow ring scales with the drawing; its center and quantity stay unchanged.
+Leave the field blank to use the standard pin. Pending-review rings remain dashed.
+The reference pane and marked PDF use the same ring diameter.
+
+In **Work and review**, choose a measurement and click **Show on plan**. Its
+sheet opens and a hidden condition is revealed. A count gets a temporary locator
+pulse and a steady selection halo; reduced motion keeps the steady cue. The
+receipt identifies the condition, schedule description and size when present,
+and measurement ID. Selection cues do not export or mark work reviewed.
+
 ### Cut Out — deducts (`D`, `⇧D`)
 
 The **Cut Out** menu subtracts voids: **Deduct shape** (`D`) traces a polygon, **Deduct rectangle** (`⇧D`) boxes one. A deduct belongs to the active condition and subtracts its SF from that condition's floor total—columns, shafts, casework, anything inside a traced area that doesn't get flooring. Deducts draw in dashed red and carry their negative sign into the report's shape audit.

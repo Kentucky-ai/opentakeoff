@@ -1,0 +1,5 @@
+
+> opentakeoff-mcp@0.9.111 smoke:dist
+> node scripts/smoke-dist.mjs
+
+Distribution smoke: flat 69 tools, staged 23 tools, 11 protocol schemas, 11 wiki pages verified over stdio from <temporary-package-directory>.

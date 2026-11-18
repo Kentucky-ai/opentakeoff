@@ -1,0 +1,495 @@
+{
+  "schema": "opentakeoff.takeoff_canvas.v1",
+  "project_name": "Landscape marker and locator QA",
+  "sheets": [
+    {
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "units_per_px": 0.06944444444444445,
+      "scale_source": "upp",
+      "scale_confirmed": false
+    },
+    {
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "units_per_px": 0.06944444444444445,
+      "scale_source": "upp",
+      "scale_confirmed": false
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cnd-f622aff5-3cc0-46ac-9b24-f16cef3c2fc9",
+      "created_at": "2026-11-18T17:09:52.251Z",
+      "finish_tag": "TA",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "diag",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "count_diameter_pt": 60,
+      "spec": {
+        "description": "Demo broadleaf tree",
+        "size": "2.5 in caliper",
+        "remarks": "Fictional QA fixture. L-101 / L-102 plant schedule, code TA. Coordinates supplied by demo generator; not an independent takeoff."
+      },
+      "updated_at": "2026-11-18T19:28:46.502Z"
+    },
+    {
+      "id": "cnd-e5ce8692-50b3-4de9-8edf-952153ec957f",
+      "created_at": "2026-11-18T17:09:52.253Z",
+      "finish_tag": "TB",
+      "color": "#2f7d54",
+      "fill": "#2f7d54",
+      "hatch": "diag2",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "count_diameter_pt": 40,
+      "spec": {
+        "description": "Demo flowering tree",
+        "size": "6 ft height",
+        "remarks": "Fictional QA fixture. L-101 / L-102 plant schedule, code TB. Coordinates supplied by demo generator; not an independent takeoff."
+      }
+    },
+    {
+      "id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "created_at": "2026-11-18T17:09:52.253Z",
+      "finish_tag": "sa",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "cross",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "count_diameter_pt": 18,
+      "spec": {
+        "description": "Demo evergreen shrub",
+        "size": "3 gal container",
+        "remarks": "Fictional QA fixture. L-101 / L-102 plant schedule, code sa. Coordinates supplied by demo generator; not an independent takeoff."
+      }
+    }
+  ],
+  "shapes": [
+    {
+      "id": "shp-63ef2c60-1b21-46d6-88e0-d547eac989b6",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-f622aff5-3cc0-46ac-9b24-f16cef3c2fc9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.13071895424836602,
+          0.2297979797979798
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-ec4719f5-e44b-4250-980b-9bf3ccd24b24",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-f622aff5-3cc0-46ac-9b24-f16cef3c2fc9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.28594771241830064,
+          0.20454545454545456
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-81a62488-3ca2-4b22-95e2-6b78949ac196",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-f622aff5-3cc0-46ac-9b24-f16cef3c2fc9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5637254901960784,
+          0.2297979797979798
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-f148bde8-4f5d-440d-8419-ada5ca28f54c",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-f622aff5-3cc0-46ac-9b24-f16cef3c2fc9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.1388888888888889,
+          0.5833333333333334
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-c4c5d2ec-e05d-40d6-943e-efad820ebf9f",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-e5ce8692-50b3-4de9-8edf-952153ec957f",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5310457516339869,
+          0.5707070707070707
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-f09500b0-380c-49a5-866a-b901d059814a",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3022875816993464,
+          0.4444444444444444
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-2091e152-08ac-4962-9d16-36b0d477d9b6",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3227124183006536,
+          0.4444444444444444
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-8f2131a2-2a5c-48fa-bb70-11c488f28f66",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3431372549019608,
+          0.4444444444444444
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-422f16d9-433c-4630-8d4b-c56b5c235e21",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.36356209150326796,
+          0.4444444444444444
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-c7b7de89-c6d4-4e5c-bf2a-552785adabde",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3839869281045752,
+          0.4444444444444444
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-2370cc73-7cb8-4005-9474-6440d2a407e0",
+      "sheet_id": "Landscape-Review-Demo.pdf",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.40441176470588236,
+          0.4444444444444444
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-70eb5e32-8c1b-46ed-ad4e-6fef03d90f68",
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "condition_id": "cnd-f622aff5-3cc0-46ac-9b24-f16cef3c2fc9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.14705882352941177,
+          0.24242424242424243
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-0a0e67ff-bea7-4692-a08b-664575283a8c",
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "condition_id": "cnd-f622aff5-3cc0-46ac-9b24-f16cef3c2fc9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5228758169934641,
+          0.2297979797979798
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-e9875557-170a-4487-8de9-022d50b70079",
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "condition_id": "cnd-e5ce8692-50b3-4de9-8edf-952153ec957f",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.17973856209150327,
+          0.5833333333333334
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-aba6ab8b-2186-4eec-81c7-6aa331fe010f",
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.35947712418300654,
+          0.5580808080808081
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-1e652cd2-11b5-4c62-894d-dc48ae092d7a",
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3799019607843137,
+          0.5580808080808081
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-80f24600-a1fd-468f-b57e-70590e854c53",
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.40032679738562094,
+          0.5580808080808081
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-1f47390f-3f1b-406b-8f99-7cf4085e73a2",
+      "sheet_id": "Landscape-Review-Demo.pdf#2",
+      "condition_id": "cnd-727d4032-cda3-4f6d-9f6e-ffd74c582223",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4207516339869281,
+          0.5580808080808081
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    }
+  ],
+  "markups": [],
+  "rfis": [],
+  "sheet_group": [],
+  "last_group": [],
+  "sheet_tabs": [
+    "Landscape-Review-Demo.pdf"
+  ]
+}

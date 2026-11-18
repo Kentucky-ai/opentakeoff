@@ -1,0 +1,18 @@
+
+> opentakeoff-mcp@0.9.111 build
+> npm run check:protocol-resources && npm run check:wiki && esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server-core.js && node scripts/finish-build.mjs
+
+
+> opentakeoff-mcp@0.9.111 check:protocol-resources
+> node scripts/check-protocol-resources.mjs
+
+Protocol resources: 11 schemas; canonical ids, digests, and offline $ref closure checked.
+
+> opentakeoff-mcp@0.9.111 check:wiki
+> node scripts/check-wiki.mjs
+
+Wiki bundle: 11 public pages; version and content checked against source.
+
+  dist\server-core.js  1.7mb
+
+Done in 50ms

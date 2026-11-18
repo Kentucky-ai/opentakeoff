@@ -23,6 +23,7 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
     return `${q.deduct ? "−" : ""}${text}`;
   };
   const evidence = selected?.origin?.evidence || {};
+  const selectedCondition = selected && conditions[selected.condition_id];
   return (
     <aside className="workspace-panel" hidden={!open} aria-label={uiText("Work and review")} data-dock-side={dockSide} style={{ zIndex: Z.drawer, ...(dockSide ? { order: dockSide === "left" ? -10 : 10, width } : {}) }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
       <header className="workspace-heading">
@@ -65,6 +66,10 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
         {selected && <section className="workspace-inspector" aria-label={uiText("Selected measurement")}>
           <div className="workspace-inspector-title"><h3>{uiText("Measurement receipt")}</h3><strong className="workspace-quantity">{uiText(quantity(selected))}</strong></div>
           <dl>
+            <div><dt>{uiText("Condition")}</dt><dd>{selectedCondition?.finish_tag || uiText("Unassigned")}</dd></div>
+            {selectedCondition?.spec?.description && <div><dt>{uiText("Description")}</dt><dd>{selectedCondition.spec.description}</dd></div>}
+            {selectedCondition?.spec?.size && <div><dt>{uiText("Size")}</dt><dd>{selectedCondition.spec.size}</dd></div>}
+            <div><dt>{uiText("Measurement ID")}</dt><dd style={{ overflowWrap: "anywhere" }}>{selected.id}</dd></div>
             <div><dt>{uiText("Source")}</dt><dd>{uiText(workActor(selected))}{uiText(selected.author ? ` · ${selected.author}` : "")}</dd></div>
             <div><dt>{uiText("Method")}</dt><dd>{uiText(workMethod(selected))}</dd></div>
             <div><dt>{uiText("Review")}</dt><dd>{uiText(workReviewState(selected))}</dd></div>

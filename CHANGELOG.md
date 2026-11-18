@@ -86,6 +86,8 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **Optional count rings and a visible locator.** Set a condition's **Count ring diameter (pt)** to match a drawn symbol. Its hollow outline scales with the drawing in both panes and the marked PDF; blank retains the standard pin. **Show on plan** reveals hidden conditions and highlights the existing occurrence with a temporary pulse and steady halo, respecting reduced motion. The receipt shows its condition, description, size and measurement ID. No quantities or review decisions change.
+
 - **Russian deliverables preserve customer text.** Marked-set PDFs embed Cyrillic fonts and paginate large legends instead of dropping rows. Proposal headers fit long Russian company names, page numbers are localized, and project/company/client text is preserved in proposals, estimates and interface headings. Annotation text stays literal on the canvas. Report filenames retain Cyrillic. Regression tests cover rotated pages, RFI text, 70-condition legends, multi-page proposals and names matching UI commands.
 
 - **Windows checks run without path or locale failures.** Load PDF.js by its module specifier in schedule replay and benchmark runners, preserve LF bytes in CSV snapshots, and check PDF quantities using the host locale. The documentation link checker decodes file URLs and handles CRLF headings; regression tests cover both line endings, paths with spaces and missing anchors. The keyboard reference includes the optional One-Click key.
