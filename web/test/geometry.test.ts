@@ -6,7 +6,7 @@ import {
   buildMask, floodRegion, traceRegion, snapVertices, ringArea, rdpClosed,
   extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, classifyDimensionStringSegs, classifyFleckSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
   type SubPath,
-  SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT,
+  SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT, HATCH_MAX_PITCH_FT, HATCH_LATTICE_MAX_PITCH_FT,
   floodRegionSealed, dilateHardMask, SEAL_RADII, sealRadiiFor, DOOR_SEAL_MAX_FT, SEAL_R_MAX, doorWedgeCapPx,
   splitMergedArcs, doorLeafCells, arcClusterFit,
   type Point, type MaskObj,
@@ -140,6 +140,71 @@ test("hatch: wall-to-wall tile grid — strict pass returns one tile, meta retur
   if (f.status !== "ok") return;
   assert.equal(f.hatchFiltered, true);
   assert.ok(approx(ringArea(traceRegion(f)), 240000, 0.03), "ring ≈ room");
+});
+
+// A 2'×2' lay-in ceiling grid at 18 px/ft: 36 px modules, above the 4/3 ft
+// parallel-rhythm cap. It is a CROSSED lattice, so it softens; the same 2 ft
+// pitch as a parallel rhythm alone (a run of closets, a chase pair) does not.
+describe("hatch: scaled 2 ft ceiling grid", () => {
+  const scale = 18;
+  const walls = squareSegs(100, 100, 676, 460);
+  const grid: number[] = [];
+  for (let x = 136; x < 676; x += 36) grid.push(x, 100, x, 460);
+  for (let y = 136; y < 460; y += 36) grid.push(100, y, 676, y);
+  const all = [...border, ...walls, ...grid];
+
+  for (const maxDim of [500, 1000]) {
+    test(`fills to the room walls at maxDim ${maxDim}`, () => {
+      const m = buildMask(all, IMG_W, IMG_H, maxDim, zeroMeta(all), scale, scale);
+      const f = floodRegion(m, 406, 298);
+      assert.equal(f.status, "ok");
+      if (f.status !== "ok") return;
+      assert.equal(f.hatchFiltered, true);
+      assert.ok(approx(ringArea(traceRegion(f)), 576 * 360, 0.03), "ring ≈ room");
+    });
+  }
+
+  test("without segment metadata it still returns one module", () => {
+    const m = buildMask(all, IMG_W, IMG_H, MAXDIM, null, scale, scale);
+    const f = floodRegion(m, 406, 298);
+    assert.equal(f.status, "ok");
+    if (f.status !== "ok") return;
+    assert.ok(!f.hatchFiltered);
+    assert.ok(ringArea(traceRegion(f)) < 36 * 36 * 1.1, "one module, not the room");
+  });
+
+  test("a 2 ft parallel rhythm with nothing crossing it stays hard", () => {
+    const bays = [...border, ...walls];
+    for (let x = 136; x < 676; x += 36) bays.push(x, 100, x, 460);
+    const m = buildMask(bays, IMG_W, IMG_H, MAXDIM, zeroMeta(bays), scale, scale);
+    assert.equal(m.softCount, 0);
+    const f = floodRegion(m, 118, 298);
+    assert.equal(f.status, "ok");
+    if (f.status !== "ok") return;
+    assert.ok(!f.hatchFiltered);
+    assert.ok(ringArea(traceRegion(f)) < 2 * 36 * 360, "one bay, not the room");
+  });
+
+  test("a crossing family drawn with a different pen does not soften it", () => {
+    const meta = zeroMeta(all);
+    const firstRow = (border.length + walls.length + 15 * 4) >> 2;   // 15 vertical grid lines, then the rows
+    for (let i = firstRow; i < meta.length; i++) meta[i] = 2 << 4;
+    for (const mppf of [9, 18]) {                                    // ws 0.5 and 1
+      const ws = mppf / scale;
+      const soft = classifyHatchSegs(all, meta, ws, HATCH_MAX_PITCH_FT * mppf, HATCH_LATTICE_MAX_PITCH_FT * mppf);
+      assert.equal(soft.reduce((a, b) => a + b, 0), 0, `ws ${ws}: no same-pen crossing, no lattice`);
+      const samePen = classifyHatchSegs(all, zeroMeta(all), ws, HATCH_MAX_PITCH_FT * mppf, HATCH_LATTICE_MAX_PITCH_FT * mppf);
+      assert.ok(samePen.reduce((a, b) => a + b, 0) >= 20, `ws ${ws}: the same grid in one pen is a lattice`);
+    }
+  });
+
+  test("a 4 ft bay grid stays hard even though it is crossed", () => {
+    const bays = [...border, ...walls];
+    for (let x = 172; x < 676; x += 72) bays.push(x, 100, x, 460);
+    for (let y = 172; y < 460; y += 72) bays.push(100, y, 676, y);
+    const m = buildMask(bays, IMG_W, IMG_H, MAXDIM, zeroMeta(bays), scale, scale);
+    assert.equal(m.softCount, 0);
+  });
 });
 
 test("hatch: room-scale rhythm (parallel walls above the pitch cap) is never hatch", () => {
