@@ -191,7 +191,7 @@ test("bySheet null/empty keeps totalsToCsv byte-identical to the pre-change outp
   assert.equal(base.split("\n").length, 21);                         // 20 lines + trailing \n
   // and the (now-extended) golden file starts with exactly this output — the
   // by-sheet section was a pure append.
-  const golden = readFileSync(new URL("./fixtures/report.golden.csv", import.meta.url), "utf8");
+  const golden = readFileSync(new URL("./fixtures/report.golden.csv", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.ok(golden.startsWith(base));
 });
 
