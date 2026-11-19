@@ -30,6 +30,10 @@
 - Added litre/US-gallon display selection at import and export, reversible metric quantity/rate display, and preservation of source package rounding and costs.
 - Replaced clipped fit text with «Лист целиком», clarified allowance/perimeter column names, and allowed estimate headings to wrap.
 
+## 2026-11-15 — gable starter strip (MCP 0.9.112)
+
+- `siding_takeoff`: a wall's bottom edge that lies on another SD-WALL shape's edge on the same sheet gets no starter, so a gable traced as its own shape above a wall or a wall split at a floor line figures the same starter as a single shape (#619).
+
 ## 2026-11-16 — visual revision overlay and compare_sheets (MCP 0.9.111)
 
 - **Compare sheets and revisions over MCP.** `compare_sheets` visualizes drawing changes between two sheets or bid revisions: aligns drawings automatically, computes segment diffs (added/removed/unchanged), groups changed ink into convex hulls, and flags takeoff shapes intersecting modified regions (#579).

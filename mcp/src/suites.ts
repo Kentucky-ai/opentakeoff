@@ -321,7 +321,8 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       for (const w of walls) {
         if (done.has(`SD-STARTER|${w.shape.id}`)) continue;
         const doorPx = openings.filter((o) => doors.has(o.shape.id) && o.shape.sheet_id === w.shape.sheet_id).map((o) => o.px);
-        for (const [p, q2] of starterRuns(w.px, doorPx, 0.5 / w.upp)) {
+        const otherWallPx = walls.filter((o) => o.shape.id !== w.shape.id && o.shape.sheet_id === w.shape.sheet_id).map((o) => o.px);
+        for (const [p, q2] of starterRuns(w.px, doorPx, 0.5 / w.upp, otherWallPx)) {
           items.push({ sheet_id: w.shape.sheet_id, tag: "SD-STARTER", role: "linear", px: [p, q2], computed: { area_sf: 0, perimeter_lf: r2(lenPx([p, q2]) * w.upp) }, derived: { from_shape_id: w.shape.id } });
         }
       }

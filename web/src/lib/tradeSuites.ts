@@ -118,7 +118,7 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
     tools: ["siding_takeoff"],
     method: [
       "Elevations, scale set on each. Trace each wall face once; a face that shows on two elevations is taken on one.",
-      "1. measure_polygon each sided wall face under SD-WALL (gable ends included, up to the soffit line).",
+      "1. measure_polygon each sided wall face under SD-WALL (gable ends included, up to the soffit line: one polygon with the wall, or its own shape — both give the same numbers).",
       "2. measure_polygon each window and door under SD-OPEN (or cut_out them from the wall).",
       "3. measure_line each outside corner under SD-OSC and inside corner under SD-ISC, full height, on one elevation.",
       "4. siding_takeoff {door_openings: [shape ids of doors], exposure_in, piece_length_ft}: net SF and squares, J/trim runs around openings (SD-TRIM, doors 3 sides) and starter along wall bottoms (SD-STARTER) committed so you can see them.",
