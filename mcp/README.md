@@ -241,6 +241,7 @@ once, at open time, instead of riding every turn. The long form is the
 | Suite | Divisions | Tool it adds |
 |---|---|---|
 | finishes | 09 | none: core tools (`measure_polygon`, `derive_base`, `derive_transitions`, `measure_surface`) |
+| concrete | 03 | `concrete_takeoff`: from slabs (C-SOG-), footing runs (C-FTG-), cast walls (C-WALL-) and pads (C-PAD-) and the dimensions on the structural sheets: cubic yards net and with waste, form contact area (slab edges, footing sides, both wall faces), reinforcing bar LF and weight with laps, welded wire, base course, vapor barrier, all as material rows; each slab's edge form is committed as a run under `<condition>-FORM`; joint LF is reported as traced. A missing thickness, width or depth is refused by name. |
 | acoustical_ceilings | 09 | `ceiling_takeoff`: from lay-in areas on the reflected ceiling plan and the module (2x2, 2x4, or 600x600 / 600x1200 in metric): tiles before and with waste, main runners, long and short cross tees, hanger wires at the spec spacing, all as material rows; each area's perimeter committed as a wall angle run. |
 | roofing | 07 | `roof_takeoff`: sloped SF and squares from plan-view planes and a stated pitch, true rake/hip/valley LF, drip edge, starter, ridge cap, underlayment, ice & water. Writes the slope factors onto the conditions so every total reads true. |
 | siding | 07 | `siding_takeoff`: net wall SF and squares from elevation faces minus openings, opening trim (doors 3 sides), starter along wall bottoms, corner LF, lap pieces. |

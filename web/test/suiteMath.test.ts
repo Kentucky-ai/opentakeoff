@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePitch, slopeFactor, hipValleyFactor, roofQuantities, bottomEdges, starterRuns, sidingQuantities,
-  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringAreaSf, ringPerimeter, type Pt,
+  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, slabQuantities, footingQuantities, concreteWallQuantities, padQuantities, rebarQuantities, barsEachWayLf, parseBarSize, ringAreaSf, ringPerimeter, type Pt,
 } from "../src/lib/suiteMath.ts";
 import { TRADE_SUITES, SUITE_TOOL_NAMES, suitesForDivision, suiteOfTool, suiteCatalogLines } from "../src/lib/tradeSuites.ts";
 
@@ -291,6 +291,94 @@ test("ring helpers ignore a repeated closing point", () => {
   near(ringPerimeter([...r, r[0]]), 14, 1e-9);
 });
 
+test("parseBarSize reads the sizes the structural notes print", () => {
+  assert.equal(parseBarSize("#4"), "4");
+  assert.equal(parseBarSize(5), "5");
+  assert.equal(parseBarSize("No. 6"), "6");
+  assert.equal(parseBarSize(" #11 "), "11");
+  assert.equal(parseBarSize("#2"), null);           // below the deformed bar range
+  assert.equal(parseBarSize("#12"), null);
+  assert.equal(parseBarSize("10M"), null);          // metric bar designations are not a US size
+  assert.equal(parseBarSize("four"), null);
+});
+
+test("slabQuantities: a 40 × 25 ft slab at 5 in (the #611 finish line)", () => {
+  const q = slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 5 });
+  near(q.concrete_cy, 15.43);            // 1000 × 5/12 = 416.67 CF / 27
+  assert.equal(q.waste_pct, 5);
+  assert.match(q.waste_source, /allowance/);
+  near(q.order_cy, 16.2);                // 15.432 × 1.05
+  near(q.edge_form_lf, 130);             // 2 × (40 + 25)
+  near(q.edge_form_sf, 54.17);           // 130 × 5/12
+  assert.ok(q.not_figured.some((s) => /reinforcing/.test(s)), "no bars given → named");
+  assert.ok(q.not_figured.some((s) => /base course/.test(s)), "no base depth → named");
+  const stated = slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 5, waste_pct: 0 });
+  assert.equal(stated.waste_source, "stated");
+  near(stated.order_cy, 15.43);
+  const open = slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 5, edge_form: false });
+  assert.equal(open.edge_form_lf, 0);
+  assert.throws(() => slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 0 }), /thickness_in/);
+});
+
+test("rebar: #4 at 12 in each way on that slab, 24 in laps on 20 ft bars", () => {
+  assert.equal(barsEachWayLf(1000, 12), 2000);       // 1000 LF each way
+  assert.equal(barsEachWayLf(1000, 12, 2), 4000);    // two mats
+  near(barsEachWayLf(160, 18), 213.33);              // 160 / 1.5 each way × 2
+  const q = slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 5, bars: { size: "#4", spacing_in: 12, lap_in: 24 } });
+  const r = q.rebar!;
+  assert.equal(r.size, "#4");
+  near(r.net_lf, 2000);
+  near(r.lf, 2222.22);                   // 2000 × 20 / (20 − 2): each piece but the first gives up its lap
+  near(r.lap_lf, 222.22);
+  assert.equal(r.pieces, 112);           // 2222.22 / 20 = 111.1
+  near(r.weight_lb, 1484.44);            // 2222.22 × 0.668 lb/ft
+  assert.match(r.stock_source, /allowance/);
+  assert.ok(!q.not_figured.some((s) => /bar laps/.test(s)));
+  const noLap = slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 5, bars: { size: "4", spacing_in: 12 } });
+  near(noLap.rebar!.lf, 2000);
+  near(noLap.rebar!.weight_lb, 1336);    // 2000 × 0.668
+  assert.ok(noLap.not_figured.some((s) => /bar laps/.test(s)), "no lap → bar LF is the net run, and says so");
+  assert.throws(() => rebarQuantities(100, { size: "#4", lap_in: 240 }), /not shorter/);
+  assert.throws(() => rebarQuantities(100, { size: "#14" }), /not a US bar size/);
+  near(rebarQuantities(100, { size: "#8", stock_ft: 40 }).weight_lb, 267);   // 100 × 2.67
+});
+
+test("slabQuantities: welded wire by area with its side lap, base course, vapor barrier", () => {
+  const q = slabQuantities({
+    area_sf: 1000, perimeter_lf: 130, thickness_in: 5,
+    mesh: { roll_width_ft: 5, lap_in: 6 }, base_depth_in: 4, vapor_barrier: true,
+  });
+  near(q.mesh_sf!, 1111.11);             // 1000 × 5 / (5 − 0.5)
+  near(q.base_cy!, 12.35);               // 1000 × 4/12 = 333.33 CF / 27
+  assert.equal(q.vapor_barrier_sf, 1000);
+  assert.throws(() => slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 5, mesh: { roll_width_ft: 0.4, lap_in: 6 } }), /wider than its lap/);
+});
+
+test("footingQuantities: 130 LF of 24 × 12 in footing (the #611 finish line)", () => {
+  const q = footingQuantities({ length_lf: 130, width_in: 24, depth_in: 12 });
+  near(q.concrete_cy, 9.63);             // 130 × 2 ft × 1 ft = 260 CF / 27
+  near(q.order_cy, 10.11);               // 9.630 × 1.05
+  near(q.form_sf, 260);                  // two sides × 130 LF × 1 ft
+  assert.ok(q.not_figured.some((s) => /footing reinforcing/.test(s)));
+  const b = footingQuantities({ length_lf: 130, width_in: 24, depth_in: 12, bars: { size: "#5", count: 3, lap_in: 30, stock_ft: 20 } });
+  near(b.rebar!.net_lf, 390);            // 3 bars × 130 LF
+  near(b.rebar!.lf, 445.71);             // 390 × 20 / (20 − 2.5)
+  near(b.rebar!.weight_lb, 464.88);      // 445.714 × 1.043
+});
+
+test("concreteWallQuantities and padQuantities", () => {
+  const w = concreteWallQuantities({ area_sf: 160, thickness_in: 8, bars: { size: "#5", spacing_in: 18 } });   // 20 ft × 8 ft
+  near(w.concrete_cy, 3.95);             // 160 × 8/12 = 106.67 CF / 27
+  near(w.form_sf, 320);                  // both faces
+  near(w.rebar!.lf, 213.33);             // 160 / 1.5 each way × 2
+  assert.equal(w.rebar!.pieces, 11);
+  near(w.rebar!.weight_lb, 222.51);      // 213.33 × 1.043
+  const p = padQuantities({ count: 4, length_ft: 4, width_ft: 4, depth_in: 18 });
+  near(p.concrete_cy, 3.56);             // 4 × 4 × 4 × 1.5 = 96 CF / 27
+  near(p.form_sf, 96);                   // 4 pads × 16 ft of side × 1.5 ft
+  assert.throws(() => padQuantities({ count: 4, length_ft: 0, width_ft: 4, depth_in: 18 }), /positive/);
+});
+
 test("registry: ids unique, every suite has a method, divisions route, tools are owned once", () => {
   const ids = TRADE_SUITES.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -300,9 +388,10 @@ test("registry: ids unique, every suite has a method, divisions route, tools are
     for (const t of s.tools) assert.equal(suiteOfTool(t)?.id, s.id);
   }
   assert.deepEqual(suitesForDivision("07").map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
+  assert.deepEqual(suitesForDivision("03").map((s) => s.id), ["concrete"]);
   assert.deepEqual(suitesForDivision("Div 26 05 00").map((s) => s.id), ["electrical"]);
   assert.deepEqual(suitesForDivision("8").map((s) => s.id), ["glazing", "doors"]);
-  assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
+  assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "concrete_takeoff", "electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
   assert.deepEqual(suitesForDivision("09").map((s) => s.id), ["finishes"], "a flooring job does not open ceilings");
   assert.deepEqual(suitesForDivision("09", ["CPT-1", "act-2"]).map((s) => s.id), ["finishes", "acoustical_ceilings"]);
   assert.deepEqual(suitesForDivision("07", ["ACT-1"]).map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
@@ -324,6 +413,9 @@ test("trade view: explicit trade wins, then tag prefix, then Finishes; the view 
   assert.equal(conditionTrade({ finish_tag: "FA-HORN" }), "electrical");
   assert.equal(conditionTrade({ finish_tag: "PT-1" }), "finishes");           // paint is not plumbing
   assert.equal(conditionTrade({ finish_tag: "ACT-2" }), "acoustical_ceilings");
+  assert.equal(conditionTrade({ finish_tag: "c-sog-1" }), "concrete");
+  for (const t of ["C-FTG-2", "C-PAD-1", "C-WALL-3", "C-JOINT"]) assert.equal(conditionTrade({ finish_tag: t }), "concrete");
+  assert.equal(conditionTrade({ finish_tag: "C-1" }), "finishes");            // a bare C- tag is not a concrete tag
   assert.equal(conditionTrade({ finish_tag: "LVT-1" }), "finishes");          // pre-suite takeoffs read as finishes
   assert.equal(conditionTrade({ finish_tag: "LVT-1", trade: "glazing" }), "glazing");
   assert.equal(conditionTrade({ finish_tag: "RF-1", trade: "nonsense" }), "roofing");
