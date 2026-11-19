@@ -25,6 +25,7 @@ that. A client that reads its tool list only once can pre-open suites with
 | Suite | Divisions | Tool | What it figures |
 |---|---|---|---|
 | finishes | 09 | none | Rooms with `measure_polygon`, base with `derive_base`, transitions with `derive_transitions`, wall finishes with `measure_surface`. |
+| concrete | 03 | `concrete_takeoff` | Cubic yards (net and with waste) from slabs, footings, walls and pads, form contact area, reinforcing bar LF and weight with laps, welded wire, base course, vapor barrier, joint LF as traced. |
 | acoustical_ceilings | 09 | `ceiling_takeoff` | Lay-in tiles from the module, main runners, long and short cross tees, hanger wires, wall angle LF from the areas' perimeters. |
 | roofing | 07 | `roof_takeoff` | Sloped SF and squares, true rake, hip and valley LF, drip edge, starter, ridge cap, underlayment, ice and water. |
 | siding | 07 | `siding_takeoff` | Net wall SF and squares, opening trim, starter, corners, lap pieces. |
@@ -41,7 +42,7 @@ condition count. Other trades' conditions leave the Condition list and the
 Takeoffs panel and their shapes hide; the Report, estimate and exports keep
 everything. A condition made while a trade is showing is booked to it
 (`trade` on the condition). Otherwise a condition's trade is read from its tag
-prefix (`RF-`, `SD-`, `SF-`, `ACT-`, `GL-`, `DR-`/`HW-`, `P-`, `E-`/`FA-`/`LV-`), else
+prefix (`RF-`, `SD-`, `SF-`, `C-SOG-`/`C-FTG-`/`C-PAD-`/`C-WALL-`/`C-JOINT`, `ACT-`, `GL-`, `DR-`/`HW-`, `P-`, `E-`/`FA-`/`LV-`), else
 Finishes, so the suite tools' default tags land in the right trade. Set it by
 hand in the condition's properties. The picker is per user and saved in the
 browser, not in the project.
@@ -63,10 +64,10 @@ browser, not in the project.
   from the other system is refused, and the error names the right one. An
   argument the tool does not take is named instead of being dropped: in
   `unknown_args`, or at the end of a refusal. Without `units`, everything
-  stays imperial.
+  stays imperial. Volumes reply in m³ (`order_m3`) and bar weights in kg.
 - Allowances are labelled. When no waste is stated, the reply says it carried
   the suite allowance (roofing 10 %, or 15 % with hips or valleys; siding and
-  soffit 10 %) so the estimator can override it with their own standard.
+  soffit 10 %, concrete 5 % with 20 ft bar stock) so the estimator can override it with their own standard.
 - No prices, manufacturers or products ship in any suite.
 
 ## The math
