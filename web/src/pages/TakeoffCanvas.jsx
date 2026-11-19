@@ -44,6 +44,7 @@ import { pendingByProposal, acceptConditionEditProposal } from "../lib/proposals
 import { scopeCollisions, collisionsByCondition } from "../lib/scopeCollision.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
 import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
+import { openBackupCenter } from "../components/BackupCenter.jsx";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
@@ -10656,6 +10657,11 @@ export default function TakeoffCanvas() {
     id: "export-project", icon: "document", label: tr("Export project archive…"),
     title: uiText("Save the WHOLE job as one portable .otk file — every plan PDF plus the full takeoff. Open it on any machine (drop it like a plan, or Add plans), archive it, or hand it to another estimator; unlike Export takeoff, the plans travel inside."),
     onSelect: exportProjectArchive,
+  });
+  sheetMenuItems.push({
+    id: "backup-everything", icon: "document", label: tr("Back up everything…"),
+    title: uiText("Export every project in this browser — plans, takeoffs, revisions, snapshots, libraries and settings — as one .otkx file, or import one. Your work lives only in this browser until you back it up."),
+    onSelect: openBackupCenter,
   });
   sheetMenuItems.push({ section: "Page tools" });
   sheetMenuItems.push({

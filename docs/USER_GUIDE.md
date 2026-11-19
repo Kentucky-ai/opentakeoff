@@ -872,6 +872,10 @@ So take the takeoff out of the browser: **Sheet → Export takeoff…** writes `
 
 **Sheet → Export project archive…** writes a `.otk` containing the current takeoff and current plan PDFs. It preserves stitched surfaces too. Saved revision snapshots and earlier versions of those PDFs are separate browser records and are not included. Opening the archive in a fresh workspace brings over the current work; it does not restore the revision history.
 
+**Back up everything** (the File menu, or **Back up now** on the reminder) writes one `.otkx` file holding every project in this browser: each project's takeoff, every plan PDF and its earlier revisions, saved snapshots, your condition templates, materials and stamps, your profile, and your settings. Choose **Import everything** in a fresh browser (another computer, a new profile) to put all of it back. Import adds to what is already there; if anything it carries would replace a different copy already in the browser, it lists those items and waits until you tick **Replace** before it writes anything. Two things stay behind on purpose: an AI key or assistant link (credentials), and a linked folder (it only works in the browser that made it). The file holds up to 2 GB; if your projects are bigger, the backup says what it left out.
+
+On first load OpenTakeoff asks the browser to keep its storage (*persistent storage*). Browsers may still clear it, so a reminder appears at the lower left when you have projects and haven't made a backup in 14 days. **Not now** hides it for 14 days.
+
 If a saved project fails to load, autosave **pauses itself** and a banner says so—a load failure never overwrites your saved work with an empty canvas. And if OpenTakeoff updates in another tab, the stale tab asks for a reload instead of writing over the newer one.
 
 ### On-device text recognition—what downloads, and when

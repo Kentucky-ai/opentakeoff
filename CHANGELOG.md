@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-19 — Export everything and the backup reminder
+
+- **Back up everything (File menu).** One `.otkx` file holds every project in this browser: each project's takeoff, every plan PDF and its earlier revisions, snapshots, templates, materials and stamps, your profile and your settings. **Import everything** puts it all back in another browser. Import adds to what is there and lists anything that would replace a different copy; nothing is replaced until you tick **Replace**. An AI key, the assistant link and a linked folder stay in the browser that made them.
+- **Large sets.** Plans are read and written in 8 MB slices, straight to a file on disk where the browser allows it (Chromium), and imported PDFs are copied from the chosen file rather than unpacked in memory. A backup holds up to 2 GB and 10,000 files; past that it leaves the lowest-priority records out (OCR caches, then older revisions, then plans) and says which.
+- **Persistent storage and a reminder.** On load OpenTakeoff asks the browser once to keep its storage. While you have projects and no backup from the last 14 days, a reminder at the lower left offers **Back up now**; **Not now** hides it for 14 days.
+- Tests: `web/test/browserExport.test.ts` (round trip of two projects with revisions and snapshots into an empty browser, deep-equal), `web/test/backupStatus.test.ts`. Design and live verification: `docs/design/BROWSER_EXPORT.md`, `docs/design/browser-export-verification.md`.
+
 ## 2026-11-18 — Acoustical ceilings suite (MCP 0.9.113)
 
 - **`ceiling_takeoff`, the acoustical-ceiling part of Division 09 (#614).** `open_suite {suite: "acoustical_ceilings"}` opens it. `{division: "09"}` opens Finishes only, and brings ceilings along once an `ACT-` tag is on the job, so a flooring takeoff keeps a short tool list. Trace the lay-in areas on the reflected ceiling plan under `ACT-<type>`, then call `ceiling_takeoff {condition, module, hanger_spacing_ft}`.

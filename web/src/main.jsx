@@ -7,6 +7,7 @@ import "./styles/brand.css";   // OT-only brand marks (the scan star)
 import "./styles/print.css";   // OT-only print block — kept out of app.css so tokens/app stay byte-synced with Spline
 import TakeoffCanvas from "./pages/TakeoffCanvas.jsx";
 import ProjectHome from "./components/ProjectHome.jsx";
+import BackupCenter from "./components/BackupCenter.jsx";
 import { GoogleAuthProvider, useGoogleAuth } from "./lib/google/AuthContext.jsx";
 import { projectIdFromUrl, setActiveStore, metaGet, metaDelete } from "./lib/store.js";
 import { isGoogleConfigured, getAccessToken } from "./lib/google/auth.js";
@@ -510,6 +511,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="*" element={<App />} />
         </Routes>
         <FirstRunLanguage />
+        <BackupCenter />
       </BrowserRouter>
     </GoogleAuthProvider>
   </React.StrictMode>

@@ -715,6 +715,13 @@ export function createLocalStore(folderId = null) {
 // layer confines itself to the `sync:` prefix (distinct from the annotation /
 // library keys above).
 /** @param {string} key @returns {Promise<any>} stored value, or undefined if absent */
+// The whole database, opened and always closed, for Export everything /
+// Import everything (lib/browserExport.js), which reads and writes every
+// store record by record. Not part of the store seam.
+export function withStoreDb(fn) {
+  return withDb(fn);
+}
+
 export async function metaGet(key) {
   return withDb((db) => tx(db, META_STORE, "readonly", (os) => os.get(key)));
 }
