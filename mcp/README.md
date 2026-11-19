@@ -44,9 +44,9 @@ what's missing where rendering isn't available.
 engine is re-validated against a wider plan corpus: `tools/list` never names them, the
 initialize `instructions` say so and point at `measure_polygon`, and no other tool's
 description sends an agent to a verb that is not there. A default build registers
-**<!--tool-count-->69<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
+**<!--tool-count-->70<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
 exports — is unchanged. Set `OPENTAKEOFF_ONE_CLICK=1` in the server's environment to
-register both verbs (<!--tool-count-all-->71<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
+register both verbs (<!--tool-count-all-->72<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
 `test/gate.test.ts` pins both surfaces. The rows and examples below that use `one_click`
 describe the lifted build. Design note: [`docs/design/ONE_CLICK_GATE.md`](../docs/design/ONE_CLICK_GATE.md).
 
@@ -123,7 +123,7 @@ includes document text, shape vertices, or result payload content.
 
 ### Staged tool exposure (opt-in)
 
-By default every client gets all <!--tool-count-->69<!--/tool-count--> tool schemas on `tools/list`—the flat
+By default every client gets all <!--tool-count-->70<!--/tool-count--> tool schemas on `tools/list`—the flat
 contract every published client already expects. Fifty-two descriptions is real
 token weight for an agent session that may never touch half of them, so the
 server can instead stage the surface along the workflow it already teaches:
@@ -201,6 +201,7 @@ The [generated tool index](../docs/MCP_TOOL_INDEX.md) lists stages and required 
 | `delete_rfi` | Withdraw an RFI. A **tombstone, never a renumber**: the number stays reserved, the register and the marked set keep printing a gap where it was, and the next RFI takes the next number. Linked markups keep their note and lose the link (the canvas's own delete rule). `undo_last` puts the record and its links back. |
 | `set_pricing` | Price one condition for the estimate (the canvas **Estimate** panel's row): `unit` (SF / SY / LF / EA), `material` and `labor` $ per unit, and `materials` [{name, price}] for its supporting-material rows per their own unit. Material prices the **order** quantity (waste applied), labor the **measured** one. `null` clears a price to *not entered*; `0` is an explicit $0. Prices come from the estimator, never from the agent. One `undo_last` step restores the condition's prices verbatim; they ride `export_takeoff` into the app. |
 | `set_estimate_settings` | The project's **markups** (`tax_pct` on material, `overhead_pct`, `profit_pct` as a `markup` or a `margin`), **proposal** text and layout (`itemized`, `scope_note`, `inclusions`, `exclusions`, `terms`, `valid_days`) and **client** (name, address, reference): the canvas's `estimate_settings`, `bid_proposal` and `client_info`. Only what you pass changes; `undo_last` restores all three. |
+| `compare_sheets` | Visual revision comparison of two sheets (or revisions of a sheet): discovers what moved between them. Automatically aligns vector linework, computes segment differences, groups modified/added/removed ink into changed region bounding hulls, and returns existing takeoff shape IDs on `sheet_a` that intersect changed ink so an agent can re-check only what moved. |
 | `read_sheet_text` | Positioned page text (image px), optionally restricted to a region—title blocks, room labels, finish schedules. |
 | `find_text` | **Locate** a known string—the complement to `read_sheet_text` (which returns what a region *says*; this finds *where* a string sits). Case-insensitive substring match per pdf.js text run; each hit's center feeds straight into `one_click`'s seed. |
 | `sheet_graph` | The plan-set INDEX (#87): every sheet's role with evidence, the schedule tables found, every room tag with its stacked name, the detail callouts, and every revision marker (text `Δ2`/`REV 2` tags AND drawn deltas—a bare digit inside a triangle of linework, proven from the sheet's vector geometry—in `revisions`)—how an agent decides WHAT to measure without a human enumerating rooms. |

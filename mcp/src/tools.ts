@@ -29,6 +29,7 @@ import {
   assistantOpenOutput, assistantListenOutput, assistantSayOutput,
   rotatePageOutput, reorderPagesOutput, extractPagesOutput, mergeDocumentsOutput,
   stitchSheetsOutput, alignStitchOutput, listStitchesOutput,
+  compareSheetsOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
@@ -455,6 +456,19 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     outputSchema: setEstimateSettingsOutput,
   }, run("set_estimate_settings", (a) => session.setEstimateSettings(a)));
+
+  server.registerTool("compare_sheets", {
+    description: `Visual revision comparison of two sheets (or revisions of a sheet): discovers what moved between them. Automatically aligns vector linework, computes segment differences, groups modified/added/removed ink into changed region bounding hulls, and returns existing takeoff shape IDs on sheet_a that intersect changed ink so an agent can re-check only what moved. ${COORDS}`,
+    inputSchema: {
+      sheet_a: z.string().describe("Base sheet key or filename (e.g. 'plans.pdf#1')"),
+      sheet_b: z.string().describe("Incoming/revised sheet key or filename"),
+      alignment: z.object({
+        dx: z.number().optional().describe("Manual translation X offset"),
+        dy: z.number().optional().describe("Manual translation Y offset"),
+      }).optional().describe("Optional manual translation offset; defaults to auto-alignment by title-block/drawing frame"),
+    },
+    outputSchema: compareSheetsOutput,
+  }, run("compare_sheets", (a) => session.compareSheets(a.sheet_a, a.sheet_b, a.alignment)));
 
   server.registerTool("estimate_summary", {
     description: `The priced estimate — the canvas Estimate panel as data: one line per quantity kind each measured condition carries — its area, LF and EA are separate lines (unit, order and measured quantities, rates, material / labor / supply cost, main marks each condition's first line; status priced | partial | unpriced with what is missing, or optional — a bordered linear run's derived line nobody priced, carried in its main line and never missing; set_pricing prices any line: the main one by default, the others with line "LF" / "EA" / "SF"), then material, labor, sales tax, cost, overhead, profit and the base bid. complete is false while anything is unentered: the total then counts the missing pieces at $0 and is "priced so far", and unpriced lists every hole — report it to the estimator, never fill it. Read-only.`,
