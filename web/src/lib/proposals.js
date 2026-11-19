@@ -25,8 +25,13 @@ const tagKey = (t) => String(t ?? "").trim().toUpperCase();
 export function pendingByProposal(shapes, proposals = []) {
   const byId = new Map();
   for (const s of Array.isArray(shapes) ? shapes : []) {
-    if (!s || s.origin?.reviewed !== false) continue;
-    const key = typeof s.origin.proposal_id === "string" && s.origin.proposal_id ? s.origin.proposal_id : "";
+    if (!s) continue;
+    const isRevision = s.flagged_for_revision === true || s.origin?.flagged_for_revision === true;
+    if (s.origin?.reviewed !== false && !isRevision) continue;
+
+    const key = isRevision
+      ? "revision-check"
+      : (typeof s.origin?.proposal_id === "string" && s.origin.proposal_id ? s.origin.proposal_id : "");
     if (!byId.has(key)) byId.set(key, []);
     byId.get(key).push(s);
   }
@@ -40,7 +45,15 @@ export function pendingByProposal(shapes, proposals = []) {
   }
   for (const [key, mine] of byId) {
     if (!key || described.has(key)) continue;
-    out.push({ proposal: { id: key, label: "Proposal", rationale: "" }, ids: mine.map((s) => s.id), shapes: mine });
+    if (key === "revision-check") {
+      out.unshift({
+        proposal: { id: "revision-check", label: "Check after revision", rationale: "Takeoff boundaries touch ink that changed in this revision." },
+        ids: mine.map((s) => s.id),
+        shapes: mine,
+      });
+    } else {
+      out.push({ proposal: { id: key, label: "Proposal", rationale: "" }, ids: mine.map((s) => s.id), shapes: mine });
+    }
   }
   const loose = byId.get("");
   if (loose?.length) out.push({ proposal: null, ids: loose.map((s) => s.id), shapes: loose });

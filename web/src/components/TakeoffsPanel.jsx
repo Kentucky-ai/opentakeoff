@@ -936,7 +936,7 @@ function TakeoffsPanel({
   onActivate, onSetActive, onLocate,
   onAddCondition, onDeleteCondition, onUpdateCond, onSetCondParam, onAssignAttr,
   conditionEditProposals = [], onAcceptConditionEdit, onRejectConditionEdit,
-  collisionsByCond = null, onLookAtCollision,
+  collisionsByCond = null, onLookAtCollision, revisionFlaggedByCond = null,
   onAddMaterial, onUpdateMaterial, onRemoveMaterial, onApplyAssembly,
   onDuplicateCondition, onSplitCondition, onFollowFamilyRow, onRestoreDroppedRow,
   onDeriveTransitions, onLocateTransition,
@@ -1177,6 +1177,10 @@ function TakeoffsPanel({
           {collisionsByCond?.get(c.id)?.length ? (
             <span data-collision-badge={c.id} title={uiText(`${collisionsByCond.get(c.id).length} shared-floor pair${collisionsByCond.get(c.id).length === 1 ? "" : "s"} — another condition claims the same floor, or a room is traced twice. Activate the row to see each pair.`)}
               style={{ flexShrink: 0, fontFamily: "var(--f-mono,monospace)", fontSize: 10, fontWeight: 700, color: "var(--c-danger)", border: "1px solid var(--c-danger)", borderRadius: 3, padding: "0 4px" }}>⚠ {uiText(collisionsByCond.get(c.id).length)}</span>
+          ) : null}
+          {revisionFlaggedByCond?.has(c.id) ? (
+            <span data-revision-badge={c.id} title={uiText("Shapes in this condition touch changed ink from a drawing revision. Check after revision.")}
+              style={{ flexShrink: 0, fontFamily: "var(--f-mono,monospace)", fontSize: 10, fontWeight: 700, color: "var(--c-warning, #d97706)", border: "1px solid var(--c-warning, #d97706)", borderRadius: 3, padding: "0 4px" }}>Δ Check</span>
           ) : null}
           <button onClick={(e) => { e.stopPropagation(); onLocate(c.id); }} title={uiText("Zoom the canvas to this condition's takeoffs")}
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>⌖</button>
