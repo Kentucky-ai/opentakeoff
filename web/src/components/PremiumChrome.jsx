@@ -88,10 +88,10 @@ export function PremiumTopBar({ title, subtitle, onBack, onGallery, sheets, curr
   );
 }
 
-export function CanvasSideTabs({ conditionsOpen, conditionCount, onConditions, assistantOpen, onAssistant, working }) {
+export function CanvasSideTabs({ tabsRef, conditionsOpen, conditionCount, onConditions, assistantOpen, onAssistant, working }) {
   useTranslation(); // re-render on a language switch
   return (
-    <div className="pc-sidetabs" role="tablist" aria-label={uiText("Side panels")}>
+    <div ref={tabsRef} className="pc-sidetabs" role="tablist" aria-label={uiText("Side panels")}>
       <button type="button" role="tab" aria-selected={!!conditionsOpen} onClick={onConditions} title={uiText("Conditions")}>
         <span className="pc-sidetab-ico"><Icon name="list" size={20} />{conditionCount > 0 && <span className="pc-badge">{conditionCount}</span>}</span>
         <span>{uiText("Conditions")}</span>

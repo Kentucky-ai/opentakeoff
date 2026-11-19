@@ -997,7 +997,8 @@ the search or review filter clears the selection. **Clear selection** clears it
 without changing any measurement.
 
 Click **Show selected on plan** to open and frame the selected measurements on up
-to four sheets. Selected measurements get a temporary outline; hidden conditions
+to four sheets, clear of the floating side tabs. Selected measurements get a
+temporary outline; hidden conditions
 are revealed and a conflicting trade filter is cleared. Selection outlines are
 not saved or exported. Counts use the same marker geometry and selected
 appearance for individual and bulk selection; selection does not represent a

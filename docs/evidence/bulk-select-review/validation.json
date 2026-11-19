@@ -84,8 +84,7 @@
     "browser_console_errors": 0
   },
   "limits": [
-    "Browser-tested counts on one bundled sample sheet; cross-sheet framing, curved paths, holes, mixed units, and 75-row selection covered by unit tests, not full browser workflows.",
-    "No complete takeoff accuracy claim. QA-1 reviewed state is synthetic test data.",
-    "A short flow recording and additional browser cases remain before proposing a PR."
+    "This records the original three-count trial at port 5182. See extended-validation.json for the later mixed-unit, two-sheet browser trial and recording.",
+    "No complete takeoff accuracy claim. QA-1 reviewed state is synthetic test data."
   ]
 }

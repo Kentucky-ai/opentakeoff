@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
 if (!process.argv[2]) throw new Error("Pass the exported takeoff JSON path.");
-const baseline = JSON.parse(await fs.readFile(new URL("./sample.takeoff.json", import.meta.url), "utf8"));
+const baseline = JSON.parse(await fs.readFile(process.argv[3] || new URL("./sample.takeoff.json", import.meta.url), "utf8"));
 const exported = JSON.parse(await fs.readFile(process.argv[2], "utf8"));
 assert.deepEqual(exported.shapes, baseline.shapes);
 assert.deepEqual(exported.conditions, baseline.conditions);

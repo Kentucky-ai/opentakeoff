@@ -1163,6 +1163,7 @@ export default function TakeoffCanvas() {
   // addEventListener() on it once at setup (wheel, below) don't need to
   // re-subscribe on a node-identity change that no longer happens.
   const containerRef = useRef(null);
+  const canvasSideTabsRef = useRef(null);
   const stageRef = useRef(null);
   const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (base layer — small backing store, coarse pyramid placeholder)
   const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (getOperatorList/getTextContent only — painting moved to the tile worker pool)
@@ -8551,11 +8552,14 @@ export default function TakeoffCanvas() {
     const bounds = workSelectionBounds(selectedWork.locatable, panels);
     if (bounds) {
       const el = containerRef.current, rect = el.getBoundingClientRect();
-      // Use the existing spacing scale to clear the floating canvas controls.
-      const inset = parseFloat(getComputedStyle(el).getPropertyValue("--sp-8")) * 3;
-      const width = Math.max(1, rect.width - inset * 2), height = Math.max(1, rect.height - inset * 2);
+      // Reserve the actual floating tab width, plus a token-sized marker margin.
+      const gap = parseFloat(getComputedStyle(el).getPropertyValue("--sp-8"));
+      const inset = gap * 3;
+      const sideTabs = canvasSideTabsRef.current?.getBoundingClientRect();
+      const rightInset = sideTabs?.width ? Math.max(inset, rect.right - sideTabs.left + gap) : inset;
+      const width = Math.max(1, rect.width - inset - rightInset), height = Math.max(1, rect.height - inset * 2);
       const scale = clamp(Math.min(width / Math.max(1, bounds.x1 - bounds.x0), height / Math.max(1, bounds.y1 - bounds.y0), 1.5));
-      setTfNow({ x: rect.width / 2 - (bounds.x0 + bounds.x1) / 2 * scale, y: rect.height / 2 - (bounds.y0 + bounds.y1) / 2 * scale, scale });
+      setTfNow({ x: inset + width / 2 - (bounds.x0 + bounds.x1) / 2 * scale, y: rect.height / 2 - (bounds.y0 + bounds.y1) / 2 * scale, scale });
     }
     setWorkSelectionFrame(null);
   }, [workSelectionFrame, selectedWork, status, panels, setTfNow]);
@@ -12096,7 +12100,7 @@ export default function TakeoffCanvas() {
           {uiText(panelBtn(() => setShowRevisions(true), "revisions", tr("Revisions — save the takeoff at each bid revision, compare what moved"), showRevisions))}
       </div>
 
-        {workspaceLayout && !focusMode && view === "canvas" && !showReport && <CanvasSideTabs
+        {workspaceLayout && !focusMode && view === "canvas" && !showReport && <CanvasSideTabs tabsRef={canvasSideTabsRef}
           conditionsOpen={condDockOpen && !fullTableOpen} conditionCount={conditions.length}
           onConditions={() => { if (fullTableOpen) { setFullTableOpen(false); setCondDockOpen(true); } else setCondDockOpen((v) => !v); }}
           assistantOpen={assistantOpen} onAssistant={() => (assistantOpen ? setAssistantOpen(false) : openAssistant())} working={agentRunning} />}
