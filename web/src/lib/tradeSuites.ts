@@ -35,6 +35,8 @@ export interface TradeSuite {
   presets: SuitePreset[];
   /** finish-tag prefixes that place a condition in this suite when it carries no explicit trade */
   prefixes: string[];
+  /** a division alone does not open it: by name, or with its division once a condition carries one of its prefixes */
+  byName?: boolean;
 }
 
 export const DIVISIONS: Record<string, string> = {
@@ -61,6 +63,25 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
       "Wall finishes: measure_surface along the wall with the condition's height. Roll goods: edit_condition roll_setup.",
     ].join("\n"),
     presets: [],
+  },
+  {
+    id: "acoustical_ceilings",
+    label: "Acoustical ceilings",
+    prefixes: ["ACT-"],
+    divisions: ["09"],
+    byName: true,
+    summary: "lay-in tiles, main runners, cross tees, hanger wires and wall angle from areas on the reflected ceiling plan",
+    tools: ["ceiling_takeoff"],
+    method: [
+      "Reflected ceiling plan, scale set. One tag per ceiling type from the RCP legend or finish schedule: ACT-1, ACT-2.",
+      "1. measure_polygon (or one_click) each lay-in area wall to wall under its ACT-<type>. Gypsum soffits, bulkheads and areas open to structure are not ACT: leave them out or cut_out them.",
+      "2. ceiling_takeoff {condition, module, hanger_spacing_ft} once per type: tiles, main runners, long and short cross tees and hanger wires as material rows on the condition, and each area's perimeter committed as wall angle under <condition>-WA.",
+      "The module (2x2, 2x4) comes from the RCP legend, the hanger spacing from the spec's suspension section. Not given: create_rfi, never guess.",
+      "Wall angle follows every traced edge. An edge that meets another ceiling, not a wall, is not wall angle: delete_shape that run and measure_line the wall edges under the -WA tag.",
+    ].join("\n"),
+    presets: [
+      { tag: "ACT-<type>", measure: "area", what: "lay-in ceiling areas on the RCP, one tag per ceiling type" },
+    ],
   },
   {
     id: "roofing",
@@ -205,12 +226,17 @@ export function suiteById(id: string): TradeSuite | undefined {
   return BY_ID.get(id);
 }
 
-/** Two-digit division ("7", "07", "07 46 00", "Div 26") → its suites. */
-export function suitesForDivision(raw: string): TradeSuite[] {
+/**
+ * Two-digit division ("7", "07", "07 46 00", "Div 26") → its suites. A byName
+ * suite comes along only when `tags` (the job's condition tags) already holds
+ * one of its prefixes: "09" on a flooring job is Finishes, not ceilings too.
+ */
+export function suitesForDivision(raw: string, tags: readonly string[] = []): TradeSuite[] {
   const m = String(raw).match(/(\d{1,2})/);
   if (!m) return [];
   const div = m[1].padStart(2, "0");
-  return TRADE_SUITES.filter((s) => s.divisions.includes(div));
+  const onJob = (s: TradeSuite) => tags.some((t) => s.prefixes.some((p) => t.toUpperCase().startsWith(p)));
+  return TRADE_SUITES.filter((s) => s.divisions.includes(div) && (!s.byName || onJob(s)));
 }
 
 /** Every tool any suite adds, sorted. */
