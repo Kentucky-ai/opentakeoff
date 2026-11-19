@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-20 — Concrete suite (MCP 0.9.114)
+
+- **`concrete_takeoff`, Division 03 (#611).** `open_suite {suite: "concrete"}` or `{division: "03"}` opens it. Trace under `C-SOG-<type>` (slab areas), `C-FTG-<type>` (footing runs), `C-PAD-<type>` (spread footings, counted or as areas), `C-WALL-<type>` (cast walls, `measure_surface` or a run with `height_ft`) and `C-JOINT` (joint runs), then call `concrete_takeoff {slabs, footings, walls, pads}` with one entry per condition and the dimensions from the structural sheets.
+- **What it figures.**
+  - Cubic yards, net and with waste (stated, or a labeled 5% allowance): slab area × thickness, footing length × width × depth, wall area × thickness, pads from their stated size.
+  - Form contact area: slab edges (perimeter × thickness), both footing sides, both wall faces, the four sides of a counted pad.
+  - Reinforcing: bar LF and weight at a stated spacing each way on a slab or wall, or a stated count of continuous bars in a footing. A stated lap lengthens the run by `stock ÷ (stock − lap)` (20 ft bar stock unless stated, labeled). Weights are the nominal US bar table, named in the reply. Welded wire by area from a stated roll width and lap.
+  - Under the slab: base course CY from a stated depth, and vapor barrier SF.
+  - Joints: `C-JOINT` LF as traced. The tool does not lay joints out.
+- **Where it puts them.** Material rows on each condition, updated on a re-run, never duplicated. Each slab's perimeter is committed as an edge form run under `<condition>-FORM` (a multiplier on the slab is copied to it), and a re-run skips slabs it already derived.
+- **Missing values.** A missing thickness, width or depth refuses naming the argument, and nothing is committed. A value the call leaves out (bars, base depth, laps) is listed under `not_figured`. On a 40 × 25 ft slab at 5 in, the tool gives 15.43 CY and 130 LF of edge form, and 130 LF of 24 × 12 in footing gives 9.63 CY.
+- **Metric.** With `units: "metric"` the arguments are in mm and m and the reply in m³, m², m and kg. Bars stay US sizes (`#4`).
+- The Trade view books `C-SOG-`, `C-FTG-`, `C-PAD-`, `C-WALL-` and `C-JOINT` tags to the new suite.
+
 ## 2026-11-18 — Acoustical ceilings suite (MCP 0.9.113)
 
 - **`ceiling_takeoff`, the acoustical-ceiling part of Division 09 (#614).** `open_suite {suite: "acoustical_ceilings"}` opens it. `{division: "09"}` opens Finishes only, and brings ceilings along once an `ACT-` tag is on the job, so a flooring takeoff keeps a short tool list. Trace the lay-in areas on the reflected ceiling plan under `ACT-<type>`, then call `ceiling_takeoff {condition, module, hanger_spacing_ft}`.

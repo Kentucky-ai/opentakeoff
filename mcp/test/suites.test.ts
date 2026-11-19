@@ -53,12 +53,12 @@ test("suites: a default build lists open_suite and hides every suite tool", asyn
 test("suites: open_suite with no arguments is the catalog; its description carries one line per suite", async () => {
   const client = await pair();
   const tool = (await client.listTools()).tools.find((t) => t.name === "open_suite")!;
-  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "acoustical_ceilings", "doors"]) {
+  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "concrete", "acoustical_ceilings", "doors"]) {
     assert.match(tool.description!, new RegExp(`- ${id} \\(Div`));
   }
   const r = await call(client, "open_suite");
   assert.equal(r.isError, false);
-  assert.equal(r.data.catalog.length, 9);
+  assert.equal(r.data.catalog.length, 10);
   assert.deepEqual(r.data.opened, []);
 });
 
@@ -99,7 +99,7 @@ test("suites: pre-opened by option or OPENTAKEOFF_MCP_SUITES", async () => {
   const client = await pair({ suites: ["glazing"] });
   const names = (await client.listTools()).tools.map((t) => t.name);
   assert.ok(names.includes("glazing_takeoff") && !names.includes("roof_takeoff"));
-  assert.deepEqual(preopenedSuites("all").length, 9);
+  assert.deepEqual(preopenedSuites("all").length, 10);
   const prev = process.env.OPENTAKEOFF_MCP_SUITES;
   process.env.OPENTAKEOFF_MCP_SUITES = "plumbing, nonsense";
   try { assert.deepEqual(preopenedSuites(), ["plumbing"]); } finally {
@@ -691,4 +691,132 @@ test("open_suite division 09 opens finishes only; ceilings by name, or once an A
   const rcp = await call(client, "open_suite", { division: "09" });
   assert.deepEqual(rcp.data.opened, ["finishes", "acoustical_ceilings"]);
   assert.deepEqual(rcp.data.tools_enabled, ["ceiling_takeoff"]);
+});
+
+test("concrete_takeoff: the #611 finish line — a 40 × 25 ft slab at 5 in and 130 LF of footing, rows once, forms once", async () => {
+  const client = await pair({ suites: ["concrete"] });
+  await ready(client);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 500, 350), condition: "C-SOG-1" });   // 40 × 25 ft = 1000 SF
+  await call(client, "measure_line", { sheet: KEY, pts: [[50, 50], [450, 50], [450, 350], [50, 350], [50, 150]], condition: "C-FTG-1" });   // 400 + 300 + 400 + 200 px = 130 ft
+  const slab = { condition: "C-SOG-1", thickness_in: 5, bars: { size: "#4", spacing_in: 12, lap_in: 24 } };
+  const footing = { condition: "C-FTG-1", width_in: 24, depth_in: 12 };
+
+  const noThickness = await call(client, "concrete_takeoff", { slabs: [{ condition: "C-SOG-1" }], footings: [footing] });
+  assert.equal(noThickness.isError, true);
+  assert.match(noThickness.data.error, /slabs\[0\]\.thickness_in is required/);
+  const noDepth = await call(client, "concrete_takeoff", { slabs: [slab], footings: [{ condition: "C-FTG-1", width_in: 24 }] });
+  assert.equal(noDepth.isError, true);
+  assert.match(noDepth.data.error, /footings\[0\]\.depth_in is required/);
+  const badBar = await call(client, "concrete_takeoff", { slabs: [{ ...slab, bars: { size: "#2", spacing_in: 12 } }] });
+  assert.match(badBar.data.error, /not a US bar size/);
+  const nothing = await call(client, "concrete_takeoff", {});
+  assert.match(nothing.data.error, /Nothing to take off/);
+  assert.equal(row((await call(client, "export_report")).data, "C-SOG-1-FORM"), undefined, "a refusal commits nothing");
+
+  const r = await call(client, "concrete_takeoff", { slabs: [slab], footings: [footing] });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.slabs[0].concrete_cy, 15.43);           // 1000 × 5/12 = 416.67 CF / 27
+  near(r.data.slabs[0].order_cy, 16.2);               // × 1.05 suite allowance
+  near(r.data.slabs[0].edge_form_lf, 130);            // 2 × (40 + 25)
+  near(r.data.slabs[0].rebar.lf, 2222.22);            // 2 × 1000 LF × 20 / 18
+  near(r.data.slabs[0].rebar.weight_lb, 1484.44);     // × 0.668 lb/ft
+  near(r.data.footings[0].concrete_cy, 9.63);         // 130 × 2 × 1 ft = 260 CF / 27
+  near(r.data.footings[0].form_sf, 260);              // 2 sides × 130 LF × 1 ft
+  near(r.data.totals.concrete_cy, 25.06);             // 15.43 + 9.63
+  near(r.data.totals.form_sf, 314.17);                // 54.17 slab edge + 260 footing sides
+  assert.equal(r.data.committed, 1);
+  assert.equal(r.data.undo_steps, 4);                 // the edge form commit, then the rows on the slab, its edge form and the footing
+  assert.ok(r.data.not_figured.some((m: string) => /^C-SOG-1: base course/.test(m)));
+  assert.ok(r.data.not_figured.some((m: string) => /^C-FTG-1: footing reinforcing/.test(m)));
+
+  let rep = (await call(client, "export_report")).data;
+  const qty = (tag: string, name: string) => row(rep, tag).materials.find((m: any) => m.name === name)?.qty;
+  near(qty("C-SOG-1", "Concrete"), 16.2, 0.01);
+  near(qty("C-SOG-1", "Reinforcing #4, LF"), 2222.22, 0.05);
+  near(qty("C-SOG-1", "Reinforcing #4, weight"), 1484.44, 0.05);
+  near(qty("C-FTG-1", "Concrete"), 10.11, 0.01);      // 9.630 × 1.05
+  near(qty("C-FTG-1", "Form contact area, sides"), 260, 0.01);
+  near(row(rep, "C-SOG-1-FORM").lf, 130);
+  assert.equal(row(rep, "C-SOG-1-FORM").shape_count, 1);
+  near(qty("C-SOG-1-FORM", "Form contact area, edge"), 54.17, 0.01);   // 130 × 5/12
+
+  const again = await call(client, "concrete_takeoff", { slabs: [slab], footings: [footing] });
+  assert.equal(again.data.committed, 0, "re-run skips the slab it already derived");
+  rep = (await call(client, "export_report")).data;
+  assert.equal(row(rep, "C-SOG-1").materials.filter((m: any) => m.name === "Concrete").length, 1, "same row updated, never duplicated");
+  near(row(rep, "C-SOG-1-FORM").lf, 130);
+
+  // a thicker slab on a re-run updates the same row
+  await call(client, "concrete_takeoff", { slabs: [{ ...slab, thickness_in: 6 }] });
+  near(row((await call(client, "export_report")).data, "C-SOG-1").materials.find((m: any) => m.name === "Concrete").qty, 19.44, 0.01);   // 1000 × 6/12 / 27 × 1.05
+
+  const undo = await call(client, "undo_last", { n: again.data.undo_steps });
+  assert.equal(undo.isError, false, JSON.stringify(undo.data));
+});
+
+test("concrete_takeoff: walls, counted pads, joints, bars and mesh, base and vapor barrier; metric", async () => {
+  const client = await pair({ suites: ["concrete"] });
+  await ready(client);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 500, 350), condition: "C-SOG-1" });   // 1000 SF
+  await call(client, "measure_surface", { sheet: KEY, pts: [[100, 500], [300, 500]], condition: "C-WALL-1", height_ft: 8 });   // 20 ft × 8 ft = 160 SF
+  await call(client, "place_count", { sheet: KEY, points: [[100, 600], [200, 600], [300, 600], [400, 600]], condition: "C-PAD-1" });
+  await call(client, "measure_line", { sheet: KEY, pts: [[100, 700], [400, 700]], condition: "C-JOINT" });   // 30 LF
+
+  const input = {
+    slabs: [{ condition: "C-SOG-1", thickness_in: 5, edge_form: false, mesh: { roll_width_ft: 5, lap_in: 6 }, base_depth_in: 4, vapor_barrier: true }],
+    walls: [{ condition: "C-WALL-1", thickness_in: 8, bars: { size: "#5", spacing_in: 18 } }],
+    pads: [{ condition: "C-PAD-1", length_ft: 4, width_ft: 4, depth_in: 18 }],
+  };
+  const r = await call(client, "concrete_takeoff", input);
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.slabs[0].mesh_sf, 1111.11);             // 1000 × 5 / 4.5
+  near(r.data.slabs[0].base_cy, 12.35);               // 1000 × 4/12 / 27
+  assert.equal(r.data.slabs[0].vapor_barrier_sf, 1000);
+  assert.equal(r.data.committed, 0, "edge_form false commits no form run");
+  near(r.data.walls[0].concrete_cy, 3.95);            // 160 × 8/12 / 27
+  near(r.data.walls[0].form_sf, 320);                 // both faces
+  near(r.data.walls[0].rebar.weight_lb, 222.51);      // 2 × 160 / 1.5 = 213.33 LF × 1.043
+  near(r.data.pads[0].concrete_cy, 3.56);             // 4 × 4 × 4 × 1.5 = 96 CF / 27
+  near(r.data.pads[0].form_sf, 96);                   // 4 × 16 ft × 1.5 ft
+  near(r.data.totals.joint_lf, 30);                   // as traced, not laid out
+  near(r.data.totals.form_sf, 416);                   // 320 wall + 96 pads
+
+  const rep = (await call(client, "export_report")).data;
+  const qty = (tag: string, name: string) => row(rep, tag).materials.find((m: any) => m.name === name)?.qty;
+  near(qty("C-SOG-1", "Welded wire fabric"), 1111.11, 0.05);
+  near(qty("C-SOG-1", "Base course"), 12.35, 0.01);
+  near(qty("C-SOG-1", "Vapor barrier"), 1000, 0.01);
+  near(qty("C-WALL-1", "Concrete"), 4.15, 0.01);      // 3.951 × 1.05
+  near(qty("C-WALL-1", "Form contact area, both faces"), 320, 0.01);
+  near(qty("C-PAD-1", "Concrete"), 3.73, 0.01);       // 3.556 × 1.05
+  near(qty("C-PAD-1", "Form contact area, sides"), 96, 0.01);
+
+  const metric = await call(client, "concrete_takeoff", {
+    slabs: [{ condition: "C-SOG-1", thickness_mm: 127, bars: { size: "#4", spacing_mm: 304.8, lap_mm: 609.6 } }],
+    units: "metric", apply: false,
+  });
+  assert.equal(metric.isError, false, JSON.stringify(metric.data));
+  near(metric.data.slabs[0].concrete_m3, 11.8, 0.05);           // 15.432 CY × 0.7646
+  near(metric.data.slabs[0].rebar.weight_kg, 673.35, 0.1);      // 1484.44 lb × 0.4536
+  near(metric.data.slabs[0].edge_form_m, 39.62);                // 130 ft
+  const mixed = await call(client, "concrete_takeoff", { slabs: [{ condition: "C-SOG-1", thickness_in: 5 }], units: "metric" });
+  assert.match(mixed.data.error, /thickness_in is imperial; with units "metric" pass slabs\[0\]\.thickness_mm/);
+});
+
+test("concrete_takeoff: ×3 floors gives 3× the edge form, not 9×; division 03 opens the suite", async () => {
+  const client = await pair();
+  await ready(client);
+  const div = await call(client, "open_suite", { division: "03" });
+  assert.deepEqual(div.data.opened, ["concrete"]);
+  assert.deepEqual(div.data.tools_enabled, ["concrete_takeoff"]);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 500, 350), condition: "C-SOG-1" });
+  await call(client, "edit_condition", { condition: "C-SOG-1", multiplier: 3 });
+  const r = await call(client, "concrete_takeoff", { slabs: [{ condition: "C-SOG-1", thickness_in: 5 }] });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.slabs[0].concrete_cy, 46.3);            // 3 × 15.432
+  near(r.data.slabs[0].edge_form_lf, 390);            // 3 × 130
+  const rep = (await call(client, "export_report")).data;
+  assert.equal(row(rep, "C-SOG-1-FORM").multiplier, 3);
+  near(row(rep, "C-SOG-1-FORM").lf, 390);             // one 130 LF run × 3
+  assert.equal(row(rep, "C-SOG-1-FORM").shape_count, 1);
 });
