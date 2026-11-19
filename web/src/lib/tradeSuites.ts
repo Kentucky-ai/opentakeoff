@@ -40,6 +40,7 @@ export interface TradeSuite {
 }
 
 export const DIVISIONS: Record<string, string> = {
+  "04": "Masonry",
   "07": "Thermal & moisture protection",
   "08": "Openings",
   "09": "Finishes",
@@ -63,6 +64,29 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
       "Wall finishes: measure_surface along the wall with the condition's height. Roll goods: edit_condition roll_setup.",
     ].join("\n"),
     presets: [],
+  },
+  {
+    id: "masonry",
+    label: "Masonry",
+    prefixes: ["M-WALL-", "M-OPEN", "M-LINTEL-", "M-BB", "M-CJ"],
+    divisions: ["04"],
+    summary: "unit masonry from net wall face: unit counts, mortar, grout, joint reinforcement, vertical bars and lintels",
+    tools: ["masonry_takeoff"],
+    method: [
+      "Plans or elevations, scale set. Veneer and structural walls take separate tags and separate calls: M-WALL-<type> for each wall type, one M-OPEN for the openings in it.",
+      "1. measure_surface along each wall at its height from the wall section (plan length × height), or measure_polygon the face on an elevation. measure_polygon each opening under M-OPEN. measure_line bond beams under M-BB and control joints under M-CJ.",
+      "2. masonry_takeoff {walls, unit, ...} once per wall type. unit is the nominal face including the joint, as the plans print it: \"16x8\" (inches), or \"400x200\" with units metric. The reply shows units per SF.",
+      "Optional, each from the spec or the structural notes: mortar_cf_per_100_units, joint_reinf_spacing_in, vertical_bar_spacing_in, grout {spacing_in, cell_area_in2}, lintel_bearing_in, lintels [M-LINTEL-<type> counts to check against the openings]. A wall traced as a polygon needs height_ft for the ones that follow height.",
+      "apply (default true) writes the units, mortar, joint reinforcement, bars and grout as material rows on the wall condition (updated on a re-run) and adds a deduct for each opening traced under M-OPEN. Lintels are reported (opening width plus the bearing each side), not drawn. Bond beams and control joints are reported as traced.",
+      "A unit size, spacing or rate the drawings do not give: create_rfi, never guess. A value left out is listed under not_figured, and the 5 % unit waste is a labeled allowance you override.",
+    ].join("\n"),
+    presets: [
+      { tag: "M-WALL-<type>", measure: "surface", what: "masonry walls: traced length at the wall height, or an elevation face" },
+      { tag: "M-OPEN", measure: "area", what: "openings in those walls: windows, doors and louvers" },
+      { tag: "M-LINTEL-<type>", measure: "count", what: "lintels counted on the plans, one tag per lintel type, to check against the openings" },
+      { tag: "M-BB", measure: "line", what: "bond beams, as traced" },
+      { tag: "M-CJ", measure: "line", what: "control joints, as traced" },
+    ],
   },
   {
     id: "acoustical_ceilings",

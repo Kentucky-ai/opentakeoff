@@ -53,12 +53,12 @@ test("suites: a default build lists open_suite and hides every suite tool", asyn
 test("suites: open_suite with no arguments is the catalog; its description carries one line per suite", async () => {
   const client = await pair();
   const tool = (await client.listTools()).tools.find((t) => t.name === "open_suite")!;
-  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "acoustical_ceilings", "doors"]) {
+  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "masonry", "acoustical_ceilings", "doors"]) {
     assert.match(tool.description!, new RegExp(`- ${id} \\(Div`));
   }
   const r = await call(client, "open_suite");
   assert.equal(r.isError, false);
-  assert.equal(r.data.catalog.length, 9);
+  assert.equal(r.data.catalog.length, 10);
   assert.deepEqual(r.data.opened, []);
 });
 
@@ -99,7 +99,7 @@ test("suites: pre-opened by option or OPENTAKEOFF_MCP_SUITES", async () => {
   const client = await pair({ suites: ["glazing"] });
   const names = (await client.listTools()).tools.map((t) => t.name);
   assert.ok(names.includes("glazing_takeoff") && !names.includes("roof_takeoff"));
-  assert.deepEqual(preopenedSuites("all").length, 9);
+  assert.deepEqual(preopenedSuites("all").length, 10);
   const prev = process.env.OPENTAKEOFF_MCP_SUITES;
   process.env.OPENTAKEOFF_MCP_SUITES = "plumbing, nonsense";
   try { assert.deepEqual(preopenedSuites(), ["plumbing"]); } finally {
@@ -691,4 +691,99 @@ test("open_suite division 09 opens finishes only; ceilings by name, or once an A
   const rcp = await call(client, "open_suite", { division: "09" });
   assert.deepEqual(rcp.data.opened, ["finishes", "acoustical_ceilings"]);
   assert.deepEqual(rcp.data.tools_enabled, ["ceiling_takeoff"]);
+});
+
+test("masonry_takeoff: the #612 finish line — 30 × 10 ft wall, one 3 × 4 ft opening, 16 × 8 in units", async () => {
+  const client = await pair({ suites: ["masonry"] });
+  await ready(client);
+  await call(client, "measure_surface", { sheet: KEY, pts: [[100, 100], [400, 100]], condition: "M-WALL-1", height_ft: 10 });   // 30 × 10 ft = 300 SF
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(150, 150, 180, 190), condition: "M-OPEN" });                  // 3 × 4 ft = 12 SF
+  await call(client, "measure_line", { sheet: KEY, pts: [[100, 300], [300, 300]], condition: "M-BB" });                         // 20 LF
+  await call(client, "measure_line", { sheet: KEY, pts: [[100, 320], [150, 320]], condition: "M-CJ" });                         // 5 LF
+
+  const none = await call(client, "masonry_takeoff", {});
+  assert.equal(none.isError, true);
+  assert.match(none.data.error, /needs the unit face/);
+  const odd = await call(client, "masonry_takeoff", { unit: "big" });
+  assert.match(odd.data.error, /Cannot read unit/);
+  const noHeight = await call(client, "masonry_takeoff", { unit: "16x8", walls: "M-OPEN", joint_reinf_spacing_in: 16 });
+  assert.equal(noHeight.isError, true);
+  assert.match(noHeight.data.error, /height_ft/, "a polygon face needs the wall height for what follows it");
+
+  const input = {
+    unit: "16x8", mortar_cf_per_100_units: 8, joint_reinf_spacing_in: 16, vertical_bar_spacing_in: 32,
+    grout: { spacing_in: 32, cell_area_in2: 24 }, lintel_bearing_in: 8,
+  };
+  const r = await call(client, "masonry_takeoff", input);
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.gross_sf, 300);
+  near(r.data.net_sf, 288);                           // 300 − 12
+  near(r.data.units_per_sf, 1.125);                   // 144 / 128
+  assert.equal(r.data.unit_count, 324);               // 288 × 1.125
+  assert.equal(r.data.unit_count_order, 341);         // 324 × 1.05 = 340.2
+  near(r.data.mortar_cf, 25.92);                      // 324 / 100 × 8 CF
+  near(r.data.joint_reinforcement_lf, 240);           // 8 lines (120 in / 16 = 7.5) × 30 LF
+  near(r.data.vertical_bar_lf, 112.5);                // 300 SF / (32 / 12)
+  near(r.data.grout_cf, 18.75);                       // 300 × (12/32) × 24 in² / 144
+  assert.deepEqual(r.data.lintels.lengths_ft, [4.33]); // 3 ft + 2 × 8 in bearing
+  near(r.data.bond_beam_lf, 20);
+  near(r.data.control_joint_lf, 5);
+  assert.equal(r.data.committed, 1);                  // the opening's deduct
+  assert.equal(r.data.undo_steps, 2);                 // the deduct commit, the material rows
+
+  let rep = (await call(client, "export_report")).data;
+  const qty = (name: string) => row(rep, "M-WALL-1").materials.find((m: any) => m.name === name)?.qty;
+  assert.equal(qty("Masonry units"), 341);            // the order count, waste in the row
+  near(qty("Mortar"), 25.92, 0.01);
+  near(qty("Joint reinforcement"), 240, 0.05);
+  near(qty("Vertical bars"), 112.5, 0.05);
+  near(qty("Grout"), 18.75, 0.01);
+  near(row(rep, "M-WALL-1").total_sf, 288);           // the estimate is net
+
+  await call(client, "place_count", { sheet: KEY, points: [[165, 140], [165, 600]], condition: "M-LINTEL-1" });   // two lintels counted, one opening traced
+  const checked = await call(client, "masonry_takeoff", { unit: "16x8", lintels: ["M-LINTEL-1"], apply: false });
+  assert.equal(checked.data.lintels_counted, 2);
+  assert.equal(checked.data.openings_traced, 1);
+  assert.match(checked.data.needs_you[0], /2 lintels counted against 1 openings/);
+  const unchecked = await call(client, "masonry_takeoff", { unit: "16x8", apply: false });
+  assert.equal(unchecked.data.lintels_counted, undefined);
+
+  const again = await call(client, "masonry_takeoff", input);
+  assert.equal(again.data.committed, 0, "re-run skips the opening it already deducted");
+  near(again.data.net_sf, 288);
+  near(again.data.gross_sf, 300);
+  assert.equal(again.data.unit_count, 324);
+  rep = (await call(client, "export_report")).data;
+  assert.equal(row(rep, "M-WALL-1").materials.filter((m: any) => m.name === "Masonry units").length, 1, "same row updated, never duplicated");
+  near(row(rep, "M-WALL-1").total_sf, 288);
+
+  const undo = await call(client, "undo_last", { n: again.data.undo_steps });
+  assert.equal(undo.isError, false, JSON.stringify(undo.data));
+
+  const bigger = await call(client, "masonry_takeoff", { unit: "12x8", mortar_cf_per_100_units: 8, apply: false });
+  assert.equal(bigger.data.unit_count, 432);          // 288 × 1.5: the unit size changes every derived number
+  near(bigger.data.mortar_cf, 34.56);                 // 432 / 100 × 8
+  assert.equal(bigger.data.committed, 0);
+
+  const metric = await call(client, "masonry_takeoff", { unit: "400x200", units: "metric", apply: false, lintel_bearing_mm: 203.2, mortar_cf_per_100_units: 8 });
+  assert.equal(metric.isError, false, JSON.stringify(metric.data));
+  assert.equal(metric.data.unit_length_mm, 400);
+  near(metric.data.net_m2, 26.76);                    // 288 SF × 0.092903
+  assert.equal(metric.data.unit_count, 335);          // 288 × 144 / (15.748 × 7.874) = 334.4
+  near(metric.data.mortar_m3, 0.76);                  // 335 / 100 × 8 = 26.8 CF × 0.0283
+  near(metric.data.lintels.lengths_m, 1.32);          // (3 + 2 × 8/12 ft) × 0.3048
+});
+
+test("masonry_takeoff: a face traced on an elevation takes its height from the call; division 04 opens the suite", async () => {
+  const client = await pair();
+  await ready(client);
+  const div = await call(client, "open_suite", { division: "04" });
+  assert.deepEqual(div.data.opened, ["masonry"]);
+  assert.deepEqual(div.data.tools_enabled, ["masonry_takeoff"]);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 400, 200), condition: "M-WALL-2" });   // 30 × 10 ft
+  const r = await call(client, "masonry_takeoff", { walls: "M-WALL-2", unit: "16x8", height_ft: 10, joint_reinf_spacing_in: 16 });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  assert.equal(r.data.unit_count, 338);               // 300 × 1.125 = 337.5
+  near(r.data.joint_reinforcement_lf, 240);           // length = 300 SF / 10 ft = 30 LF × 8 lines
+  assert.equal(r.data.committed, 0);                  // no openings under M-OPEN
 });

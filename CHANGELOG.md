@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-20 — Masonry suite (MCP 0.9.114)
+
+- **`masonry_takeoff`, Division 04 (#612).** `open_suite {suite: "masonry"}` or `{division: "04"}` opens it. Trace under `M-WALL-<type>` (`measure_surface` at the wall height, or a face on an elevation), `M-OPEN` (the openings in it), `M-LINTEL-<type>`, `M-BB` (bond beams) and `M-CJ` (control joints), then call `masonry_takeoff {walls, unit}`. Veneer and structural walls take separate tags and separate calls.
+- **What it figures.**
+  - Net wall SF after the openings, and units per SF from the unit's nominal face including the joint (`unit: "16x8"` in inches, `"400x200"` with `units: "metric"`): 288 SF of net wall in 16 × 8 in units is 1.125 per SF, 324 units, 341 with the labeled 5% waste allowance.
+  - Mortar from a stated `mortar_cf_per_100_units`, on the units before waste (cubic metres in a metric reply).
+  - Joint reinforcement LF at a stated `joint_reinf_spacing_in` (lines up the wall × length, rounded up), vertical bar LF at a stated `vertical_bar_spacing_in`, and grout from `grout {spacing_in, cell_area_in2}`.
+  - Lintel count and length: each opening's width plus the stated `lintel_bearing_in` each side. Lintels counted under `M-LINTEL-<type>` and passed as `lintels` are checked against the openings traced, and a difference goes to `needs_you`.
+  - Bond beam and control joint LF as traced. The tool does not lay them out.
+- **Where it puts them.** Material rows on the wall condition, updated on a re-run, never duplicated. Each opening traced under `M-OPEN` is added as a deduct on the wall condition, so the estimate is net, and a re-run skips openings it already deducted. Lintels, bond beams and control joints are reported, not drawn.
+- **Missing values.** No unit is refused. A rate, spacing or bearing the call leaves out is listed under `not_figured`, and so are cut units, and reinforcement and grout at jambs, corners and bond beams. Changing the unit size changes every derived number. A face traced as a polygon needs `height_ft` for the reinforcing and grout that follow the wall's height.
+- The Trade view books `M-WALL-`, `M-OPEN`, `M-LINTEL-`, `M-BB` and `M-CJ` tags to the new suite.
+
 ## 2026-11-18 — Acoustical ceilings suite (MCP 0.9.113)
 
 - **`ceiling_takeoff`, the acoustical-ceiling part of Division 09 (#614).** `open_suite {suite: "acoustical_ceilings"}` opens it. `{division: "09"}` opens Finishes only, and brings ceilings along once an `ACT-` tag is on the job, so a flooring takeoff keeps a short tool list. Trace the lay-in areas on the reflected ceiling plan under `ACT-<type>`, then call `ceiling_takeoff {condition, module, hanger_spacing_ft}`.

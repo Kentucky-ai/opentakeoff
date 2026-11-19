@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePitch, slopeFactor, hipValleyFactor, roofQuantities, bottomEdges, starterRuns, sidingQuantities,
-  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringAreaSf, ringPerimeter, type Pt,
+  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, ringAreaSf, ringPerimeter, type Pt,
 } from "../src/lib/suiteMath.ts";
 import { TRADE_SUITES, SUITE_TOOL_NAMES, suitesForDivision, suiteOfTool, suiteCatalogLines } from "../src/lib/tradeSuites.ts";
 
@@ -291,6 +291,55 @@ test("ring helpers ignore a repeated closing point", () => {
   near(ringPerimeter([...r, r[0]]), 14, 1e-9);
 });
 
+test("parseMasonryUnit reads the face the plans print; metric is in mm", () => {
+  assert.deepEqual(parseMasonryUnit("16x8"), { length_in: 16, height_in: 8 });
+  assert.deepEqual(parseMasonryUnit('8" × 16"'), { length_in: 16, height_in: 8 });   // either order, with inch marks
+  assert.deepEqual(parseMasonryUnit("7.625 x 2.625 in"), { length_in: 7.625, height_in: 2.625 });
+  const m = parseMasonryUnit("400x200", true)!;
+  near(m.length_in, 15.748, 0.001);                  // 400 mm / 25.4
+  near(m.height_in, 7.874, 0.001);
+  assert.equal(parseMasonryUnit("16"), null);
+  assert.equal(parseMasonryUnit("0x8"), null);
+  assert.equal(parseMasonryUnit("big"), null);
+});
+
+test("masonryQuantities: the #612 finish line — 30 × 10 ft wall, one 3 × 4 ft opening, 16 × 8 in units", () => {
+  const q = masonryQuantities({ gross_sf: 300, openings_sf: 12, unit_length_in: 16, unit_height_in: 8 });
+  near(q.net_sf, 288);                    // 300 − 12
+  near(q.units_per_sf, 1.125);            // 144 / (16 × 8)
+  assert.equal(q.unit_count, 324);        // 288 × 1.125
+  assert.equal(q.waste_pct, 5);
+  assert.match(q.waste_source, /allowance/);
+  assert.equal(q.unit_count_order, 341);  // 324 × 1.05 = 340.2
+  assert.ok(q.not_figured.some((s) => /^mortar/.test(s)) && q.not_figured.some((s) => /^grout/.test(s)));
+  const bigger = masonryQuantities({ gross_sf: 300, openings_sf: 12, unit_length_in: 12, unit_height_in: 8 });
+  assert.equal(bigger.unit_count, 432);   // 288 × 1.5: a different unit changes the count
+  assert.equal(masonryQuantities({ gross_sf: 300, openings_sf: 12, unit_length_in: 16, unit_height_in: 8, waste_pct: 0 }).unit_count_order, 324);
+  assert.throws(() => masonryQuantities({ gross_sf: 300, openings_sf: 0, unit_length_in: 0, unit_height_in: 8 }), /positive/);
+  near(masonryQuantities({ gross_sf: 10, openings_sf: 50, unit_length_in: 16, unit_height_in: 8 }).net_sf, 0);   // openings never exceed the wall
+});
+
+test("masonryQuantities: mortar, joint reinforcement, vertical bars, grout and lintels", () => {
+  const q = masonryQuantities({
+    gross_sf: 300, openings_sf: 12, unit_length_in: 16, unit_height_in: 8,
+    mortar_cf_per_100_units: 8, runs: [{ length_lf: 30, height_ft: 10 }],
+    joint_reinf_spacing_in: 16, vertical_bar_spacing_in: 32, grout: { spacing_in: 32, cell_area_in2: 24 },
+    opening_widths_ft: [3], lintel_bearing_in: 8,
+  });
+  near(q.mortar_cf!, 25.92);               // 324 / 100 × 8
+  near(q.joint_reinforcement_lf!, 240);    // 10 ft = 120 in / 16 = 7.5 → 8 lines × 30 LF
+  near(q.vertical_bar_lf!, 112.5);         // 300 SF / (32/12 ft)
+  near(q.grout_cf!, 18.75);                // 300 × (12/32) cells × 24 in² / 144
+  assert.deepEqual(q.lintels, { count: 1, lengths_ft: [4.33], total_lf: 4.33, bearing_in: 8 });   // 3 + 2 × 8/12
+  near(q.wall_length_lf!, 30);
+  assert.ok(!q.not_figured.some((s) => /^(mortar|joint|vertical|grout|lintels)/.test(s)));
+  const noBearing = masonryQuantities({ gross_sf: 300, openings_sf: 12, unit_length_in: 16, unit_height_in: 8, opening_widths_ft: [3] });
+  assert.equal(noBearing.lintels, undefined);
+  assert.ok(noBearing.not_figured.some((s) => /^lintels/.test(s)));
+  assert.throws(() => masonryQuantities({ gross_sf: 300, openings_sf: 0, unit_length_in: 16, unit_height_in: 8, grout: { spacing_in: 0, cell_area_in2: 24 } }), /grout needs/);
+  assert.throws(() => masonryQuantities({ gross_sf: 300, openings_sf: 0, unit_length_in: 16, unit_height_in: 8, joint_reinf_spacing_in: -1 }), /positive/);
+});
+
 test("registry: ids unique, every suite has a method, divisions route, tools are owned once", () => {
   const ids = TRADE_SUITES.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -300,9 +349,10 @@ test("registry: ids unique, every suite has a method, divisions route, tools are
     for (const t of s.tools) assert.equal(suiteOfTool(t)?.id, s.id);
   }
   assert.deepEqual(suitesForDivision("07").map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
+  assert.deepEqual(suitesForDivision("04").map((s) => s.id), ["masonry"]);
   assert.deepEqual(suitesForDivision("Div 26 05 00").map((s) => s.id), ["electrical"]);
   assert.deepEqual(suitesForDivision("8").map((s) => s.id), ["glazing", "doors"]);
-  assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
+  assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "electrical_rollup", "glazing_takeoff", "masonry_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
   assert.deepEqual(suitesForDivision("09").map((s) => s.id), ["finishes"], "a flooring job does not open ceilings");
   assert.deepEqual(suitesForDivision("09", ["CPT-1", "act-2"]).map((s) => s.id), ["finishes", "acoustical_ceilings"]);
   assert.deepEqual(suitesForDivision("07", ["ACT-1"]).map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
@@ -324,6 +374,9 @@ test("trade view: explicit trade wins, then tag prefix, then Finishes; the view 
   assert.equal(conditionTrade({ finish_tag: "FA-HORN" }), "electrical");
   assert.equal(conditionTrade({ finish_tag: "PT-1" }), "finishes");           // paint is not plumbing
   assert.equal(conditionTrade({ finish_tag: "ACT-2" }), "acoustical_ceilings");
+  assert.equal(conditionTrade({ finish_tag: "m-wall-2" }), "masonry");
+  for (const t of ["M-OPEN", "M-LINTEL-1", "M-BB", "M-CJ"]) assert.equal(conditionTrade({ finish_tag: t }), "masonry");
+  assert.equal(conditionTrade({ finish_tag: "M-1" }), "finishes");            // a bare M- tag is not a masonry tag
   assert.equal(conditionTrade({ finish_tag: "LVT-1" }), "finishes");          // pre-suite takeoffs read as finishes
   assert.equal(conditionTrade({ finish_tag: "LVT-1", trade: "glazing" }), "glazing");
   assert.equal(conditionTrade({ finish_tag: "RF-1", trade: "nonsense" }), "roofing");
