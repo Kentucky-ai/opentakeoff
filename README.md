@@ -259,7 +259,8 @@ with the finish an expert assigned to it) that doesn't exist today. The thesis, 
 can be attacked, is that **markup is label**.
 
 OpenTakeoff is the instrument that produces that corpus. Collection is opt-in and auditable.
-The **Contribute** button builds a payload that contains only derived data. It never includes
+The **Contribute** button builds a payload of derived takeoff data, with an opaque id and creation
+time for each shape and, if you enter one, your credit line. It never includes
 the PDF, file names, client names or scale values, and a whitelist in
 [`contribute.js`](web/src/lib/contribute.js) enforces that. The contract is
 [`docs/CONTRIBUTION_SPEC.md`](docs/CONTRIBUTION_SPEC.md), and the bundled
