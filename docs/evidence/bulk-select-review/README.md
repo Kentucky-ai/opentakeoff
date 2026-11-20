@@ -1,14 +1,19 @@
 # Bulk selection and review—branch evidence
 
-This branch starts at upstream main `3add1846a974aebc8820fa53af9933f75251690a`.
+The branch now includes upstream main `8a31fb49d5a2c286c665017219073b0abe61695b`.
+The original November 18 trial below started at `3add1846a974aebc8820fa53af9933f75251690a`.
 It adds checkboxes, filtered selection, plan highlights and batch review to
 **Work and review**, using the existing `review` command and one-step undo.
 No persisted fields, MCP tools, callout records or dependencies on the separate
 paper-space marker/locator branch are added.
 
+**Latest review pass:** [Public-plan comparisons, three design alternatives,
+recordings and exact 89-record export checks](public-review/README.md).
+The [prepared PR description](PR-DRAFT.md) stays on this fork; no new PR is posted.
+
 ## Contribution readiness
 
-The evidence package is prepared for a direct PR at the contributor's request.
+The evidence package is prepared on the contributor's fork for review before a PR.
 No issue or PR has been opened for this branch. The contributor chooses to submit
 this focused extension to the existing review panel without a separate issue.
 The upstream [contribution guide](../../../CONTRIBUTING.md#pull-requests--how-we-work)
@@ -19,9 +24,9 @@ guidance. A maintainer can request discussion during review.
 | Requirement | Evidence |
 |---|---|
 | One concern | Select, locate and review existing measurements; no catalog, trade suite or callout model |
-| Required local gates | Web, protocol, tool-count, wiki and doc links; see [local-checks.json](local-checks.json) |
-| Visible surfaces and flow | Panel and canvas screenshots below, plus the 19-second actual-browser recording |
-| Public source | Existing bundled sample PDF; no new PDF, private project, catalog, prices or credentials committed |
+| Required local gates | Refreshed web, protocol, tool-count, wiki and doc links; see [latest checks](public-review/checks.json) and [original checks](local-checks.json) |
+| Visible surfaces and flow | [Three options and public-plan before/after recordings](public-review/README.md), plus the earlier bundled-plan trial below |
+| Public source | Bundled sample, public fire station and cited public landscape sample; no new PDF, private project, catalog, prices or credentials committed |
 | Documentation | Changelog, feature map, README and user guide updated |
 | Contributor agreement | [Author's existing agreement](https://github.com/Kentucky-ai/opentakeoff/issues/659#issuecomment-6985194643); no new signature required |
 | Reviewer limits | Coordinate spaces, deliberate limits and unverified work stated below |
@@ -182,6 +187,8 @@ sheet offsets, curves, holes and large vertex lists.
   An additional six-record export comparison is unverified: the app displayed
   its export receipt, but the in-app browser download stopped and no file was
   recovered. Reloaded UI values and command tests passed; they do not replace
-  that exact export comparison. The verifier accepts the mixed fixture as its
-  optional second path when repeating this check in another browser.
+  that exact export comparison. The [November 20 public-plan trial](public-review/README.md)
+  now verifies all 89 records across counts, areas and lengths both after Undo
+  and after reopening. That supplies mixed-unit persistence evidence without
+  claiming the old six-record download was recovered.
 - No MCP or persisted-format changes, required merge order, new issue or new PR.

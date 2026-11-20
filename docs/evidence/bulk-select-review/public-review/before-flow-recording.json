@@ -1,0 +1,191 @@
+{
+  "start": "2026-11-20T17:18:44.011Z",
+  "duration_ms": 11066,
+  "frames": [
+    {
+      "file": "before-flow-000.jpg",
+      "at": 0
+    },
+    {
+      "file": "before-flow-001.jpg",
+      "at": 372
+    },
+    {
+      "file": "before-flow-002.jpg",
+      "at": 715
+    },
+    {
+      "file": "before-flow-003.jpg",
+      "at": 1062
+    },
+    {
+      "file": "before-flow-004.jpg",
+      "at": 1406
+    },
+    {
+      "file": "before-flow-005.jpg",
+      "at": 1735
+    },
+    {
+      "file": "before-flow-006.jpg",
+      "at": 2098
+    },
+    {
+      "file": "before-flow-007.jpg",
+      "at": 2443
+    },
+    {
+      "file": "before-flow-008.jpg",
+      "at": 2803
+    },
+    {
+      "file": "before-flow-009.jpg",
+      "at": 3145
+    },
+    {
+      "file": "before-flow-010.jpg",
+      "at": 3503
+    },
+    {
+      "file": "before-flow-011.jpg",
+      "at": 3845
+    },
+    {
+      "file": "before-flow-012.jpg",
+      "at": 4203
+    },
+    {
+      "file": "before-flow-013.jpg",
+      "at": 4578
+    },
+    {
+      "file": "before-flow-014.jpg",
+      "at": 4922
+    },
+    {
+      "file": "before-flow-015.jpg",
+      "at": 5312
+    },
+    {
+      "file": "before-flow-016.jpg",
+      "at": 5744
+    },
+    {
+      "file": "before-flow-017.jpg",
+      "at": 6089
+    },
+    {
+      "file": "before-flow-018.jpg",
+      "at": 6452
+    },
+    {
+      "file": "before-flow-019.jpg",
+      "at": 6809
+    },
+    {
+      "file": "before-flow-020.jpg",
+      "at": 7231
+    },
+    {
+      "file": "before-flow-021.jpg",
+      "at": 7579
+    },
+    {
+      "file": "before-flow-022.jpg",
+      "at": 7929
+    },
+    {
+      "file": "before-flow-023.jpg",
+      "at": 8273
+    },
+    {
+      "file": "before-flow-024.jpg",
+      "at": 8618
+    },
+    {
+      "file": "before-flow-025.jpg",
+      "at": 8966
+    },
+    {
+      "file": "before-flow-026.jpg",
+      "at": 9306
+    },
+    {
+      "file": "before-flow-027.jpg",
+      "at": 9651
+    },
+    {
+      "file": "before-flow-028.jpg",
+      "at": 10006
+    },
+    {
+      "file": "before-flow-029.jpg",
+      "at": 10382
+    },
+    {
+      "file": "before-flow-030.jpg",
+      "at": 10727
+    }
+  ],
+  "events": [
+    {
+      "at": 0,
+      "label": "Show previously reviewed Door 103"
+    },
+    {
+      "at": 921,
+      "label": "Find Door 105"
+    },
+    {
+      "at": 1562,
+      "label": "Select Door 105"
+    },
+    {
+      "at": 2473,
+      "label": "Show Door 105"
+    },
+    {
+      "at": 3363,
+      "label": "Review Door 105"
+    },
+    {
+      "at": 4267,
+      "label": "Find Door 135"
+    },
+    {
+      "at": 4921,
+      "label": "Select Door 135"
+    },
+    {
+      "at": 5837,
+      "label": "Show Door 135"
+    },
+    {
+      "at": 6778,
+      "label": "Review Door 135"
+    },
+    {
+      "at": 7716,
+      "label": "Verify 84 pending"
+    },
+    {
+      "at": 8352,
+      "label": "Undo Door 135"
+    },
+    {
+      "at": 9243,
+      "label": "Undo Door 105"
+    },
+    {
+      "at": 10161,
+      "label": "Verify 86 pending and three prior decisions"
+    }
+  ],
+  "method": "Actual browser screenshots sampled during UI actions; original elapsed timing; no human speed claim.",
+  "gif_sha256": "cac8dfad3a9f3906e601f374028c9560e99eeef09f04eca217f8e40a20d7fd35",
+  "viewport": [
+    1280,
+    800
+  ],
+  "encoded_duration_ms": 11040
+}

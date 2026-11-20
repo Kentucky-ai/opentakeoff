@@ -1,0 +1,135 @@
+{
+  "start": "2026-11-20T17:15:02.414Z",
+  "duration_ms": 7816,
+  "frames": [
+    {
+      "file": "after-flow-000.jpg",
+      "at": 0
+    },
+    {
+      "file": "after-flow-001.jpg",
+      "at": 362
+    },
+    {
+      "file": "after-flow-002.jpg",
+      "at": 725
+    },
+    {
+      "file": "after-flow-003.jpg",
+      "at": 1067
+    },
+    {
+      "file": "after-flow-004.jpg",
+      "at": 1416
+    },
+    {
+      "file": "after-flow-005.jpg",
+      "at": 1777
+    },
+    {
+      "file": "after-flow-006.jpg",
+      "at": 2132
+    },
+    {
+      "file": "after-flow-007.jpg",
+      "at": 2486
+    },
+    {
+      "file": "after-flow-008.jpg",
+      "at": 2868
+    },
+    {
+      "file": "after-flow-009.jpg",
+      "at": 3200
+    },
+    {
+      "file": "after-flow-010.jpg",
+      "at": 3558
+    },
+    {
+      "file": "after-flow-011.jpg",
+      "at": 3903
+    },
+    {
+      "file": "after-flow-012.jpg",
+      "at": 4250
+    },
+    {
+      "file": "after-flow-013.jpg",
+      "at": 4599
+    },
+    {
+      "file": "after-flow-014.jpg",
+      "at": 4946
+    },
+    {
+      "file": "after-flow-015.jpg",
+      "at": 5299
+    },
+    {
+      "file": "after-flow-016.jpg",
+      "at": 5663
+    },
+    {
+      "file": "after-flow-017.jpg",
+      "at": 6026
+    },
+    {
+      "file": "after-flow-018.jpg",
+      "at": 6361
+    },
+    {
+      "file": "after-flow-019.jpg",
+      "at": 6751
+    },
+    {
+      "file": "after-flow-020.jpg",
+      "at": 7110
+    },
+    {
+      "file": "after-flow-021.jpg",
+      "at": 7462
+    }
+  ],
+  "events": [
+    {
+      "at": 0,
+      "label": "Select Door 103 (prior QA review)"
+    },
+    {
+      "at": 1113,
+      "label": "Select Door 105"
+    },
+    {
+      "at": 2116,
+      "label": "Select Door 135"
+    },
+    {
+      "at": 3047,
+      "label": "Show the three existing locations"
+    },
+    {
+      "at": 4123,
+      "label": "Review only the two pending entries"
+    },
+    {
+      "at": 5147,
+      "label": "Verify 84 pending"
+    },
+    {
+      "at": 5791,
+      "label": "Undo the batch once"
+    },
+    {
+      "at": 6953,
+      "label": "Verify 86 pending and three prior decisions"
+    }
+  ],
+  "method": "Actual browser screenshots sampled during UI actions; original elapsed timing; no human speed claim.",
+  "gif_sha256": "7bb5051ae70bc068c8273934aeb0cb2667a9071cd0c35e203e41bdc507502362",
+  "viewport": [
+    1280,
+    800
+  ],
+  "encoded_duration_ms": 7800
+}
