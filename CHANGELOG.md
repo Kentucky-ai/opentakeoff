@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-20 — Public test sheets
+
+- **`demo/public-sheets/`: nine real sheets to test against.** Footing and foundation plan, a fire station floor plan and exterior elevations, a veterans home overall plan with letter-prefixed room numbers, four area plans that meet at match lines, and an overall reflected ceiling plan. All are from Missouri state public bid sets, extracted unchanged with the document metadata removed. The README links each source and records what `main` reads today, including three misses: S-101's sheet number and scale, and no scale on the fire station plan.
+
 ## 2026-11-18 — Acoustical ceilings suite (MCP 0.9.113)
 
 - **`ceiling_takeoff`, the acoustical-ceiling part of Division 09 (#614).** `open_suite {suite: "acoustical_ceilings"}` opens it. `{division: "09"}` opens Finishes only, and brings ceilings along once an `ACT-` tag is on the job, so a flooring takeoff keeps a short tool list. Trace the lay-in areas on the reflected ceiling plan under `ACT-<type>`, then call `ceiling_takeoff {condition, module, hanger_spacing_ft}`.
