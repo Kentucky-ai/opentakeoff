@@ -62,6 +62,7 @@ import RevisionsPanel from "../components/RevisionsPanel.jsx";
 import UserGuide from "../components/UserGuide.jsx";
 import CopyTextReceipt from "../components/CopyTextReceipt.jsx";
 import OcrDownloadNotice from "../components/OcrDownloadNotice.jsx";
+import { DeleteSheetModal } from "../components/DeleteSheetModal.jsx";
 import PageReadControl, { readControlPlacement, READ_CONTROL_LEFT } from "../components/PageReadControl.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
@@ -777,6 +778,35 @@ export default function TakeoffCanvas() {
     draftStatsRef.current.cross = dCross;
   }
   const [guideOpen, setGuideOpen] = useState(false);   // the in-app manual overlay (? / the toolbar button)
+  const [deleteSheetPrompt, setDeleteSheetPrompt] = useState(null);
+  const viewControlsRef = useRef(null);
+  const viewControlsDragRef = useRef(null);
+  const [viewControlsDragging, setViewControlsDragging] = useState(false);
+  const [viewControlsTop, setViewControlsTop] = useState(() => {
+    try {
+      const saved = localStorage.getItem("opentakeoff:view-controls-top");
+      if (saved != null) {
+        const n = parseFloat(saved);
+        if (Number.isFinite(n)) return n;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+
+  const clampViewControlsTop = useCallback((rawTop) => {
+    const height = viewControlsRef.current?.offsetHeight || 180;
+    const minTop = 48;
+    const maxTop = Math.max(minTop, (typeof window !== "undefined" ? window.innerHeight : 800) - height - 16);
+    return Math.max(minTop, Math.min(maxTop, rawTop));
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => {
+      setViewControlsTop((prev) => (prev == null ? null : clampViewControlsTop(prev)));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampViewControlsTop]);
   // Guided first takeoff (components/FirstTakeoffTour.jsx): null when off, else
   // { done: step ids, baseline: floor shapes that existed before it started }.
   // Session-only on purpose — a reload ends the tour rather than resuming a
@@ -3743,7 +3773,7 @@ export default function TakeoffCanvas() {
     }
   };
 
-  const deleteCurrentSheet = async (targetKey = sheetKey) => {
+  const deleteCurrentSheet = async (targetKey = sheetKey, { skipConfirm = false } = {}) => {
     const target = targetKey || sheetKey;
     if (!target) return;
     if (isStitchKey(target)) {
@@ -3773,16 +3803,21 @@ export default function TakeoffCanvas() {
       return;
     }
 
-    const takeoffsOnPage =
-      shapes.filter((s) => s.sheet_id === target).length +
-      markups.filter((m) => m.sheet_id === target).length +
-      approvals.filter((a) => a.sheet_id === target).length;
+    if (!skipConfirm) {
+      const takeoffsOnPage =
+        shapes.filter((s) => s.sheet_id === target).length +
+        markups.filter((m) => m.sheet_id === target).length +
+        approvals.filter((a) => a.sheet_id === target).length;
 
-    if (takeoffsOnPage > 0) {
-      const ok = window.confirm(
-        `Sheet "${target}" has ${takeoffsOnPage} takeoff measurement(s)/markup(s). Delete this page? (Undo restores both page and takeoffs)`
-      );
-      if (!ok) return;
+      const pageTitle = pageLabels[targetPage] || namer?.number(file, targetPage) || (targetPage > 1 ? `page ${targetPage}` : file);
+      setDeleteSheetPrompt({
+        target,
+        file,
+        targetPage,
+        pageTitle,
+        takeoffsOnPage,
+      });
+      return;
     }
 
     try {
@@ -3884,7 +3919,7 @@ export default function TakeoffCanvas() {
             setCommitMsg(`Restored page ${targetPage} and its takeoffs.`);
           },
           redo: async () => {
-            await deleteCurrentSheet(target);
+            await deleteCurrentSheet(target, { skipConfirm: true });
           },
         },
       ];
@@ -10550,13 +10585,15 @@ export default function TakeoffCanvas() {
   // filled cobalt (+ HUD glow) when armed. Tooltip = label · shortcut.
   const railTile = (id, iconName, label, shortcut, onArm, opts = {}) => {
     const armed = opts.armed ?? (tool === id);
+    const resolvedShortcut = shortcut ? uiText(keyText(uiText(shortcut))) : null;
+    const showBadge = opts.badge ?? (opts.hideBadge ? false : (resolvedShortcut && resolvedShortcut.length <= 2));
     return (
       <button key={id} type="button" onClick={onArm || (() => setTool(id))}
         title={uiText(shortcut ? keyText(uiText(`${tr(label)} · ${shortcut}`)) : tr(label))} aria-label={tr(label)} aria-pressed={armed}
         style={{ position: "relative", width: language === "ru" ? "calc(var(--rail-w) - 2 * var(--sp-2))" : "var(--ctl-l)", height: language === "ru" ? 48 : "var(--ctl-l)", flexShrink: 0, display: "flex", flexDirection: language === "ru" ? "column" : "row", gap: 3, alignItems: "center", justifyContent: "center", border: "1px solid transparent", borderRadius: "var(--r-1)", background: armed ? (opts.tint || "var(--cobalt)") : "transparent", color: armed ? "var(--accent-contrast)" : (opts.tint || "var(--ink)"), boxShadow: armed ? "var(--glow)" : "none", cursor: "pointer", lineHeight: 1 }}>
         <Icon name={iconName} size={17} />
         {language === "ru" && <span className="ot-tool-name">{toolFaceLabel(id)}</span>}
-        {shortcut && <span aria-hidden="true" style={{ position: "absolute", bottom: 1, right: 3, fontFamily: "var(--f-mono)", fontSize: 8, color: armed ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: armed ? 0.75 : 1 }}>{uiText(keyText(uiText(shortcut)))}</span>}
+        {showBadge && <span aria-hidden="true" style={{ position: "absolute", bottom: 1, right: 3, fontFamily: "var(--f-mono)", fontSize: 8, color: armed ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: armed ? 0.75 : 1, pointerEvents: "none", userSelect: "none" }}>{resolvedShortcut}</span>}
       </button>
     );
   };
@@ -11639,15 +11676,106 @@ export default function TakeoffCanvas() {
               so the composed click never reaches these buttons); right/middle/
               Space presses still bubble so a pan can start on top, and dblclick
               is stopped so rapid clicks can't finishShape() */}
-          <div data-view-controls onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
+          <div data-view-controls
+            ref={viewControlsRef}
+            role="toolbar"
+            aria-label="View controls"
+            title={dockBottom ? "View controls — drag up or down to reposition; double-click to reset" : "View controls"}
+            onPointerDown={(e) => {
+              if (e.button === 0 && !spaceRef.current) {
+                e.stopPropagation();
+                if (dockBottom) {
+                  const rect = viewControlsRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    viewControlsDragRef.current = {
+                      startY: e.clientY,
+                      startTop: rect.top,
+                      pointerId: e.pointerId,
+                      didDrag: false,
+                    };
+                  }
+                }
+              }
+            }}
+            onPointerMove={(e) => {
+              if (!dockBottom) return;
+              const d = viewControlsDragRef.current;
+              if (!d) return;
+              const deltaY = e.clientY - d.startY;
+              if (!d.didDrag) {
+                if (Math.abs(deltaY) > 4) {
+                  d.didDrag = true;
+                  setViewControlsDragging(true);
+                  try { viewControlsRef.current?.setPointerCapture(d.pointerId); } catch { /* gone */ }
+                } else {
+                  return;
+                }
+              }
+              const nextTop = clampViewControlsTop(d.startTop + deltaY);
+              setViewControlsTop(nextTop);
+            }}
+            onPointerUp={(_e) => {
+              if (!dockBottom) return;
+              const d = viewControlsDragRef.current;
+              if (d) {
+                try { viewControlsRef.current?.releasePointerCapture(d.pointerId); } catch { /* gone */ }
+                if (d.didDrag) {
+                  setViewControlsDragging(false);
+                  if (viewControlsTop != null) {
+                    try { localStorage.setItem("opentakeoff:view-controls-top", String(viewControlsTop)); } catch { /* quota/private */ }
+                  }
+                }
+                viewControlsDragRef.current = null;
+              }
+            }}
+            onPointerCancel={() => {
+              if (!dockBottom) return;
+              const d = viewControlsDragRef.current;
+              if (d) {
+                try { viewControlsRef.current?.releasePointerCapture(d.pointerId); } catch { /* gone */ }
+                setViewControlsDragging(false);
+                viewControlsDragRef.current = null;
+              }
+            }}
+            onClickCapture={(e) => {
+              if (viewControlsDragRef.current?.didDrag) {
+                e.preventDefault();
+                e.stopPropagation();
+                viewControlsDragRef.current.didDrag = false;
+              }
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              if (dockBottom) {
+                setViewControlsTop(null);
+                try { localStorage.removeItem("opentakeoff:view-controls-top"); } catch { /* quota/private */ }
+              }
+            }}
             style={dockBottom
-              ? { position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 2, padding: 4, border: "1px solid var(--ink-faint)", borderRadius: 10, background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", zIndex: 24 }
+              ? {
+                  position: "absolute",
+                  left: 14,
+                  top: viewControlsTop != null ? `${viewControlsTop}px` : "50%",
+                  transform: viewControlsTop != null ? "none" : "translateY(-50%)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  padding: 4,
+                  border: "1px solid var(--ink-faint)",
+                  borderRadius: 10,
+                  background: "var(--paper-cream)",
+                  boxShadow: "var(--shadow-2)",
+                  zIndex: viewControlsDragging ? 35 : 24,
+                  cursor: viewControlsDragging ? "grabbing" : "grab",
+                  userSelect: "none",
+                  touchAction: "none",
+                }
               : { position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
             {(() => {
               // Premium's view group: zoom in / out about the canvas centre, fit, focus, and the
               // open source's sheet invert. The wheel and pinch still zoom toward the cursor.
               const face = (on) => dockBottom
-                ? { width: 32, height: 32, borderRadius: 7, border: "1px solid transparent", background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }
+                ? { width: 32, height: 32, borderRadius: 7, border: "1px solid transparent", background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: viewControlsDragging ? "grabbing" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }
                 : { width: 34, height: 34, borderRadius: 0, border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`, background: on ? "var(--cobalt)" : "var(--paper-bright)", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 };
               const zoomStep = (f) => {
                 const el = containerRef.current;
@@ -12634,8 +12762,8 @@ export default function TakeoffCanvas() {
                  <Icon name="more" size={18} />
                </button>
                {sep("s3")}
-               {railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false })}
-               {railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false })}
+               {railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false, hideBadge: true })}
+               {railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false, hideBadge: true })}
              </nav>
            </div>
          );
@@ -12704,8 +12832,8 @@ export default function TakeoffCanvas() {
          {railLabel("CAL")}
          {railTile("calibrate", "calibrate", "Calibrate — click two points of a known dimension", null)}
          {dockBottom && railLabel("HIST")}
-         {dockBottom && railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false })}
-         {dockBottom && railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false })}
+         {dockBottom && railTile("dock-undo", "undo", "Undo", "⌘Z", () => (poly.length ? dropLastPoint() : undoShapeCommand()), { armed: false, hideBadge: true })}
+         {dockBottom && railTile("dock-redo", "redo", "Redo", "⇧⌘Z", () => redoShapeCommand(), { armed: false, hideBadge: true })}
        </nav>
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
@@ -13505,6 +13633,17 @@ export default function TakeoffCanvas() {
           style={{ position: "fixed", inset: 0, zIndex: Z.modal, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--sp-4)" }}>
           <OcrDownloadNotice downloadBytes={ocrNotice.downloadBytes} progress={ocrNotice.progress} onDownload={ocrHost.download} onCancel={ocrHost.cancel} />
         </div>
+      )}
+      {deleteSheetPrompt && (
+        <DeleteSheetModal
+          sheet={deleteSheetPrompt}
+          onCancel={() => setDeleteSheetPrompt(null)}
+          onConfirm={() => {
+            const target = deleteSheetPrompt.target;
+            setDeleteSheetPrompt(null);
+            deleteCurrentSheet(target, { skipConfirm: true });
+          }}
+        />
       )}
     </div>
   );
