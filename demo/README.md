@@ -36,6 +36,13 @@ it's reproducible and auditable:
 python3 make_sample_plan.py   # rewrites sample-plan.pdf
 ```
 
+## `public-sheets/` — real public bid sheets for testing
+
+Nine real sheets (foundation plan, floor plans, exterior elevations, area plans
+across match lines, reflected ceiling plan) from public Missouri state bid sets,
+with sources and what `main` reads on each today. Use them for PR evidence. See
+[`public-sheets/README.md`](public-sheets/README.md).
+
 ---
 
 > Never commit a real **client** plan here—those are confidential and
