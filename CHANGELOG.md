@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-20 — Public test sheets
+
+- **`demo/public-sheets/`: nine real sheets to test against.** Footing and foundation plan, a fire station floor plan and exterior elevations, a veterans home overall plan with letter-prefixed room numbers, four area plans that meet at match lines, and an overall reflected ceiling plan. All are from Missouri state public bid sets, extracted unchanged with the document metadata removed. The README links each source and records what `main` reads today, including three misses: S-101's sheet number and scale, and no scale on the fire station plan.
+
+## 2026-11-18 — Acoustical ceilings suite (MCP 0.9.113)
+
+- **`ceiling_takeoff`, the acoustical-ceiling part of Division 09 (#614).** `open_suite {suite: "acoustical_ceilings"}` opens it. `{division: "09"}` opens Finishes only, and brings ceilings along once an `ACT-` tag is on the job, so a flooring takeoff keeps a short tool list. Trace the lay-in areas on the reflected ceiling plan under `ACT-<type>`, then call `ceiling_takeoff {condition, module, hanger_spacing_ft}`.
+- **What it figures from the module** (2x2 or 2x4; 600x600 or 600x1200 with `units: "metric"`):
+  - tiles before waste, and the order count with waste (stated, or a labeled 10% allowance);
+  - main runner LF and pieces (12 ft unless stated), with mains at 4 ft;
+  - long cross tees, and short cross tees in a square module;
+  - hanger wires at the spec spacing along the mains.
+- **Where it puts them.** All of the above go on the condition as material rows, updated on a re-run, never duplicated. Each area's perimeter is committed as a wall angle run under `<condition>-WA`, and a re-run skips areas it already derived. A multiplier on the ceiling condition (×3 identical floors) is copied to the `-WA` condition and the runs are stored unmultiplied, so the report reads 3× the wall angle, not 9×.
+- **Missing values.** No module is refused. No hanger spacing is listed under `not_figured`, and so are cut border tiles, perimeter hangers and seismic bracing, which a laid-out grid would add. A 20 × 30 ft room in 2 × 2 tile gives 150 tiles and 100 LF of wall angle.
+- The Trade view books `ACT-` tags to the new suite.
+
 ## 2026-11-17 — the 3D view (Kevin Murphy's, as improved in the Spline viewer)
 
 - **A 3D button.** The view cluster gets **3D**: the open sheet's takeoff stood up, read-only. Floors are slabs at their thickness with holes and stacked layers, base stands at its height, transitions lie flush on the higher floor, surface runs stand up, a count with a height is a post, and tile floors with a stated size carry a grout grid.
@@ -17,6 +33,15 @@
 - Localized the actual estimate Excel export, project/company forms, proposal form and PDF, annotation style choices and plan-set copy.
 - Added litre/US-gallon display selection at import and export, reversible metric quantity/rate display, and preservation of source package rounding and costs.
 - Replaced clipped fit text with «Лист целиком», clarified allowance/perimeter column names, and allowed estimate headings to wrap.
+
+## 2026-11-15 — gable starter strip (MCP 0.9.112)
+
+- `siding_takeoff`: a wall's bottom edge that lies on another SD-WALL shape's edge on the same sheet gets no starter, so a gable traced as its own shape above a wall or a wall split at a floor line figures the same starter as a single shape (#619).
+
+## 2026-11-16 — visual revision overlay and compare_sheets (MCP 0.9.111)
+
+- **Compare sheets and revisions over MCP.** `compare_sheets` visualizes drawing changes between two sheets or bid revisions: aligns drawings automatically, computes segment diffs (added/removed/unchanged), groups changed ink into convex hulls, and flags takeoff shapes intersecting modified regions (#579).
+- **Visual Revision Overlay in browser.** Fading revision comparison slider, 2-point manual alignment calibration, raster fallback mode, and one-click slip-sheeting carrying takeoff shapes forward with `Check after revision` review badges on changed areas.
 
 ## 2026-11-15 — large plan sets open and flip faster, in far less memory (#580, part 1)
 
@@ -89,6 +114,8 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 - **Bulk count selection follows the count marker.** Selecting several counts uses the same glyph and selected appearance as selecting one; it no longer adds a circular highlight around square markers. Measurement records and review decisions are unchanged.
 
 - **Select and review several measurements together.** In **Work and review**, select individual rows or **Select all filtered**, then **Show selected on plan** to highlight and frame the existing measurements clear of floating side tabs. **Mark selected reviewed** uses the existing review command and one-step undo. Quantities and geometry stay unchanged; no new persisted record or review type is introduced.
+- **Ceiling wall angle follows a reset to one floor.** Re-run `ceiling_takeoff` after changing the ceiling condition from repeated floors back to one. The existing wall-angle runs report the single-floor length without adding a second ring.
+- **MCP sheet comparison reads every vector segment.** `compare_sheets` uses the extracted endpoints from both pages and returns exact unchanged counts when a sheet is compared with itself at zero offset.
 
 - **Russian deliverables preserve customer text.** Marked-set PDFs embed Cyrillic fonts and paginate large legends instead of dropping rows. Proposal headers fit long Russian company names, page numbers are localized, and project/company/client text is preserved in proposals, estimates and interface headings. Annotation text stays literal on the canvas. Report filenames retain Cyrillic. Regression tests cover rotated pages, RFI text, 70-condition legends, multi-page proposals and names matching UI commands.
 
@@ -117,6 +144,7 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
   - **Delete and undo:** Click `×` on a sheet row or choose **File → Delete current page…**. Confirms with takeoff count before removing; `⌘Z` restores the page and its measurements.
   - **Extract, merge, and insert:** **File → Extract pages from set…** pulls page ranges into a new PDF carrying their takeoffs; **File → Merge PDF sets…** combines multiple open PDFs into a single multi-page set; **File → Insert pages from PDF…** appends external pages behind the active sheet; and **File → Export edited PDF…** downloads the modified PDF bytes.
   - **MCP tools:** Four published tools on stdio: `rotate_page`, `reorder_pages`, `extract_pages`, and `merge_documents`.
+- **Visual revision overlay and slip-sheeting (#579).** Choose two revisions of a sheet to see what moved on the drawing: removed ink in red, added in cobalt, and unchanged in gray, with a cross-fade slider. Slip-sheet an addendum or revision set: sheets match 1-to-1 by title-block sheet number (unread and ambiguous sheets are never guessed), existing takeoffs carry forward, and shapes crossing changed ink are flagged "Check after revision" with the changed region outlined. MCP exposes `compare_sheets`, returning changed region bounding hulls and affected shape IDs.
 - **A new front page and an easier way in.** The README opens with an animated hero (the scan star and an agent tracing two rooms on their wall faces), install buttons for each MCP client, a "What's new" section, and a contribute section that states the evidence bar with two merged examples. The long feature prose moved, unchanged, to [`docs/TOUR.md`](docs/TOUR.md). Issue templates are now forms, with a new Agent / MCP report form. `.cursor/mcp.json` and `.vscode/mcp.json` register the server when you open a clone. The art is generated by `docs/img/brand/src/gen-readme-art.mjs`.
 
 - **A non-roll condition's roll cells stay blank in metric.** With display units set to metric, the Report table, CSV and Excel printed 0 in **Roll Order m** and **Seam m** for every condition without a roll layout; imperial left them blank. Those cells are now blank in both unit systems.

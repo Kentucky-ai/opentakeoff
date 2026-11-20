@@ -189,12 +189,31 @@ export function bottomEdges(ring: Pt[], tolFt = 0.5): [Pt, Pt][] {
 
 /**
  * Starter runs along a wall's bottom edges, with the doors that sit on that
- * line cut out (no starter across a door opening). Each run is a 2-point
+ * line cut out (no starter across a door opening). A bottom edge that lies
+ * on another wall shape's edge on the same sheet gets no starter (covers a
+ * gable above a wall and a wall split at a floor line). Each run is a 2-point
  * segment in the ring's own units; tol is in those units too.
  */
-export function starterRuns(wall: Pt[], doors: Pt[][], tol: number): [Pt, Pt][] {
-  const cuts: [number, number, number][] = [];   // [xmin, xmax, y] of each door bottom
-  for (const d of doors) for (const [a, b] of bottomEdges(d, tol)) cuts.push([Math.min(a[0], b[0]), Math.max(a[0], b[0]), (a[1] + b[1]) / 2]);
+export function starterRuns(wall: Pt[], doors: Pt[][], tol: number, otherWalls: Pt[][] = []): [Pt, Pt][] {
+  const cuts: [number, number, number][] = [];   // [xmin, xmax, y] of each cut
+  for (const d of doors) {
+    for (const [a, b] of bottomEdges(d, tol)) {
+      cuts.push([Math.min(a[0], b[0]), Math.max(a[0], b[0]), (a[1] + b[1]) / 2]);
+    }
+  }
+  for (const w of otherWalls) {
+    const p = openRing(w);
+    if (p.length < 3) continue;
+    const maxY = Math.max(...p.map((q) => q[1]));
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length];
+      const flat = Math.abs(a[1] - b[1]) <= tol * 0.25 || Math.abs(a[1] - b[1]) <= 0.02 * Math.abs(a[0] - b[0]);
+      const isBottom = flat && maxY - a[1] <= tol && maxY - b[1] <= tol;
+      if (flat && !isBottom && Math.abs(a[0] - b[0]) > 1e-4) {
+        cuts.push([Math.min(a[0], b[0]), Math.max(a[0], b[0]), (a[1] + b[1]) / 2]);
+      }
+    }
+  }
   const out: [Pt, Pt][] = [];
   for (const [a, b] of bottomEdges(wall, tol)) {
     const y = (a[1] + b[1]) / 2;
@@ -211,7 +230,7 @@ export function starterRuns(wall: Pt[], doors: Pt[][], tol: number): [Pt, Pt][] 
     }
     // y along the edge, so a slightly sloped bottom keeps its own line
     const yAt = (x: number) => (b[0] === a[0] ? a[1] : a[1] + ((x - a[0]) * (b[1] - a[1])) / (b[0] - a[0]));
-    for (const [s0, s1] of spans) if (s1 - s0 > 1e-6) out.push([[s0, yAt(s0)], [s1, yAt(s1)]]);
+    for (const [s0, s1] of spans) if (s1 - s0 >= tol - 1e-6) out.push([[s0, yAt(s0)], [s1, yAt(s1)]]);
   }
   return out;
 }
@@ -233,7 +252,8 @@ export function sidingQuantities(inp: SidingInput) {
   const walls = inp.walls.map((w) => {
     const gross = ringAreaSf(w.ring);
     const doorRings = inp.openings.filter((o) => o.sides === 3 && o.sheet === w.sheet).map((o) => o.ring);
-    const starter = starterRuns(w.ring, doorRings, 0.5).reduce((n, [a, b]) => n + Math.hypot(b[0] - a[0], b[1] - a[1]), 0);
+    const otherWalls = inp.walls.filter((o) => o.id !== w.id && o.sheet === w.sheet).map((o) => o.ring);
+    const starter = starterRuns(w.ring, doorRings, 0.5, otherWalls).reduce((n, [a, b]) => n + Math.hypot(b[0] - a[0], b[1] - a[1]), 0);
     return { id: w.id, gross_sf: r2(gross), starter_lf: r2(starter) };
   });
   const openings = inp.openings.map((o) => {
@@ -312,6 +332,82 @@ export function soffitQuantities(inp: SoffitInput) {
     fascia_lf: r2(inp.eave_lf + rakeTrue),
     wall_receiver_lf: r2(inp.eave_lf + (inp.rake_overhang_in ? rakeTrue : 0)),
     ...(vent ? { vent } : {}),
+    not_figured: notFigured,
+  };
+}
+
+// ── Acoustical ceilings ────────────────────────────────────────────────────
+//
+// An exposed lay-in grid, from the module on the reflected ceiling plan. Main
+// runners run at the long side of a 2 × 4 module, or at twice the side of a
+// square one (4 ft for both 2 × 2 and 2 × 4; 1200 mm for 600 × 600 and
+// 600 × 1200). Long cross tees span between mains at the short side; a square
+// module adds a short cross tee at mid-bay between each pair of long ones. Per
+// SF of ceiling, with S the main spacing and w the short side:
+//   main runner LF = 1/S      long tees = 1/(S·w)      short tees = 1/(S·w)
+// For 2 × 2 that is 0.25 + 0.5 + 0.25 = 1 LF of grid per SF, a line every
+// 2 ft both ways. These are average-density counts: a layout with many short
+// runs cut at the walls orders more mains than area / (S × piece length).
+
+/** A lay-in module, "2x2" / "2'x4'" in feet, or with metric "600x600" in mm; sides in feet, short first. Null if unreadable. */
+export function parseCeilingModule(text: string, metric = false): { w_ft: number; l_ft: number } | null {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*(?:'|ft|mm)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:'|ft|mm)?\s*$/i.exec(String(text));
+  if (!m) return null;
+  const toFt = metric ? 1 / 304.8 : 1;
+  const a = Number(m[1]) * toFt, b = Number(m[2]) * toFt;
+  if (!(a > 0 && b > 0)) return null;
+  return { w_ft: Math.min(a, b), l_ft: Math.max(a, b) };
+}
+
+export interface CeilingInput {
+  /** ceiling area, SF (the ACT condition's total) */
+  area_sf: number;
+  /** wall angle run, LF (the rooms' perimeters) */
+  perimeter_lf: number;
+  /** module sides, feet: w ≤ l, and l = w (square) or l = 2w */
+  module_w_ft: number;
+  module_l_ft: number;
+  /** hanger wire spacing along the mains, feet (spec / code); absent = hangers not figured */
+  hanger_spacing_ft?: number;
+  /** main runner piece length, feet; absent = 12 ft allowance */
+  main_piece_ft?: number;
+  /** tile waste; absent = 10 % suite allowance */
+  waste_pct?: number;
+}
+
+export function ceilingQuantities(inp: CeilingInput) {
+  const w = inp.module_w_ft, l = inp.module_l_ft;
+  const square = Math.abs(l - w) <= w * 0.01;
+  if (!square && Math.abs(l - 2 * w) > w * 0.01) throw new Error(`a lay-in module is square or twice as long as wide; got ${r3(w)} × ${r3(l)} ft`);
+  const S = square ? 2 * w : l;                          // main runner spacing
+  const area = Math.max(0, inp.area_sf);
+  const tileSf = w * l;
+  const tiles = ceil(area / tileSf);
+  const waste = inp.waste_pct ?? 10;
+  const piece = inp.main_piece_ft ?? 12;
+  const mainLf = area / S;
+  const notFigured: string[] = [];
+  if (!inp.hanger_spacing_ft) notFigured.push("hanger wires (pass hanger_spacing_ft from the spec)");
+  // counts are by average density over the area until a grid is laid out
+  notFigured.push("border tiles: counted by area, but each cut border tile uses a whole tile");
+  notFigured.push("perimeter hangers, and seismic splay wires and struts where the spec calls for them");
+  return {
+    tile_sf: r4(tileSf),
+    main_spacing_ft: r4(S),
+    tiles,
+    waste_pct: waste,
+    waste_source: inp.waste_pct === undefined ? "suite allowance — override with your standard" : "stated",
+    tiles_order: ceil((area / tileSf) * (1 + waste / 100)),
+    main_runner_lf: r2(mainLf),
+    main_runners: ceil(mainLf / piece),
+    main_piece_ft: piece,
+    main_piece_source: inp.main_piece_ft === undefined ? "suite allowance — override with the product's length" : "stated",
+    cross_tees_long: ceil(area / (S * w)),
+    cross_tee_long_ft: r4(S),
+    cross_tees_short: square ? ceil(area / (S * w)) : 0,
+    cross_tee_short_ft: square ? r4(w) : 0,
+    wall_angle_lf: r2(Math.max(0, inp.perimeter_lf)),
+    ...(inp.hanger_spacing_ft ? { hangers: ceil(area / (S * inp.hanger_spacing_ft)), hanger_spacing_ft: inp.hanger_spacing_ft } : {}),
     not_figured: notFigured,
   };
 }

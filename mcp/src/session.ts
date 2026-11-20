@@ -21,6 +21,9 @@ import {
   markRowLocal, dropRowLocal, type VariantCond, type VariantRow
 } from "../../web/src/lib/variants.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
+import { diffVectorSegments, type Segment } from "../../web/src/lib/revisionDiff.ts";
+import { autoAlignSheets, type AlignmentResult } from "../../web/src/lib/sheetAlign.ts";
+import { carryTakeoffShapes } from "../../web/src/lib/slipsheet.ts";
 import { buildSheetDxf, type DxfBuild } from "../../web/src/lib/dxf.ts";
 import {
   extractVectorGeometry, buildMask, traceRegion, snapVertices, ringArea,
@@ -1671,6 +1674,85 @@ export class Session {
       limit,
       ...(next !== undefined ? { next_cursor: next } : {}),
       ...(rasterEligible && !vectorViable ? { note: `${s.key} is a scan wrapper: a placed image covers the sheet and these ${nSeg} segments are its frame, not the drawing. The drawing is pixels — view_sheet is the path.` } : {}),
+    };
+  }
+
+  /** compare_sheets (#579): visual revision comparison of two sheets.
+   * Compares vector linework, computes rigid alignment, discovers changed
+   * regions (bounding hulls), and reports all shapes on sheet A intersecting
+   * modified ink. */
+  async compareSheets(sheetAName: string, sheetBName: string, userAlign?: { dx?: number; dy?: number }) {
+    const sA = this.sheet(sheetAName);
+    const sB = this.sheet(sheetBName);
+    const geoA = await this.ensureGeometry(sA);
+    const geoB = await this.ensureGeometry(sB);
+
+    // The extractor stores four image-pixel coordinates per segment.
+    const segmentsOf = ({ segs }: VectorGeometry): Segment[] => {
+      const segments: Segment[] = [];
+      for (let i = 0; i < segs.length; i += 4) {
+        segments.push([segs[i], segs[i + 1], segs[i + 2], segs[i + 3]]);
+      }
+      return segments;
+    };
+    const segsA = segmentsOf(geoA);
+    const segsB = sA === sB ? segsA : segmentsOf(geoB);
+
+    let align: AlignmentResult;
+    if (userAlign && (userAlign.dx != null || userAlign.dy != null)) {
+      align = { dx: userAlign.dx || 0, dy: userAlign.dy || 0, confidence: 1.0, method: "manual" };
+    } else if (sA === sB) {
+      align = { dx: 0, dy: 0, confidence: 1, method: "identity" };
+    } else {
+      align = autoAlignSheets(segsA, segsB, sA.widthPx, sA.heightPx);
+    }
+
+    // As in the canvas, self-comparison needs no tolerance-based pairing:
+    // close, nearly identical endpoints can otherwise use up each other's match.
+    const diff = sA === sB && align.dx === 0 && align.dy === 0
+      ? { method: "vector" as const, changedRegions: [], stats: { unchangedCount: segsA.length, removedCount: 0, addedCount: 0 } }
+      : diffVectorSegments(segsA, segsB, align, 1.0);
+
+    // Intersect with existing shapes on sheet A
+    const carried = carryTakeoffShapes(
+      this.shapes.map((s) => ({
+        ...s,
+        verts_norm: s.verts_norm as Array<[number, number]>,
+      })),
+      sA.key,
+      sB.key,
+      sA.widthPx,
+      sA.heightPx,
+      diff.changedRegions
+    );
+
+    const flaggedIds = carried.shapes
+      .filter((s) => s.origin?.flagged_for_revision)
+      .map((s) => s.id);
+
+    return {
+      sheet_a: sA.key,
+      sheet_b: sB.key,
+      diff_method: diff.method,
+      alignment: {
+        dx: align.dx,
+        dy: align.dy,
+        confidence: align.confidence,
+        method: align.method,
+      },
+      changed_regions: diff.changedRegions.map((r) => ({
+        id: r.id,
+        type: r.type,
+        bounds: r.bounds,
+        hull: r.hull,
+        segment_count: r.segmentCount,
+      })),
+      flagged_shape_ids: flaggedIds,
+      stats: {
+        unchanged_segments: diff.stats.unchangedCount,
+        removed_segments: diff.stats.removedCount,
+        added_segments: diff.stats.addedCount,
+      },
     };
   }
 

@@ -53,12 +53,12 @@ test("suites: a default build lists open_suite and hides every suite tool", asyn
 test("suites: open_suite with no arguments is the catalog; its description carries one line per suite", async () => {
   const client = await pair();
   const tool = (await client.listTools()).tools.find((t) => t.name === "open_suite")!;
-  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "doors"]) {
+  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "acoustical_ceilings", "doors"]) {
     assert.match(tool.description!, new RegExp(`- ${id} \\(Div`));
   }
   const r = await call(client, "open_suite");
   assert.equal(r.isError, false);
-  assert.equal(r.data.catalog.length, 8);
+  assert.equal(r.data.catalog.length, 9);
   assert.deepEqual(r.data.opened, []);
 });
 
@@ -99,7 +99,7 @@ test("suites: pre-opened by option or OPENTAKEOFF_MCP_SUITES", async () => {
   const client = await pair({ suites: ["glazing"] });
   const names = (await client.listTools()).tools.map((t) => t.name);
   assert.ok(names.includes("glazing_takeoff") && !names.includes("roof_takeoff"));
-  assert.deepEqual(preopenedSuites("all").length, 8);
+  assert.deepEqual(preopenedSuites("all").length, 9);
   const prev = process.env.OPENTAKEOFF_MCP_SUITES;
   process.env.OPENTAKEOFF_MCP_SUITES = "plumbing, nonsense";
   try { assert.deepEqual(preopenedSuites(), ["plumbing"]); } finally {
@@ -500,6 +500,40 @@ test("siding_takeoff: wall, window deduct, door traced separately — net, trim,
   assert.equal(bad.isError, true);
 });
 
+test("siding_takeoff: gable traced as its own triangle above wall (#619)", async () => {
+  const client = await pair({ suites: ["siding"] });
+  await ready(client);
+  // sample plan is at upp 0.1
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 600], [400, 600], [400, 700], [100, 700]], condition: "SD-WALL" });
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 600], [400, 600], [250, 525]], condition: "SD-WALL" });
+
+  const r = await call(client, "siding_takeoff", { exposure_in: 4, piece_length_ft: 12 });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.net_sf, 412.5);
+  near(r.data.starter_lf, 30);
+  assert.equal(r.data.committed, 1);                 // 1 SD-STARTER run on the wall's bottom only
+
+  const sum = (await call(client, "takeoff_summary")).data;
+  near(row(sum, "SD-WALL").floor_sf, 412.5);
+  near(row(sum, "SD-STARTER").lf, 30);
+
+  const shapes = (await call(client, "list_shapes", { condition: "SD-STARTER" })).data.shapes;
+  assert.equal(shapes.length, 1);
+});
+
+test("siding_takeoff: gable traced with small overhang slivers drops stubs (#619)", async () => {
+  const client = await pair({ suites: ["siding"] });
+  await ready(client);
+  // sample plan is at upp 0.1; gable at [97,601], [404,599], [250,525] has 0.3 and 0.4 ft stubs (< 0.5 ft tol)
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 600], [400, 600], [400, 700], [100, 700]], condition: "SD-WALL" });
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[97, 601], [404, 599], [250, 525]], condition: "SD-WALL" });
+
+  const r = await call(client, "siding_takeoff", { exposure_in: 4, piece_length_ft: 12 });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  near(r.data.starter_lf, 30);
+  assert.equal(r.data.committed, 1);                 // wall bottom only, slivers dropped
+});
+
 test("glazing_takeoff: 12 × 8 storefront, 3 × 2 grid — lites, glass, mullion lines", async () => {
   const client = await pair({ suites: ["glazing"] });
   await ready(client);
@@ -557,4 +591,136 @@ test("electrical_rollup and plumbing_rollup write material rows once, update on 
   const missing = await call(client, "plumbing_rollup", { pipes: [{ condition: "P-NOPE" }] });
   assert.equal(missing.isError, true);
   assert.match(missing.data.error, /No pipe condition/);
+});
+
+test("ceiling_takeoff: the #614 finish line — a 20 × 30 room in 2 × 2 tile, rows once, wall angle once", async () => {
+  const client = await pair({ suites: ["acoustical_ceilings"] });
+  await ready(client);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 300, 400), condition: "ACT-1" });   // 20 × 30 ft = 600 SF
+
+  const none = await call(client, "ceiling_takeoff", { condition: "ACT-1" });
+  assert.equal(none.isError, true);
+  assert.match(none.data.error, /module from the RCP legend/);
+  const odd = await call(client, "ceiling_takeoff", { condition: "ACT-1", module: "2x3" });
+  assert.equal(odd.isError, true);
+  assert.match(odd.data.error, /square or twice as long/);
+
+  const r = await call(client, "ceiling_takeoff", { condition: "ACT-1", module: "2x2", hanger_spacing_ft: 4 });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  assert.equal(r.data.tiles, 150);                    // 600 / 4
+  near(r.data.wall_angle_lf, 100);                    // 2 × (20 + 30)
+  assert.equal(r.data.main_runners, 13);              // 600 / 4 ft = 150 LF / 12 ft = 12.5
+  assert.equal(r.data.cross_tees_long, 75);           // 600 / (4 × 2)
+  assert.equal(r.data.cross_tees_short, 75);          // 600 / (4 × 2)
+  assert.equal(r.data.hangers, 38);                   // 600 / (4 × 4) = 37.5
+  assert.equal(r.data.tiles_order, 165);              // 150 × 1.10 suite allowance
+  assert.equal(r.data.committed, 1);
+  assert.equal(r.data.undo_steps, 2);                 // the wall angle commit, the material rows
+  assert.equal(r.data.wall_angle_condition, "ACT-1-WA");
+
+  const report = async () => (await call(client, "export_report")).data;
+  let rep = await report();
+  const mats = (tag: string) => row(rep, tag).materials;
+  const qty = (tag: string, name: string) => mats(tag).find((m: any) => m.name === name)?.qty;
+  assert.equal(qty("ACT-1", "Ceiling tiles"), 165);   // the order count, waste in the row
+  assert.equal(qty("ACT-1", "Main runners"), 13);
+  assert.equal(qty("ACT-1", "Cross tees, long"), 75);
+  assert.equal(qty("ACT-1", "Cross tees, short"), 75);
+  assert.equal(qty("ACT-1", "Hanger wires"), 38);
+  near(row(rep, "ACT-1-WA").lf, 100);
+  assert.equal(row(rep, "ACT-1-WA").shape_count, 1);
+
+  const again = await call(client, "ceiling_takeoff", { condition: "ACT-1", module: "2x2", hanger_spacing_ft: 4 });
+  assert.equal(again.data.committed, 0, "re-run skips the area it already derived");
+  rep = await report();
+  assert.equal(mats("ACT-1").filter((m: any) => m.name === "Ceiling tiles").length, 1, "same row updated, never duplicated");
+  near(row(rep, "ACT-1-WA").lf, 100);
+
+  const undo = await call(client, "undo_last", { n: again.data.undo_steps });
+  assert.equal(undo.isError, false, JSON.stringify(undo.data));
+
+  const noHangers = await call(client, "ceiling_takeoff", { condition: "ACT-1", module: "2x4", apply: false });
+  assert.equal(noHangers.data.tiles, 75);             // 600 / 8
+  assert.equal(noHangers.data.cross_tees_short, 0);
+  assert.equal(noHangers.data.hangers, undefined);
+  assert.ok(noHangers.data.not_figured.some((s: string) => s.startsWith("hanger wires")));
+
+  const metric = await call(client, "ceiling_takeoff", { condition: "ACT-1", module: "600x600", hanger_spacing_m: 1.2, units: "metric", apply: false });
+  assert.equal(metric.isError, false, JSON.stringify(metric.data));
+  assert.equal(metric.data.units, "metric");
+  assert.equal(metric.data.tiles, 155);               // 55.74 m² / 0.36 m² = 154.8
+  near(metric.data.wall_angle_m, 30.48);              // 100 ft
+  near(metric.data.main_spacing_m, 1.2, 0.001);
+});
+
+test("ceiling_takeoff: ×3 floors gives 3× the wall angle in the report, not 9×", async () => {
+  const client = await pair({ suites: ["acoustical_ceilings"] });
+  await ready(client);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 300, 400), condition: "ACT-1" });   // 20 × 30 ft = 600 SF
+  await call(client, "edit_condition", { condition: "ACT-1", multiplier: 3 });
+
+  const r = await call(client, "ceiling_takeoff", { condition: "ACT-1", module: "2x2", hanger_spacing_ft: 4 });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  assert.equal(r.data.tiles, 450);                    // 3 × 600 / 4: the area total already carries the multiplier
+  near(r.data.wall_angle_lf, 300);                    // 3 × 100
+  assert.equal(r.data.undo_steps, 3);                 // the wall angle commit, its multiplier, the material rows
+
+  const rep = (await call(client, "export_report")).data;
+  const wa = row(rep, "ACT-1-WA");
+  assert.equal(wa.multiplier, 3);
+  near(wa.lf, 300);                                   // one 100 LF run × 3, the raw ring committed once
+  assert.equal(wa.shape_count, 1);
+  const qty = (name: string) => row(rep, "ACT-1").materials.find((m: any) => m.name === name)?.qty;
+  assert.equal(qty("Ceiling tiles"), 495);            // 450 × 1.10, the report applies ×3 once
+  assert.equal(qty("Hanger wires"), 113);             // 1800 / 16 = 112.5
+
+  const again = await call(client, "ceiling_takeoff", { condition: "ACT-1", module: "2x2", hanger_spacing_ft: 4 });
+  assert.equal(again.data.committed, 0);
+  near(row((await call(client, "export_report")).data, "ACT-1-WA").lf, 300, 0.01);
+});
+
+test("ceiling_takeoff: resetting repeated floors restores the wall angle in the report", async () => {
+  const client = await pair({ suites: ["acoustical_ceilings"] });
+  await ready(client);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 300, 400), condition: "ACT-1" });
+  await call(client, "edit_condition", { condition: "ACT-1", multiplier: 3 });
+
+  const args = { condition: "ACT-1", module: "2x2" };
+  const wallAngle = async () => row((await call(client, "export_report")).data, "ACT-1-WA");
+  const initial = await call(client, "ceiling_takeoff", args);
+  assert.equal(initial.isError, false, JSON.stringify(initial.data));
+  near((await wallAngle()).lf, 300);
+
+  await call(client, "edit_condition", { condition: "ACT-1", multiplier: 1 });
+  const preview = await call(client, "ceiling_takeoff", { ...args, apply: false });
+  near(preview.data.wall_angle_lf, 100);
+  near((await wallAngle()).lf, 300);
+
+  const applied = await call(client, "ceiling_takeoff", args);
+  assert.equal(applied.isError, false, JSON.stringify(applied.data));
+  assert.equal(applied.data.committed, 0);
+  const adjusted = await wallAngle();
+  near(adjusted.lf, 100);
+  near(adjusted.lf, applied.data.wall_angle_lf);
+  assert.equal(adjusted.multiplier, 1);
+  assert.equal(adjusted.shape_count, 1);
+  assert.equal(applied.data.undo_steps, 2);
+
+  const undone = await call(client, "undo_last", { n: applied.data.undo_steps });
+  assert.equal(undone.isError, false, JSON.stringify(undone.data));
+  near((await wallAngle()).lf, 300);
+});
+
+test("open_suite division 09 opens finishes only; ceilings by name, or once an ACT- tag is on the job", async () => {
+  const client = await pair();
+  await ready(client);
+  const flooring = await call(client, "open_suite", { division: "09" });
+  assert.deepEqual(flooring.data.opened, ["finishes"]);
+  assert.deepEqual(flooring.data.tools_enabled, []);
+  assert.ok(!(await client.listTools()).tools.some((t) => t.name === "ceiling_takeoff"), "a flooring job's tool list stays small");
+
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 300, 400), condition: "ACT-2" });
+  const rcp = await call(client, "open_suite", { division: "09" });
+  assert.deepEqual(rcp.data.opened, ["finishes", "acoustical_ceilings"]);
+  assert.deepEqual(rcp.data.tools_enabled, ["ceiling_takeoff"]);
 });
