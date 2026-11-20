@@ -1,0 +1,148 @@
+{
+  "date": "2026-11-20T18:37:33.063Z",
+  "before_entry": [
+    "/theme-init.js",
+    "https://static.cloudflareinsights.com/beacon.min.js",
+    "/assets/index-CEnl4ryz.js"
+  ],
+  "baseline": {
+    "measurements": 89,
+    "pending": 86,
+    "reviewed": 3
+  },
+  "before": {
+    "selected_before": 29,
+    "selected_after": 0
+  },
+  "after_entry": [
+    "/theme-init.js",
+    "https://static.cloudflareinsights.com/beacon.min.js",
+    "/assets/index-DxUc9C4W.js"
+  ],
+  "checks": [
+    {
+      "label": "Initial HA group",
+      "checked": 29
+    },
+    {
+      "label": "Open first HA row",
+      "checked": 29
+    },
+    {
+      "label": "Receipt Show on plan",
+      "checked": 29
+    },
+    {
+      "label": "Return to group",
+      "checked": 29
+    },
+    {
+      "label": "Inspect unchecked exception",
+      "checked": 28
+    },
+    {
+      "label": "Click another plant directly on plan",
+      "checked": 28
+    },
+    {
+      "label": "Return after exception and direct plan inspection",
+      "checked": 28
+    },
+    {
+      "label": "Review completes and clears transient group",
+      "checked": 0
+    },
+    {
+      "label": "Inspect another row after Undo",
+      "checked": 29
+    },
+    {
+      "label": "Explicit Clear selection",
+      "checked": 0
+    },
+    {
+      "label": "Search change still clears selection",
+      "checked": 0
+    },
+    {
+      "label": "AS group before cross-sheet inspection",
+      "checked": 2
+    },
+    {
+      "label": "Inspect previously reviewed door on another sheet",
+      "checked": 2
+    },
+    {
+      "label": "Cross-sheet receipt Show on plan",
+      "checked": 2
+    },
+    {
+      "label": "Return from door to AS group",
+      "checked": 2
+    },
+    {
+      "label": "Narrow drawer reopens with AS group intact",
+      "checked": 2
+    },
+    {
+      "label": "Reopen clears transient selection",
+      "checked": 0
+    },
+    {
+      "label": "Final public preview: inspect one, retain 29",
+      "checked": 29
+    },
+    {
+      "label": "Narrow filtered AS group after inspection",
+      "checked": 2
+    }
+  ],
+  "canvas_inspected_row": 16,
+  "reviewed_ids": [
+    "shp-af9e8e6b-7002-40c5-a549-bf49c37313a3",
+    "shp-d3890ae9-7981-469a-b14d-5ffca1af7f2b",
+    "shp-3ef082b0-bcbc-4ae1-bcda-12d5eb1b603f",
+    "shp-3aeb5846-3511-4a23-a4a9-64423345c8f0",
+    "shp-1ae03034-914d-4d52-bbe6-43c03498f470",
+    "shp-4e808658-dde5-4cff-b825-d6fe8f9683c4",
+    "shp-290cf7c2-86a8-4e23-a825-34945098aa18",
+    "shp-113986e2-67b9-4501-860d-45b3363f6222",
+    "shp-98250f55-3a16-4fb5-8b3d-cf8040d09876",
+    "shp-6eceed8e-28da-459e-a641-64a6c46a3718",
+    "shp-09727c79-b652-4b1a-8f2e-006fa73350d4",
+    "shp-4e1ee5c3-abad-4eb5-a571-83088a6861fb",
+    "shp-c73e0aee-8a79-4736-8069-a4dd9c0dad17",
+    "shp-c853ff46-663b-45e2-a11d-e3ed56641cb6",
+    "shp-c0917a24-709b-4e23-9fbf-34d60c1d9b34",
+    "shp-1de537ef-2340-4597-b0e8-0cd48232b14e",
+    "shp-59a2ea45-d711-49fa-b6d2-c4c946e3b412",
+    "shp-7dc148b4-1da2-439e-9ca6-4a090edd9b84",
+    "shp-4a3c565f-2936-45fa-a4b9-6c939398a7dd",
+    "shp-5b5ebdfb-2fa3-4fc7-93ad-00188830cab4",
+    "shp-6286d332-a618-4c2f-bd4a-642bb4e36aec",
+    "shp-0c833194-875b-4305-aa40-82e38aa9acea",
+    "shp-1c795e39-53b0-414f-92dd-08fb47a427fc",
+    "shp-9980a0ac-dd4d-43df-accc-04fcfe83ff04",
+    "shp-7f2fb25e-62a4-4577-92b0-5f475d06e1cf",
+    "shp-69a2aaba-3dad-4147-9d23-9711dd28979c",
+    "shp-c94f627d-4b7f-406b-97ed-967f1a7ee335",
+    "shp-9b2fbd88-2c67-42a8-8b17-3bd6cf4e35d2"
+  ],
+  "excluded_id": "shp-0ea1aee0-161e-4a66-a2c4-f991d16d6883",
+  "pending_after_review": 58,
+  "pending_after_undo": 86,
+  "narrow": {
+    "viewport": [
+      760,
+      900
+    ],
+    "drawer_closed_on_inspect": true,
+    "checked_after_reopening": 2
+  },
+  "reopen": {
+    "pending": 86,
+    "reviewed": 3,
+    "checked": 0
+  },
+  "console_errors": []
+}

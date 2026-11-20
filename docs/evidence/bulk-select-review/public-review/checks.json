@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-20",
+  "node": "v24.22.1",
+  "builds": [
+    {
+      "name": "fork",
+      "source_commit": "b55ac6e02394e9cd8a363d22063a548322d9768c",
+      "origin": "http://127.0.0.1:5192",
+      "entry": "/assets/index-CEnl4ryz.js",
+      "entry_sha256": "407e587ea926a015b4344f387176888d7a4627eec8ea2866f128ba04da4567ff"
+    },
+    {
+      "name": "upstream",
+      "source_commit": "8a31fb49d5a2c286c665017219073b0abe61695b",
+      "origin": "http://127.0.0.1:5193",
+      "entry": "/assets/index-J6kj7QKO.js",
+      "entry_sha256": "6e9dbf8515d3cb5328018dde1660c85748ca07ddeb4a684289374d40e56c6124"
+    }
+  ],
+  "checks": [
+    {
+      "command": "npm ci --prefix web",
+      "exit_code": 0
+    },
+    {
+      "command": "npm ci --prefix mcp",
+      "exit_code": 0
+    },
+    {
+      "command": "npm ci --prefix protocol",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run check --prefix web",
+      "exit_code": 0,
+      "tests": {
+        "total": 3846,
+        "passed": 3842,
+        "skipped": 4,
+        "failed": 0
+      }
+    },
+    {
+      "command": "npm run check --prefix protocol",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run check:tool-count --prefix mcp",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run check:wiki --prefix mcp",
+      "exit_code": 0
+    },
+    {
+      "command": "node scripts/check-doc-links.mjs",
+      "exit_code": 0
+    }
+  ],
+  "notes": [
+    "Local checks only; no PR CI run exists.",
+    "Application source unchanged after the tested merge commit; this pass adds public evidence and documentation.",
+    "Upstream and fork use separate browser origins.",
+    "No maintainer approval or public deployment."
+  ],
+  "log_sha256": "e773ca03b27b33c61152d8ab86565a79315fed10528860a38ae1a8fde15c4d0d",
+  "evidence_relative_links_checked": 70,
+  "public_extraction_reproduced": true,
+  "log_file": "checks.txt",
+  "log_hash_basis": "UTF-8 normalized to LF, trailing whitespace trimmed"
+}

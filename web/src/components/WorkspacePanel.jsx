@@ -2,11 +2,14 @@ import { finishLabel, localizeText as uiText } from "../lib/i18n/core.js";
 import { useEffect, useMemo, useState } from "react";
 import { filterWork, workActor, workMethod, workQuantity, workReviewState } from "../lib/workReview.js";
 import { Z } from "../lib/ui.js";
+import { workSelection } from "../lib/workSelection.js";
 import { ScanStar } from "../brand/marks.jsx";
 import "./workspacePanel.css";
 
 export default function WorkspacePanel({ open, shapes, conditions, selectedId, sheetLabel, fmtArea, fmtLength,
-  scales, scaleUnconfirmed, running, proposalCount, onLocate, onReview, onClose, onReport, children, dockSide, width, dockHandle }) {
+  scales, scaleUnconfirmed, running, proposalCount, onLocate, onReview,
+  selectionIds = [], onSelectionChange, onLocateSelection, onReviewSelection, maxSelectionSheets,
+  onClose, onReport, children, dockSide, width, dockHandle }) {
   const [tab, setTab] = useState("work");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -15,6 +18,9 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
   const rows = useMemo(() => filterWork(shapes, { filter, query,
     conditionLabel: (id) => conditions[id]?.finish_tag || "", sheetLabel }), [shapes, filter, query, conditions, sheetLabel]);
   const selected = shapes.find((s) => s.id === selectedId);
+  const selection = useMemo(() => workSelection(shapes, selectionIds), [shapes, selectionIds]);
+  const checked = new Set(selectionIds);
+  const changeFilter = (setter, value) => { setter(value); onSelectionChange([]); };
   useEffect(() => { setLimit(50); }, [filter, query]);
   const quantity = (shape) => {
     const q = workQuantity(shape);
@@ -47,19 +53,38 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
       <div id="workspace-agent-view" role="tabpanel" aria-labelledby="workspace-agent-tab" hidden={tab !== "agent"} className="workspace-agent-view">{uiText(children)}</div>
       <div id="workspace-work-view" role="tabpanel" aria-labelledby="workspace-work-tab" hidden={tab !== "work"} className="workspace-work-view">
         <div className="workspace-filters">
-          <label className="workspace-search"><span>{uiText("Find work")}</span><input name="work-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={uiText("Condition, sheet, label, or author")} /></label>
+          <label className="workspace-search"><span>{uiText("Find work")}</span><input name="work-search" value={query} onChange={(e) => changeFilter(setQuery, e.target.value)} placeholder={uiText("Condition, sheet, label, or author")} /></label>
           <div className="workspace-filter-buttons" aria-label={uiText("Filter measurements")}>
             {[["all", "All work"], ["pending", `Needs review · ${pending}`], ["agent", "Agent"]].map(([id, label]) =>
-              <button type="button" key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{uiText(label)}</button>)}
+              <button type="button" key={id} aria-pressed={filter === id} onClick={() => changeFilter(setFilter, id)}>{uiText(label)}</button>)}
           </div>
+        </div>
+        <div className="workspace-bulk" aria-label={uiText("Bulk review")}>
+          <div className="workspace-bulk-actions">
+            <button type="button" disabled={!rows.length} onClick={() => onSelectionChange(rows.map((s) => s.id))}>{uiText("Select all filtered")} · {rows.length}</button>
+            {!!selection.rows.length && <button type="button" onClick={() => onSelectionChange([])}>{uiText("Clear selection")}</button>}
+          </div>
+          {!!selection.rows.length && <>
+            <p role="status">{selection.rows.length} {uiText("selected")} · {selection.pendingIds.length} {uiText("need review")}</p>
+            <div className="workspace-bulk-actions">
+              <button type="button" disabled={!selection.locatable.length || selection.sheetIds.length > maxSelectionSheets} onClick={onLocateSelection}>{uiText("Show selected on plan")}</button>
+              <button type="button" className="workspace-primary" disabled={!selection.pendingIds.length} onClick={onReviewSelection}>{uiText("Mark selected reviewed")} · {selection.pendingIds.length}</button>
+            </div>
+            <p className="workspace-receipt-note">{uiText("Only selected pending measurements change. Undo restores the batch.")}</p>
+            {selection.locatable.length < selection.rows.length && <p className="workspace-receipt-note">{uiText("Measurements without a source location cannot be located or bulk reviewed.")}</p>}
+            {selection.sheetIds.length > maxSelectionSheets && <p className="workspace-receipt-note">{uiText("Show selected on plan supports up to")} {maxSelectionSheets} {uiText("sheets at once.")}</p>}
+          </>}
         </div>
         <div className="workspace-list" aria-label={uiText("Measurements")}>
           {!rows.length && <div className="workspace-empty"><h3>{uiText(shapes.length ? "No matching work" : "Your measurements appear here")}</h3><p>{uiText(shapes.length ? "Change the filter or search to see more measurements." : "Measure on the plan or import an agent’s takeoff. Inspect either actor’s work here, then open its boundary on the drawing.")}</p></div>}
-          {rows.slice(0, limit).map((shape) => <button type="button" className="workspace-row" key={shape.id} aria-pressed={selectedId === shape.id} onClick={() => onLocate(shape)}>
+          {rows.slice(0, limit).map((shape, index) => <div className="workspace-check-row" key={shape.id} data-checked={checked.has(shape.id) || undefined}>
+            <input type="checkbox" aria-label={`${uiText("Select measurement")} ${conditions[shape.condition_id]?.finish_tag || uiText("Unassigned")} · ${shape.label || index + 1}`}
+              checked={checked.has(shape.id)} onChange={(e) => onSelectionChange(e.target.checked ? [...selectionIds, shape.id] : selectionIds.filter((id) => id !== shape.id))} />
+            <button type="button" className="workspace-row" aria-pressed={selectedId === shape.id} onClick={() => onLocate(shape)}>
             <span className="workspace-row-top"><strong>{conditions[shape.condition_id] ? finishLabel(conditions[shape.condition_id].finish_tag) : uiText("Unassigned")}{shape.label ? ` · ${shape.label}` : ""}</strong><span className="workspace-quantity">{uiText(quantity(shape))}</span></span>
             <span className="workspace-sheet">{sheetLabel(shape.sheet_id)}</span>
             <span className="workspace-row-bottom"><span>{workActor(shape) === "Agent" && <ScanStar size={10} style={{ marginRight: 5, color: "var(--cobalt)" }} />}{uiText(shape.author || workActor(shape))}</span><span className={workReviewState(shape) === "Needs review" ? "workspace-pending" : ""}>{uiText(workReviewState(shape))}</span></span>
-          </button>)}
+          </button></div>)}
           {rows.length > limit && <button type="button" className="workspace-more" onClick={() => setLimit((n) => n + 50)}>{uiText("Show more · ")}{uiText(rows.length - limit)} {uiText("remaining")}</button>}
         </div>
         {selected && <section className="workspace-inspector" aria-label={uiText("Selected measurement")}>

@@ -991,6 +991,30 @@ The scale control stays beside Work and Report. On narrow windows, these control
 
 Select a measurement to open its sheet and center its boundary. Its **Measurement receipt** shows the stored quantity, source, method, review state, scale state, vertices, and holes. **Mark reviewed** records your review for that measurement; undo restores its previous state. **Reviewed** describes the stored review decision, not a guarantee of accuracy. Missing attribution and quantities remain explicit.
 
+To review several measurements, select their checkboxes or click **Select all filtered**.
+The latter selects every matching row, including rows below **Show more**. Changing
+the search or review filter clears the selection. **Clear selection** clears it
+without changing any measurement.
+
+Click a measurement row or a mark on the plan to inspect one occurrence without
+clearing the checked group. **Show on plan** in its receipt keeps that group too;
+inspecting an unchecked measurement does not add it to the group. Click **Show
+selected on plan** to leave individual inspection and return to the whole group.
+
+Click **Show selected on plan** to open and frame the selected measurements on up
+to four sheets, clear of the floating side tabs. Selected measurements get a
+temporary outline; hidden conditions
+are revealed and a conflicting trade filter is cleared. Selection outlines are
+not saved or exported. Counts use the same marker geometry and selected
+appearance for individual and bulk selection; selection does not represent a
+plant's spread or change the saved marker style.
+
+Click **Mark selected reviewed** to review only the selected pending measurements.
+Existing decisions, IDs, geometry and quantities stay unchanged. One undo restores
+the batch. Measurements without a source location cannot be located or bulk
+reviewed. This flow uses existing measurement records; it does not introduce a
+separate callout-quantity or approval record.
+
 On smaller screens the panel opens as a drawer; on phones it fills the work area. Selecting a measurement returns you to the plan. **Open report →** opens the existing report. Floating totals clear both views. The condition’s **properties** disclosure above the drawing hides or shows its appearance controls.
 
 Select the **Agent** tab inside **Work** to chat with the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. The conversation is saved per project **in this browser only** and comes back after a reload (**New chat** clears it). It is not part of the project file, any export, or Drive sync, so another browser or computer won't see it. A page reload still discards uncommitted browser-agent proposals, and a run that was going when the page closed shows as stopped.

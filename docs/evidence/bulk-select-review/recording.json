@@ -1,0 +1,33 @@
+{
+  "source": "Timed captures of the actual browser UI, no simulated states",
+  "date": "2026-11-18",
+  "browser": "Codex in-app browser (Chromium)",
+  "url": "http://127.0.0.1:5183/",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "source_frames": 64,
+  "encoded_frames": 9,
+  "duration_ms": 19200,
+  "actions": [
+    {
+      "elapsed_ms": 2906,
+      "action": "Select all filtered \u00b7 3"
+    },
+    {
+      "elapsed_ms": 6572,
+      "action": "Show selected on plan"
+    },
+    {
+      "elapsed_ms": 10441,
+      "action": "Mark selected reviewed \u00b7 2"
+    },
+    {
+      "elapsed_ms": 14305,
+      "action": "Undo"
+    }
+  ],
+  "sha256": "5b3ce40612a0a77c18208429f461cc5fb5731882bd7a6cdfefbdcdc9fd550474",
+  "bytes": 2280101
+}

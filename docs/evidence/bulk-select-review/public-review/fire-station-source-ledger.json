@@ -1,0 +1,616 @@
+{
+  "source": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+  "source_sha256": "728adb974cfc332ef5bd96f84272125ac55a2a14c6960556b24a73c86134ff69",
+  "printed_sheet": "A-101",
+  "project": "F2405-01",
+  "revision": "09/19/2025",
+  "sample_ea": 46,
+  "excluded_tags": [
+    "100B",
+    "100C",
+    "100D",
+    "110C",
+    "110D"
+  ],
+  "excluded_scope": "Enlarged detail, untagged equipment/cubicle doors, overhead and serving openings. This is a UI sample, not a complete procurement takeoff.",
+  "anchors": [
+    {
+      "printed_tag": "100A",
+      "anchor_pdf_pt": [
+        589.1594887500002,
+        1490.4769150000002
+      ],
+      "anchor_image_px": [
+        1178.3189775000003,
+        2980.9538300000004
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-36d37b96-2f3b-467e-b14b-e6905fd20e14"
+    },
+    {
+      "printed_tag": "100E",
+      "anchor_pdf_pt": [
+        601.27948875,
+        1177.2469150000002
+      ],
+      "anchor_image_px": [
+        1202.5589775,
+        2354.4938300000003
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-2df2d7bd-a54a-46bb-b8a1-64f068e35a91"
+    },
+    {
+      "printed_tag": "100F",
+      "anchor_pdf_pt": [
+        762.41346675,
+        1159.486915
+      ],
+      "anchor_image_px": [
+        1524.8269335,
+        2318.97383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-6a550923-0351-4a02-be2c-93a71bb2e7fe"
+    },
+    {
+      "printed_tag": "101A",
+      "anchor_pdf_pt": [
+        783.9794887500001,
+        1260.676915
+      ],
+      "anchor_image_px": [
+        1567.9589775000002,
+        2521.35383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-6e0ecea8-e178-477c-9016-5253b742ad02"
+    },
+    {
+      "printed_tag": "101B",
+      "anchor_pdf_pt": [
+        951.31948875,
+        1247.776915
+      ],
+      "anchor_image_px": [
+        1902.6389775,
+        2495.55383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-d4c42511-88c2-41f6-95b3-abe8035c6210"
+    },
+    {
+      "printed_tag": "102A",
+      "anchor_pdf_pt": [
+        942.01948875,
+        1399.216915
+      ],
+      "anchor_image_px": [
+        1884.0389775,
+        2798.43383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-108ab55b-a727-45e8-8657-c1533775032c"
+    },
+    {
+      "printed_tag": "102B",
+      "anchor_pdf_pt": [
+        913.7294887500001,
+        1300.1869149999998
+      ],
+      "anchor_image_px": [
+        1827.4589775000002,
+        2600.3738299999995
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-f4c5aba8-536d-4060-b920-75cab1bef3a0"
+    },
+    {
+      "printed_tag": "102C",
+      "anchor_pdf_pt": [
+        783.7023675,
+        1345.846915
+      ],
+      "anchor_image_px": [
+        1567.404735,
+        2691.69383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-7d7d4b6a-4645-4445-9338-b918e8974293"
+    },
+    {
+      "printed_tag": "102D",
+      "anchor_pdf_pt": [
+        883.1823675,
+        1523.716915
+      ],
+      "anchor_image_px": [
+        1766.364735,
+        3047.43383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-e2a12251-43fe-4fa5-900b-76cf0fec5d58"
+    },
+    {
+      "printed_tag": "103",
+      "anchor_pdf_pt": [
+        804.0829410000001,
+        1216.666915
+      ],
+      "anchor_image_px": [
+        1608.1658820000002,
+        2433.33383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-6e809f72-9cc0-40a0-813c-575c2e2a3cfd"
+    },
+    {
+      "printed_tag": "104",
+      "anchor_pdf_pt": [
+        901.012941,
+        1216.666915
+      ],
+      "anchor_image_px": [
+        1802.025882,
+        2433.33383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-5c945306-9168-4605-b85e-174b1445409c"
+    },
+    {
+      "printed_tag": "105",
+      "anchor_pdf_pt": [
+        1089.8329410000001,
+        1300.1869149999998
+      ],
+      "anchor_image_px": [
+        2179.6658820000002,
+        2600.3738299999995
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-ec044819-c0ff-4928-abaa-be3a6dc7a0ed"
+    },
+    {
+      "printed_tag": "106",
+      "anchor_pdf_pt": [
+        984.1129410000001,
+        1216.666915
+      ],
+      "anchor_image_px": [
+        1968.2258820000002,
+        2433.33383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-44815a30-f32e-4ab9-8588-cb3344c5f32b"
+    },
+    {
+      "printed_tag": "107",
+      "anchor_pdf_pt": [
+        1243.942941,
+        1300.1869149999998
+      ],
+      "anchor_image_px": [
+        2487.885882,
+        2600.3738299999995
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-c98a6166-e997-4216-b466-223b51160e0d"
+    },
+    {
+      "printed_tag": "108",
+      "anchor_pdf_pt": [
+        1256.662941,
+        1424.0569150000001
+      ],
+      "anchor_image_px": [
+        2513.325882,
+        2848.1138300000002
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-907386f4-d82f-4634-9bb3-fe751f7a33bd"
+    },
+    {
+      "printed_tag": "109A",
+      "anchor_pdf_pt": [
+        1292.3594887499999,
+        1460.176915
+      ],
+      "anchor_image_px": [
+        2584.7189774999997,
+        2920.35383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-0b61a56d-225a-4f62-b8e4-0a8daba73485"
+    },
+    {
+      "printed_tag": "109B",
+      "anchor_pdf_pt": [
+        1456.7894887500001,
+        1472.506915
+      ],
+      "anchor_image_px": [
+        2913.5789775000003,
+        2945.01383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-480a2fd2-598d-4d45-bbf9-cf58ed84901d"
+    },
+    {
+      "printed_tag": "110A",
+      "anchor_pdf_pt": [
+        1099.48948875,
+        1217.176915
+      ],
+      "anchor_image_px": [
+        2198.9789775,
+        2434.35383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-0e5daf70-c7d8-4218-9144-bee759034a9d"
+    },
+    {
+      "printed_tag": "110B",
+      "anchor_pdf_pt": [
+        1043.6894887500002,
+        1133.116915
+      ],
+      "anchor_image_px": [
+        2087.3789775000005,
+        2266.23383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-591ab1e2-b719-4224-a396-23f7df4ee4e7"
+    },
+    {
+      "printed_tag": "110E",
+      "anchor_pdf_pt": [
+        1043.6894887500002,
+        895.156915
+      ],
+      "anchor_image_px": [
+        2087.3789775000005,
+        1790.31383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-1b9b43dd-7ae4-44e7-ac01-2d64ec9d7763"
+    },
+    {
+      "printed_tag": "111",
+      "anchor_pdf_pt": [
+        1112.902941,
+        1176.166915
+      ],
+      "anchor_image_px": [
+        2225.805882,
+        2352.33383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-bb351425-c1da-40ad-b6a3-9baca3baf9f2"
+    },
+    {
+      "printed_tag": "112",
+      "anchor_pdf_pt": [
+        1218.022941,
+        1216.666915
+      ],
+      "anchor_image_px": [
+        2436.045882,
+        2433.33383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-ea45182e-2fb2-4c7c-a500-95f95b53eb1b"
+    },
+    {
+      "printed_tag": "113",
+      "anchor_pdf_pt": [
+        1330.8229410000001,
+        1402.756915
+      ],
+      "anchor_image_px": [
+        2661.6458820000003,
+        2805.51383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-fa905405-c4ba-4630-a06a-b1b621594764"
+    },
+    {
+      "printed_tag": "116",
+      "anchor_pdf_pt": [
+        1361.422941,
+        1130.866915
+      ],
+      "anchor_image_px": [
+        2722.845882,
+        2261.73383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-f80c1253-ea5e-41aa-b09b-6494003ee161"
+    },
+    {
+      "printed_tag": "117",
+      "anchor_pdf_pt": [
+        1361.422941,
+        1092.796915
+      ],
+      "anchor_image_px": [
+        2722.845882,
+        2185.59383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-cb85a4fe-e919-4972-a3c5-ca9c195950d6"
+    },
+    {
+      "printed_tag": "118",
+      "anchor_pdf_pt": [
+        1251.052941,
+        967.8469150000001
+      ],
+      "anchor_image_px": [
+        2502.105882,
+        1935.6938300000002
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-d72cc864-c735-44f8-b30a-ce543cf3cc50"
+    },
+    {
+      "printed_tag": "119",
+      "anchor_pdf_pt": [
+        1286.362941,
+        939.196915
+      ],
+      "anchor_image_px": [
+        2572.725882,
+        1878.39383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-2bb9d705-605a-4cbc-bc6c-57642ec58b5e"
+    },
+    {
+      "printed_tag": "120",
+      "anchor_pdf_pt": [
+        1478.212941,
+        939.196915
+      ],
+      "anchor_image_px": [
+        2956.425882,
+        1878.39383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-b19e2b76-78c6-4c18-87ea-10062288dba3"
+    },
+    {
+      "printed_tag": "121",
+      "anchor_pdf_pt": [
+        1441.492941,
+        1002.676915
+      ],
+      "anchor_image_px": [
+        2882.985882,
+        2005.35383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-7f1f496f-9d17-4a01-8f15-7fa2232d7f61"
+    },
+    {
+      "printed_tag": "122",
+      "anchor_pdf_pt": [
+        1431.142941,
+        1110.946915
+      ],
+      "anchor_image_px": [
+        2862.285882,
+        2221.89383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-75a6f556-d14a-4ce2-b1ba-007e5067f7cb"
+    },
+    {
+      "printed_tag": "123",
+      "anchor_pdf_pt": [
+        1693.942941,
+        938.446915
+      ],
+      "anchor_image_px": [
+        3387.885882,
+        1876.89383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-0c8d549d-3170-4ba6-9717-89a68f4dbfec"
+    },
+    {
+      "printed_tag": "124",
+      "anchor_pdf_pt": [
+        1575.472941,
+        1003.7269150000001
+      ],
+      "anchor_image_px": [
+        3150.945882,
+        2007.4538300000002
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-dfb980c8-498a-43fe-8fa0-4c8cd4a2dcc0"
+    },
+    {
+      "printed_tag": "125",
+      "anchor_pdf_pt": [
+        1693.3429409999999,
+        1006.3369150000001
+      ],
+      "anchor_image_px": [
+        3386.6858819999998,
+        2012.6738300000002
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-8db417a9-b6e8-462b-87ce-db4f181bf5de"
+    },
+    {
+      "printed_tag": "126",
+      "anchor_pdf_pt": [
+        1913.272941,
+        939.196915
+      ],
+      "anchor_image_px": [
+        3826.545882,
+        1878.39383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-2637d50a-4d79-4a5f-8b7c-e69dccb547d6"
+    },
+    {
+      "printed_tag": "127A",
+      "anchor_pdf_pt": [
+        1969.544634075,
+        1004.1526819
+      ],
+      "anchor_image_px": [
+        3939.08926815,
+        2008.3053638
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-37fd4499-dd2c-4eb3-8845-051c39c5886c"
+    },
+    {
+      "printed_tag": "127B",
+      "anchor_pdf_pt": [
+        1900.724634075,
+        1144.4326819
+      ],
+      "anchor_image_px": [
+        3801.44926815,
+        2288.8653638
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-859fd12a-e682-46ec-b992-e86870b40152"
+    },
+    {
+      "printed_tag": "130",
+      "anchor_pdf_pt": [
+        2047.822941,
+        968.3569150000001
+      ],
+      "anchor_image_px": [
+        4095.645882,
+        1936.7138300000001
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-d730f871-5719-4cde-9729-996291092e8b"
+    },
+    {
+      "printed_tag": "131",
+      "anchor_pdf_pt": [
+        1389.8329410000001,
+        1053.946915
+      ],
+      "anchor_image_px": [
+        2779.6658820000002,
+        2107.89383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-9617b9a2-fa18-445d-a312-ac17339e781a"
+    },
+    {
+      "printed_tag": "132A",
+      "anchor_pdf_pt": [
+        602.26948875,
+        1134.676915
+      ],
+      "anchor_image_px": [
+        1204.5389775,
+        2269.35383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-f35196df-6b65-48f0-b0c3-35b0d7fb6cf9"
+    },
+    {
+      "printed_tag": "132B",
+      "anchor_pdf_pt": [
+        605.1494887500002,
+        820.186915
+      ],
+      "anchor_image_px": [
+        1210.2989775000003,
+        1640.37383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-a321eb9e-33d2-4375-967e-dd15bcac4970"
+    },
+    {
+      "printed_tag": "132C",
+      "anchor_pdf_pt": [
+        1013.2923675,
+        805.006915
+      ],
+      "anchor_image_px": [
+        2026.584735,
+        1610.01383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-c1405b6e-0e82-4e46-bd42-f3dea6ee0437"
+    },
+    {
+      "printed_tag": "133",
+      "anchor_pdf_pt": [
+        1531.912941,
+        1230.0169150000002
+      ],
+      "anchor_image_px": [
+        3063.825882,
+        2460.0338300000003
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-582fa7fc-378e-4178-a4f0-d843019ad187"
+    },
+    {
+      "printed_tag": "134",
+      "anchor_pdf_pt": [
+        1707.0829410000001,
+        1230.0169150000002
+      ],
+      "anchor_image_px": [
+        3414.1658820000002,
+        2460.0338300000003
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-a1050142-5824-422e-a9d0-024b208cfab9"
+    },
+    {
+      "printed_tag": "135",
+      "anchor_pdf_pt": [
+        1905.922941,
+        1219.156915
+      ],
+      "anchor_image_px": [
+        3811.845882,
+        2438.31383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-d74a7cfe-1b46-4cc1-ac40-ed5f082691c1"
+    },
+    {
+      "printed_tag": "136A",
+      "anchor_pdf_pt": [
+        2008.69948875,
+        1170.616915
+      ],
+      "anchor_image_px": [
+        4017.3989775,
+        2341.23383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-6faba3c2-8d58-4fbd-a589-fb29d228cb22"
+    },
+    {
+      "printed_tag": "136B",
+      "anchor_pdf_pt": [
+        1513.06948875,
+        1178.956915
+      ],
+      "anchor_image_px": [
+        3026.1389775,
+        2357.91383
+      ],
+      "basis": "One tagged hinged opening, anchored on its printed door tag in the main floor plan.",
+      "measurement_id": "shp-97eca527-d0e9-40cd-9342-02243c7b2937"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-20",
+  "scope": "Existing public UI samples reused; no new takeoff or procurement claim.",
+  "sources": [
+    {
+      "file": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "url": "https://oa.mo.gov/sites/default/files/bid-opportunities/_F2405-01Final%20Bid%20Plans.pdf",
+      "sha256": "728adb974cfc332ef5bd96f84272125ac55a2a14c6960556b24a73c86134ff69",
+      "sheet": "A-101",
+      "records": 46
+    },
+    {
+      "file": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "url": "https://apps.dot.illinois.gov/eplan/desenv/072916/097-91539/PLANS/PL-91539-097-101-200.pdf",
+      "sha256": "482d07a4d86e4e97863b7867021a4b646647f52b14ffa25f97adf6b7524a94c1",
+      "printed_sheets": [
+        133,
+        135,
+        136
+      ],
+      "pdf_pages_in_link": [
+        33,
+        35,
+        36
+      ],
+      "measured_sheet": 133,
+      "records": 43
+    }
+  ],
+  "qa_reviewed_note": "Synthetic QA decisions on Door 103, 104 and 130. Door 104/130 were marked through the UI during setup. These flags test preservation, not estimator approval.",
+  "pending": 86,
+  "reviewed": 3,
+  "removed_condition_style": "Four count_diameter_pt values omitted because ring sizing belongs to separate PR #660; count geometry unchanged.",
+  "qa_reviewed_ids": [
+    "shp-6e809f72-9cc0-40a0-813c-575c2e2a3cfd",
+    "shp-5c945306-9168-4605-b85e-174b1445409c",
+    "shp-d730f871-5719-4cde-9729-996291092e8b"
+  ]
+}

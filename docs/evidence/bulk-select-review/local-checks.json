@@ -1,0 +1,29 @@
+{
+  "tested_at": "2026-11-18",
+  "runtime": "Node 24",
+  "web": [
+    {
+      "name": "web-check",
+      "exit_code": 0
+    }
+  ],
+  "support": [
+    {
+      "name": "protocol",
+      "exit_code": 0
+    },
+    {
+      "name": "tool-count",
+      "exit_code": 0
+    },
+    {
+      "name": "wiki",
+      "exit_code": 0
+    },
+    {
+      "name": "doc-links",
+      "exit_code": 0
+    }
+  ],
+  "github_ci": "Not run: no PR opened; local results only"
+}

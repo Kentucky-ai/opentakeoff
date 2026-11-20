@@ -1,0 +1,57 @@
+{
+  "tested_at": "2026-11-18",
+  "base_commit": "3add1846a974aebc8820fa53af9933f75251690a",
+  "branch": "codex/bulk-select-review",
+  "browser": "Codex in-app browser (Chromium)",
+  "url": "http://127.0.0.1:5183/",
+  "viewport": [
+    1600,
+    1000
+  ],
+  "fixture": "mixed.takeoff.json",
+  "fixture_sha256": "73f4ed38b0ce330409cd16a5ecced61d464085dc7addf0e1c7c9216963e1a634",
+  "baseline": {
+    "measurements": 6,
+    "conditions": 4,
+    "pending": 5,
+    "reviewed": 1,
+    "quantities": {
+      "CG": {
+        "EA": 3
+      },
+      "QA-AREA": {
+        "SF": 100
+      },
+      "QA-LINE": {
+        "LF": 20
+      },
+      "QA-REF": {
+        "EA": 1
+      }
+    }
+  },
+  "observations": {
+    "two_sheets_opened": true,
+    "selected_locations_visible": 6,
+    "rightmost_marker_clearance_from_side_tabs_px": 25.0,
+    "working_zoom_mixed_units_displayed_separately": true,
+    "mixed_batch_review_pending": 0,
+    "mixed_batch_review_reviewed": 6,
+    "one_undo_pending": 5,
+    "one_undo_reviewed": 1,
+    "review_states_and_quantities_preserved_after_reload_in_UI": true,
+    "classic_layout_selection_and_framing": "passed",
+    "russian_UI_smoke": "Show selected on plan works; added labels use existing partial English fallback",
+    "console_errors": 0,
+    "recording": "review-flow.gif"
+  },
+  "exact_export_check": {
+    "three_count_fixture": "passed; actual earlier browser export committed as sample.after-undo.takeoff.json",
+    "six_record_fixture": "unverified: browser export toast appeared, but the in-app browser download stopped and no JSON file was recovered. UI reload and command tests passed; these do not replace an exact six-record export comparison."
+  },
+  "limits": [
+    "Only synthetic review states and supplemental geometry on the bundled public PDF. Not an independent takeoff accuracy benchmark.",
+    "Four-sheet display limit; large groups, curves and holes have unit coverage but no full browser benchmark.",
+    "Public hosted app is unchanged; GitHub PR CI has not run."
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "schema": "opentakeoff.takeoff_canvas.v1",
+  "project_name": "Bundled sample - bulk review QA",
+  "sheets": [
+    {
+      "sheet_id": "sample-finish-plan.pdf",
+      "units_per_px": 0.05555555555555555,
+      "scale_source": "standard",
+      "scale_confirmed": false
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cnd-2ccda18e-2164-4497-9d2d-259a4734cfb9",
+      "created_at": "2026-11-18T19:39:13.670Z",
+      "finish_tag": "CG",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "diag",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Corner guard - three selected callouts for review UI QA",
+        "remarks": "AF101 / CG. Three deliberately selected callout anchors on the repository sample. Not a complete takeoff or a measured guard footprint. One reviewed state is synthetic test data for preservation checks."
+      }
+    }
+  ],
+  "shapes": [
+    {
+      "id": "shp-6cd58518-bb03-4b25-a62e-2dcb9b1474bc",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-2ccda18e-2164-4497-9d2d-259a4734cfb9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5385309351851852,
+          0.29501301342592595
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        }
+      },
+      "label": "QA-1"
+    },
+    {
+      "id": "shp-68d4b109-8917-4269-9066-c7caa04e65a3",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-2ccda18e-2164-4497-9d2d-259a4734cfb9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5450785515873016,
+          0.318846337037037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      },
+      "label": "QA-2"
+    },
+    {
+      "id": "shp-55832919-2707-481b-801a-a7bc17a3be12",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-2ccda18e-2164-4497-9d2d-259a4734cfb9",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5792452046957671,
+          0.318846337037037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      },
+      "label": "QA-3"
+    }
+  ],
+  "markups": [],
+  "rfis": [],
+  "sheet_group": [],
+  "last_group": [],
+  "sheet_tabs": [
+    "sample-finish-plan.pdf"
+  ]
+}
