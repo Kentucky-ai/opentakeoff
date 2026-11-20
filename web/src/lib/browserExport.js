@@ -257,10 +257,18 @@ export function validateManifest(m) {
  *   now?: () => Date,
  *   limits?: { bytes?: number, entries?: number },
  *   onProgress?: (msg: string) => void,
+ *   flush?: () => Promise<void>,   // write pending autosaves before reading (lib/pendingSaves.js)
  * }} opts
  * @returns {Promise<any>} the manifest written
  */
-export async function writeBrowserExport({ withDb, sink, storage, buildProfile, appVersion = "", now = () => new Date(), limits = {}, onProgress }) {
+export async function writeBrowserExport({ withDb, sink, storage, buildProfile, appVersion = "", now = () => new Date(), limits = {}, onProgress, flush }) {
+  // An edit still waiting for its autosave is written first, or the backup
+  // would hold the copy from before it. A failed write stops the export.
+  if (flush) {
+    onProgress?.("Saving your latest changes…");
+    try { await flush(); }
+    catch (e) { throw new Error(`your latest changes couldn't be saved first (${e?.message || e}), so the backup would miss them. Free some space or reload, then export again.`); }
+  }
   const { Zip, ZipPassThrough, ZipDeflate, strToU8 } = await import("fflate");
   const maxBytes = limits.bytes ?? MAX_TOTAL_BYTES;
   const maxEntries = limits.entries ?? MAX_TOTAL_ENTRIES;
@@ -340,7 +348,7 @@ export async function writeBrowserExport({ withDb, sink, storage, buildProfile, 
   const omitted = [];
   const batches = {};          // store -> { parts: string[], bytes }
   const binSeq = {};
-  const flush = async (s) => {
+  const flushBatch = async (s) => {
     const b = batches[s];
     if (!b || !b.parts.length) return;
     const name = `idb/${s}/${String(files[s].length + 1).padStart(6, "0")}.json`;
@@ -390,9 +398,9 @@ export async function writeBrowserExport({ withDb, sink, storage, buildProfile, 
     batches[s].parts.push(json);
     batches[s].bytes += json.length;
     written[s].push(key);
-    if (batches[s].bytes >= BATCH_BYTES) await flush(s);
+    if (batches[s].bytes >= BATCH_BYTES) await flushBatch(s);
   }
-  for (const s of STORES) await flush(s);
+  for (const s of STORES) await flushBatch(s);
 
   const libraries = await withDb(async (db) => {
     const has = db.objectStoreNames.contains("meta");

@@ -22,6 +22,7 @@ captured; the file-on-disk path is not exercised by this run.
 | Identical re-import asks nothing | same file again, nothing changed: no conflict | ✓ |
 | Changed data is not replaced silently | edited the `annotations` record in browser B, re-import: "Replace 1 item…", **Which items** lists `meta: annotations`, **Replace and import** disabled until ticked (`disabled` true → false) | ✓ |
 | Replace writes the backup's copy | after Replace and import: B's edit (`project_name: "Edited in browser B"`) is gone, the backup's record is back | ✓ |
+| An edit just before export is in the backup | sample plan: CPT-1 waste 5 → 17 typed, then Download backup at once (file ready 145 ms after the click, inside the 700 ms autosave window): the backup's `annotations` record has `waste_pct: 17` | ✓ |
 | Closing after an import reloads | import, then Escape: the page navigated (a marker set on `window` was gone) and the restored plan opened | ✓ |
 | No page errors | `pageerror` listener on both contexts: none | ✓ |
 

@@ -45,6 +45,7 @@ import { scopeCollisions, collisionsByCondition } from "../lib/scopeCollision.js
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
 import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
 import { openBackupCenter } from "../components/BackupCenter.jsx";
+import { registerSaveFlusher } from "../lib/pendingSaves.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
@@ -1469,6 +1470,7 @@ export default function TakeoffCanvas() {
   const gestureUntilRef = useRef(0);   // wheel/pinch activity horizon — the detail view waits it out
   const panRafRef = useRef(0);         // rAF token coalescing drag-pan pointermoves into one transform write per frame
   const saveDataRef = useRef(null);    // latest serialized annotations — flushed on unmount
+  const pendingSaveRef = useRef(null); // a payload the debounced autosave hasn't written yet (lib/pendingSaves.js)
   const saveStateRef = useRef("idle"); // mirror of saveState for the unmount/beforeunload guard
 
   // page 1 keeps the bare file name (pre-paging takeoffs still load); pages 2+ → "name#page"
@@ -4530,13 +4532,17 @@ export default function TakeoffCanvas() {
     if (remotePendingRender.current) return;
     const payload = buildPayload();
     saveDataRef.current = payload;          // keep the freshest payload for an unmount flush
+    pendingSaveRef.current = payload;       // what flushPendingSaves writes ahead of the timer
     setSaveState("saving");
     const t = setTimeout(() => {
       // A render was deferred AFTER this save was scheduled (its closure captured the
       // pre-adopt payload) → don't push stale over the winner; go idle so the canvas
       // can drain and re-hydrate. Closes the last pre-scheduled-save loss window.
       if (remotePendingRender.current) { setSaveState("idle"); return; }
-      store.saveAnnotations(payload).then(() => setSaveState("saved")).catch((e) => {
+      store.saveAnnotations(payload).then(() => {
+        if (pendingSaveRef.current === payload) pendingSaveRef.current = null;
+        setSaveState("saved");
+      }).catch((e) => {
         // surface the failure rather than dropping to a silent "idle" — with inline
         // image markups a QuotaExceededError is a realistic failure mode, and a
         // silent one loses the WHOLE payload (shapes, quantities, everything) with
@@ -4553,6 +4559,20 @@ export default function TakeoffCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, estimateSettings, bidProposal, units, splitView, doorAnswers]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
+
+  // Export everything reads the stored project directly, so an edit still in
+  // the 700 ms autosave window is written now (lib/pendingSaves.js). Same
+  // guards as the timer: nothing before hydrate, nothing while a remote
+  // winner's render is deferred. The timer's own save of the same payload,
+  // if it still fires, writes identical data. A failed write rejects, so the
+  // export stops instead of reading the older copy.
+  useEffect(() => registerSaveFlusher(async () => {
+    const payload = pendingSaveRef.current;
+    if (!payload || !hydrated.current || remotePendingRender.current) return;
+    await store.saveAnnotations(payload);
+    if (pendingSaveRef.current === payload) pendingSaveRef.current = null;
+    setSaveState("saved");
+  }), []);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
   // tab close while a save is in flight — so the tail of a tracing session is never lost.

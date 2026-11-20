@@ -77,6 +77,15 @@ snapshots, plans, older revisions, OCR caches) and skips any record that would
 cross a budget; the dialog lists what was left out with sizes. Import refuses
 a file whose directory exceeds either budget before reading it.
 
+## Pending edits
+
+The canvas autosaves 700 ms after the last edit, and Export everything reads
+IndexedDB directly. So the export first awaits `flushPendingSaves()`
+(`web/src/lib/pendingSaves.js`), and the canvas registers a flusher that
+writes its pending payload at once, under the same guards as the timer (not
+before hydrate, and not while a remote winner's render is deferred). If that
+write fails, the export stops and says so rather than saving the older copy.
+
 ## Overwrite rule
 
 Import first inspects the file against this browser. A key that already
@@ -124,6 +133,7 @@ reading is wrong.
 |---|---|
 | `web/src/lib/browserExport.js` | format, encoder, streaming writer, zip directory reader, inspect, apply, sinks |
 | `web/src/lib/backupStatus.js` | persist request, backup state, reminder rule |
+| `web/src/lib/pendingSaves.js` | the canvas's pending autosave, written before an export reads |
 | `web/src/components/BackupCenter.jsx` | reminder and dialog |
 | `web/src/lib/store.js` | `withStoreDb`: the database opened and always closed, for whole-store reads |
 | `web/src/main.jsx` | mounts `BackupCenter` |

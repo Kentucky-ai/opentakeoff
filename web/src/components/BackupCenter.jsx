@@ -10,6 +10,7 @@ import { Z } from "../lib/ui.js";
 import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
 import { withStoreDb } from "../lib/store.js";
 import { buildProfile } from "../lib/profile.js";
+import { flushPendingSaves } from "../lib/pendingSaves.js";
 import {
   readBackupState, requestPersistentStorage, markBackupDone, dismissBackupReminder, backupReminder,
 } from "../lib/backupStatus.js";
@@ -142,7 +143,7 @@ export default function BackupCenter() {
       const mem = writable ? null : blobSink();
       const sink = writable ? { write: (c) => writable.write(c), close: () => writable.close() } : mem;
       const manifest = await writeBrowserExport({
-        withDb: withStoreDb, sink, storage: window.localStorage, buildProfile,
+        withDb: withStoreDb, sink, storage: window.localStorage, buildProfile, flush: flushPendingSaves,
         appVersion: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "",
         onProgress: (m) => setBusy(uiText(m)),
       });

@@ -324,3 +324,56 @@ test("otkx inspect: local storage conflicts count only keys an import would writ
   assert.equal(here.getItem("opentakeoff_ai_key"), "sk-mine", "a credential in a backup never replaces this browser's");
   assert.equal(here.getItem("other_site"), "y");
 });
+
+test("otkx export flushes a pending autosave first: an edit made just before export is in the backup", async () => {
+  const { registerSaveFlusher, flushPendingSaves } = await import("../src/lib/pendingSaves.js");
+  await localStore.saveAnnotations({ conditions: [{ id: "c1", finish_tag: "CPT-1" }], shapes: [], markups: [], sheets: [] });
+  // the canvas's autosave as it behaves: an edit is held for 700 ms, then written
+  let pending: any = null;
+  let timer: any = null;
+  const edit = (payload: any) => {
+    pending = payload;
+    clearTimeout(timer);
+    timer = setTimeout(() => { localStore.saveAnnotations(payload); pending = null; }, 700);
+  };
+  const unregister = registerSaveFlusher(async () => {
+    const p = pending;
+    if (!p) return;
+    await localStore.saveAnnotations(p);
+    if (pending === p) pending = null;
+  });
+  try {
+    edit({ conditions: [{ id: "c1", finish_tag: "CPT-1" }, { id: "c2", finish_tag: "LVT-1" }], shapes: [{ id: "s-new" }], markups: [], sheets: [] });
+    // export at once, inside the autosave window
+    const { blob, manifest } = await exportBytes(new MemStorage(), { flush: flushPendingSaves });
+    assert.equal(manifest.complete, true);
+    (globalThis as any).indexedDB = new IDBFactory();
+    await applyBrowserExport(await openBrowserExport(new File([blob], "b.otkx")), { withDb: withStoreDb, storage: new MemStorage() });
+    const ann = await localStore.loadAnnotations();
+    assert.deepEqual(ann.conditions.map((c: any) => c.finish_tag), ["CPT-1", "LVT-1"]);
+    assert.deepEqual(ann.shapes.map((x: any) => x.id), ["s-new"]);
+  } finally {
+    clearTimeout(timer);
+    unregister();
+  }
+});
+
+test("otkx export stops when the pending save can't be written", async () => {
+  await localStore.saveAnnotations({ conditions: [], shapes: [], markups: [], sheets: [] });
+  const flush = async () => { throw Object.assign(new Error("quota"), { name: "QuotaExceededError" }); };
+  await assert.rejects(exportBytes(new MemStorage(), { flush }), /latest changes couldn't be saved first \(quota\)/);
+});
+
+test("pendingSaves: flushers run, unregister, and a failure rejects", async () => {
+  const { registerSaveFlusher, flushPendingSaves } = await import("../src/lib/pendingSaves.js");
+  let n = 0;
+  const off = registerSaveFlusher(async () => { n++; });
+  await flushPendingSaves();
+  off();
+  await flushPendingSaves();
+  assert.equal(n, 1);
+  const offBad = registerSaveFlusher(() => { throw new Error("boom"); });
+  await assert.rejects(flushPendingSaves(), /boom/);
+  offBad();
+  await flushPendingSaves();
+});
