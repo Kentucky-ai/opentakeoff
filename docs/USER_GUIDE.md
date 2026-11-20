@@ -996,6 +996,11 @@ The latter selects every matching row, including rows below **Show more**. Chang
 the search or review filter clears the selection. **Clear selection** clears it
 without changing any measurement.
 
+Click a measurement row or a mark on the plan to inspect one occurrence without
+clearing the checked group. **Show on plan** in its receipt keeps that group too;
+inspecting an unchecked measurement does not add it to the group. Click **Show
+selected on plan** to leave individual inspection and return to the whole group.
+
 Click **Show selected on plan** to open and frame the selected measurements on up
 to four sheets, clear of the floating side tabs. Selected measurements get a
 temporary outline; hidden conditions

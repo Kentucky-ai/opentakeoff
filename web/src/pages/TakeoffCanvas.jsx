@@ -873,7 +873,8 @@ export default function TakeoffCanvas() {
   const [ocSel, setOcSel] = useState(null);        // selected proposal vertex {ri, vi} — Delete removes just that point
   const [ocHover, setOcHover] = useState(-1);      // proposal region under the cursor — handles reveal on hover
   const [selectedId, setSelectedId] = useState(null);   // selected shape (Select tool)
-  useEffect(() => { if (selectedId) { setWorkSelectionIds([]); setWorkSelectionFrame(null); } }, [selectedId]);
+  // Inspecting one shape does not change the review batch's checkbox membership.
+  useEffect(() => { if (selectedId) setWorkSelectionFrame(null); }, [selectedId]);
   // raw text of the per-wall height field while it is being edited; null =
   // mirror the stored value. Same reason as DimParamInput's draft: the field
   // round-trips through a rounded unit conversion, so without this a metric
@@ -8499,7 +8500,7 @@ export default function TakeoffCanvas() {
   }
 
   function locateWork(shape) {
-    setWorkSelectionIds([]); setWorkSelectionFrame(null);
+    setWorkSelectionFrame(null);
     setWorkLocateId(shape.id);
     if (!panelKeySet.has(shape.sheet_id)) openSheets([shape.sheet_id], false);
     setTool("select");
@@ -8541,6 +8542,7 @@ export default function TakeoffCanvas() {
   }
   function locateWorkSelection() {
     if (!selectedWork.sheetIds.length || selectedWork.sheetIds.length > MAX_GROUP) return;
+    setSelectedId(null); setSelectedMarkupId(null); setWorkLocateId(null);
     revealWorkSelection(selectedWork.rows);
     setWorkSelectionFrame(selectedWork.sheetIds);
     if (selectedWork.sheetIds.some((key) => !panelKeySet.has(key))) openSheets(selectedWork.sheetIds, selectedWork.sheetIds.length > 1);

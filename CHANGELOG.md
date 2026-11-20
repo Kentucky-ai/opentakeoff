@@ -113,7 +113,7 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 - **Bulk count selection follows the count marker.** Selecting several counts uses the same glyph and selected appearance as selecting one; it no longer adds a circular highlight around square markers. Measurement records and review decisions are unchanged.
 
-- **Select and review several measurements together.** In **Work and review**, select individual rows or **Select all filtered**, then **Show selected on plan** to highlight and frame the existing measurements clear of floating side tabs. **Mark selected reviewed** uses the existing review command and one-step undo. Quantities and geometry stay unchanged; no new persisted record or review type is introduced.
+- **Select and review several measurements together.** In **Work and review**, select individual rows or **Select all filtered**, then **Show selected on plan** to highlight and frame the existing measurements clear of floating side tabs. Inspecting one measurement, including an unchecked exception, keeps the checked group intact. **Show selected on plan** returns to that group. **Mark selected reviewed** uses the existing review command and one-step undo. Quantities and geometry stay unchanged; no new persisted record or review type is introduced.
 - **Ceiling wall angle follows a reset to one floor.** Re-run `ceiling_takeoff` after changing the ceiling condition from repeated floors back to one. The existing wall-angle runs report the single-floor length without adding a second ring.
 - **MCP sheet comparison reads every vector segment.** `compare_sheets` uses the extracted endpoints from both pages and returns exact unchanged counts when a sheet is compared with itself at zero offset.
 
