@@ -1687,28 +1687,31 @@ export class Session {
     const geoA = await this.ensureGeometry(sA);
     const geoB = await this.ensureGeometry(sB);
 
-    const segsA: Segment[] = [];
-    for (let i = 0; i < geoA.segs.length; i += 2) {
-      const p0 = geoA.points[geoA.segs[i]];
-      const p1 = geoA.points[geoA.segs[i + 1]];
-      if (p0 && p1) segsA.push([p0[0], p0[1], p1[0], p1[1]]);
-    }
-
-    const segsB: Segment[] = [];
-    for (let i = 0; i < geoB.segs.length; i += 2) {
-      const p0 = geoB.points[geoB.segs[i]];
-      const p1 = geoB.points[geoB.segs[i + 1]];
-      if (p0 && p1) segsB.push([p0[0], p0[1], p1[0], p1[1]]);
-    }
+    // The extractor stores four image-pixel coordinates per segment.
+    const segmentsOf = ({ segs }: VectorGeometry): Segment[] => {
+      const segments: Segment[] = [];
+      for (let i = 0; i < segs.length; i += 4) {
+        segments.push([segs[i], segs[i + 1], segs[i + 2], segs[i + 3]]);
+      }
+      return segments;
+    };
+    const segsA = segmentsOf(geoA);
+    const segsB = sA === sB ? segsA : segmentsOf(geoB);
 
     let align: AlignmentResult;
     if (userAlign && (userAlign.dx != null || userAlign.dy != null)) {
       align = { dx: userAlign.dx || 0, dy: userAlign.dy || 0, confidence: 1.0, method: "manual" };
+    } else if (sA === sB) {
+      align = { dx: 0, dy: 0, confidence: 1, method: "identity" };
     } else {
       align = autoAlignSheets(segsA, segsB, sA.widthPx, sA.heightPx);
     }
 
-    const diff = diffVectorSegments(segsA, segsB, align, 1.0);
+    // As in the canvas, self-comparison needs no tolerance-based pairing:
+    // close, nearly identical endpoints can otherwise use up each other's match.
+    const diff = sA === sB && align.dx === 0 && align.dy === 0
+      ? { method: "vector" as const, changedRegions: [], stats: { unchangedCount: segsA.length, removedCount: 0, addedCount: 0 } }
+      : diffVectorSegments(segsA, segsB, align, 1.0);
 
     // Intersect with existing shapes on sheet A
     const carried = carryTakeoffShapes(
