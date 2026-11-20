@@ -679,6 +679,38 @@ test("ceiling_takeoff: ×3 floors gives 3× the wall angle in the report, not 9�
   near(row((await call(client, "export_report")).data, "ACT-1-WA").lf, 300, 0.01);
 });
 
+test("ceiling_takeoff: resetting repeated floors restores the wall angle in the report", async () => {
+  const client = await pair({ suites: ["acoustical_ceilings"] });
+  await ready(client);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 300, 400), condition: "ACT-1" });
+  await call(client, "edit_condition", { condition: "ACT-1", multiplier: 3 });
+
+  const args = { condition: "ACT-1", module: "2x2" };
+  const wallAngle = async () => row((await call(client, "export_report")).data, "ACT-1-WA");
+  const initial = await call(client, "ceiling_takeoff", args);
+  assert.equal(initial.isError, false, JSON.stringify(initial.data));
+  near((await wallAngle()).lf, 300);
+
+  await call(client, "edit_condition", { condition: "ACT-1", multiplier: 1 });
+  const preview = await call(client, "ceiling_takeoff", { ...args, apply: false });
+  near(preview.data.wall_angle_lf, 100);
+  near((await wallAngle()).lf, 300);
+
+  const applied = await call(client, "ceiling_takeoff", args);
+  assert.equal(applied.isError, false, JSON.stringify(applied.data));
+  assert.equal(applied.data.committed, 0);
+  const adjusted = await wallAngle();
+  near(adjusted.lf, 100);
+  near(adjusted.lf, applied.data.wall_angle_lf);
+  assert.equal(adjusted.multiplier, 1);
+  assert.equal(adjusted.shape_count, 1);
+  assert.equal(applied.data.undo_steps, 2);
+
+  const undone = await call(client, "undo_last", { n: applied.data.undo_steps });
+  assert.equal(undone.isError, false, JSON.stringify(undone.data));
+  near((await wallAngle()).lf, 300);
+});
+
 test("open_suite division 09 opens finishes only; ceilings by name, or once an ACT- tag is on the job", async () => {
   const client = await pair();
   await ready(client);
