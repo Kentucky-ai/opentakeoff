@@ -1,0 +1,297 @@
+{
+  "schema": "opentakeoff.profile.v1",
+  "app": "opentakeoff",
+  "created": "2026-11-20T00:50:51.629Z",
+  "name": "Bluegrass Flooring",
+  "condition_templates": [
+    {
+      "created_at": "2026-11-20T00:50:45.174Z",
+      "finish_tag": "CPT-1",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "diag",
+      "multiplier": 1,
+      "waste_pct": 8,
+      "materials": [
+        {
+          "name": "Carpet tile adhesive",
+          "per": 200,
+          "basis": "floor",
+          "unit": "gal",
+          "round": true,
+          "price": 42
+        },
+        {
+          "name": "Seam sealer",
+          "per": 500,
+          "basis": "floor",
+          "unit": "tube",
+          "round": true,
+          "price": 9.5
+        }
+      ]
+    },
+    {
+      "created_at": "2026-11-20T00:50:45.299Z",
+      "finish_tag": "VCT-1",
+      "color": "#2f7d54",
+      "fill": "#2f7d54",
+      "hatch": "diag2",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "name": "VCT adhesive",
+          "per": 150,
+          "basis": "floor",
+          "unit": "gal",
+          "round": true,
+          "price": 31
+        },
+        {
+          "name": "Floor finish",
+          "per": 1500,
+          "basis": "floor",
+          "unit": "gal",
+          "round": true,
+          "price": 38
+        }
+      ]
+    },
+    {
+      "created_at": "2026-11-20T00:50:45.303Z",
+      "finish_tag": "RB-1",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "cross",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "name": "Cove base adhesive",
+          "per": 60,
+          "basis": "linear",
+          "unit": "tube",
+          "round": true,
+          "price": 6.25
+        }
+      ]
+    },
+    {
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "finish_tag": "LVT-1",
+      "color": "#1f2937",
+      "fill": "#1f2937",
+      "hatch": "brick",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": []
+    }
+  ],
+  "material_library": [
+    {
+      "id": "lib-cpt-1-1",
+      "name": "Carpet tile adhesive",
+      "per": 200,
+      "basis": "floor",
+      "unit": "gal",
+      "round": true,
+      "price": 42
+    },
+    {
+      "id": "lib-cpt-1-2",
+      "name": "Seam sealer",
+      "per": 500,
+      "basis": "floor",
+      "unit": "tube",
+      "round": true,
+      "price": 9.5
+    },
+    {
+      "id": "lib-vct-1-1",
+      "name": "VCT adhesive",
+      "per": 150,
+      "basis": "floor",
+      "unit": "gal",
+      "round": true,
+      "price": 31
+    },
+    {
+      "id": "lib-vct-1-2",
+      "name": "Floor finish",
+      "per": 1500,
+      "basis": "floor",
+      "unit": "gal",
+      "round": true,
+      "price": 38
+    },
+    {
+      "id": "lib-rb-1-1",
+      "name": "Cove base adhesive",
+      "per": 60,
+      "basis": "linear",
+      "unit": "tube",
+      "round": true,
+      "price": 6.25
+    }
+  ],
+  "stamp_library": {
+    "stamps": [
+      {
+        "id": "stmp-direction",
+        "name": "Plank / tile direction",
+        "elements": [
+          {
+            "type": "arrow",
+            "from": [
+              -0.05,
+              0
+            ],
+            "to": [
+              0.05,
+              0
+            ],
+            "color": "#1f3fc7",
+            "weight": 1.5
+          }
+        ]
+      },
+      {
+        "id": "stmp-seam",
+        "name": "Seam direction",
+        "elements": [
+          {
+            "type": "arrow",
+            "from": [
+              -0.05,
+              0
+            ],
+            "to": [
+              0.05,
+              0
+            ],
+            "color": "#b03a26",
+            "line_style": "dashed"
+          }
+        ]
+      },
+      {
+        "id": "stmp-origin",
+        "name": "Pattern origin",
+        "elements": [
+          {
+            "type": "bubble",
+            "at": [
+              0,
+              0
+            ],
+            "r": 0.018,
+            "text": "PO",
+            "color": "#0d9488"
+          }
+        ]
+      },
+      {
+        "id": "stmp-install-dir",
+        "name": "Install direction (office)",
+        "elements": [
+          {
+            "type": "arrow",
+            "from": [
+              -0.04,
+              0
+            ],
+            "to": [
+              0.04,
+              0
+            ],
+            "text": "Install direction"
+          }
+        ]
+      }
+    ],
+    "sets": [
+      {
+        "id": "set-flooring",
+        "name": "Flooring shop drawings",
+        "stampIds": [
+          "stmp-direction",
+          "stmp-seam",
+          "stmp-origin"
+        ]
+      }
+    ]
+  },
+  "report_templates": [],
+  "report_cols": {},
+  "report_groupby": "",
+  "company_profiles": {
+    "profiles": [
+      {
+        "id": "tp_mwo9jbyb_0",
+        "name": "Bluegrass Flooring LLC",
+        "address": "88 Main St, Lexington KY 40507",
+        "phone": "859-555-0142",
+        "email": "bids@example.com",
+        "license": "KY-FL-20391"
+      }
+    ],
+    "activeId": "tp_mwo9jbyb_0"
+  },
+  "estimating_defaults": {
+    "tax_pct": 6,
+    "overhead_pct": 10,
+    "profit_pct": 12,
+    "profit_mode": "markup",
+    "valid_days": 30,
+    "inclusions": "Floor prep up to 1/8\"\nTransitions at finish changes",
+    "exclusions": "Moisture mitigation\nAsbestos abatement",
+    "terms": "Net 30."
+  },
+  "assembly_library": [
+    {
+      "id": "asm-1",
+      "name": "CPT-1 standard install",
+      "items": [
+        {
+          "name": "Carpet tile adhesive",
+          "unit": "gal",
+          "per": 200,
+          "basis": "area",
+          "round": true,
+          "note": ""
+        },
+        {
+          "name": "Seam sealer",
+          "unit": "tube",
+          "per": 500,
+          "basis": "area",
+          "round": true,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "asm-2",
+      "name": "VCT-1 standard install",
+      "items": [
+        {
+          "name": "VCT adhesive",
+          "unit": "gal",
+          "per": 150,
+          "basis": "area",
+          "round": true,
+          "note": ""
+        },
+        {
+          "name": "Floor finish",
+          "unit": "gal",
+          "per": 1500,
+          "basis": "area",
+          "round": true,
+          "note": ""
+        }
+      ]
+    }
+  ]
+}

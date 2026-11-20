@@ -1,0 +1,1032 @@
+{
+  "schema": "opentakeoff.takeoff_canvas.v1",
+  "project_name": "St. Cloud VA Bldg 28 RRTP",
+  "client_info": {
+    "client_name": "St. Cloud VA Medical Center",
+    "reference": "656-19-306"
+  },
+  "estimate_settings": {
+    "tax_pct": 7.25,
+    "overhead_pct": 8,
+    "profit_pct": 15,
+    "profit_mode": "margin"
+  },
+  "sheets": [
+    {
+      "sheet_id": "sample-finish-plan.pdf",
+      "units_per_px": 0.05555555555555555,
+      "scale_source": "detected",
+      "scale_confirmed": false
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cnd-146b5a54-3ab3-42d1-aa66-5bd59adf4228",
+      "created_at": "2026-11-20T00:50:51.567Z",
+      "finish_tag": "EXIST",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "diag",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "SF",
+        "material": 3.25,
+        "labor": 1.75
+      }
+    },
+    {
+      "id": "cnd-ff9d7fff-caa7-41a8-87e6-ad45b79728bd",
+      "created_at": "2026-11-20T00:50:51.568Z",
+      "finish_tag": "CPT-1",
+      "color": "#2f7d54",
+      "fill": "#2f7d54",
+      "hatch": "diag2",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "SF",
+        "material": 3.25,
+        "labor": 1.75
+      }
+    },
+    {
+      "id": "cnd-7824c5d5-1bcd-4513-90fe-acee07b4a7da",
+      "created_at": "2026-11-20T00:50:51.568Z",
+      "finish_tag": "WSF-1",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "cross",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "SF",
+        "material": 3.25,
+        "labor": 1.75
+      }
+    },
+    {
+      "id": "cnd-6c1269ad-f4f9-4eeb-bcc2-b861de1da7e1",
+      "created_at": "2026-11-20T00:50:51.569Z",
+      "finish_tag": "RB-1",
+      "color": "#9333ea",
+      "fill": "#9333ea",
+      "hatch": "diagdense",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "id": "mat-f7d25b91-68ff-42be-96ec-db84dfb5bcdf",
+          "name": "Cove base adhesive",
+          "per": 60,
+          "basis": "linear",
+          "unit": "tube",
+          "round": true,
+          "price": 6.25
+        }
+      ],
+      "pricing": {
+        "unit": "LF",
+        "material": 1.35,
+        "labor": 1.1
+      }
+    },
+    {
+      "id": "cnd-a6677cef-65d5-413d-bdc3-790cce100f68",
+      "created_at": "2026-11-20T00:50:51.570Z",
+      "finish_tag": "DS-1",
+      "color": "#b8860b",
+      "fill": "#b8860b",
+      "hatch": "horiz",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "EA",
+        "material": 40,
+        "labor": 25
+      }
+    },
+    {
+      "id": "cnd-8c866d32-51f6-4b88-83b5-bdfb1dbaa5a1",
+      "created_at": "2026-11-20T00:50:51.570Z",
+      "finish_tag": "WT-1",
+      "color": "#0d9488",
+      "fill": "#0d9488",
+      "hatch": "vert",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "height_ft": 7
+    }
+  ],
+  "shapes": [
+    {
+      "id": "shp-8db9a2fc-2903-4b26-bc78-bb731347921d",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-146b5a54-3ab3-42d1-aa66-5bd59adf4228",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.42468253968253966,
+          0.3228333333333334
+        ],
+        [
+          0.446,
+          0.32339999999999997
+        ],
+        [
+          0.447,
+          0.3248
+        ],
+        [
+          0.4453333333333333,
+          0.3257333333333333
+        ],
+        [
+          0.4433333333333333,
+          0.329
+        ],
+        [
+          0.4428174603174603,
+          0.33338888888888896
+        ],
+        [
+          0.44266666666666665,
+          0.3350666666666667
+        ],
+        [
+          0.4369444444444444,
+          0.3353333333333334
+        ],
+        [
+          0.4369444444444444,
+          0.3405555555555556
+        ],
+        [
+          0.4462301587301587,
+          0.34099999999999997
+        ],
+        [
+          0.44539682539682535,
+          0.34416666666666673
+        ],
+        [
+          0.447,
+          0.3486
+        ],
+        [
+          0.4443333333333333,
+          0.3514
+        ],
+        [
+          0.4220238095238095,
+          0.3517222222222222
+        ],
+        [
+          0.4220238095238095,
+          0.33572222222222226
+        ],
+        [
+          0.42392857142857143,
+          0.33494444444444443
+        ]
+      ],
+      "computed": {
+        "area_sf": 46.74,
+        "perimeter_lf": 35.09
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.44246031746031744,
+          0.34612268518518513
+        ],
+        "reviewed": true,
+        "assignment": {
+          "source": "schedule",
+          "room_tag": "133",
+          "surface": "FLOOR",
+          "schedule_sheet": "sample-finish-plan.pdf#2"
+        },
+        "confidence": 0.91,
+        "confidence_factors": [
+          "curve-bounded(18% of the boundary)"
+        ],
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      },
+      "label": "133"
+    },
+    {
+      "id": "shp-7ad34838-a963-4cc7-846d-1aeebbeb5f3c",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-ff9d7fff-caa7-41a8-87e6-ad45b79728bd",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.6886915073015873,
+          0.3304456244444445
+        ],
+        [
+          0.7138095238095238,
+          0.33044444444444443
+        ],
+        [
+          0.7138106349206349,
+          0.3340015400000001
+        ],
+        [
+          0.7346428571428572,
+          0.334
+        ],
+        [
+          0.7346428571428572,
+          0.3743333333333333
+        ],
+        [
+          0.7146866492063491,
+          0.37433176077777786
+        ],
+        [
+          0.7146838492063492,
+          0.36005454316666674
+        ],
+        [
+          0.7119047619047618,
+          0.3596111111111111
+        ],
+        [
+          0.7119047619047618,
+          0.3537222222222222
+        ],
+        [
+          0.70678379,
+          0.3537218079999999
+        ],
+        [
+          0.70678379,
+          0.35955504099999996
+        ],
+        [
+          0.682142857142857,
+          0.3600555555555556
+        ],
+        [
+          0.6822222222222222,
+          0.35861111111111116
+        ],
+        [
+          0.6910714285714284,
+          0.3579444444444445
+        ],
+        [
+          0.6910682539682539,
+          0.35733365777777787
+        ],
+        [
+          0.682142857142857,
+          0.3573333333333334
+        ],
+        [
+          0.6821420634920634,
+          0.33494580444444444
+        ],
+        [
+          0.6886879365079366,
+          0.3349463124444445
+        ]
+      ],
+      "computed": {
+        "area_sf": 136.14,
+        "perimeter_lf": 64.98
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.7078703703703704,
+          0.35274305555555563
+        ],
+        "reviewed": true,
+        "assignment": {
+          "source": "schedule",
+          "room_tag": "149",
+          "surface": "FLOOR",
+          "schedule_sheet": "sample-finish-plan.pdf#2"
+        },
+        "confidence": 0.98,
+        "confidence_factors": [
+          "door-swing-crossed(5.0% annexed swing)",
+          "curve-bounded(1% of the boundary)"
+        ],
+        "door_wedges": 1,
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      },
+      "label": "149"
+    },
+    {
+      "id": "shp-b2e170a6-51d4-47eb-8ebb-b3a8ff027bb8",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-7824c5d5-1bcd-4513-90fe-acee07b4a7da",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.696191111111111,
+          0.48133275315555557
+        ],
+        [
+          0.7138084910714287,
+          0.4813346858333332
+        ],
+        [
+          0.7138084910714287,
+          0.4930572574722222
+        ],
+        [
+          0.7148369721428572,
+          0.4930572730666667
+        ],
+        [
+          0.7148412698412698,
+          0.5065
+        ],
+        [
+          0.7138084910714287,
+          0.5065014072222221
+        ],
+        [
+          0.7138081873015872,
+          0.5393345890000001
+        ],
+        [
+          0.691708611111111,
+          0.5393317404333334
+        ],
+        [
+          0.692,
+          0.5072666666666666
+        ],
+        [
+          0.6906666666666667,
+          0.5067999999999999
+        ],
+        [
+          0.6895223412698411,
+          0.5062786529555555
+        ],
+        [
+          0.6907125,
+          0.512445793
+        ],
+        [
+          0.6886666666666666,
+          0.5124
+        ],
+        [
+          0.6890000000000001,
+          0.5077333333333333
+        ],
+        [
+          0.6862688095238095,
+          0.5041115049666667
+        ],
+        [
+          0.6862698412698411,
+          0.48511111111111116
+        ],
+        [
+          0.6887301587301586,
+          0.48561111111111116
+        ],
+        [
+          0.6887301587301586,
+          0.4917222222222223
+        ],
+        [
+          0.6944444444444444,
+          0.4917222222222223
+        ],
+        [
+          0.6944446825396825,
+          0.48561076433333333
+        ],
+        [
+          0.696191111111111,
+          0.4851106363555556
+        ]
+      ],
+      "computed": {
+        "area_sf": 109.51,
+        "perimeter_lf": 52.88
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.7036541005291005,
+          0.5066203703703704
+        ],
+        "reviewed": true,
+        "assignment": {
+          "source": "schedule",
+          "room_tag": "153",
+          "surface": "FLOOR",
+          "schedule_sheet": "sample-finish-plan.pdf#2"
+        },
+        "confidence": 0.93,
+        "confidence_factors": [
+          "hatch-filtered(bounded)",
+          "door-swing-crossed(5.5% annexed swing)"
+        ],
+        "hatch_filtered": true,
+        "door_wedges": 2,
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      },
+      "label": "153"
+    },
+    {
+      "id": "shp-719239a4-50b1-45b2-85f9-8c5c7871eb98",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-ff9d7fff-caa7-41a8-87e6-ad45b79728bd",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.3907936507936508,
+          0.21722222222222223
+        ],
+        [
+          0.40253968253968253,
+          0.21722222222222223
+        ],
+        [
+          0.40253968253968253,
+          0.22972222222222224
+        ],
+        [
+          0.40297619047619043,
+          0.22972222222222224
+        ],
+        [
+          0.40349206349206346,
+          0.21733333333333335
+        ],
+        [
+          0.4041269841269841,
+          0.24088888888888896
+        ],
+        [
+          0.40531746031746035,
+          0.24088888888888896
+        ],
+        [
+          0.40531746031746035,
+          0.23149999999999998
+        ],
+        [
+          0.414,
+          0.23193333333333332
+        ],
+        [
+          0.4143650793650794,
+          0.25044444444444447
+        ],
+        [
+          0.4031746031746032,
+          0.25044444444444447
+        ],
+        [
+          0.4031746031746032,
+          0.25566666666666665
+        ],
+        [
+          0.4143650793650794,
+          0.25566666666666665
+        ],
+        [
+          0.414,
+          0.27066666666666667
+        ],
+        [
+          0.3976666666666666,
+          0.27159999999999995
+        ],
+        [
+          0.3978174603174603,
+          0.26899999999999996
+        ],
+        [
+          0.39623015873015877,
+          0.26899999999999996
+        ],
+        [
+          0.3963333333333333,
+          0.27159999999999995
+        ],
+        [
+          0.3884126984126984,
+          0.2719444444444445
+        ],
+        [
+          0.3884126984126984,
+          0.21994444444444453
+        ],
+        [
+          0.3907936507936508,
+          0.21994444444444453
+        ]
+      ],
+      "computed": {
+        "area_sf": 93.07,
+        "perimeter_lf": 61.99
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.40869708994709,
+          0.26123842592592594
+        ],
+        "reviewed": true,
+        "assignment": {
+          "source": "schedule",
+          "room_tag": "136",
+          "surface": "FLOOR",
+          "schedule_sheet": "sample-finish-plan.pdf#2"
+        },
+        "confidence": 0.91,
+        "confidence_factors": [
+          "hatch-filtered(bounded)",
+          "min-passage-rule(1.4% of the verbatim flood removed)",
+          "door-swing-crossed(14.6% annexed swing)",
+          "curve-bounded(2% of the boundary)"
+        ],
+        "hatch_filtered": true,
+        "min_pass_px": 2,
+        "min_pass_delta": 0.0138,
+        "door_wedges": 3,
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      },
+      "label": "136"
+    },
+    {
+      "id": "shp-dcd8bfda-1044-443a-93cf-5586225548c0",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-6c1269ad-f4f9-4eeb-bcc2-b861de1da7e1",
+      "measure_role": "linear",
+      "verts_norm": [
+        [
+          0.6886915073015873,
+          0.3304456244444445
+        ],
+        [
+          0.7138095238095238,
+          0.33044444444444443
+        ],
+        [
+          0.7138106349206349,
+          0.3340015400000001
+        ],
+        [
+          0.7346428571428572,
+          0.334
+        ],
+        [
+          0.7346428571428572,
+          0.3743333333333333
+        ],
+        [
+          0.7146866492063491,
+          0.37433176077777786
+        ],
+        [
+          0.7146838492063492,
+          0.36005454316666674
+        ],
+        [
+          0.7119047619047618,
+          0.3596111111111111
+        ],
+        [
+          0.7119047619047618,
+          0.3537222222222222
+        ],
+        [
+          0.70678379,
+          0.3537218079999999
+        ],
+        [
+          0.70678379,
+          0.35955504099999996
+        ],
+        [
+          0.682142857142857,
+          0.3600555555555556
+        ],
+        [
+          0.6822222222222222,
+          0.35861111111111116
+        ],
+        [
+          0.6910714285714284,
+          0.3579444444444445
+        ],
+        [
+          0.6910682539682539,
+          0.35733365777777787
+        ],
+        [
+          0.682142857142857,
+          0.3573333333333334
+        ],
+        [
+          0.6821420634920634,
+          0.33494580444444444
+        ],
+        [
+          0.6886879365079366,
+          0.3349463124444445
+        ],
+        [
+          0.6886915073015873,
+          0.3304456244444445
+        ]
+      ],
+      "computed": {
+        "area_sf": 0,
+        "perimeter_lf": 61.98
+      },
+      "origin": {
+        "method": "agent_v1",
+        "actor": "agent",
+        "reviewed": true,
+        "derived": {
+          "from_shape_id": "shp-7ad34838-a963-4cc7-846d-1aeebbeb5f3c",
+          "gross_lf": 64.98,
+          "openings_lf": 3
+        },
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      }
+    },
+    {
+      "id": "shp-f585391d-6dcb-4513-8e81-40e8e64adbcf",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-6c1269ad-f4f9-4eeb-bcc2-b861de1da7e1",
+      "measure_role": "linear",
+      "verts_norm": [
+        [
+          0.3907936507936508,
+          0.21722222222222223
+        ],
+        [
+          0.40253968253968253,
+          0.21722222222222223
+        ],
+        [
+          0.40253968253968253,
+          0.22972222222222224
+        ],
+        [
+          0.40297619047619043,
+          0.22972222222222224
+        ],
+        [
+          0.40349206349206346,
+          0.21733333333333335
+        ],
+        [
+          0.4041269841269841,
+          0.24088888888888896
+        ],
+        [
+          0.40531746031746035,
+          0.24088888888888896
+        ],
+        [
+          0.40531746031746035,
+          0.23149999999999998
+        ],
+        [
+          0.414,
+          0.23193333333333332
+        ],
+        [
+          0.4143650793650794,
+          0.25044444444444447
+        ],
+        [
+          0.4031746031746032,
+          0.25044444444444447
+        ],
+        [
+          0.4031746031746032,
+          0.25566666666666665
+        ],
+        [
+          0.4143650793650794,
+          0.25566666666666665
+        ],
+        [
+          0.414,
+          0.27066666666666667
+        ],
+        [
+          0.3976666666666666,
+          0.27159999999999995
+        ],
+        [
+          0.3978174603174603,
+          0.26899999999999996
+        ],
+        [
+          0.39623015873015877,
+          0.26899999999999996
+        ],
+        [
+          0.3963333333333333,
+          0.27159999999999995
+        ],
+        [
+          0.3884126984126984,
+          0.2719444444444445
+        ],
+        [
+          0.3884126984126984,
+          0.21994444444444453
+        ],
+        [
+          0.3907936507936508,
+          0.21994444444444453
+        ],
+        [
+          0.3907936507936508,
+          0.21722222222222223
+        ]
+      ],
+      "computed": {
+        "area_sf": 0,
+        "perimeter_lf": 61.99
+      },
+      "origin": {
+        "method": "agent_v1",
+        "actor": "agent",
+        "reviewed": true,
+        "derived": {
+          "from_shape_id": "shp-719239a4-50b1-45b2-85f9-8c5c7871eb98",
+          "gross_lf": 61.99,
+          "openings_lf": 0
+        },
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      }
+    },
+    {
+      "id": "shp-83c7ba39-4c94-483d-a82c-e31ec03ba4b4",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-ff9d7fff-caa7-41a8-87e6-ad45b79728bd",
+      "measure_role": "deduct",
+      "verts_norm": [
+        [
+          0.6919973544973544,
+          0.33738425925925924
+        ],
+        [
+          0.6972883597883598,
+          0.33738425925925924
+        ],
+        [
+          0.6972883597883598,
+          0.34479166666666666
+        ],
+        [
+          0.6919973544973544,
+          0.34479166666666666
+        ]
+      ],
+      "computed": {
+        "area_sf": 3.16,
+        "perimeter_lf": 7.11
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      }
+    },
+    {
+      "id": "shp-1640241c-47fa-418d-9c55-66d96f056698",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-a6677cef-65d5-413d-bdc3-790cce100f68",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.6944444444444444,
+          0.3472222222222222
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      }
+    },
+    {
+      "id": "shp-f98424db-bda3-44e0-b71d-1c3870ee8468",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-a6677cef-65d5-413d-bdc3-790cce100f68",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7027116402116402,
+          0.35185185185185186
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      }
+    },
+    {
+      "id": "shp-3fadf399-baf4-4fdd-b258-512e879ddb2b",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-a6677cef-65d5-413d-bdc3-790cce100f68",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7242063492063492,
+          0.36574074074074076
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      }
+    },
+    {
+      "id": "shp-c15ca232-be26-40ec-905a-f42c75107f13",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-8c866d32-51f6-4b88-83b5-bdfb1dbaa5a1",
+      "measure_role": "surface_area",
+      "verts_norm": [
+        [
+          0.6886574074074074,
+          0.33032407407407405
+        ],
+        [
+          0.7137896825396826,
+          0.33032407407407405
+        ]
+      ],
+      "computed": {
+        "area_sf": 59.11,
+        "perimeter_lf": 8.44
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:51.572Z"
+      },
+      "height_ft": 7
+    }
+  ],
+  "markups": [
+    {
+      "id": "mk-3f798656-4859-420f-8862-69d77a4de7e7",
+      "sheet_id": "sample-finish-plan.pdf",
+      "type": "cloud",
+      "text": "Room 133 has no schedule finish",
+      "condition_id": "",
+      "rfi_id": "rfi-4a216ac0-3f2a-49bd-bc48-c6461aad872f",
+      "created_at": "2026-11-20T00:50:51.571Z",
+      "rect": [
+        [
+          0.419973544973545,
+          0.3194444444444444
+        ],
+        [
+          0.4497354497354497,
+          0.3541666666666667
+        ]
+      ]
+    },
+    {
+      "id": "mk-37438b81-b730-499c-afe5-0595c7a534a0",
+      "sheet_id": "sample-finish-plan.pdf",
+      "type": "bubble",
+      "text": "1",
+      "condition_id": "",
+      "rfi_id": "",
+      "created_at": "2026-11-20T00:50:51.571Z",
+      "at": [
+        0.7109788359788359,
+        0.37037037037037035
+      ],
+      "r": 0.00496031746031746
+    },
+    {
+      "id": "mk-40be8b91-fd2c-4b85-90a9-f02d6d2afc44",
+      "created_at": "2026-11-20T00:50:51.572Z",
+      "sheet_id": "sample-finish-plan.pdf",
+      "rfi_id": "",
+      "condition_id": "",
+      "type": "image",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAGElEQVR4nGOQtz/+4cNrTJIBqyiQHJw6ACdHfgF9HbmnAAAAAElFTkSuQmCC",
+      "at": [
+        0.9093915343915344,
+        0.11574074074074074
+      ],
+      "w": 0.0992063492063492,
+      "aspect": 0.6666666666666666,
+      "text": "AF101-01 existing floor photo",
+      "author": "Fixture Estimator"
+    }
+  ],
+  "rfis": [
+    {
+      "id": "rfi-4a216ac0-3f2a-49bd-bc48-c6461aad872f",
+      "number": "RFI-001",
+      "created_at": "2026-11-20T00:50:51.571Z",
+      "subject": "Room 133 finish",
+      "question": "Room 133 is tagged EXIST on the plan and has no schedule row. Confirm the existing floor stays.",
+      "status": "open",
+      "to": "",
+      "priority": "normal",
+      "cost_impact": false,
+      "schedule_impact": false,
+      "date": "2026-11-20",
+      "response": "",
+      "response_date": "",
+      "sheet_id": "sample-finish-plan.pdf",
+      "origin": {
+        "actor": "agent",
+        "reviewed": false
+      }
+    }
+  ],
+  "approvals": [
+    {
+      "id": "apr-8c6706f7-05bb-4f19-8319-a5a0dd1724d1",
+      "ts": "2026-11-20T00:50:51.573Z",
+      "actor": "estimator",
+      "sheet_id": "sample-finish-plan.pdf",
+      "at": [
+        0.6886904761904762,
+        0.3304398148148148
+      ],
+      "shape_id": "shp-7ad34838-a963-4cc7-846d-1aeebbeb5f3c"
+    }
+  ],
+  "condition_edit_proposals": [
+    {
+      "id": "cprop-2d71aeb0-3bee-4714-a9f1-5688ca7a7d41",
+      "condition_id": "cnd-6c1269ad-f4f9-4eeb-bcc2-b861de1da7e1",
+      "proposed": {
+        "waste_pct": 10
+      },
+      "rationale": "Schedule calls for 4\" coved base with outside corners; 10% is the shop standard.",
+      "proposed_at": "2026-11-20T00:50:51.571Z"
+    }
+  ],
+  "sheet_group": [],
+  "last_group": [],
+  "sheet_tabs": []
+}

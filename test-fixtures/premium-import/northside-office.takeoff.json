@@ -1,0 +1,968 @@
+{
+  "schema": "opentakeoff.takeoff_canvas.v1",
+  "project_name": "Northside Office Fit-out",
+  "client_info": {
+    "client_name": "Northside Property Group",
+    "client_address": "1200 Commerce Dr, Lexington KY",
+    "reference": "Bid 26-114"
+  },
+  "estimate_settings": {
+    "tax_pct": 6,
+    "overhead_pct": 10,
+    "profit_pct": 12,
+    "profit_mode": "markup"
+  },
+  "bid_proposal": {
+    "itemized": true,
+    "scope_note": "Furnish and install flooring, base and FRP per finish legend.",
+    "valid_days": 45,
+    "inclusions": "Floor prep up to 1/8\"\nTransitions at finish changes",
+    "exclusions": "Moisture mitigation\nFurniture moving",
+    "terms": "Net 30. Progress billing monthly."
+  },
+  "sheets": [
+    {
+      "sheet_id": "sample-plan.pdf",
+      "units_per_px": 0.027777777777777776,
+      "scale_source": "detected",
+      "scale_confirmed": false
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cnd-7553f7bc-cc29-4664-b508-b101dd46384c",
+      "created_at": "2026-11-20T00:50:45.174Z",
+      "finish_tag": "CPT-1",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "diag",
+      "multiplier": 1,
+      "waste_pct": 8,
+      "materials": [
+        {
+          "id": "mat-a8f608e2-2a13-4c48-ac35-e2b0d03dc088",
+          "name": "Carpet tile adhesive",
+          "per": 200,
+          "basis": "floor",
+          "unit": "gal",
+          "round": true,
+          "price": 42
+        },
+        {
+          "id": "mat-9be95dcc-a2ea-46b0-879b-c378e98ae258",
+          "name": "Seam sealer",
+          "per": 500,
+          "basis": "floor",
+          "unit": "tube",
+          "round": true,
+          "price": 9.5
+        }
+      ],
+      "pricing": {
+        "unit": "SY",
+        "material": 28.5,
+        "labor": 6.75
+      }
+    },
+    {
+      "id": "cnd-593256ff-f452-48ab-8c8b-598c4c93c463",
+      "created_at": "2026-11-20T00:50:45.299Z",
+      "finish_tag": "VCT-1",
+      "color": "#2f7d54",
+      "fill": "#2f7d54",
+      "hatch": "diag2",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "id": "mat-ab0b35f2-7cd4-4037-8504-7c48c18478cc",
+          "name": "VCT adhesive",
+          "per": 150,
+          "basis": "floor",
+          "unit": "gal",
+          "round": true,
+          "price": 31
+        },
+        {
+          "id": "mat-5255d427-c960-424f-88c1-b1548b9b60ae",
+          "name": "Floor finish",
+          "per": 1500,
+          "basis": "floor",
+          "unit": "gal",
+          "round": true,
+          "price": 38
+        }
+      ],
+      "pricing": {
+        "unit": "SF",
+        "material": 1.85,
+        "labor": 1.4
+      }
+    },
+    {
+      "id": "cnd-8a12646d-adfa-4410-b9d9-e2ee63944e35",
+      "created_at": "2026-11-20T00:50:45.303Z",
+      "finish_tag": "RB-1",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "cross",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "id": "mat-636933d9-5ec2-40dd-af08-12305f8e77a2",
+          "name": "Cove base adhesive",
+          "per": 60,
+          "basis": "linear",
+          "unit": "tube",
+          "round": true,
+          "price": 6.25
+        }
+      ],
+      "pricing": {
+        "unit": "LF",
+        "material": 1.35,
+        "labor": 1.1
+      }
+    },
+    {
+      "id": "cnd-79ff760f-3493-48a7-8c4d-3d23f27062b2",
+      "created_at": "2026-11-20T00:50:45.304Z",
+      "finish_tag": "TR-1",
+      "color": "#9333ea",
+      "fill": "#9333ea",
+      "hatch": "diagdense",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "LF",
+        "material": 7.5,
+        "labor": 4
+      }
+    },
+    {
+      "id": "cnd-030e6436-f8bb-4245-8221-583f548dd587",
+      "created_at": "2026-11-20T00:50:45.304Z",
+      "finish_tag": "VB-1",
+      "color": "#b8860b",
+      "fill": "#b8860b",
+      "hatch": "horiz",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "LF",
+        "material": 3.1,
+        "labor": 2
+      }
+    },
+    {
+      "id": "cnd-62f58768-4621-4e70-9a32-9468f7c4e9c0",
+      "created_at": "2026-11-20T00:50:45.304Z",
+      "finish_tag": "FB-1",
+      "color": "#0d9488",
+      "fill": "#0d9488",
+      "hatch": "vert",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "EA",
+        "material": 85,
+        "labor": 45
+      }
+    },
+    {
+      "id": "cnd-87c0e860-9809-419b-8cb6-76e3735d1153",
+      "created_at": "2026-11-20T00:50:45.304Z",
+      "finish_tag": "FRP-1",
+      "color": "#be185d",
+      "fill": "#be185d",
+      "hatch": "grid",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "height_ft": 4,
+      "pricing": {
+        "unit": "SF",
+        "material": 2.6,
+        "labor": 2.25
+      }
+    },
+    {
+      "id": "cnd-c9e275ed-84ed-493f-b917-8a4334a9b1fa",
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "finish_tag": "LVT-1",
+      "color": "#1f2937",
+      "fill": "#1f2937",
+      "hatch": "brick",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "pricing": {
+        "unit": "SF",
+        "material": 4.2,
+        "labor": 1.9
+      }
+    }
+  ],
+  "shapes": [
+    {
+      "id": "shp-74fcf3be-cc2e-4c4b-b521-b5716a71d528",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-7553f7bc-cc29-4664-b508-b101dd46384c",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.09803921568627451,
+          0.494949494949495
+        ],
+        [
+          0.4979575163398693,
+          0.49558080808080807
+        ],
+        [
+          0.49836601307189543,
+          0.8611111111111112
+        ],
+        [
+          0.09803921568627451,
+          0.8611111111111112
+        ]
+      ],
+      "computed": {
+        "area_sf": 437.98,
+        "perimeter_lf": 86.61
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.24509803921568626,
+          0.6843434343434344
+        ],
+        "reviewed": true,
+        "confidence": 1,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-e0cafdaa-924a-4ed7-ad0c-90d99576edb4",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-7553f7bc-cc29-4664-b508-b101dd46384c",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.49836601307189543,
+          0.8611111111111112
+        ],
+        [
+          0.4987745098039216,
+          0.49558080808080807
+        ],
+        [
+          0.8986928104575164,
+          0.494949494949495
+        ],
+        [
+          0.8986928104575164,
+          0.8611111111111112
+        ]
+      ],
+      "computed": {
+        "area_sf": 413.98,
+        "perimeter_lf": 106.61
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.6944444444444444,
+          0.6843434343434344
+        ],
+        "reviewed": true,
+        "confidence": 1,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      },
+      "verts_norm_holes": [
+        [
+          [
+            0.7761437908496732,
+            0.7575757575757576
+          ],
+          [
+            0.7761437908496732,
+            0.8484848484848485
+          ],
+          [
+            0.8643790849673203,
+            0.8484848484848485
+          ],
+          [
+            0.8643790849673203,
+            0.7575757575757576
+          ]
+        ]
+      ]
+    },
+    {
+      "id": "shp-df90298a-9e8a-47d1-aabc-0556426b69dd",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-593256ff-f452-48ab-8c8b-598c4c93c463",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.09803921568627451,
+          0.12878787878787878
+        ],
+        [
+          0.49836601307189543,
+          0.12878787878787878
+        ],
+        [
+          0.4979575163398693,
+          0.4943181818181818
+        ],
+        [
+          0.09803921568627451,
+          0.494949494949495
+        ]
+      ],
+      "computed": {
+        "area_sf": 437.98,
+        "perimeter_lf": 86.61
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.24509803921568626,
+          0.31565656565656564
+        ],
+        "reviewed": true,
+        "confidence": 0.95,
+        "confidence_factors": [
+          "hatch-filtered(bounded)"
+        ],
+        "hatch_filtered": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-eeb562d0-62f9-4d17-b7d8-ca332b63c958",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-7553f7bc-cc29-4664-b508-b101dd46384c",
+      "measure_role": "deduct",
+      "verts_norm": [
+        [
+          0.28594771241830064,
+          0.6313131313131313
+        ],
+        [
+          0.315359477124183,
+          0.6313131313131313
+        ],
+        [
+          0.315359477124183,
+          0.6767676767676768
+        ],
+        [
+          0.28594771241830064,
+          0.6767676767676768
+        ]
+      ],
+      "computed": {
+        "area_sf": 4,
+        "perimeter_lf": 8
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-255f66ef-1036-492a-a328-3ebcf33b161c",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-7553f7bc-cc29-4664-b508-b101dd46384c",
+      "measure_role": "deduct",
+      "verts_norm": [
+        [
+          0.7761437908496732,
+          0.7575757575757576
+        ],
+        [
+          0.8643790849673203,
+          0.7575757575757576
+        ],
+        [
+          0.8643790849673203,
+          0.8484848484848485
+        ],
+        [
+          0.7761437908496732,
+          0.8484848484848485
+        ]
+      ],
+      "computed": {
+        "area_sf": 24,
+        "perimeter_lf": 20
+      },
+      "cuts_shape_id": "shp-e0cafdaa-924a-4ed7-ad0c-90d99576edb4",
+      "origin": {
+        "method": "cutout_v1",
+        "actor": "agent",
+        "reviewed": true,
+        "cuts_shape_id": "shp-e0cafdaa-924a-4ed7-ad0c-90d99576edb4",
+        "parent_prev": {
+          "verts_norm": [
+            [
+              0.4987745098039216,
+              0.49558080808080807
+            ],
+            [
+              0.8986928104575164,
+              0.494949494949495
+            ],
+            [
+              0.8986928104575164,
+              0.8611111111111112
+            ],
+            [
+              0.49836601307189543,
+              0.8611111111111112
+            ]
+          ],
+          "computed": {
+            "area_sf": 437.98,
+            "perimeter_lf": 86.61
+          }
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-ada24f30-cfc3-4d1f-aff9-4f4993f9a9fb",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-8a12646d-adfa-4410-b9d9-e2ee63944e35",
+      "measure_role": "linear",
+      "verts_norm": [
+        [
+          0.09803921568627451,
+          0.494949494949495
+        ],
+        [
+          0.4979575163398693,
+          0.49558080808080807
+        ],
+        [
+          0.49836601307189543,
+          0.8611111111111112
+        ],
+        [
+          0.09803921568627451,
+          0.8611111111111112
+        ],
+        [
+          0.09803921568627451,
+          0.494949494949495
+        ]
+      ],
+      "computed": {
+        "area_sf": 0,
+        "perimeter_lf": 83.61
+      },
+      "origin": {
+        "method": "agent_v1",
+        "actor": "agent",
+        "reviewed": true,
+        "derived": {
+          "from_shape_id": "shp-74fcf3be-cc2e-4c4b-b521-b5716a71d528",
+          "gross_lf": 86.61,
+          "openings_lf": 3
+        },
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-12236906-7d38-4ed8-b686-62a1e60f0ade",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-8a12646d-adfa-4410-b9d9-e2ee63944e35",
+      "measure_role": "linear",
+      "verts_norm": [
+        [
+          0.49836601307189543,
+          0.8611111111111112
+        ],
+        [
+          0.4987745098039216,
+          0.49558080808080807
+        ],
+        [
+          0.8986928104575164,
+          0.494949494949495
+        ],
+        [
+          0.8986928104575164,
+          0.8611111111111112
+        ],
+        [
+          0.49836601307189543,
+          0.8611111111111112
+        ]
+      ],
+      "computed": {
+        "area_sf": 0,
+        "perimeter_lf": 103.61
+      },
+      "origin": {
+        "method": "agent_v1",
+        "actor": "agent",
+        "reviewed": true,
+        "derived": {
+          "from_shape_id": "shp-e0cafdaa-924a-4ed7-ad0c-90d99576edb4",
+          "gross_lf": 106.61,
+          "openings_lf": 3
+        },
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-1addabf6-354f-4754-be22-d65c7d8e9f52",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-79ff760f-3493-48a7-8c4d-3d23f27062b2",
+      "measure_role": "linear",
+      "verts_norm": [
+        [
+          0.4493464052287582,
+          0.494949494949495
+        ],
+        [
+          0.4934640522875817,
+          0.494949494949495
+        ]
+      ],
+      "computed": {
+        "area_sf": 0,
+        "perimeter_lf": 3
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-80154490-bc1f-4d9a-84b4-06cbf3f107e7",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-030e6436-f8bb-4245-8221-583f548dd587",
+      "measure_role": "linear",
+      "verts_norm": [
+        [
+          0.09803921568627451,
+          0.494949494949495
+        ],
+        [
+          0.1715686274509804,
+          0.494949494949495
+        ]
+      ],
+      "computed": {
+        "area_sf": 0,
+        "perimeter_lf": 5
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-5850b507-ff6f-4002-a743-54ebaef1b586",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-62f58768-4621-4e70-9a32-9468f7c4e9c0",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.32679738562091504,
+          0.726010101010101
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-6ffda619-d494-4f06-b54b-7b63986107df",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-62f58768-4621-4e70-9a32-9468f7c4e9c0",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4084967320261438,
+          0.726010101010101
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-9aaa6c7b-7205-4944-98de-ebdba3cb27e0",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-62f58768-4621-4e70-9a32-9468f7c4e9c0",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.6535947712418301,
+          0.726010101010101
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-9bbc0e9f-3611-4bd6-8387-1128f58bb788",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-62f58768-4621-4e70-9a32-9468f7c4e9c0",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7352941176470589,
+          0.6313131313131313
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      }
+    },
+    {
+      "id": "shp-38b06eb9-7e48-411d-a4c2-2e059b99642c",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-87c0e860-9809-419b-8cb6-76e3735d1153",
+      "measure_role": "surface_area",
+      "verts_norm": [
+        [
+          0.09803921568627451,
+          0.1388888888888889
+        ],
+        [
+          0.4934640522875817,
+          0.1388888888888889
+        ]
+      ],
+      "computed": {
+        "area_sf": 107.56,
+        "perimeter_lf": 26.89
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      },
+      "height_ft": 4
+    },
+    {
+      "id": "shp-009389bd-7a4a-44e0-8bd9-7d5e5c040470",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-87c0e860-9809-419b-8cb6-76e3735d1153",
+      "measure_role": "surface_area",
+      "verts_norm": [
+        [
+          0.10457516339869281,
+          0.12878787878787878
+        ],
+        [
+          0.10457516339869281,
+          0.4861111111111111
+        ]
+      ],
+      "computed": {
+        "area_sf": 62.89,
+        "perimeter_lf": 15.72
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "accepted_ts": "2026-11-20T00:50:45.336Z"
+      },
+      "height_ft": 4
+    },
+    {
+      "id": "shp-3b7e29e3-306e-45f4-9e21-40e8134c2694",
+      "sheet_id": "sample-plan.pdf",
+      "condition_id": "cnd-c9e275ed-84ed-493f-b917-8a4334a9b1fa",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.49836601307189543,
+          0.12878787878787878
+        ],
+        [
+          0.8986928104575164,
+          0.12878787878787878
+        ],
+        [
+          0.8986928104575164,
+          0.494949494949495
+        ],
+        [
+          0.4987745098039216,
+          0.4943181818181818
+        ]
+      ],
+      "computed": {
+        "area_sf": 437.98,
+        "perimeter_lf": 86.61
+      },
+      "origin": {
+        "method": "one_click_v1",
+        "actor": "agent",
+        "seed_norm": [
+          0.6944444444444444,
+          0.31565656565656564
+        ],
+        "reviewed": false,
+        "confidence": 1,
+        "proposal_id": "prop-c62d021a-0b14-48fb-b0a4-db048efed569",
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    }
+  ],
+  "markups": [
+    {
+      "id": "mk-2314cdee-cdd9-45f2-82b5-4254e0e158ff",
+      "sheet_id": "sample-plan.pdf",
+      "type": "cloud",
+      "text": "Column at 101 not on structural",
+      "condition_id": "",
+      "rfi_id": "rfi-60b95922-8c00-45e7-950b-1a42111451f1",
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "rect": [
+        [
+          0.2777777777777778,
+          0.6186868686868687
+        ],
+        [
+          0.32679738562091504,
+          0.6881313131313131
+        ]
+      ]
+    },
+    {
+      "id": "mk-814aba90-602a-4f24-a76b-23100ce8206d",
+      "sheet_id": "sample-plan.pdf",
+      "type": "text",
+      "text": "Match existing base color",
+      "condition_id": "",
+      "rfi_id": "",
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "at": [
+        0.16339869281045752,
+        0.8207070707070707
+      ]
+    },
+    {
+      "id": "mk-a7c49634-69d0-44cf-bc68-0f015f9ccfa1",
+      "sheet_id": "sample-plan.pdf",
+      "type": "callout",
+      "text": "Transition TR-1 here",
+      "condition_id": "",
+      "rfi_id": "",
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "at": [
+        0.4084967320261438,
+        0.44191919191919193
+      ],
+      "target": [
+        0.46977124183006536,
+        0.494949494949495
+      ]
+    },
+    {
+      "id": "mk-551c2415-3a80-4219-8133-95a42b96276d",
+      "sheet_id": "sample-plan.pdf",
+      "type": "arrow",
+      "text": "Install direction",
+      "condition_id": "",
+      "rfi_id": "",
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "from": [
+        0.5718954248366013,
+        0.7891414141414141
+      ],
+      "to": [
+        0.6535947712418301,
+        0.7891414141414141
+      ]
+    },
+    {
+      "id": "mk-3443c5fb-9ea4-4d96-a27b-7690413e55ac",
+      "sheet_id": "sample-plan.pdf",
+      "type": "dimension",
+      "text": "",
+      "condition_id": "",
+      "rfi_id": "",
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "from": [
+        0.09803921568627451,
+        0.8712121212121212
+      ],
+      "to": [
+        0.49836601307189543,
+        0.8712121212121212
+      ],
+      "len_ft": 27.22
+    },
+    {
+      "id": "mk-87a603dd-8013-454e-8f89-4934d6f3a73d",
+      "created_at": "2026-11-20T00:50:45.336Z",
+      "sheet_id": "sample-plan.pdf",
+      "rfi_id": "",
+      "condition_id": "",
+      "type": "image",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAGElEQVR4nGOQtz/+4cNrTJIBqyiQHJw6ACdHfgF9HbmnAAAAAElFTkSuQmCC",
+      "at": [
+        0.8251633986928104,
+        0.2398989898989899
+      ],
+      "w": 0.09803921568627451,
+      "aspect": 1,
+      "text": "A-101-01 site photo",
+      "author": "Fixture Estimator"
+    }
+  ],
+  "rfis": [
+    {
+      "id": "rfi-60b95922-8c00-45e7-950b-1a42111451f1",
+      "number": "RFI-001",
+      "created_at": "2026-11-20T00:50:45.332Z",
+      "subject": "Column at Office 101",
+      "question": "Rev 1 adds a 2'x2' column in Office 101 that the structural sheets don't show. Confirm the column and its finish wrap.",
+      "status": "open",
+      "to": "",
+      "priority": "normal",
+      "cost_impact": false,
+      "schedule_impact": false,
+      "date": "2026-11-20",
+      "response": "",
+      "response_date": "",
+      "sheet_id": "sample-plan.pdf",
+      "origin": {
+        "actor": "agent",
+        "reviewed": false
+      }
+    }
+  ],
+  "approvals": [
+    {
+      "id": "apr-a9f15d6a-b5a9-4267-be4a-58209a8f44d1",
+      "ts": "2026-11-20T00:50:45.333Z",
+      "actor": "agent",
+      "sheet_id": "sample-plan.pdf",
+      "at": [
+        0.29804293971718016,
+        0.6782192379973465
+      ],
+      "shape_id": "shp-74fcf3be-cc2e-4c4b-b521-b5716a71d528",
+      "text": "Ring checked against wall faces"
+    },
+    {
+      "id": "apr-7efd9252-e528-41bc-808f-36f15d02ce20",
+      "ts": "2026-11-20T00:50:45.336Z",
+      "actor": "estimator",
+      "sheet_id": "sample-plan.pdf",
+      "at": [
+        0.24509803921568626,
+        0.6843434343434344
+      ],
+      "shape_id": "shp-74fcf3be-cc2e-4c4b-b521-b5716a71d528"
+    }
+  ],
+  "proposals": [
+    {
+      "id": "prop-c62d021a-0b14-48fb-b0a4-db048efed569",
+      "label": "Corridor 104 per finish legend",
+      "rationale": "The corridor reads LVT-1 on the legend; traced wall face to wall face.",
+      "created_at": "2026-11-20T00:50:45.305Z"
+    }
+  ],
+  "sheet_group": [],
+  "last_group": [],
+  "sheet_tabs": []
+}
