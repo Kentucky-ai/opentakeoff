@@ -4,20 +4,12 @@ Prepared on the contributor's fork. This document is not a posted PR.
 
 ## What and why
 
-When an estimator wants to review part of a large count, **Work and review**
-currently requires individual review decisions. Existing proposal-batch Accept
-handles an entire agent proposal, but does not let the reviewer choose an
-arbitrary subset in this panel.
+OpenTakeoff already supports accepting a whole proposed batch. This change lets
+an estimator select a smaller group, see those measurements together on the
+plan, and mark that group reviewed using the existing review and Undo behavior.
 
-This change adds row checkboxes, **Select all filtered**, **Show selected on
-plan** and **Mark selected reviewed**. The selected marks appear together on
-their existing sheets. Only selected records with an explicit pending state
-and usable source location change; one Undo restores the batch. Previously
-reviewed and unselected records remain unchanged.
-
-The change reuses the existing review command, count renderer and per-sheet
-coordinates. It adds no persisted fields or MCP tools. Count rings, callout
-quantities, trade suites and catalog integration remain separate.
+[Design options, public-plan recordings and detailed checks](public-review/README.md)
+support the proposal. The verification summary and evidence links follow below.
 
 This is a focused extension to the existing panel. No separate bulk-review issue
 has been opened and no maintainer agreement is implied. The design is offered
@@ -74,6 +66,15 @@ node docs/evidence/bulk-select-review/verify-export.mjs docs/evidence/bulk-selec
 ```
 
 ## Notes for the reviewer
+
+The **Work and review** panel adds row checkboxes, **Select all filtered**,
+**Show selected on plan** and **Mark selected reviewed**. Only selected records
+with an explicit pending state and usable source location change; one Undo
+restores the batch. Previously reviewed and unselected records remain unchanged.
+
+The change reuses the existing review command, count renderer and per-sheet
+coordinates. It adds no persisted fields or MCP tools. Count rings, callout
+quantities, trade suites and catalog integration remain separate.
 
 Tested against upstream `8a31fb49d5a2c286c665017219073b0abe61695b` in two local
 production builds. No public deployment is changed. The example reuses earlier
