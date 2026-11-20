@@ -102,8 +102,12 @@ export default function BackupCenter() {
 
   const close = useCallback(() => {
     if (busy) return;
+    // After an import the open canvas still holds the old project in memory,
+    // and its next autosave would write it over what was just restored, so
+    // leaving the dialog reloads the page.
+    if (imported) { window.location.reload(); return; }
     setOpen(false); setIncoming(null); setConfirmReplace(false); setImported(null); setError("");
-  }, [busy]);
+  }, [busy, imported]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -280,6 +284,7 @@ export default function BackupCenter() {
         {imported ? (
           <div style={{ marginTop: 10 }}>
             <div style={{ color: "var(--c-positive)" }}>{uiText(`Imported ${plural(imported.written.meta || 0, "record")}, ${plural(imported.written.pdfs || 0, "plan file")}, ${plural(imported.written.pdf_revs || 0, "older revision")} and ${plural(imported.written.snapshots || 0, "snapshot")}.`)}</div>
+            <div style={{ color: "var(--ink-muted)", fontSize: 12, marginTop: 4 }}>{uiText("The page reloads when you close this, so nothing open here writes over the restored projects.")}</div>
             <button type="button" style={{ ...btn, marginTop: 8 }} onClick={() => window.location.reload()}>{uiText("Reload to open them")}</button>
           </div>
         ) : null}

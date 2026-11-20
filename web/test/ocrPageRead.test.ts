@@ -37,6 +37,13 @@ function captureWarn() {
 }
 const RS = 2;
 const tick = () => new Promise((r) => setTimeout(r, 0));
+/** Wait for a condition instead of assuming how many event-loop turns it takes:
+ * under a loaded full-suite run, a read can need more than two turns to reach
+ * readRegion. Bounded, so a real hang still fails (with the message). */
+async function until(cond: () => boolean, what: string, turns = 200) {
+  for (let i = 0; i < turns && !cond(); i++) await tick();
+  assert.ok(cond(), `timed out waiting for ${what}`);
+}
 
 const availableRev = (rev: string): OcrProbe => ({ state: "available", manifest: { rev, files: [] }, cached: true, downloadBytes: 0 });
 
@@ -333,7 +340,7 @@ test("a cache hit doesn't wait behind a running read", async () => {
   const t = setup({ readRegion: d.readRegion });
   await t.cache.put(HASH, 2, { rev: "r2", rs: RS, lines: [], ms: 5, rasters: 1 });
   const a = t.reader.read(t.req("A.pdf"));
-  await tick(); await tick();
+  await until(() => d.calls.length === 1, "A to reach readRegion");
   const b = await t.reader.read(t.req("A.pdf#2"));
   assert.equal(b.ok && b.cached, true);
   d.calls[0].resolve({ lines: [], ms: 1, rasters: 1 });

@@ -302,3 +302,25 @@ test("otkx open: not a zip, no manifest, damaged bytes", async () => {
   bytes[at + 20] ^= 0xff;
   await assert.rejects(openBrowserExport(new Blob([bytes])), /damaged/);
 });
+
+test("otkx inspect: local storage conflicts count only keys an import would write", async () => {
+  // a hand-edited backup carrying a credential and a foreign key alongside a real setting
+  const bundle = {
+    manifest: { files: { meta: [], snapshots: [], pdfs: [], pdf_revs: [] } },
+    json: async (name: string) => (name === LOCAL_STORAGE_NAME
+      ? { opentakeoff_units: "metric", opentakeoff_ai_key: "sk-from-file", other_site: "x", "ot.assistant.link.v1": "{}" }
+      : []),
+  };
+  const here = new MemStorage();
+  here.setItem("opentakeoff_units", "imperial");
+  here.setItem("opentakeoff_ai_key", "sk-mine");
+  here.setItem("other_site", "y");
+  const plan = await inspectBrowserExport(bundle, { withDb: withStoreDb, storage: here });
+  assert.deepEqual(plan.conflicts.localStorage, ["opentakeoff_units"]);
+  assert.equal(plan.conflictCount, 1);
+  assert.equal(plan.incoming.localStorage, 1);
+  await applyBrowserExport(bundle, { withDb: withStoreDb, storage: here, overwrite: true });
+  assert.equal(here.getItem("opentakeoff_units"), "metric");
+  assert.equal(here.getItem("opentakeoff_ai_key"), "sk-mine", "a credential in a backup never replaces this browser's");
+  assert.equal(here.getItem("other_site"), "y");
+});

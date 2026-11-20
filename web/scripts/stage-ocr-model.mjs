@@ -91,9 +91,23 @@ function checkCommitted({ path, sha256: want }) {
  * run, and netlify.toml then deploys without OCR. */
 export const FETCH_TIMEOUT_MS = 120_000;
 
-/** Download one pinned file, stopping as soon as it runs past its size. */
+/** Download one pinned file, stopping as soon as it runs past its size.
+ * The limit is a ref'd timer, not AbortSignal.timeout(): that one's timer is
+ * unref'd, so a stalled download that holds no socket of its own leaves Node
+ * with an empty event loop, and the process (or a test runner) exits with the
+ * download still pending instead of reporting the timeout. */
 async function download(f, fetchImpl, timeoutMs) {
-  const res = await fetchImpl(f.url, { signal: AbortSignal.timeout(timeoutMs) });
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(new DOMException(`download of ${f.file} timed out after ${timeoutMs} ms`, "TimeoutError")), timeoutMs);
+  try {
+    return await downloadWith(f, fetchImpl, ac.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function downloadWith(f, fetchImpl, signal) {
+  const res = await fetchImpl(f.url, { signal });
   if (!res.ok) throw new Error(`download failed: ${res.status} ${f.url}`);
   if (!res.body) return Buffer.from(await res.arrayBuffer());
   const reader = res.body.getReader();

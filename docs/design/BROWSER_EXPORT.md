@@ -82,7 +82,10 @@ a file whose directory exceeds either budget before reading it.
 Import first inspects the file against this browser. A key that already
 exists here with a different record is a conflict; an identical record is
 not, so re-importing a backup into the browser that made it changes nothing
-and asks nothing. With any conflict the dialog names the items and the button
+and asks nothing. Local storage conflicts count only the keys an import
+would write: a credential or another site's key in a hand-edited backup is
+never written and never counted. Inspection reads one batch file at a time,
+as the import does. With any conflict the dialog names the items and the button
 stays disabled until the person ticks **Replace … with the backup's copy**.
 `applyBrowserExport` repeats the check itself and throws
 `ImportConflictError` unless called with `overwrite: true`. No `confirm()`.
@@ -134,8 +137,9 @@ reading is wrong.
   but this path was only measured in Node and headless Chromium.
 - A legacy plan record stored as an `ArrayBuffer` (before #580) is read whole
   once to write it; it comes back as an `ArrayBuffer`, as it was stored.
-- After an import, the page has to reload to open the restored projects (the
-  dialog offers the button). The store's per-session hash memo is rebuilt on
-  reload.
+- After an import, the page has to reload to open the restored projects. Closing
+  the dialog after an import reloads it, because the open canvas still holds
+  the old project and its next autosave would otherwise write it over the
+  restored one. The store's per-session hash memo is rebuilt on reload.
 - No ZIP64: a file over 4 GB can't be read, which the 2 GB budget keeps from
   happening.

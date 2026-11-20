@@ -559,19 +559,6 @@ async function batchRecords(bundle, name) {
   return out;
 }
 
-/** Rows of the bundle per store, still encoded: { [store]: [{ k, v }] }. */
-async function bundleRows(bundle) {
-  const rows = {};
-  for (const s of STORES) {
-    rows[s] = [];
-    for (const name of bundle.manifest.files[s] || []) {
-      const list = await bundle.json(name);
-      if (Array.isArray(list)) for (const r of list) rows[s].push(r);
-    }
-  }
-  return rows;
-}
-
 // An encoded value with its archive paths dropped: two records that encode
 // alike are the same record (binary parts compared by size and type, and a
 // plan record also carries its sha256).
@@ -594,31 +581,43 @@ function sameEncoded(a, b) {
  * @returns {Promise<any>}
  */
 export async function inspectBrowserExport(bundle, { withDb, storage }) {
-  const incoming = await bundleRows(bundle);
-  const ls = await bundle.json(LOCAL_STORAGE_NAME).catch(() => ({}));
-  // A key already here is a conflict only when the record differs: putting
-  // back an identical record changes nothing.
-  const conflicts = await withDb(async (db) => {
-    const out = {};
-    for (const s of STORES) {
-      out[s] = [];
-      const here = new Set(await storeKeys(db, s));
-      for (const r of incoming[s]) {
-        if (!here.has(r?.k)) continue;
-        let same = false;
-        try { same = sameEncoded(encodeValue(await storeGet(db, s, r.k), () => ""), r.v); } catch { same = false; }
-        if (!same) out[s].push(r.k);
-      }
+  // one batch file at a time, like apply: a large meta store (OCR caches) is
+  // never held decoded all at once
+  const incoming = {};
+  const conflicts = {};
+  for (const s of STORES) {
+    incoming[s] = 0;
+    conflicts[s] = [];
+    for (const name of bundle.manifest.files[s] || []) {
+      const rows = await bundle.json(name);
+      if (!Array.isArray(rows)) throw bad(`"${name}" isn't a list of records.`);
+      incoming[s] += rows.length;
+      // A key already here is a conflict only when the record differs:
+      // putting back an identical record changes nothing.
+      const differing = await withDb(async (db) => {
+        if (!db.objectStoreNames.contains(s)) return [];
+        const here = new Set(await storeKeys(db, s));
+        const out = [];
+        for (const r of rows) {
+          if (!here.has(r?.k)) continue;
+          let same = false;
+          try { same = sameEncoded(encodeValue(await storeGet(db, s, r.k), () => ""), r.v); } catch { same = false; }
+          if (!same) out.push(r.k);
+        }
+        return out;
+      });
+      conflicts[s].push(...differing);
     }
-    return out;
-  });
+  }
+  // local storage: only the keys apply would write
+  const ls = await bundle.json(LOCAL_STORAGE_NAME).catch(() => ({}));
+  const lsKeys = Object.keys(ls || {}).filter((k) => isAppStorageKey(k) && !storageExclusion(k) && typeof ls[k] === "string");
+  conflicts.localStorage = lsKeys.filter((k) => storage && storage.getItem(k) != null && storage.getItem(k) !== ls[k]);
   let conflictCount = 0;
-  for (const s of STORES) conflictCount += conflicts[s].length;
-  conflicts.localStorage = Object.keys(ls || {}).filter((k) => storage && storage.getItem(k) != null && storage.getItem(k) !== ls[k]);
-  conflictCount += conflicts.localStorage.length;
+  for (const s of [...STORES, "localStorage"]) conflictCount += conflicts[s].length;
   return {
     manifest: bundle.manifest,
-    incoming: { ...Object.fromEntries(STORES.map((s) => [s, incoming[s].length])), localStorage: Object.keys(ls || {}).length },
+    incoming: { ...incoming, localStorage: lsKeys.length },
     conflicts,
     conflictCount,
   };
