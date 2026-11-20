@@ -112,6 +112,7 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 ## Unreleased
 
 - **Ceiling wall angle follows a reset to one floor.** Re-run `ceiling_takeoff` after changing the ceiling condition from repeated floors back to one. The existing wall-angle runs report the single-floor length without adding a second ring.
+- **MCP sheet comparison reads every vector segment.** `compare_sheets` uses the extracted endpoints from both pages and returns exact unchanged counts when a sheet is compared with itself at zero offset.
 
 - **Russian deliverables preserve customer text.** Marked-set PDFs embed Cyrillic fonts and paginate large legends instead of dropping rows. Proposal headers fit long Russian company names, page numbers are localized, and project/company/client text is preserved in proposals, estimates and interface headings. Annotation text stays literal on the canvas. Report filenames retain Cyrillic. Regression tests cover rotated pages, RFI text, 70-condition legends, multi-page proposals and names matching UI commands.
 
