@@ -1,0 +1,55 @@
+{
+  "start": "2026-11-20T18:34:38.113Z",
+  "duration_ms": 2507,
+  "frames": [
+    {
+      "file": "before-inspect-000.jpg",
+      "at": 0
+    },
+    {
+      "file": "before-inspect-001.jpg",
+      "at": 379
+    },
+    {
+      "file": "before-inspect-002.jpg",
+      "at": 729
+    },
+    {
+      "file": "before-inspect-003.jpg",
+      "at": 1074
+    },
+    {
+      "file": "before-inspect-004.jpg",
+      "at": 1429
+    },
+    {
+      "file": "before-inspect-005.jpg",
+      "at": 1808
+    },
+    {
+      "file": "before-inspect-006.jpg",
+      "at": 2148
+    }
+  ],
+  "events": [
+    {
+      "at": 0,
+      "label": "29 HA plants checked"
+    },
+    {
+      "at": 633,
+      "label": "Open first HA measurement"
+    },
+    {
+      "at": 1540,
+      "label": "Show that occurrence on plan"
+    }
+  ],
+  "method": "Actual browser screenshots sampled during UI actions; original elapsed timing; no human speed claim.",
+  "gif_sha256": "6b37e26467495d0175e9528fccbd49bf6ca84ad13967cc0203711e6532b4d971",
+  "viewport": [
+    1280,
+    720
+  ],
+  "encoded_duration_ms": 2510
+}

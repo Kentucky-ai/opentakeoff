@@ -15,6 +15,7 @@ marked resolved by this pass.
 | Screenshot every changed surface | Review panel and selected canvas on desktop, two sheets, narrow drawer/plan, classic and light theme; no other product surface changed |
 | Keep draft while design is discussed | No new PR is opened. [PR description](../PR-DRAFT.md) is prepared on the fork. #660 remains separate and unchanged |
 | Preserve measurements and prior decisions | [Exact saved-export checks](validation.json) after review/Undo and reopening; all 89 measurement and all condition fields match the baseline |
+| Inspect exceptions without rebuilding a group | [Inspection follow-up](inspect-group/README.md): 29 HA stay checked while inspecting one; an unchecked exception stays outside the 28-record review batch; exact Undo and reopen checks pass |
 | Reproduce the result | Public source URLs, hashes, extraction and archive scripts, UI steps, verifier, check commands and actual exported JSON |
 | Keep private data out | No customer plan, catalog, pricing, credentials or new PDF added; public source image and measured sample only |
 | Required gates and docs | [Local results and build hashes](checks.json), [logs](checks.txt); changelog, feature map and user steps already updated in the feature branch |
@@ -24,6 +25,9 @@ marked resolved by this pass.
 The requests on #660 concern rings and the locator. This package applies their
 evidence standard to the separate bulk-review branch; it does not claim to
 finish the ring/locator work or resolve that PR's design choice.
+
+The inspection follow-up records its newer application build and check results
+separately from the original comparisons above.
 
 Remaining reviewer choices are explicit: whether to prefer B over the other
 options, the four-sheet navigation limit, translation follow-up and any broader

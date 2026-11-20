@@ -32,7 +32,8 @@ Agreement comment link: https://github.com/Kentucky-ai/opentakeoff/issues/659#is
   measurement records, condition fields and source calibration exactly.
 
 These are local results, not GitHub PR CI or human quantity approval. The
-[check manifest](public-review/checks.json) identifies tested builds and commands.
+[latest check manifest](public-review/inspect-group/checks.json) identifies tested
+builds and commands; the [original comparison](public-review/checks.json) remains linked.
 
 ## Evidence
 
@@ -47,6 +48,7 @@ separated marks. Human preference and speed have not been measured.
 
 | Check or scenario | Expected | Observed | Evidence |
 |---|---|---|---|
+| Inspect one within a checked group | Keep checkbox membership during individual inspection | 29 HA remain checked; an unchecked exception stays excluded; cross-sheet and narrow-drawer checks pass | [Inspection regression and recordings](public-review/inspect-group/README.md) |
 | Three existing counts, one already reviewed | Review two, retain the prior decision | Matched; one Undo restores the batch | [Fork recording](public-review/after-flow.gif), [upstream recording](public-review/before-flow.gif) |
 | Select all filtered beyond 50 visible rows | Select all 89 existing records across two sheets | 89 selection glyphs; 86 pending | [Two-sheet selection](public-review/07-89-across-two-sheets.jpg) |
 | Counts, areas and lengths on a busy landscape sheet | Keep EA, SF and LF distinct | Matched | [Landscape selection](public-review/09-landscape-mixed-selection.jpg) |
@@ -63,6 +65,7 @@ npm run check:tool-count --prefix mcp
 npm run check:wiki --prefix mcp
 node scripts/check-doc-links.mjs
 node docs/evidence/bulk-select-review/verify-export.mjs docs/evidence/bulk-select-review/public-review/public.after-reopen.takeoff.json docs/evidence/bulk-select-review/public-review/public-sample.takeoff.json
+node docs/evidence/bulk-select-review/public-review/inspect-group/verify-inspection.mjs
 ```
 
 ## Notes for the reviewer
@@ -71,13 +74,17 @@ The **Work and review** panel adds row checkboxes, **Select all filtered**,
 **Show selected on plan** and **Mark selected reviewed**. Only selected records
 with an explicit pending state and usable source location change; one Undo
 restores the batch. Previously reviewed and unselected records remain unchanged.
+Opening an individual measurement preserves the checked group; **Show selected
+on plan** returns from its receipt to the group.
 
 The change reuses the existing review command, count renderer and per-sheet
 coordinates. It adds no persisted fields or MCP tools. Count rings, callout
 quantities, trade suites and catalog integration remain separate.
 
-Tested against upstream `8a31fb49d5a2c286c665017219073b0abe61695b` in two local
-production builds. No public deployment is changed. The example reuses earlier
+The original comparison uses upstream `8a31fb49d5a2c286c665017219073b0abe61695b`
+in two local production builds. The inspection follow-up tests application commit
+`e7b317099c88375772857140a6fd1f39a9173fc0` with new recordings and exports.
+No public deployment is changed. The example reuses earlier
 public OpenTakeoff measurements and labels three prior review flags as synthetic
 QA setup. Source scales remain unconfirmed; this is a bounded UI sample, not a
 complete takeoff or an independent counting benchmark. No private plans or

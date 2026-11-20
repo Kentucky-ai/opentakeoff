@@ -1,9 +1,14 @@
 # Bulk review on public plans
 
-This package compares unchanged upstream `8a31fb49d5a2c286c665017219073b0abe61695b`
+**Latest follow-up:** [Inspect one measurement without losing the checked group](inspect-group/README.md).
+It includes the reproduced selection-loss bug, the fix, new public-plan recordings,
+exact export comparisons and checks for application commit
+`e7b317099c88375772857140a6fd1f39a9173fc0`.
+
+The original comparison below uses unchanged upstream `8a31fb49d5a2c286c665017219073b0abe61695b`
 with the bulk-review branch at application commit
-`b55ac6e02394e9cd8a363d22063a548322d9768c`. Later changes in this evidence pass
-are documentation and examples only. Both are local production builds, tested
+`b55ac6e02394e9cd8a363d22063a548322d9768c`. These original captures predate the
+inspection follow-up above. Both are local production builds, tested
 November 20, 2026 in the Windows ChatGPT in-app browser (Chromium), on
 `127.0.0.1:5193` and `127.0.0.1:5192` respectively. The public hosted application
 was not changed or used as an unidentified baseline.

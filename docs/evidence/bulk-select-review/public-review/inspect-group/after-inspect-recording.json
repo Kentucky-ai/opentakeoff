@@ -1,0 +1,71 @@
+{
+  "start": "2026-11-20T18:39:00.979Z",
+  "duration_ms": 3512,
+  "frames": [
+    {
+      "file": "after-inspect-000.jpg",
+      "at": 1
+    },
+    {
+      "file": "after-inspect-001.jpg",
+      "at": 406
+    },
+    {
+      "file": "after-inspect-002.jpg",
+      "at": 759
+    },
+    {
+      "file": "after-inspect-003.jpg",
+      "at": 1106
+    },
+    {
+      "file": "after-inspect-004.jpg",
+      "at": 1461
+    },
+    {
+      "file": "after-inspect-005.jpg",
+      "at": 1800
+    },
+    {
+      "file": "after-inspect-006.jpg",
+      "at": 2146
+    },
+    {
+      "file": "after-inspect-007.jpg",
+      "at": 2494
+    },
+    {
+      "file": "after-inspect-008.jpg",
+      "at": 2826
+    },
+    {
+      "file": "after-inspect-009.jpg",
+      "at": 3169
+    }
+  ],
+  "events": [
+    {
+      "at": 2,
+      "label": "29 HA plants checked"
+    },
+    {
+      "at": 666,
+      "label": "Open first HA measurement"
+    },
+    {
+      "at": 1631,
+      "label": "Show that occurrence on plan"
+    },
+    {
+      "at": 2557,
+      "label": "Return to the checked group"
+    }
+  ],
+  "method": "Actual browser screenshots sampled during UI actions; original elapsed timing; no human speed claim.",
+  "gif_sha256": "1c8d4de50ce8693269ea481650231db02c46ea5e2b3951203ba5c0ddd8ddf5bd",
+  "viewport": [
+    1280,
+    720
+  ],
+  "encoded_duration_ms": 3510
+}

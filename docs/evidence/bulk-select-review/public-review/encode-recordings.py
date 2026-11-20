@@ -2,10 +2,11 @@
 from pathlib import Path
 import hashlib
 import json
+import sys
 from PIL import Image
 
-root = Path(__file__).parent
-for name in ("before-flow", "after-flow"):
+root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent
+for name in (sys.argv[2:] or ("before-flow", "after-flow")):
     manifest = json.loads((root / f"{name}-recording.json").read_text())
     images, durations = [], []
     for i, frame in enumerate(manifest["frames"]):

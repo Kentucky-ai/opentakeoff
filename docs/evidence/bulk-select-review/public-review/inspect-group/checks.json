@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-20",
+  "node": "v24.22.1",
+  "browser": "Windows ChatGPT in-app browser (Chromium)",
+  "builds": [
+    {
+      "name": "before inspection fix",
+      "source_commit": "ddae679e9c2d6441c35ed1b4643975908a92ca19",
+      "origin": "http://127.0.0.1:5192",
+      "entry": "/assets/index-CEnl4ryz.js",
+      "entry_sha256": "407e587ea926a015b4344f387176888d7a4627eec8ea2866f128ba04da4567ff"
+    },
+    {
+      "name": "after inspection fix",
+      "source_commit": "e7b317099c88375772857140a6fd1f39a9173fc0",
+      "origin": "http://127.0.0.1:5192",
+      "entry": "/assets/index-DxUc9C4W.js",
+      "entry_sha256": "1ef072a0701c97165b0f7fc519decfbea13b8cd2f81271a20c496d5590a5ee9b"
+    }
+  ],
+  "tests": {
+    "total": 3846,
+    "passed": 3842,
+    "skipped": 4,
+    "failed": 0
+  },
+  "checks": [
+    {
+      "command": "npm run check --prefix web",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run check --prefix protocol",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run check:tool-count --prefix mcp",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run check:wiki --prefix mcp",
+      "exit_code": 0
+    },
+    {
+      "command": "node scripts/check-doc-links.mjs",
+      "exit_code": 0
+    },
+    {
+      "command": "node docs/evidence/bulk-select-review/public-review/inspect-group/verify-inspection.mjs",
+      "exit_code": 0,
+      "output": "PASS: inspection, Undo and reopening preserve all 89 records; only the 28 checked pending HA records change on review; the unchecked exception and three prior decisions remain intact."
+    }
+  ],
+  "logs_sha256": "b9568067b9b007ceaee9b70f87ca9514b1d56de298abec7b8c5bf96f72950eb2",
+  "exports": [
+    {
+      "file": "after-inspection.takeoff.json",
+      "sha256_lf": "c5e67649df7db049c1380fab9d0b1a6dcb15d5adeca2e758ffe7a3a5f5f4bea7"
+    },
+    {
+      "file": "after-reopen.takeoff.json",
+      "sha256_lf": "8f958d8f30432dd1e1ae0e623a3dd5e9674ee56d41c06026ed77ef647b882aa4"
+    },
+    {
+      "file": "after-review.takeoff.json",
+      "sha256_lf": "470e6fcd3c705d4b399cbdb265a9d34e57fc95d081ae9e25b197dc36161e9b1e"
+    },
+    {
+      "file": "after-undo.takeoff.json",
+      "sha256_lf": "c5e67649df7db049c1380fab9d0b1a6dcb15d5adeca2e758ffe7a3a5f5f4bea7"
+    },
+    {
+      "file": "before.takeoff.json",
+      "sha256_lf": "c5e67649df7db049c1380fab9d0b1a6dcb15d5adeca2e758ffe7a3a5f5f4bea7"
+    }
+  ],
+  "notes": [
+    "Before and after use the same isolated public-plan browser workspace and saved baseline.",
+    "The browser was reloaded after building the fix. The source commit contains only the tested application and user-documentation changes.",
+    "Recordings preserve observed timing; no human performance claim. All review actions are QA on the public sample and were undone.",
+    "These are local checks, not GitHub PR checks or maintainer approval."
+  ]
+}
