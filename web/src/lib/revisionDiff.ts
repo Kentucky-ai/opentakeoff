@@ -11,6 +11,10 @@ export interface ChangedRegion {
   bounds: [number, number, number, number]; // [minX, minY, maxX, maxY]
   hull: Polygon;
   segmentCount: number;
+  /** The changed segments themselves (base frame). The bounds of a long dashed
+   * line or an L-shaped edit cover far more sheet than the ink does, so
+   * anything asking "does this shape touch the change" tests these. */
+  segments?: Segment[];
 }
 
 export interface VectorDiffResult {
@@ -166,10 +170,28 @@ export function clusterChangedSegments(
 ): ChangedRegion[] {
   if (!segments.length) return [];
 
-  // Simple disjoint-set / flood-clustering by proximity
+  // Single-linkage clustering by proximity: a segment joins a group when it
+  // sits within clusterDist of a SEGMENT already in it. Measuring against the
+  // group's growing bounding box instead lets scattered edits chain into one
+  // sheet-sized region, which is useless as a pointer to what changed.
   const n = segments.length;
   const visited = new Uint8Array(n);
   const regions: ChangedRegion[] = [];
+  const boxes = segments.map(({ seg }) => [
+    Math.min(seg[0], seg[2]), Math.min(seg[1], seg[3]), Math.max(seg[0], seg[2]), Math.max(seg[1], seg[3]),
+  ]);
+  const cell = Math.max(1, clusterDist);
+  const grid = new Map<string, number[]>();
+  for (let i = 0; i < n; i++) {
+    const bx = boxes[i];
+    for (let cx = Math.floor(bx[0] / cell); cx <= Math.floor(bx[2] / cell); cx++) {
+      for (let cy = Math.floor(bx[1] / cell); cy <= Math.floor(bx[3] / cell); cy++) {
+        const key = `${cx},${cy}`;
+        const bucket = grid.get(key);
+        if (bucket) bucket.push(i); else grid.set(key, [i]);
+      }
+    }
+  }
 
   for (let i = 0; i < n; i++) {
     if (visited[i]) continue;
@@ -178,37 +200,28 @@ export function clusterChangedSegments(
     const group: Array<{ seg: Segment; type: "added" | "removed" }> = [segments[i]];
     const queue = [i];
 
-    let minX = Math.min(segments[i].seg[0], segments[i].seg[2]);
-    let maxX = Math.max(segments[i].seg[0], segments[i].seg[2]);
-    let minY = Math.min(segments[i].seg[1], segments[i].seg[3]);
-    let maxY = Math.max(segments[i].seg[1], segments[i].seg[3]);
+    let [minX, minY, maxX, maxY] = boxes[i];
 
     while (queue.length > 0) {
-      const curIdx = queue.pop()!;
-      const cur = segments[curIdx].seg;
-
-      for (let j = 0; j < n; j++) {
-        if (visited[j]) continue;
-        const cand = segments[j].seg;
-
-        // Check distance between cur and cand
-        const bMinX = Math.min(cand[0], cand[2]);
-        const bMaxX = Math.max(cand[0], cand[2]);
-        const bMinY = Math.min(cand[1], cand[3]);
-        const bMaxY = Math.max(cand[1], cand[3]);
-
-        const dx = Math.max(0, Math.max(minX - bMaxX, bMinX - maxX));
-        const dy = Math.max(0, Math.max(minY - bMaxY, bMinY - maxY));
-
-        if (dx <= clusterDist && dy <= clusterDist) {
-          visited[j] = 1;
-          queue.push(j);
-          group.push(segments[j]);
-
-          if (bMinX < minX) minX = bMinX;
-          if (bMaxX > maxX) maxX = bMaxX;
-          if (bMinY < minY) minY = bMinY;
-          if (bMaxY > maxY) maxY = bMaxY;
+      const cur = boxes[queue.pop()!];
+      for (let cx = Math.floor((cur[0] - clusterDist) / cell); cx <= Math.floor((cur[2] + clusterDist) / cell); cx++) {
+        for (let cy = Math.floor((cur[1] - clusterDist) / cell); cy <= Math.floor((cur[3] + clusterDist) / cell); cy++) {
+          const bucket = grid.get(`${cx},${cy}`);
+          if (!bucket) continue;
+          for (const j of bucket) {
+            if (visited[j]) continue;
+            const cand = boxes[j];
+            const dx = Math.max(0, Math.max(cur[0] - cand[2], cand[0] - cur[2]));
+            const dy = Math.max(0, Math.max(cur[1] - cand[3], cand[1] - cur[3]));
+            if (dx > clusterDist || dy > clusterDist) continue;
+            visited[j] = 1;
+            queue.push(j);
+            group.push(segments[j]);
+            if (cand[0] < minX) minX = cand[0];
+            if (cand[2] > maxX) maxX = cand[2];
+            if (cand[1] < minY) minY = cand[1];
+            if (cand[3] > maxY) maxY = cand[3];
+          }
         }
       }
     }
@@ -225,6 +238,7 @@ export function clusterChangedSegments(
       bounds: box,
       hull: bboxToPolygon(box, 4),
       segmentCount: group.length,
+      segments: group.map((g) => g.seg),
     });
   }
 

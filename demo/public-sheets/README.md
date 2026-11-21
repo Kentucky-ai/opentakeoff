@@ -13,6 +13,8 @@ you link) instead of a synthetic plan.
 | File | Sheet | Printed plan scale | Good for |
 |---|---|---|---|
 | `mo-albany-maintenance-S-101-foundation.pdf` | S-101 Footing & Foundation Plan | 1/8" = 1'-0" (details 3/4") | Concrete suite (#611): slab on grade, grade beams, pad footing schedule, stoops |
+| `mo-albany-maintenance-A-100-floor-plan.pdf` | A-100 First Floor Plan & Reflected Ceiling Plan, as bid | 3/16" = 1'-0" | Revision compare: the base issue of a sheet an addendum reissued |
+| `mo-albany-maintenance-A-100-floor-plan-addendum-2.pdf` | A-100 as reissued by Addendum 2 | 3/16" = 1'-0" (new detail 3/8") | Revision compare (`revision_delta`, `compare_sheets`): Detail 3 added, four bollards at grid D/3 moved, title block revised |
 | `mo-state-fair-fire-station-A-101-floor-plan.pdf` | A-101 First Floor Plan | 1/8" = 1'-0" (enlarged plan 1/4") | Room detection, floor takeoff, doors, a plan with an enlarged view on the same sheet |
 | `mo-state-fair-fire-station-A201-exterior-elevations.pdf` | A201 Exterior Elevations | 1/8" = 1'-0" | Masonry and siding suites (#612): brick veneer wainscot, fiber-cement siding, openings |
 | `mo-veterans-home-A101-overall-floor-plan.pdf` | A101 Overall Floor Plan | 1/16" = 1'-0" | Letter-prefixed room numbers (C112, C120, C125) for #656, and match lines between areas |
@@ -28,6 +30,8 @@ welcome to fix.
 | Sheet | Sheet number read | Scale detected | Vector segments |
 |---|---|---|---:|
 | Albany S-101 | `S1.01` ✗ (a detail callout, not `S-101`) | 3/4" ✗ (a detail scale; the plan is 1/8") | 56,294 |
+| Albany A-100, as bid | `A-100` | 3/16" | 13,287 |
+| Albany A-100, Addendum 2 | `A-100` | 3/8" ✗ (the added detail's scale; the plan is 3/16") | 16,334 |
 | Fire station A-101 | `A-101` | none ✗ | 173,944 |
 | Fire station A201 | `A201` | 1/8" | 88,108 |
 | Veterans Home A101 | `A101` | 1/16" | 37,564 |
@@ -50,8 +54,13 @@ All sheets were posted by the Missouri Office of Administration, Division of
 Facilities Management, Design and Construction, as public bid documents:
 
 - **Albany Readiness Center, new maintenance building** (Missouri Army National
-  Guard), project T2327-01, bid documents 11/15/2024. Sheet S-101.
+  Guard), project T2327-01, bid documents 11/15/2024. Sheets S-101 and A-100.
   <https://oa.mo.gov/sites/default/files/bid-opportunities/_T2327-01%20Final%20Bid%20Plans.pdf>
+- **Albany Readiness Center, Addendum No. 2**, same project, sheet revision
+  dated 07/16/2025. Sheet A-100 as reissued; the base A-100 is page 11 of the
+  bid plans above. The addendum states: "Added Detail 3 - Bollard Location Plan
+  to clarify bollard locations."
+  <https://oa.mo.gov/sites/default/files/bid-opportunities/T2327-01%20Add%20%232%20Plans%20%26%20Specs.pdf>
 - **Missouri State Fair, new fire station**, Sedalia, project F2405-01, issued
   09/19/2025. Sheets A-101 and A201.
   <https://oa.mo.gov/sites/default/files/bid-opportunities/_F2405-01Final%20Bid%20Plans.pdf>

@@ -91,6 +91,35 @@ and say so in the shape's label or an annotation. Do not stop.
 The [MCP route map](mcp.md) gives the next tool at each step. The
 [agent guide](../AGENT_GUIDE.md) covers staging and refusal recovery.
 
+## Agent: an addendum or a reissued set
+
+The question after an addendum is which quantities moved, where on the sheet
+the cause is, and what a person still has to decide. `revision_delta` answers
+all three in one ledger.
+
+1. `load_plan` the earlier issue, then `load_plan {merge: true}` the later one.
+   `set_scale` on the revised sheets yourself: a reissued sheet can detect a
+   different scale than the plan's when the addendum adds a detail.
+2. `revision_delta {base, revised, carry: true}`. Sheets pair by title-block
+   sheet number; anything that cannot be paired without guessing is in
+   `unpaired`, and `pairs` lets you say which goes with which. `carry` copies
+   the base takeoff onto each revised sheet and flags the shapes that touch
+   changed ink.
+3. Work the entries whose `status` is `pending`. `view_sheet` a tight crop of
+   `bounds_base` on the base sheet and `bounds_revised` on the revised sheet.
+   Where the work moved, `edit_shape` the carried shape. Where it did not,
+   `mark_verdict` the shape and say why.
+4. `revision_delta` again. Entries you re-measured now state a `delta`; until
+   then the quantity was `exposure`, never a delta. Each sheet reconciles:
+   `delta = attributed + unattributed`. A non-empty `unattributed` means a
+   quantity changed where the drawing did not, and names the shapes.
+5. Read every `review` reason. `text_changed` and `dimension_text_changed` mean
+   a tag or a dimension was retyped under the takeoff with no linework moving.
+   When the drawings leave the answer open, `create_rfi` at the region.
+6. Hand off the ledger (`path`, or a `.csv` path for the spreadsheet) with the
+   marked set. Your check is `agent_checked`; only the estimator's approval
+   makes an entry `confirmed_unchanged`.
+
 ## Evidence that another person can review
 
 Keep source/revision identifiers, calibration choices, measured geometry,

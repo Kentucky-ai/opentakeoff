@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-20 — Revision delta ledger (MCP 0.9.117)
+
+- **`revision_delta`: which quantities an addendum moved, where the cause is on the sheet, and what a person still has to decide.** Load two issues of a set and pass both file names. Sheets pair 1-to-1 by title-block sheet number. A sheet that cannot be paired without guessing is listed in `unpaired`; `pairs` says which goes with which.
+- **One entry per change, tied to the takeoff.** Each changed region lists the shapes it touches on the base sheet and on the revised sheet, their quantities, and a status: `not_carried`, `pending`, `agent_checked`, `confirmed_unchanged`, `remeasured`, `added`, `removed` or `outside_takeoff`. A delta is stated only after the revised side is measured. Before that the quantity is `exposure`.
+- **Every sheet reconciles.** `delta = attributed + unattributed`. A quantity that changed where the drawing did not is reported as unattributed, with the shapes responsible.
+- **The text layer is diffed too.** A finish tag or a dimension that was retyped moves no linework. It now reports as a text change with before and after, and raises `text_changed` or `dimension_text_changed` when it sits on takeoff. The same printed line split into different text runs by two PDF writers is not reported.
+- **`carry: true`** copies the base takeoff onto each paired revised sheet that has none, flags the shapes that touch changed ink, and is one `undo_last` step. It refuses a sheet whose scale differs or is unset.
+- **`path`** writes the `opentakeoff.revision_delta.v1` document, or a CSV with one row per entry per condition when the path ends in `.csv`.
+- **Changed regions are tighter.** Changed ink now groups by distance to a neighboring changed segment. Before, scattered edits could chain into one sheet-sized region. This also changes the regions `compare_sheets` and the canvas overlay report.
+- **Shapes are checked against the changed ink, not the rectangle around it.** A long dashed line that moved no longer flags every room inside its bounding box. Count marks and two-point runs are now flagged; before, only shapes with three or more vertices were.
+- **Two real sheets to test revisions on.** `demo/public-sheets/` gains sheet A-100 of a Missouri state bid set as bid and as reissued by Addendum 2, which added a bollard detail and moved four bollards. The MCP tests run the whole loop on that pair.
+- **Not in this change:** the canvas does not show the ledger yet, scanned sheets with no vector linework are reported as not comparable, and a rotated or rescaled reissue is not aligned.
+
 ## 2026-11-20 — Public test sheets
 
 - **`demo/public-sheets/`: nine real sheets to test against.** Footing and foundation plan, a fire station floor plan and exterior elevations, a veterans home overall plan with letter-prefixed room numbers, four area plans that meet at match lines, and an overall reflected ceiling plan. All are from Missouri state public bid sets, extracted unchanged with the document metadata removed. The README links each source and records what `main` reads today, including three misses: S-101's sheet number and scale, and no scale on the fire station plan.

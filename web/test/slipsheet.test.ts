@@ -4,6 +4,7 @@ import {
   normalizeSheetNumber,
   matchSheetSets,
   carryTakeoffShapes,
+  shapeTouchesRegion,
   type SheetEntry,
   type TakeoffShape,
 } from "../src/lib/slipsheet.ts";
@@ -132,3 +133,37 @@ test("carryTakeoffShapes: shapes crossing changed ink flagged for review; untouc
   assert.equal(carried2.origin?.flagged_for_revision, undefined);
 });
 
+
+test("shapeTouchesRegion: counts and two-point runs are takeoff too", () => {
+  const hull: Array<[number, number]> = [[96, 96], [204, 96], [204, 204], [96, 204]];
+  const bounds: [number, number, number, number] = [100, 100, 200, 200];
+  assert.equal(shapeTouchesRegion([[150, 150]], "count", hull, bounds), true);
+  assert.equal(shapeTouchesRegion([[400, 400]], "count", hull, bounds), false);
+  assert.equal(shapeTouchesRegion([[50, 150], [300, 150]], "linear", hull, bounds), true);
+  assert.equal(shapeTouchesRegion([[50, 300], [300, 300]], "linear", hull, bounds), false);
+});
+
+test("shapeTouchesRegion: with the changed segments, the ink decides, not the rectangle around it", () => {
+  // An L-shaped dashed line: its bounding box covers the whole room block.
+  const segments: Array<[number, number, number, number]> = [[100, 100, 100, 900], [100, 900, 900, 900]];
+  const bounds: [number, number, number, number] = [100, 100, 900, 900];
+  const hull: Array<[number, number]> = [[96, 96], [904, 96], [904, 904], [96, 904]];
+  const inside: Array<[number, number]> = [[400, 300], [600, 300], [600, 500], [400, 500]];
+  assert.equal(shapeTouchesRegion(inside, "floor_area", hull, bounds), true, "rectangle test over-flags");
+  assert.equal(shapeTouchesRegion(inside, "floor_area", hull, bounds, segments), false);
+  const onTheLine: Array<[number, number]> = [[102, 300], [300, 300], [300, 500], [102, 500]];
+  assert.equal(shapeTouchesRegion(onTheLine, "floor_area", hull, bounds, segments), true);
+  assert.equal(shapeTouchesRegion([[108, 400]], "count", hull, bounds, segments), true);
+  assert.equal(shapeTouchesRegion([[500, 400]], "count", hull, bounds, segments), false);
+});
+
+test("carryTakeoffShapes flags a count mark sitting on changed ink", () => {
+  const regions: ChangedRegion[] = [{ id: "crg-1", type: "modified", bounds: [100, 100, 200, 200], hull: [[96, 96], [204, 96], [204, 204], [96, 204]], segmentCount: 4 }];
+  const shapes: TakeoffShape[] = [
+    { id: "c1", sheet_id: "a#1", condition_id: "x", measure_role: "count", verts_norm: [[0.15, 0.15]] },
+    { id: "c2", sheet_id: "a#1", condition_id: "x", measure_role: "count", verts_norm: [[0.6, 0.6]] },
+  ];
+  const out = carryTakeoffShapes(shapes, "a#1", "b#1", 1000, 1000, regions);
+  assert.equal(out.flaggedCount, 1);
+  assert.equal(out.shapes.find((s) => s.id === "c1")!.origin!.flagged_for_revision, true);
+});

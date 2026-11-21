@@ -1,0 +1,20 @@
+entry,sheet,kind,change,status,review,condition,before_sf,after_sf,delta_sf,before_lf,after_lf,delta_lf,before_ea,after_ea,delta_ea,region_base_px,text_changes
+A-100/crg-1,A-100,linework,removed,agent_checked,agent_checked_unapproved,SC-1,3888.18,3888.18,0,0,0,0,0,0,0,2904.24 2053.2 2935.44 2053.2,
+A-100/crg-3,A-100,linework,modified,remeasured,revised_takeoff_unapproved text_changed,SC-1,3888.18,3888.18,0,0,0,0,0,0,0,3388.32 1825.92 3706.32 1992.72,- 4 | - 4 | + 3 | + A-100
+A-100/crg-3,A-100,linework,modified,remeasured,revised_takeoff_unapproved text_changed,BOLLARD,0,0,0,0,0,0,4,4,0,3388.32 1825.92 3706.32 1992.72,- 4 | - 4 | + 3 | + A-100
+A-100/crg-4,A-100,linework,removed,agent_checked,agent_checked_unapproved,SC-1,3888.18,3888.18,0,0,0,0,0,0,0,2467.2 2899.68 2476.08 2899.68,
+A-100/crg-10,A-100,linework,removed,agent_checked,agent_checked_unapproved,SC-1,3888.18,3888.18,0,0,0,0,0,0,0,3091.44 1887.12 3091.44 1905.12,
+A-100/crg-5,A-100,linework,removed,outside_takeoff,,,,,,,,,,,,2278.8 606.24 3496.8 3034.08,
+A-100/crg-6,A-100,linework,removed,outside_takeoff,,,,,,,,,,,,1790.88 796.8 1812.24 818.16,
+A-100/crg-7,A-100,linework,removed,outside_takeoff,,,,,,,,,,,,1230.72 2130.72 1230.72 2157.6,
+A-100/crg-8,A-100,linework,removed,outside_takeoff,,,,,,,,,,,,712.32 1333.2 715.68 1333.2,
+A-100/crg-9,A-100,linework,removed,outside_takeoff,,,,,,,,,,,,1734 1881.36 1740 1881.36,
+A-100/crg-11,A-100,linework,removed,outside_takeoff,,,,,,,,,,,,958.32 1290.72 958.32 1362.72,
+A-100/crg-12,A-100,linework,modified,outside_takeoff,,,,,,,,,,,,4689.35 281.02 5134.37 648.57,- DRAFT | - PREPARED FOR | - PRELIMINARY | - SUBMISSION AND | - REVIEW ONLY -- | - NOT FOR | - CONSTRUCTION.
+A-100/crg-13,A-100,linework,removed,outside_takeoff,,,,,,,,,,,,0 1.68 0.72 3456,
+A-100/crg-14,A-100,linework,added,outside_takeoff,,,,,,,,,,,,3781.2 2548.8 4594.32 3376.8,"+ A | + 02 | + D | + DIMENSION FROM | + F.O. GIRT | + 9"" | + 9"" | + BOLLARDS | + TRENCH DRAIN | + 6"" | + DIMENSION FROM | + 3 | + F.O. JAMB | + COLUMN PER | + 6"" | + PEMB MANUF. | + PILASTER BELOW; | + REF STRUCT | + BOLLARD LOCATION PLAN | + 3 | + 3/8"" = 1'-0"" | + SCALE:"
+A-100/crg-15,A-100,linework,added,outside_takeoff,,,,,,,,,,,,2986.32 3215.28 3058.08 3215.28,
+A-100/crg-16,A-100,linework,added,outside_takeoff,,,,,,,,,,,,4836.96 2492.16 4949.76 2544.48,+ ADDENDUM #2 | + 07/16/25
+A-100/txt-1,A-100,text,modified,outside_takeoff,,,,,,,,,,,,4872.2 2713.4 4872.2 2713.4,11/15/24 -> 07/16/2025
+A-100/txt-2,A-100,text,added,outside_takeoff,,,,,,,,,,,,4888.3 2804.6 4888.3 2804.6,+ RW
+A-100/txt-3,A-100,text,modified,outside_takeoff,,,,,,,,,,,,4681.7 3383.8 4681.7 3383.8,11/15/24 -> 07/16/2025

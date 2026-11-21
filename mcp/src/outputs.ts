@@ -1394,3 +1394,65 @@ export const compareSheetsOutput = {
     added_segments: z.number().int(),
   }),
 };
+
+const qtyRow = z.object({
+  condition: z.string(), condition_id: z.string(),
+  floor_sf: z.number().optional(), wall_sf: z.number().optional(), border_sf: z.number().optional(),
+  lf: z.number().optional(), ea: z.number().optional(),
+}).describe("Measured quantity for one condition (multiplier applied, waste not); zero fields omitted");
+const box4 = z.tuple([z.number(), z.number(), z.number(), z.number()]);
+const textChange = z.object({
+  type: z.enum(["added", "removed", "changed"]),
+  before: z.string().optional(), after: z.string().optional(),
+  at: z.tuple([z.number(), z.number()]).describe("Base-sheet px"),
+});
+const ledgerAlignment = z.object({ dx: z.number(), dy: z.number(), confidence: z.number(), method: z.string() });
+
+export const revisionDeltaOutput = {
+  schema: z.literal("opentakeoff.revision_delta.v1"),
+  base: z.string(),
+  revised: z.string(),
+  sheets: z.array(z.object({
+    sheet_number: z.string(), base_sheet: z.string(), revised_sheet: z.string(),
+    alignment: ledgerAlignment, diff_method: z.enum(["vector", "raster"]),
+    changed_regions: z.number().int(), specks_ignored: z.number().int().describe("Single-segment differences under 2 px, left out of entries"), text_changes: z.number().int(),
+    before: z.array(qtyRow),
+    after: z.array(qtyRow).nullable().describe("null until the revised sheet carries takeoff"),
+    delta: z.array(qtyRow).nullable(),
+    attributed: z.array(qtyRow).nullable().describe("The part of delta sitting on changed regions"),
+    unattributed: z.array(qtyRow).nullable().describe("The part of delta sitting where the drawing did not change"),
+    unattributed_shape_ids: z.object({ base: z.array(z.string()), revised: z.array(z.string()) }),
+    review: z.array(z.string()),
+  })).describe("One row per paired sheet. delta = attributed + unattributed, always"),
+  entries: z.array(z.object({
+    id: z.string(),
+    kind: z.enum(["linework", "text", "sheet_added", "sheet_removed"]),
+    sheet_number: z.string().nullable(),
+    base_sheet: z.string().nullable(), revised_sheet: z.string().nullable(),
+    change: z.enum(["added", "removed", "modified"]).optional(),
+    bounds_base: box4.optional().describe("The source region on the base sheet, px"),
+    bounds_revised: box4.optional().describe("The same region on the revised sheet, px"),
+    segment_count: z.number().optional(),
+    text_changes: z.array(textChange),
+    before: z.object({ shape_ids: z.array(z.string()), quantities: z.array(qtyRow) }),
+    after: z.object({ shape_ids: z.array(z.string()), quantities: z.array(qtyRow) }),
+    delta: z.array(qtyRow).nullable().describe("after − before; null while the revised side is unmeasured — the number at stake is in exposure"),
+    exposure: z.array(qtyRow),
+    status: z.enum(["outside_takeoff", "not_carried", "pending", "agent_checked", "confirmed_unchanged", "remeasured", "added", "removed", "unmeasured"]),
+    review: z.array(z.string()).describe("Why a person must look; empty = nothing to decide"),
+  })).describe("Changes needing review first, then the rest that touch takeoff, then changes outside it"),
+  unpaired: z.array(z.object({
+    sheet_number: z.string().nullable(), base: z.array(z.string()), revised: z.array(z.string()), reason: z.string(),
+  })).describe("Sheets left out because pairing them would be a guess"),
+  totals: z.object({
+    before: z.array(qtyRow), after: z.array(qtyRow), delta: z.array(qtyRow),
+    attributed: z.array(qtyRow), unattributed: z.array(qtyRow), exposure: z.array(qtyRow),
+  }),
+  counts: z.object({ entries: z.number().int(), needs_review: z.number().int(), by_status: z.record(z.string(), z.number().int()) }),
+  carry: z.object({
+    carried: z.array(z.object({ sheet: z.string(), carried: z.number().int(), flagged: z.number().int() })),
+    skipped: z.array(z.object({ sheet: z.string(), reason: z.string() })),
+  }).optional(),
+  files: z.array(z.string()).optional(),
+  note: z.string(),
+};

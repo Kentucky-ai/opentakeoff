@@ -194,6 +194,85 @@ export function polygonsIntersect(polyA: Array<[number, number]>, polyB: Array<[
   return false;
 }
 
+/** Shortest distance from a point to a segment. */
+export function pointSegmentDistance(p: [number, number], a: [number, number], b: [number, number]): number {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+/**
+ * Does a takeoff shape touch a changed region? Role-aware: a count is a point,
+ * a linear run or wall surface is an open polyline, everything else is a
+ * closed ring. A two-point run or a single count mark is still takeoff, and
+ * changed ink under it still needs a second look.
+ *
+ * When the region carries its changed segments the test runs against the ink
+ * itself (within `pad` px), not the region's rectangle: a long dashed line
+ * that moved has a sheet-sized bounding box and touches almost nothing.
+ */
+export function shapeTouchesRegion(
+  vertsPx: Array<[number, number]>,
+  role: string | undefined,
+  hull: Array<[number, number]>,
+  bounds: [number, number, number, number],
+  segments?: Array<[number, number, number, number]>,
+  pad = 4
+): boolean {
+  if (!vertsPx.length || hull.length < 3) return false;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [vx, vy] of vertsPx) {
+    if (vx < minX) minX = vx;
+    if (vx > maxX) maxX = vx;
+    if (vy < minY) minY = vy;
+    if (vy > maxY) maxY = vy;
+  }
+  // The hull is padded past the bounds, so pad the quick reject to match.
+  let hMinX = bounds[0], hMinY = bounds[1], hMaxX = bounds[2], hMaxY = bounds[3];
+  for (const [hx, hy] of hull) {
+    if (hx < hMinX) hMinX = hx;
+    if (hx > hMaxX) hMaxX = hx;
+    if (hy < hMinY) hMinY = hy;
+    if (hy > hMaxY) hMaxY = hy;
+  }
+  if (!aabbOverlap([minX, minY, maxX, maxY], [hMinX, hMinY, hMaxX, hMaxY])) return false;
+
+  const isCount = role === "count";
+  const open = isCount || role === "linear" || role === "surface_area" || vertsPx.length < 3;
+
+  if (segments && segments.length) {
+    // A count mark is drawn as a symbol around its point, so it reaches further.
+    const reach = isCount ? Math.max(pad, 12) : pad;
+    const edges = open ? vertsPx.length - 1 : vertsPx.length;
+    for (const sg of segments) {
+      if (Math.max(sg[0], sg[2]) < minX - reach || Math.min(sg[0], sg[2]) > maxX + reach
+        || Math.max(sg[1], sg[3]) < minY - reach || Math.min(sg[1], sg[3]) > maxY + reach) continue;
+      const a: [number, number] = [sg[0], sg[1]];
+      const b: [number, number] = [sg[2], sg[3]];
+      if (!open && (pointInPolygon(a, vertsPx) || pointInPolygon(b, vertsPx))) return true;
+      for (const v of vertsPx) if (pointSegmentDistance(v, a, b) <= reach) return true;
+      for (let i = 0; i < edges; i++) {
+        const p = vertsPx[i];
+        const q = vertsPx[(i + 1) % vertsPx.length];
+        if (segmentsIntersect(p, q, a, b)) return true;
+        if (pointSegmentDistance(a, p, q) <= reach || pointSegmentDistance(b, p, q) <= reach) return true;
+      }
+    }
+    return false;
+  }
+
+  if (!open) return polygonsIntersect(vertsPx, hull);
+  if (vertsPx.some((p) => pointInPolygon(p, hull))) return true;
+  if (isCount) return false;
+  for (let i = 0; i + 1 < vertsPx.length; i++) {
+    for (let j = 0; j < hull.length; j++) {
+      if (segmentsIntersect(vertsPx[i], vertsPx[i + 1], hull[j], hull[(j + 1) % hull.length])) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Carry takeoff shapes from a base sheet forward to the incoming sheet.
  * Flags any shape whose boundary or interior crosses changed ink.
@@ -223,28 +302,15 @@ export function carryTakeoffShapes(
     const intersectedRegionIds: string[] = [];
     const intersectedRegions: Array<{ id: string; type: string; bounds: [number, number, number, number] }> = [];
 
-    if (vertsPx.length >= 3 && changedRegions.length > 0) {
-      // Shape bounding box
-      let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
-      for (const [vx, vy] of vertsPx) {
-        if (vx < sMinX) sMinX = vx;
-        if (vx > sMaxX) sMaxX = vx;
-        if (vy < sMinY) sMinY = vy;
-        if (vy > sMaxY) sMaxY = vy;
-      }
-      const shapeBox: [number, number, number, number] = [sMinX, sMinY, sMaxX, sMaxY];
-
-      for (const region of changedRegions) {
-        if (!aabbOverlap(shapeBox, region.bounds)) continue;
-        if (polygonsIntersect(vertsPx, region.hull)) {
-          touchesChange = true;
-          intersectedRegionIds.push(region.id);
-          intersectedRegions.push({
-            id: region.id,
-            type: region.type,
-            bounds: region.bounds,
-          });
-        }
+    for (const region of changedRegions) {
+      if (shapeTouchesRegion(vertsPx, shape.measure_role, region.hull, region.bounds, region.segments)) {
+        touchesChange = true;
+        intersectedRegionIds.push(region.id);
+        intersectedRegions.push({
+          id: region.id,
+          type: region.type,
+          bounds: region.bounds,
+        });
       }
     }
 

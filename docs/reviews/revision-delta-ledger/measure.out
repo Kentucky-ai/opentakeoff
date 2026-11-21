@@ -1,0 +1,29 @@
+No takeoff: 16 changed regions (1 speck ignored), 38 text changes, alignment auto_frame 0.9, 199 ms including geometry extraction
+Added detail: A-100/crg-14 added, 3122 segments, bounds 3781 2549 4594 3377
+Title block: 11/15/24 -> 07/16/2025; 11/15/24 -> 07/16/2025; added ADDENDUM #2, 07/16/25; removed DRAFT
+
+compare_sheets on 17 shapes: flags 1 slab, 4 of 16 bollards
+
+1. Base takeoff only
+  entries 18, needing review 4, by status {"not_carried":4,"outside_takeoff":14}
+  exposure: SC-1 3888.18 SF, BOLLARD 4 EA | delta: none | unattributed: none
+  A-100/crg-1 not_carried [takeoff_not_carried] before: SC-1 3888.18 SF | after: none | delta: not stated
+  A-100/crg-3 not_carried [takeoff_not_carried, text_changed] before: SC-1 3888.18 SF, BOLLARD 4 EA | after: none | delta: not stated
+  A-100/crg-4 not_carried [takeoff_not_carried] before: SC-1 3888.18 SF | after: none | delta: not stated
+  A-100/crg-10 not_carried [takeoff_not_carried] before: SC-1 3888.18 SF | after: none | delta: not stated
+
+2. After carry ([{"sheet":"mo-albany-maintenance-A-100-floor-plan-addendum-2.pdf","carried":17,"flagged":5}])
+  entries 18, needing review 4, by status {"pending":4,"outside_takeoff":14}
+  exposure: SC-1 3888.18 SF, BOLLARD 4 EA | delta: none | unattributed: none
+  A-100/crg-1 pending [recheck_takeoff] before: SC-1 3888.18 SF | after: SC-1 3888.18 SF | delta: not stated
+  A-100/crg-3 pending [recheck_takeoff, text_changed] before: SC-1 3888.18 SF, BOLLARD 4 EA | after: SC-1 3888.18 SF, BOLLARD 4 EA | delta: not stated
+  A-100/crg-4 pending [recheck_takeoff] before: SC-1 3888.18 SF | after: SC-1 3888.18 SF | delta: not stated
+  A-100/crg-10 pending [recheck_takeoff] before: SC-1 3888.18 SF | after: SC-1 3888.18 SF | delta: not stated
+
+3. After recheck (4 bollards re-placed, slab marked checked)
+  entries 18, needing review 4, by status {"agent_checked":3,"remeasured":1,"outside_takeoff":14}
+  exposure: none | delta: none | unattributed: none
+  A-100/crg-1 agent_checked [agent_checked_unapproved] before: SC-1 3888.18 SF | after: SC-1 3888.18 SF | delta: none
+  A-100/crg-3 remeasured [revised_takeoff_unapproved, text_changed] before: SC-1 3888.18 SF, BOLLARD 4 EA | after: SC-1 3888.18 SF, BOLLARD 4 EA | delta: none
+  A-100/crg-4 agent_checked [agent_checked_unapproved] before: SC-1 3888.18 SF | after: SC-1 3888.18 SF | delta: none
+  A-100/crg-10 agent_checked [agent_checked_unapproved] before: SC-1 3888.18 SF | after: SC-1 3888.18 SF | delta: none

@@ -23,7 +23,9 @@ import {
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import { diffVectorSegments, type Segment } from "../../web/src/lib/revisionDiff.ts";
 import { autoAlignSheets, type AlignmentResult } from "../../web/src/lib/sheetAlign.ts";
-import { carryTakeoffShapes } from "../../web/src/lib/slipsheet.ts";
+import { carryTakeoffShapes, matchSheetSets, shapeTouchesRegion } from "../../web/src/lib/slipsheet.ts";
+import { diffSheetText } from "../../web/src/lib/textDiff.ts";
+import { buildRevisionLedger, revisionLedgerCsv, type LedgerPair } from "../../web/src/lib/revisionLedger.ts";
 import { buildSheetDxf, type DxfBuild } from "../../web/src/lib/dxf.ts";
 import {
   extractVectorGeometry, buildMask, traceRegion, snapVertices, ringArea,
@@ -1754,6 +1756,143 @@ export class Session {
         added_segments: diff.stats.addedCount,
       },
     };
+  }
+
+  /** One side of revision_delta: a loaded document's file name (every sheet
+   * in it) or a single sheet. */
+  private revisionSide(name: string): { sheets: SheetState[]; whole: boolean } {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    if (this.docs.has(name)) {
+      return { sheets: this.sheetList().filter((s) => !this.stitches.has(s.key) && this.fileFor(s.key) === name), whole: true };
+    }
+    return { sheets: [this.sheet(name)], whole: false };
+  }
+
+  /** revision_delta: the two issued sets as one ledger — every changed region
+   * tied to the takeoff it touches, before and after, with what still needs a
+   * person. Read-only unless carry is set; a carry is one undoable step. */
+  async revisionDelta(opts: { base: string; revised: string; pairs?: { base: string; revised: string }[]; carry?: boolean }) {
+    if (opts.base === opts.revised) throw new UserError(`base and revised are both "${opts.base}" — a revision delta needs two issues: load the second with load_plan merge and pass its name.`);
+    const A = this.revisionSide(opts.base);
+    const B = this.revisionSide(opts.revised);
+    const forced: [SheetState, SheetState][] = (opts.pairs || []).map((p) => [this.sheet(p.base), this.sheet(p.revised)]);
+    if (!A.whole && !B.whole) forced.push([A.sheets[0], B.sheets[0]]);
+    for (const [a, b] of forced) {
+      if (a === b) throw new UserError(`"${a.key}" was given as both the base and the revised sheet — a revision delta needs two issues of the sheet.`);
+    }
+    const forcedA = new Set(forced.map(([a]) => a.key));
+    const forcedB = new Set(forced.map(([, b]) => b.key));
+    const entry = (s: SheetState) => ({ key: s.key, file: this.fileFor(s.key), page: s.pageNum, sheetNumber: s.sheetNumber });
+    const match = A.whole && B.whole
+      ? matchSheetSets(A.sheets.filter((s) => !forcedA.has(s.key)).map(entry), B.sheets.filter((s) => !forcedB.has(s.key)).map(entry))
+      : { matched: [], unmatchedBase: [], unmatchedIncoming: [], ambiguous: [] };
+
+    const pairSheets: { number: string; a: SheetState; b: SheetState }[] = [
+      ...forced.map(([a, b]) => ({ number: a.sheetNumber || b.sheetNumber || a.key, a, b })),
+      ...match.matched.map((m) => ({ number: m.sheetNumber, a: this.sheet(m.baseSheet.key), b: this.sheet(m.incomingSheet.key) })),
+    ];
+
+    // Never guessed: a sheet whose number was not read, or a number that
+    // appears more than once on a side, is listed and left out of the ledger.
+    const ambiguousKeys = new Set(match.ambiguous.flatMap((x) => [...x.base, ...x.incoming].map((s) => s.key)));
+    const unpaired = [
+      ...match.ambiguous.map((x) => ({ sheet_number: x.sheetNumber, base: x.base.map((s) => s.key), revised: x.incoming.map((s) => s.key), reason: "sheet number appears more than once — pass pairs to say which goes with which" })),
+      ...match.unmatchedBase.filter((s) => !s.sheetNumber).map((s) => ({ sheet_number: null, base: [s.key], revised: [], reason: "no title-block sheet number read on the base sheet — pass pairs to compare it" })),
+      ...match.unmatchedIncoming.filter((s) => !s.sheetNumber).map((s) => ({ sheet_number: null, base: [], revised: [s.key], reason: "no title-block sheet number read on the revised sheet — pass pairs to compare it" })),
+    ];
+    const removed = match.unmatchedBase.filter((s) => s.sheetNumber && !ambiguousKeys.has(s.key)).map((s) => ({ key: s.key, sheet_number: s.sheetNumber ?? null }));
+    const added = match.unmatchedIncoming.filter((s) => s.sheetNumber && !ambiguousKeys.has(s.key)).map((s) => ({ key: s.key, sheet_number: s.sheetNumber ?? null }));
+
+    const segmentsOf = ({ segs }: VectorGeometry): Segment[] => {
+      const out: Segment[] = [];
+      for (let i = 0; i < segs.length; i += 4) out.push([segs[i], segs[i + 1], segs[i + 2], segs[i + 3]]);
+      return out;
+    };
+
+    const pairs: LedgerPair[] = [];
+    const carried: { sheet: string; carried: number; flagged: number }[] = [];
+    const carrySkipped: { sheet: string; reason: string }[] = [];
+    const minted: string[] = [];
+    for (const { number, a, b } of pairSheets) {
+      const segsA = segmentsOf(await this.ensureGeometry(a));
+      const segsB = segmentsOf(await this.ensureGeometry(b));
+      const comparable = segsA.length > 0 && segsB.length > 0;
+      const align = comparable ? autoAlignSheets(segsA, segsB, a.widthPx, a.heightPx) : { dx: 0, dy: 0, confidence: 0, method: "identity" as const };
+      const diff = comparable ? diffVectorSegments(segsA, segsB, align, 1.0) : null;
+      const regions = diff ? diff.changedRegions : [];
+      const text = diffSheetText(a.text, b.text, align);
+
+      if (opts.carry) {
+        const mine = this.shapes.filter((x) => x.sheet_id === a.key);
+        if (!mine.length) { /* nothing to carry */ }
+        else if (this.shapes.some((x) => x.sheet_id === b.key)) carrySkipped.push({ sheet: b.key, reason: "the revised sheet already carries takeoff — nothing was copied over it" });
+        else if (!comparable) carrySkipped.push({ sheet: b.key, reason: "no vector linework to compare, so a carried shape could not be checked against the change" });
+        else if (a.upp == null || b.upp == null || Math.abs(a.upp - b.upp) > a.upp * 0.001) carrySkipped.push({ sheet: b.key, reason: `scale differs or is unset (${a.key}: ${a.upp ?? "unset"}, ${b.key}: ${b.upp ?? "unset"} ft/px) — set_scale on the revised sheet first` });
+        else {
+          const idMap = new Map(mine.map((x) => [x.id, uid("shp")] as const));
+          let flagged = 0;
+          for (const src of mine) {
+            const pxA = src.verts_norm.map(([nx, ny]) => [nx * a.widthPx, ny * a.heightPx] as [number, number]);
+            const hit = regions.filter((r) => shapeTouchesRegion(pxA, src.measure_role, r.hull, r.bounds, r.segments)).map((r) => r.id);
+            if (hit.length) flagged++;
+            const copy: Shape = {
+              ...structuredClone(src),
+              id: idMap.get(src.id)!,
+              sheet_id: b.key,
+              verts_norm: pxA.map(([x, y]) => [(x - align.dx) / b.widthPx, (y - align.dy) / b.heightPx]),
+            };
+            const o = { ...(copy.origin || { method: "manual" }) } as Record<string, unknown>;
+            o.carried_from = src.id;
+            if (hit.length) Object.assign(o, { reviewed: false, flagged_for_revision: true, review_reason: "Check after revision", intersected_change_regions: hit });
+            copy.origin = o as unknown as Shape["origin"];
+            const linked = copy as Shape & { cuts_shape_id?: string };
+            if (linked.cuts_shape_id && idMap.has(linked.cuts_shape_id)) linked.cuts_shape_id = idMap.get(linked.cuts_shape_id);
+            this.shapes.push(copy);
+            minted.push(copy.id);
+          }
+          carried.push({ sheet: b.key, carried: mine.length, flagged });
+        }
+      }
+
+      pairs.push({
+        sheet_number: number,
+        base: { key: a.key, width: a.widthPx, height: a.heightPx, upp: a.upp },
+        revised: { key: b.key, width: b.widthPx, height: b.heightPx, upp: b.upp },
+        alignment: { dx: align.dx, dy: align.dy, confidence: align.confidence, method: align.method },
+        diff_method: "vector",
+        comparable,
+        regions,
+        text_changes: text.changes,
+      });
+    }
+    if (minted.length) this.journalCommit("revision_delta", minted);
+
+    const ledger = buildRevisionLedger({
+      pairs, added_sheets: added, removed_sheets: removed, unpaired,
+      conditions: this.conditions, shapes: this.shapes,
+      approved_shape_ids: this.approvals.filter((x) => x.actor === "estimator" && x.shape_id).map((x) => x.shape_id!),
+      agent_checked_shape_ids: this.approvals.filter((x) => x.actor === "agent" && x.shape_id).map((x) => x.shape_id!),
+    });
+    const open = (ledger.counts.by_status.pending || 0) + (ledger.counts.by_status.not_carried || 0);
+    const note = [
+      `${pairs.length} sheet pair${pairs.length === 1 ? "" : "s"} compared, ${ledger.counts.entries} change${ledger.counts.entries === 1 ? "" : "s"}, ${ledger.counts.needs_review} needing review.`,
+      open ? `${open} change${open === 1 ? "" : "s"} still carry exposure, not a delta: re-measure or check the touched shapes on the revised sheet, then call again.` : "",
+      carried.length ? `Carried ${carried.reduce((n, c) => n + c.carried, 0)} shapes forward (${carried.reduce((n, c) => n + c.flagged, 0)} flagged "Check after revision") — one undo_last step.` : "",
+      unpaired.length ? `${unpaired.length} sheet group${unpaired.length === 1 ? "" : "s"} left unpaired rather than guessed.` : "",
+      "view_sheet a tight crop of an entry's bounds_base on the base sheet and bounds_revised on the revised sheet to see the change itself.",
+    ].filter(Boolean).join(" ");
+    return {
+      ...ledger,
+      base: opts.base,
+      revised: opts.revised,
+      ...(opts.carry ? { carry: { carried, skipped: carrySkipped } } : {}),
+      note,
+    };
+  }
+
+  /** The ledger as CSV — one row per entry per condition. */
+  revisionDeltaCsv(ledger: Parameters<typeof revisionLedgerCsv>[0]): string {
+    return revisionLedgerCsv(ledger);
   }
 
   private async ensureGeometry(s: SheetState): Promise<VectorGeometry> {

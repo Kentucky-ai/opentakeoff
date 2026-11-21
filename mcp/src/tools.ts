@@ -30,6 +30,7 @@ import {
   rotatePageOutput, reorderPagesOutput, extractPagesOutput, mergeDocumentsOutput,
   stitchSheetsOutput, alignStitchOutput, listStitchesOutput,
   compareSheetsOutput,
+  revisionDeltaOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
@@ -469,6 +470,30 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     outputSchema: compareSheetsOutput,
   }, run("compare_sheets", (a) => session.compareSheets(a.sheet_a, a.sheet_b, a.alignment)));
+
+  server.registerTool("revision_delta", {
+    description: `The revision delta ledger: two issued drawing sets in, one record per change out, each tying the SOURCE REGION on the sheet to the takeoff quantity it moves. Load both issues (load_plan, then load_plan merge for the second), then pass each file name — sheets pair 1-to-1 by title-block sheet number and a sheet that cannot be paired without guessing is listed in unpaired, never matched (pass pairs to say which goes with which; two single sheet keys compare directly). Per pair it aligns the linework, diffs the segments AND the text layer (a finish tag or dimension that was retyped moves no linework — it shows as a text change with before and after), and for every changed region reports the takeoff shapes it touches on each side with their quantities. status says where each change stands: outside_takeoff (nothing measured there), not_carried (base takeoff touched, revised sheet has none yet), pending (carried forward unchanged, nobody has checked it), agent_checked (you marked it with mark_verdict), confirmed_unchanged (the estimator approved it), remeasured, added, removed. A DELTA IS ONLY STATED ONCE THE REVISED SIDE IS MEASURED — until then the quantity is exposure, what is at stake, and delta is null. Each sheet reconciles: delta = attributed + unattributed, and a quantity that moved where the drawing did not change is named with the shapes responsible. review lists why a person must look (recheck_takeoff, confirm_scope_removed, dimension_text_changed, text_changed, alignment_low_confidence, scale_changed, page_size_changed, revised_takeoff_unapproved, quantity_changed_outside_drawing_change ...). carry: true copies the base takeoff onto each paired revised sheet that has none (same scale required), flags every shape touching changed ink "Check after revision", and is one undo_last step. The working loop: revision_delta {carry: true} → for each pending entry view_sheet both bounds, then edit_shape what moved or mark_verdict what did not → revision_delta again for the stated deltas → raise create_rfi for what the drawings leave open. Read-only without carry. ${COORDS}`,
+    inputSchema: {
+      base: z.string().describe("The earlier issue: a loaded file name (every sheet in it) or one sheet key"),
+      revised: z.string().describe("The later issue: a loaded file name or one sheet key"),
+      pairs: z.array(z.object({ base: z.string(), revised: z.string() })).optional().describe("Sheet pairs to compare regardless of sheet number — for sheets whose number was not read or is repeated"),
+      carry: z.boolean().optional().describe("Copy base takeoff onto paired revised sheets that have none, flagging shapes that touch changed ink"),
+      path: z.string().optional().describe("Write the ledger here: .csv writes one row per entry per condition, anything else writes the JSON document"),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
+    },
+    outputSchema: revisionDeltaOutput,
+  }, run("revision_delta", async ({ base, revised, pairs, carry, path: outPath, overwrite }) => {
+    const doc = await session.revisionDelta({ base, revised, pairs, carry });
+    if (!outPath) return doc;
+    const { writeFile, readFile } = await import("node:fs/promises");
+    const csv = /\.csv$/i.test(outPath);
+    const body = csv ? session.revisionDeltaCsv(doc) : JSON.stringify(doc);
+    // A previous ledger CSV of ours is recognizable by its header row.
+    const ours = csv && !overwrite ? await readFile(outPath, "utf8").then((t) => t.startsWith(body.split("\n")[0]), () => false) : false;
+    if (!ours) await assertWritable(outPath, "json", overwrite);
+    await writeFile(outPath, body);
+    return { ...doc, files: [outPath] };
+  }));
 
   server.registerTool("estimate_summary", {
     description: `The priced estimate — the canvas Estimate panel as data: one line per quantity kind each measured condition carries — its area, LF and EA are separate lines (unit, order and measured quantities, rates, material / labor / supply cost, main marks each condition's first line; status priced | partial | unpriced with what is missing, or optional — a bordered linear run's derived line nobody priced, carried in its main line and never missing; set_pricing prices any line: the main one by default, the others with line "LF" / "EA" / "SF"), then material, labor, sales tax, cost, overhead, profit and the base bid. complete is false while anything is unentered: the total then counts the missing pieces at $0 and is "priced so far", and unpriced lists every hole — report it to the estimator, never fill it. Read-only.`,
