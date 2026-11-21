@@ -412,6 +412,120 @@ export function ceilingQuantities(inp: CeilingInput) {
   };
 }
 
+// ── Masonry ────────────────────────────────────────────────────────────────
+//
+// Unit masonry from the net wall face. A unit's face is its nominal size, the
+// joint included (16 × 8 in for a standard block): that face area sets units
+// per SF, shown in the reply rather than hidden. Mortar, grout and the
+// reinforcing each come from a value the drawings or the product data state:
+//   units per SF = 144 / (length_in × height_in)        16 × 8 → 1.125
+//   mortar CF    = units / 100 × stated CF per 100 units
+//   joint reinforcement LF = wall length × ceil(height × 12 / spacing)
+//   vertical bar LF        = wall face SF / (spacing_in / 12)
+//   grout CF     = wall face SF × (12 / cell spacing_in) × cell area_in² / 144
+// Bars and grout are average-density counts over the face: a layout that adds
+// a cell at each jamb and corner orders more.
+
+/** A masonry unit's face, "16x8" in inches as the plans print it; metric "400x200" in mm. Null if unreadable. */
+export function parseMasonryUnit(text: string, metric = false): { length_in: number; height_in: number } | null {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*(?:"|in|mm)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:"|in|mm)?\s*$/i.exec(String(text));
+  if (!m) return null;
+  const toIn = metric ? 1 / 25.4 : 1;
+  const a = Number(m[1]) * toIn, b = Number(m[2]) * toIn;
+  if (!(a > 0 && b > 0)) return null;
+  return { length_in: Math.max(a, b), height_in: Math.min(a, b) };
+}
+
+export interface MasonryInput {
+  /** wall face before openings, SF */
+  gross_sf: number;
+  /** openings cut out of it, SF */
+  openings_sf: number;
+  /** unit face, nominal including the joint, inches (length ≥ height) */
+  unit_length_in: number;
+  unit_height_in: number;
+  /** unit waste; absent = 5 % suite allowance */
+  waste_pct?: number;
+  /** mortar, cubic feet per 100 units (spec or product data); absent = not figured */
+  mortar_cf_per_100_units?: number;
+  /** the wall runs, for what follows length and height: each run's length (LF) and height (ft) */
+  runs?: { length_lf: number; height_ft: number }[];
+  /** joint reinforcement every this many inches up the wall; absent = not figured */
+  joint_reinf_spacing_in?: number;
+  /** vertical bars at this spacing along the wall; absent = not figured */
+  vertical_bar_spacing_in?: number;
+  /** grouted cells at this spacing and each cell's net area, in²; absent = not figured */
+  grout?: { spacing_in: number; cell_area_in2: number };
+  /** openings' widths, ft, and the bearing each side of a lintel, inches */
+  opening_widths_ft?: number[];
+  lintel_bearing_in?: number;
+}
+
+export function masonryQuantities(inp: MasonryInput) {
+  const l = inp.unit_length_in, h = inp.unit_height_in;
+  if (!(l > 0 && h > 0)) throw new Error("the unit face must have a positive length and height");
+  const gross = Math.max(0, inp.gross_sf);
+  const openings = Math.max(0, Math.min(gross, inp.openings_sf));
+  const net = gross - openings;
+  const perSf = 144 / (l * h);
+  const units = ceil(net * perSf);
+  const waste = inp.waste_pct ?? 5;
+  const runs = inp.runs ?? [];
+  const notFigured: string[] = [];
+  const out: Record<string, unknown> = {
+    gross_sf: r2(gross), openings_sf: r2(openings), net_sf: r2(net),
+    unit_length_in: r3(l), unit_height_in: r3(h),
+    units_per_sf: r4(perSf),
+    unit_count: units,
+    waste_pct: waste,
+    waste_source: inp.waste_pct === undefined ? "suite allowance — override with your standard" : "stated",
+    unit_count_order: ceil(net * perSf * (1 + waste / 100)),
+  };
+  if (inp.mortar_cf_per_100_units !== undefined) {
+    out.mortar_cf = r2(units / 100 * inp.mortar_cf_per_100_units);
+    out.mortar_source = `stated ${inp.mortar_cf_per_100_units} CF per 100 units, on the units before waste`;
+  } else notFigured.push("mortar (pass mortar_cf_per_100_units from the spec or the product data)");
+  const length = runs.reduce((n, r) => n + Math.max(0, r.length_lf), 0);
+  if (inp.joint_reinf_spacing_in !== undefined) {
+    const s = inp.joint_reinf_spacing_in;
+    if (!(s > 0)) throw new Error("joint_reinf_spacing_in must be positive");
+    const lines = runs.reduce((n, r) => n + Math.max(0, r.length_lf) * ceil(r.height_ft * 12 / s), 0);
+    out.joint_reinforcement_lf = r2(lines);
+    out.joint_reinforcement_spacing_in = s;
+  } else notFigured.push("joint reinforcement (pass joint_reinf_spacing_in from the structural notes)");
+  if (inp.vertical_bar_spacing_in !== undefined) {
+    const s = inp.vertical_bar_spacing_in;
+    if (!(s > 0)) throw new Error("vertical_bar_spacing_in must be positive");
+    out.vertical_bar_lf = r2(runs.reduce((n, r) => n + Math.max(0, r.length_lf) * r.height_ft, 0) / (s / 12));
+    out.vertical_bar_spacing_in = s;
+  } else notFigured.push("vertical bars (pass vertical_bar_spacing_in from the structural notes)");
+  if (inp.grout) {
+    const { spacing_in: s, cell_area_in2: a } = inp.grout;
+    if (!(s > 0) || !(a > 0)) throw new Error("grout needs a positive spacing_in and cell_area_in2");
+    const cells = runs.reduce((n, r) => n + Math.max(0, r.length_lf) * r.height_ft, 0) * (12 / s);
+    out.grout_cf = r2(cells * a / 144);
+    out.grout_spacing_in = s;
+  } else notFigured.push("grout (pass grout {spacing_in, cell_area_in2} from the structural notes and the unit data)");
+  const widths = inp.opening_widths_ft ?? [];
+  if (widths.length) {
+    if (inp.lintel_bearing_in !== undefined) {
+      const bearing = inp.lintel_bearing_in / 12;
+      const lens = widths.map((w) => r2(w + 2 * bearing));
+      out.lintels = { count: lens.length, lengths_ft: lens, total_lf: r2(lens.reduce((n, x) => n + x, 0)), bearing_in: inp.lintel_bearing_in };
+    } else notFigured.push("lintels (pass lintel_bearing_in, the bearing each side of an opening)");
+  }
+  if (length > 0 || runs.length) out.wall_length_lf = r2(length);
+  notFigured.push("cut units at corners, jambs and the top course; reinforcement and grout at jambs, corners and bond beams");
+  out.not_figured = notFigured;
+  return out as {
+    gross_sf: number; openings_sf: number; net_sf: number; unit_length_in: number; unit_height_in: number; units_per_sf: number;
+    unit_count: number; waste_pct: number; waste_source: string; unit_count_order: number;
+    mortar_cf?: number; mortar_source?: string; joint_reinforcement_lf?: number; joint_reinforcement_spacing_in?: number;
+    vertical_bar_lf?: number; vertical_bar_spacing_in?: number; grout_cf?: number; grout_spacing_in?: number;
+    lintels?: { count: number; lengths_ft: number[]; total_lf: number; bearing_in: number }; wall_length_lf?: number; not_figured: string[];
+  };
+}
+
 // ── Glazing ────────────────────────────────────────────────────────────────
 
 export interface GlazingOpeningInput {

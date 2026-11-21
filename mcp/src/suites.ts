@@ -25,7 +25,7 @@ import {
 import { M_PER_FT, MM_PER_IN, SUITE_UNIT_PAIRS, suiteMetricName, suiteMetricReply } from "../../web/src/lib/units.ts";
 import {
   parsePitch, roofQuantities, slopeFactor, hipValleyFactor, sidingQuantities, bottomEdges, starterRuns, soffitQuantities,
-  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringPerimeter, type Pt,
+  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, ringPerimeter, type Pt,
 } from "../../web/src/lib/suiteMath.ts";
 
 export { SUITE_TOOL_NAMES };
@@ -34,7 +34,7 @@ const SUITE_IDS = TRADE_SUITES.map((s) => s.id) as [string, ...string[]];
 
 /** One line for the initialize instructions. */
 export const SUITE_INSTRUCTIONS =
-  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, acoustical ceiling, plumbing and electrical tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
+  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, masonry, acoustical ceiling, plumbing and electrical tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
 
 const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
   async (args: any): Promise<ToolReply> => {
@@ -633,6 +633,113 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     }
     return { ...q, module: a.module, wall_angle_condition: waTag, committed, undo_steps: steps,
       next: `view_sheet overlay:true: the wall angle runs (${waTag}) follow every traced edge; an edge against another ceiling is not wall angle — delete_shape that run and measure_line the wall edges. export_report lists the grid rows. A row an earlier run wrote and this one did not (a short-tee row after switching to a 2x4 module) stays until edit_materials removes it.` };
+  }));
+
+  // ── masonry ───────────────────────────────────────────────────────────────
+  const masonryInput = z.looseObject({
+    walls: z.string().default("M-WALL-1").describe("The wall condition, one wall type per call (veneer and structural walls take separate tags)"),
+    openings: z.string().default("M-OPEN").describe("Openings in those walls, traced as areas"),
+    unit: z.string().optional().describe('Unit face, nominal including the joint, as the plans print it: "16x8" (inches); with units metric "400x200" (mm). Required'),
+    height_ft: z.number().positive().optional().describe("Wall height, feet, for a wall traced as a polygon on an elevation (a surface run carries its own); needed by anything that follows height. Or height_m"),
+    height_m: z.number().positive().optional().describe("Wall height, m (units metric)"),
+    waste_pct: z.number().min(0).max(50).optional().describe("Unit waste; absent = 5 % suite allowance, reported as an allowance"),
+    mortar_cf_per_100_units: z.number().positive().optional().describe("Mortar, cubic feet per 100 units (spec or product data); absent = mortar not figured. Imperial in either units mode"),
+    joint_reinf_spacing_in: z.number().positive().optional().describe("Joint reinforcement every this many inches up the wall (structural notes); absent = not figured, or joint_reinf_spacing_mm"),
+    joint_reinf_spacing_mm: z.number().positive().optional().describe("Joint reinforcement spacing, mm (units metric)"),
+    vertical_bar_spacing_in: z.number().positive().optional().describe("Vertical bars at this spacing along the wall, inches; absent = not figured, or vertical_bar_spacing_mm"),
+    vertical_bar_spacing_mm: z.number().positive().optional().describe("Vertical bar spacing, mm (units metric)"),
+    grout: z.looseObject({
+      spacing_in: z.number().positive().optional().describe("Grouted cell spacing, inches"), spacing_mm: z.number().positive().optional(),
+      cell_area_in2: z.number().positive().optional().describe("Net area of one grouted cell, in² (unit data)"), cell_area_mm2: z.number().positive().optional(),
+    }).optional().describe("Grouted cells: spacing along the wall and each cell's net area"),
+    lintel_bearing_in: z.number().min(0).optional().describe("Lintel bearing each side of an opening, inches; absent = lintels not figured, or lintel_bearing_mm"),
+    lintel_bearing_mm: z.number().min(0).optional().describe("Lintel bearing each side, mm (units metric)"),
+    lintels: z.array(z.string()).default([]).describe("Lintel count conditions (M-LINTEL-<type>) to check against the openings: the counted total is reported beside the opening count"),
+    bond_beams: z.string().default("M-BB").describe("Bond beam condition, reported as traced"),
+    control_joints: z.string().default("M-CJ").describe("Control joint condition, reported as traced"),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
+  reg("masonry_takeoff", {
+    description: "Masonry suite. From a wall condition (measure_surface at the wall height, or a face traced on an elevation), the openings traced under M-OPEN and the unit face from the plans: net wall SF, units per SF, unit count (before and with waste), mortar from a stated rate per 100 units, joint reinforcement LF at a stated spacing, vertical bar LF, grout from a stated cell spacing and cell area, lintel count and length (opening width plus the bearing each side), and the bond beam and control joint LF as traced. A missing unit refuses naming the argument; a value left out is listed under not_figured. apply (default true) adds a deduct on the wall condition for each opening and writes the figures as material rows on it (updating rows it wrote before). Re-running adds nothing twice.",
+    inputSchema: masonryInput,
+    outputSchema: { ...deriveOutput, net_sf: z.number().optional(), net_m2: z.number().optional(), unit_count: z.number().optional(), not_figured: z.array(z.string()) },
+  }, suiteRun("masonry_takeoff", masonryInput, (a, units) => {
+    const metric = units === "metric";
+    if (!a.unit) throw new UserError(`masonry_takeoff needs the unit face from the plans, nominal including the joint: ${metric ? '"400x200" (mm)' : '"16x8" (inches)'}.`);
+    const face = parseMasonryUnit(a.unit, metric);
+    if (!face) throw new UserError(`Cannot read unit ${JSON.stringify(a.unit)} — pass ${metric ? '"400x200" (mm)' : '"16x8" (inches)'} as the plans print the nominal face.`);
+    conditionOrError(a.walls, "wall");
+    const wallShapes = session.suiteShapes(a.walls, ["surface_area", "floor_area"]);
+    if (!wallShapes.length) throw new UserError(`${a.walls} has no wall — measure_surface along each wall at its height, or measure_polygon the face on an elevation.`);
+    const heightFt = unitArg(a, "height_ft", units);
+    const spacing = unitArg(a, "joint_reinf_spacing_in", units);
+    const barSpacing = unitArg(a, "vertical_bar_spacing_in", units);
+    const groutIn = a.grout && { spacing_in: unitArg(a.grout, "spacing_in", units, "grout."), cell_area_in2: unitArg(a.grout, "cell_area_in2", units, "grout.") };
+    if (groutIn && (groutIn.spacing_in === undefined || groutIn.cell_area_in2 === undefined)) {
+      throw new UserError(`grout needs both ${metric ? "spacing_mm and cell_area_mm2" : "spacing_in and cell_area_in2"}.`);
+    }
+    const bearing = unitArg(a, "lintel_bearing_in", units);
+    const mult = session.suiteTotals(a.walls)!.multiplier || 1;
+    // what follows the wall's length and height: a surface run carries both, a polygon needs height_ft
+    const follows = spacing !== undefined || barSpacing !== undefined || groutIn !== undefined;
+    const runs: { length_lf: number; height_ft: number }[] = [];
+    if (follows) for (const w of wallShapes) {
+      if (w.shape.measure_role === "surface_area") {
+        runs.push({ length_lf: (w.shape.computed.perimeter_lf ?? 0) * mult, height_ft: w.shape.height_ft ?? 0 });
+        continue;
+      }
+      if (heightFt === undefined) throw new UserError(`${a.walls} holds a face traced as a polygon: pass ${metric ? "height_m" : "height_ft"}, the wall height from the section, for the reinforcing and grout that follow it.`);
+      runs.push({ length_lf: ((w.shape.computed.area_sf ?? 0) / heightFt) * mult, height_ft: heightFt });
+    }
+    const separate = session.suiteShapes(a.openings, ["floor_area"]);
+    const done = derivedFrom("masonry_takeoff", [a.walls]);
+    const pending = separate.filter((o) => !done.has(`${a.walls}|${o.shape.id}`));
+    const areaOf = (list: typeof separate) => list.reduce((n, o) => n + (o.shape.computed.area_sf ?? 0), 0);
+    const tot = session.suiteTotals(a.walls)!;
+    // the wall total already nets the openings an earlier run deducted; add them back for the gross
+    const doneSf = (areaOf(separate) - areaOf(pending)) * mult;
+    let q: ReturnType<typeof masonryQuantities>;
+    try {
+      q = masonryQuantities({
+        gross_sf: tot.floor_sf + tot.wall_sf + doneSf, openings_sf: areaOf(separate) * mult,
+        unit_length_in: face.length_in, unit_height_in: face.height_in, waste_pct: a.waste_pct,
+        mortar_cf_per_100_units: a.mortar_cf_per_100_units, runs, joint_reinf_spacing_in: spacing, vertical_bar_spacing_in: barSpacing,
+        grout: groutIn && { spacing_in: groutIn.spacing_in!, cell_area_in2: groutIn.cell_area_in2! },
+        opening_widths_ft: separate.map((o) => { const xs = o.ft.map((p) => p[0]); return Math.max(...xs) - Math.min(...xs); }),
+        lintel_bearing_in: bearing,
+      });
+    } catch (e) { throw new UserError(`${(e as Error).message}.`); }
+    if (!(q.net_sf > 0)) throw new UserError(`${a.walls} has no wall face left after its openings — check the openings sit inside the wall.`);
+    const lf = (tag: string) => session.suiteTotals(tag)?.lf ?? 0;
+    for (const t of a.lintels) conditionOrError(t, "lintel");
+    const lintelsCounted = a.lintels.length ? a.lintels.reduce((n: number, t: string) => n + (session.suiteTotals(t)?.ea ?? 0), 0) : undefined;
+    const lintelCheck = lintelsCounted === undefined ? {} : {
+      lintels_counted: lintelsCounted, openings_traced: separate.length,
+      ...(lintelsCounted !== separate.length ? { needs_you: [`${lintelsCounted} lintels counted against ${separate.length} openings traced: settle the difference (a lintel over a pair of openings, an opening not traced) before the counts go out.`] } : {}),
+    };
+    let committed = 0, steps = 0;
+    if (a.apply) {
+      const items: Parameters<Session["suiteCommit"]>[1] = pending.map((o) => ({
+        sheet_id: o.shape.sheet_id, tag: a.walls, role: "deduct" as const, px: o.px,
+        computed: { area_sf: o.shape.computed.area_sf ?? 0, perimeter_lf: o.shape.computed.perimeter_lf ?? 0 }, derived: { from_shape_id: o.shape.id, opening: true },
+      }));
+      if (items.length) { session.suiteCommit("masonry_takeoff", items); committed = items.length; steps++; }
+      const net = q.net_sf;
+      const row = (name: string, qty: number | undefined, unit: string, round: boolean, note: string): MatRow[] =>
+        qty && qty > 0 ? [{ name, basis: "area", per: r2c(net / qty), unit, round, note: `${note} (masonry_takeoff)` }] : [];
+      const rows: MatRow[] = [
+        // the order count's own arithmetic (face SF per unit, waste folded in), unrounded, so the report's round-up agrees with unit_count_order
+        { name: "Masonry units", basis: "area", per: (face.length_in * face.height_in / 144) / (1 + q.waste_pct / 100), unit: "EA", round: true, note: `${a.unit} face, ${q.units_per_sf} per SF, ${q.waste_pct}% waste (masonry_takeoff)` },
+        ...row("Mortar", q.mortar_cf, "CF", false, `${a.mortar_cf_per_100_units} CF per 100 units`),
+        ...row("Joint reinforcement", q.joint_reinforcement_lf, "LF", false, `every ${q.joint_reinforcement_spacing_in} in up the wall`),
+        ...row("Vertical bars", q.vertical_bar_lf, "LF", false, `${q.vertical_bar_spacing_in} in on center`),
+        ...row("Grout", q.grout_cf, "CF", false, `cells ${q.grout_spacing_in} in on center`),
+      ];
+      if (rows.length) steps += upsertRows(session, a.walls, rows);
+    }
+    return { ...q, ...lintelCheck, wall_condition: a.walls, bond_beam_lf: r2(lf(a.bond_beams)), control_joint_lf: r2(lf(a.control_joints)), committed, undo_steps: steps,
+      next: "view_sheet overlay:true to check the opening deducts. export_report lists the rows on the wall condition. Lintels, bond beams and control joints are reported, not drawn. A row an earlier run wrote and this one did not stays until edit_materials removes it." };
   }));
 
   // hidden until opened, unless pre-opened

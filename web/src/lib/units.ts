@@ -24,6 +24,7 @@ export const SUITE_UNIT_PAIRS: readonly { imperial: string; metric: string; fact
   { imperial: "_lf", metric: "_m", factor: M_PER_FT },
   { imperial: "_ft", metric: "_m", factor: M_PER_FT },
   { imperial: "_in", metric: "_mm", factor: MM_PER_IN },
+  { imperial: "_cf", metric: "_m3", factor: M3_PER_CF },
 ];
 /** Bare keys that name a quantity: a pipe run's `lf`, an opening's `sf`. */
 const SUITE_BARE_KEYS: Readonly<Record<string, { metric: string; factor: number }>> = {
