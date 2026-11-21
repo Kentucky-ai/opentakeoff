@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-11-20 — Masonry suite (MCP 0.9.114)
+## 2026-11-20 — Masonry suite (MCP 0.9.117)
 
 - **`masonry_takeoff`, Division 04 (#612).** `open_suite {suite: "masonry"}` or `{division: "04"}` opens it. Trace under `M-WALL-<type>` (`measure_surface` at the wall height, or a face on an elevation), `M-OPEN` (the openings in it), `M-LINTEL-<type>`, `M-BB` (bond beams) and `M-CJ` (control joints), then call `masonry_takeoff {walls, unit}`. Veneer and structural walls take separate tags and separate calls.
 - **What it figures.**
@@ -123,6 +123,9 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 
 ## Unreleased
+
+- **Ceiling wall angle follows a reset to one floor.** Re-run `ceiling_takeoff` after changing the ceiling condition from repeated floors back to one. The existing wall-angle runs report the single-floor length without adding a second ring.
+- **MCP sheet comparison reads every vector segment.** `compare_sheets` uses the extracted endpoints from both pages and returns exact unchanged counts when a sheet is compared with itself at zero offset.
 
 - **Russian deliverables preserve customer text.** Marked-set PDFs embed Cyrillic fonts and paginate large legends instead of dropping rows. Proposal headers fit long Russian company names, page numbers are localized, and project/company/client text is preserved in proposals, estimates and interface headings. Annotation text stays literal on the canvas. Report filenames retain Cyrillic. Regression tests cover rotated pages, RFI text, 70-condition legends, multi-page proposals and names matching UI commands.
 

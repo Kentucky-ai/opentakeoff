@@ -613,8 +613,14 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
         items.push({ sheet_id: s.shape.sheet_id, tag: waTag, role: "linear", px: closed ? px : [...px, px[0]], computed: { area_sf: 0, perimeter_lf: r2(perimeterOf(s)) }, derived: { from_shape_id: s.shape.id } });
       }
       if (items.length) { session.suiteCommit("ceiling_takeoff", items); committed = items.length; steps++; }
-      // N identical floors on the ceiling condition are N runs of wall angle
-      if (mult !== 1 && session.hasCondition(waTag)) { session.editCondition(waTag, { multiplier: mult }); steps++; }
+      // A rerun synchronizes existing derived runs, including a reset to one floor.
+      // On the first run at one floor, keep the setting on a pre-existing target.
+      const reusingWallAngle = items.length < areas.length;
+      const wallAngle = session.suiteTotals(waTag);
+      if (wallAngle && wallAngle.multiplier !== mult && (mult !== 1 || reusingWallAngle)) {
+        session.editCondition(waTag, { multiplier: mult });
+        steps++;
+      }
       const S = q.main_spacing_ft, w = mod.w_ft;
       const rows: MatRow[] = [
         { name: "Ceiling tiles", basis: "area", per: q.tile_sf / (1 + q.waste_pct / 100), unit: "EA", round: true, note: `${a.module} module, ${q.waste_pct}% waste (ceiling_takeoff)` },
