@@ -32,10 +32,25 @@ export function linearVerticalFt(s, cond) {
   return { rise: pick(s?.rise_ft, cond?.rise_ft), drop: pick(s?.drop_ft, cond?.drop_ft) };
 }
 
-/** @returns {{ area_sf?: number, perimeter_lf?: number, count?: number, plan_lf?: number, vertical_lf?: number }} */
+/** @returns {{ area_sf?: number, perimeter_lf?: number, count?: number, plan_lf?: number, vertical_lf?: number, volume_cy?: number }} */
 export function computeShapeMetrics(s, dims, upp, cond) {
   const pts = (s.verts_norm || []).map(([nx, ny]) => [nx * dims.w, ny * dims.h]);
-  const u = upp || 0;
+  const ux = typeof upp === "object" && upp !== null ? (upp.x ?? upp.upp_x ?? upp.upp ?? 0) : (upp || 0);
+  const uy = typeof upp === "object" && upp !== null ? (upp.y ?? upp.upp_y ?? upp.upp ?? ux) : ux;
+  const isAnisotropic = Math.abs(ux - uy) > 1e-9;
+
+  // Polyline length taking horizontal and vertical scales into account
+  const scaledLen = (points) => {
+    if (!isAnisotropic) return openLen(points) * ux;
+    let sum = 0;
+    for (let i = 1; i < points.length; i++) {
+      const dx = (points[i][0] - points[i - 1][0]) * ux;
+      const dy = (points[i][1] - points[i - 1][1]) * uy;
+      sum += Math.hypot(dx, dy);
+    }
+    return sum;
+  };
+
   if (s.measure_role === "count") return { count: 1 };
   if (s.measure_role === "surface_area") {
     // the wall keeps the height it was DRAWN at; the condition H is only the
@@ -45,7 +60,7 @@ export function computeShapeMetrics(s, dims, upp, cond) {
     const h = s.height_override === true
       ? Number(s.height_ft) || 0
       : Number(s.height_ft) || Number(cond?.height_ft) || 0;
-    const LF = openLen(pts) * u;
+    const LF = scaledLen(pts);
     return { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) };
   }
   if (s.measure_role === "linear") {
@@ -55,15 +70,19 @@ export function computeShapeMetrics(s, dims, upp, cond) {
     // report, workbook and marked set keep reading one number; plan_lf and
     // vertical_lf ride beside it only when a vertical exists, so a flat run's
     // record is byte-for-byte what it always was.
-    const plan = openLen(s.curved ? flattenCurve(pts) : pts) * u;
+    const plan = scaledLen(s.curved ? flattenCurve(pts) : pts);
     const { rise, drop } = linearVerticalFt(s, cond);
     const vert = rise + drop;
     const LF = plan + vert;
     const tIn = Number(cond?.thickness_in) || 0;
+    const wFt = cond?.width_ft != null ? Number(cond.width_ft) : cond?.width_in != null ? Number(cond.width_in) / 12 : 0;
+    const dFt = cond?.depth_ft != null ? Number(cond.depth_ft) : cond?.depth_in != null ? Number(cond.depth_in) / 12 : 0;
+    const volCy = wFt > 0 && dFt > 0 ? (LF * wFt * dFt) / 27 : 0;
     return {
       perimeter_lf: +LF.toFixed(2),
       area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0,
       ...(vert > 0 ? { plan_lf: +plan.toFixed(2), vertical_lf: +vert.toFixed(2) } : {}),
+      ...(volCy > 0 ? { volume_cy: +volCy.toFixed(2) } : {}),
     };
   }
   // #137 — a shape carrying verts_norm_holes (a reconciled Cut Out) nets its
@@ -73,7 +92,21 @@ export function computeShapeMetrics(s, dims, upp, cond) {
   // that has never had a cutout reconciled into it.
   const holesPx = (s.verts_norm_holes || []).map((ring) => ring.map(([nx, ny]) => [nx * dims.w, ny * dims.h]));
   const met = holesPx.length ? polyWithHolesMetrics(pts, holesPx) : closedMetrics(pts);
-  return { area_sf: +(met.area * u * u).toFixed(2), perimeter_lf: +(met.perim * u).toFixed(2) };
+  const areaSf = met.area * ux * uy;
+  const perimLf = isAnisotropic
+    ? (holesPx.length
+        ? scaledLen([...pts, pts[0]]) + holesPx.reduce((acc, h) => acc + scaledLen([...h, h[0]]), 0)
+        : scaledLen([...pts, pts[0]]))
+    : met.perim * ux;
+
+  const dFt = cond?.depth_ft != null ? Number(cond.depth_ft) : cond?.depth_in != null ? Number(cond.depth_in) / 12 : 0;
+  const volCy = dFt > 0 ? (areaSf * dFt) / 27 : 0;
+
+  return {
+    area_sf: +areaSf.toFixed(2),
+    perimeter_lf: +perimLf.toFixed(2),
+    ...(volCy > 0 ? { volume_cy: +volCy.toFixed(2) } : {}),
+  };
 }
 
 // True when the shape is missing the number its role feeds the summers —

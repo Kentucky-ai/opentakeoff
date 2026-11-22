@@ -25,6 +25,7 @@ export const GETTERS = {
   sy_net: (r) => r.sy_net,
   // opt-in derivations: order − base (total_sf = floor+wall+border, so
   // waste_sf covers all three)
+  volume_cy: (r) => r.volume_cy ?? 0,
   waste_sf: (r) => round2(r.total_sf_net - r.total_sf),
   waste_lf: (r) => round2(r.lf_net - r.lf),
   // reference only: floor perimeters include door openings and shared walls —
@@ -51,6 +52,7 @@ export const TABLE_PROFILE = [
   // TOTAL cells delegate to the same formulas as the body cells
   { key: "waste_sf",      header: "Waste SF",   defaultVisible: false, foot: (g) => GETTERS.waste_sf(g) },
   { key: "waste_lf",      header: "Waste LF",   defaultVisible: false, foot: (g) => GETTERS.waste_lf(g) },
+  { key: "volume_cy",     header: "Volume (CY)", defaultVisible: false, foot: (g) => g.volume_cy },
   { key: "perimeter_ref", header: "Perim LF (ref)", defaultVisible: false, ref: true },
 ];
 
@@ -72,6 +74,7 @@ export const CSV_PROFILE = [
   { key: "sy_net",       header: "SY w/Waste",          defaultVisible: true },
   { key: "waste_sf",      header: "Waste SF", defaultVisible: false },
   { key: "waste_lf",      header: "Waste LF", defaultVisible: false },
+  { key: "volume_cy",     header: "Volume CY", defaultVisible: false },
   { key: "perimeter_ref", header: "Perimeter LF (ref, incl. openings)", defaultVisible: false },
 ];
 
@@ -95,10 +98,11 @@ const COL_DIM = {
   floor_sf: "area", wall_sf: "area", border_sf: "area", total_sf: "area",
   total_sf_net: "area", waste_sf: "area",
   lf: "len", lf_net: "len", waste_lf: "len", perimeter_ref: "len",
+  volume_cy: "vol",
   "roll:order_lf": "len", "roll:seam_lf": "len",
 };
-export const METRIC_LABELS = { area: "m²", len: "m" };        // on-screen table
-export const METRIC_CSV_LABELS = { area: "m2", len: "m" };    // CSV/XLSX (ASCII, matches the legend PDF)
+export const METRIC_LABELS = { area: "m²", len: "m", vol: "m³" };        // on-screen table
+export const METRIC_CSV_LABELS = { area: "m2", len: "m", vol: "m3" };    // CSV/XLSX (ASCII, matches the legend PDF)
 export function applyUnits(cols, units, labels = METRIC_LABELS) {
   if (units !== "metric") return cols;
   return cols.filter((c) => c.key !== "sy_net").map((c) => {
@@ -106,11 +110,13 @@ export function applyUnits(cols, units, labels = METRIC_LABELS) {
     if (!dim) return c;
     const conv = dim === "area"
       ? (v) => round2((Number(v) || 0) * M2_PER_SF)
+      : dim === "vol"
+      ? (v) => round2((Number(v) || 0) * 0.764554858)
       : (v) => round2((Number(v) || 0) * M_PER_FT);
     const base = colGetter(c);
     return {
       ...c,
-      header: c.header.replace(/\bSF\b/g, labels.area).replace(/\bLF\b/g, labels.len),
+      header: c.header.replace(/\bSF\b/g, labels.area).replace(/\bLF\b/g, labels.len).replace(/\bCY\b/g, labels.vol),
       conv,
       get: (r, ctx) => { const v = base(r, ctx); return v === "" ? v : conv(v); },
       ...(c.foot ? { foot: (g) => conv(c.foot(g)) } : {}),

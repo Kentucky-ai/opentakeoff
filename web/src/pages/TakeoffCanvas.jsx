@@ -177,6 +177,7 @@ import MaterialUnitSelector from '../components/MaterialUnitSelector.jsx';
 import { getMaterialUnit, setMaterialUnit } from '../lib/materialUnits.js';
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 import DoorsSuitePanel from "../components/DoorsSuitePanel.jsx";
+import SectionPanel from "../components/SectionPanel.jsx";
 import { matchDoorTags, buildDoorSuite, estimateGroups, doorCenter, doorSetColor, DOOR_NEUTRAL, countMarkPoints, openingLine, heldBack, DOOR_KIND_LABEL } from "../lib/doorSuite.ts";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
@@ -616,6 +617,7 @@ export default function TakeoffCanvas() {
   };
 
   const [scales, setScales] = useState({});
+  const [dualScales, setDualScales] = useState({});
   const [scaleSources, setScaleSources] = useState({}); // scale provenance for the report — typically "calibrated" | "standard" | "detected", but any string a newer build wrote is kept verbatim; sheets that predate the flag export "unknown"
   // Scale gate — agent proposes, human confirms. A key mapped to false means an
   // AGENT set this sheet's scale (MCP set_scale, arriving by import) and no
@@ -5495,7 +5497,9 @@ export default function TakeoffCanvas() {
   // Hole-aware since #137: a parent carrying verts_norm_holes prices the
   // clipped geometry, not the outer ring.
   function recomputeShape(s, uppOverride) {
-    return computeShapeMetrics(s, panelByKey(s.sheet_id).img, uppOverride ?? (uppFor(s.sheet_id) || 0), condById[s.condition_id]);
+    const d = dualScales[s.sheet_id];
+    const u = uppOverride ?? (d ? { x: d.upp_x, y: d.upp_y } : (uppFor(s.sheet_id) || 0));
+    return computeShapeMetrics(s, panelByKey(s.sheet_id).img, u, condById[s.condition_id]);
   }
   // The panel chip chromes' children — built imperatively by moveCrosshair on a
   // __mode change (the chip element stays CHILDLESS in JSX for every chrome;
@@ -7979,6 +7983,7 @@ export default function TakeoffCanvas() {
   // cached per sheet and run off the paint path; nothing is a quantity until
   // "Add to estimate".
   const doorSuiteOn = viewTrade === "doors" && view === "canvas";
+  const siteworkSuiteOn = viewTrade === "sitework" && view === "canvas";
   const doorRunsRef = useRef(new Map());            // sheet key → text runs in the door frame (unrotated page points)
   const doorSegsRef = useRef(new Map());            // sheet key → the sheet's linework, flat [x0,y0,x1,y1,…], same frame
   const [doorReads, setDoorReads] = useState({});   // sheet key → { status, doors, withheld, rot, w0, h0 }
@@ -13309,7 +13314,20 @@ export default function TakeoffCanvas() {
             />
           );
         })()}
-        {!doorSuiteOn && workspaceLayout && !focusMode && (
+        {siteworkSuiteOn && (
+          <SectionPanel
+            sheetLabel={sheetKey ? sheetBaseLabel(sheetKey) : "Cross Sections"}
+            sheetKey={sheetKey || ""}
+            scaleH={typeof uppFor(sheetKey) === "object" ? uppFor(sheetKey)?.x : (uppFor(sheetKey) || 0)}
+            scaleV={typeof uppFor(sheetKey) === "object" ? uppFor(sheetKey)?.y : (uppFor(sheetKey) || 0)}
+            onSetDualScale={(key, h, v) => {
+              setDualScales((prev) => ({ ...prev, [key]: { upp_x: h, upp_y: v } }));
+              setScales((prev) => ({ ...prev, [key]: h }));
+            }}
+            onClose={() => pickViewTrade(ALL_TRADES)}
+          />
+        )}
+        {!doorSuiteOn && !siteworkSuiteOn && workspaceLayout && !focusMode && (
           <ConditionsDock
             open={condDockOpen && !fullTableOpen} onClose={() => setCondDockOpen(false)}
             sheetLabel={(() => { const l = tabLabel(treeCurrent || sheetKey); const m = /^\s*([A-Z]{1,3}-?\d{1,4}(?:\.\d{1,3})?[A-Z]?)\b/i.exec(l); return m ? m[1] : l; })()}

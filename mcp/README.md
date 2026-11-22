@@ -249,6 +249,7 @@ once, at open time, instead of riding every turn. The long form is the
 | doors | 08 | none: core tools (`find_schedule`, `sweep_schedule_row`, `count_marks`) |
 | plumbing | 22 | `plumbing_rollup`: fixture counts checked against the schedule QTY, pipe LF with hangers, fittings allowance, insulation. |
 | electrical | 26, 27, 28 | `electrical_rollup`: wire LF per run by conductors and sets, couplings, straps, a box and plate per device, fixture whips. |
+| sitework | 31, 32, 33 | `earthwork_takeoff`: average end area cut and fill CY across cross-section stations (net-versus-gross guard keeps cut and fill separate), utility trench excavation, bedding & backfill, slab/paving concrete CY and subbase tons, continuous footing 2-sided formwork SFCA. |
 
 The suite tools are derives: they read what is already committed and commit
 what follows as unreviewed shapes or material rows, one `undo_last` step per
