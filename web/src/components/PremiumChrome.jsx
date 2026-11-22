@@ -99,7 +99,11 @@ export function CanvasSideTabs({ conditionsOpen, conditionCount, onConditions, a
       const saved = localStorage.getItem("opentakeoff:sidetabs-top");
       if (saved != null) {
         const n = parseFloat(saved);
-        if (Number.isFinite(n)) return n;
+        if (Number.isFinite(n)) {
+          const minTop = 48;
+          const maxTop = Math.max(minTop, (typeof window !== "undefined" ? window.innerHeight : 800) - 132 - 16);
+          return Math.max(minTop, Math.min(maxTop, n));
+        }
       }
     } catch { /* ignore */ }
     return null;
@@ -113,6 +117,7 @@ export function CanvasSideTabs({ conditionsOpen, conditionCount, onConditions, a
   }, []);
 
   useEffect(() => {
+    setTopPos((prev) => (prev == null ? null : clampTop(prev)));
     const onResize = () => {
       setTopPos((prev) => (prev == null ? null : clampTop(prev)));
     };

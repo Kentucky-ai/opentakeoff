@@ -787,7 +787,11 @@ export default function TakeoffCanvas() {
       const saved = localStorage.getItem("opentakeoff:view-controls-top");
       if (saved != null) {
         const n = parseFloat(saved);
-        if (Number.isFinite(n)) return n;
+        if (Number.isFinite(n)) {
+          const minTop = 48;
+          const maxTop = Math.max(minTop, (typeof window !== "undefined" ? window.innerHeight : 800) - 180 - 16);
+          return Math.max(minTop, Math.min(maxTop, n));
+        }
       }
     } catch { /* ignore */ }
     return null;
@@ -801,6 +805,7 @@ export default function TakeoffCanvas() {
   }, []);
 
   useEffect(() => {
+    setViewControlsTop((prev) => (prev == null ? null : clampViewControlsTop(prev)));
     const onResize = () => {
       setViewControlsTop((prev) => (prev == null ? null : clampViewControlsTop(prev)));
     };
