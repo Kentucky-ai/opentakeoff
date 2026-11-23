@@ -196,6 +196,8 @@ import { useAgentChat } from "../lib/useAgentChat.js";
 import { historyMessages, notReadyMessage, withViewContext } from "../lib/agentChat.js";
 import { ScanStar, OtLockup } from "../brand/marks.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
+import WorkSelectionHighlight from "../components/WorkSelectionHighlight.jsx";
+import { workSelection, workSelectionBounds } from "../lib/workSelection.js";
 import "../styles/premiumWorkspace.css";
 import { WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
 import { PremiumRail, PremiumTopBar, CanvasSideTabs } from "../components/PremiumChrome.jsx";
@@ -849,6 +851,10 @@ export default function TakeoffCanvas() {
   const [workspaceDragging, setWorkspaceDragging] = useState(null);
 
   const [workLocateId, setWorkLocateId] = useState(null);
+  const [workSelectionIds, setWorkSelectionIds] = useState([]);
+  const [workSelectionFrame, setWorkSelectionFrame] = useState(null);
+  const selectedWork = useMemo(() => workSelection(shapes, workSelectionIds), [shapes, workSelectionIds]);
+  const selectedCountIds = useMemo(() => new Set(selectedWork.locatable.filter((s) => s.measure_role === "count").map((s) => s.id)), [selectedWork]);
   const workButtonRef = useRef(null);
   // ── roll goods (#136) — view state; the figured layouts are a memo below ──
   const [rollShow, setRollShow] = useState(true);         // draw the figured cuts over the plan (on: opting a condition in shows its cuts immediately)
@@ -867,6 +873,8 @@ export default function TakeoffCanvas() {
   const [ocSel, setOcSel] = useState(null);        // selected proposal vertex {ri, vi} — Delete removes just that point
   const [ocHover, setOcHover] = useState(-1);      // proposal region under the cursor — handles reveal on hover
   const [selectedId, setSelectedId] = useState(null);   // selected shape (Select tool)
+  // Inspecting one shape does not change the review batch's checkbox membership.
+  useEffect(() => { if (selectedId) setWorkSelectionFrame(null); }, [selectedId]);
   // raw text of the per-wall height field while it is being edited; null =
   // mirror the stored value. Same reason as DimParamInput's draft: the field
   // round-trips through a rounded unit conversion, so without this a metric
@@ -1156,6 +1164,7 @@ export default function TakeoffCanvas() {
   // addEventListener() on it once at setup (wheel, below) don't need to
   // re-subscribe on a node-identity change that no longer happens.
   const containerRef = useRef(null);
+  const canvasSideTabsRef = useRef(null);
   const stageRef = useRef(null);
   const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (base layer — small backing store, coarse pyramid placeholder)
   const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (getOperatorList/getTextContent only — painting moved to the tile worker pool)
@@ -2355,6 +2364,7 @@ export default function TakeoffCanvas() {
     // epoch and it clears them in place (panel tab + width survive, as they
     // always did). On the mount load this is a no-op (fresh panel state).
     setPanelEpoch((e) => e + 1);
+    setWorkSelectionIds([]); setWorkSelectionFrame(null);
     // hidden conditions (#440) described the replaced project's view — a load
     // always opens with everything showing
     setHiddenConds((h) => (h.size ? new Set() : h));
@@ -8490,6 +8500,7 @@ export default function TakeoffCanvas() {
   }
 
   function locateWork(shape) {
+    setWorkSelectionFrame(null);
     setWorkLocateId(shape.id);
     if (!panelKeySet.has(shape.sheet_id)) openSheets([shape.sheet_id], false);
     setTool("select");
@@ -8514,6 +8525,52 @@ export default function TakeoffCanvas() {
     }
     setSelectedId(shape.id); setSelectedMarkupId(null); setWorkLocateId(null);
   }, [workLocateId, status, shapes, panels, setTfNow]);
+
+  function revealWorkSelection(rows) {
+    setHiddenConds((hidden) => {
+      const next = new Set(hidden);
+      for (const shape of rows) next.delete(shape.condition_id);
+      return next;
+    });
+    if (rows.some((shape) => tradeHidden.has(shape.condition_id))) setViewTrade(ALL_TRADES);
+  }
+  function changeWorkSelection(ids) {
+    const next = workSelection(shapes, ids);
+    setWorkSelectionIds(next.rows.map((shape) => shape.id)); setWorkSelectionFrame(null);
+    setSelectedId(null); setSelectedMarkupId(null); setWorkLocateId(null);
+    if (next.rows.length) { revealWorkSelection(next.rows); setTool("select"); }
+  }
+  function locateWorkSelection() {
+    if (!selectedWork.sheetIds.length || selectedWork.sheetIds.length > MAX_GROUP) return;
+    setSelectedId(null); setSelectedMarkupId(null); setWorkLocateId(null);
+    revealWorkSelection(selectedWork.rows);
+    setWorkSelectionFrame(selectedWork.sheetIds);
+    if (selectedWork.sheetIds.some((key) => !panelKeySet.has(key))) openSheets(selectedWork.sheetIds, selectedWork.sheetIds.length > 1);
+    if (window.matchMedia("(max-width: 1100px)").matches) setAgentOpen(false);
+  }
+  useEffect(() => {
+    if (!workSelectionFrame || status !== "ready" || !containerRef.current) return;
+    if (workSelectionFrame.some((key) => !panels.some((p) => p.key === key && p.img?.w))) return;
+    const bounds = workSelectionBounds(selectedWork.locatable, panels);
+    if (bounds) {
+      const el = containerRef.current, rect = el.getBoundingClientRect();
+      // Reserve the actual floating tab width, plus a token-sized marker margin.
+      const gap = parseFloat(getComputedStyle(el).getPropertyValue("--sp-8"));
+      const inset = gap * 3;
+      const sideTabs = canvasSideTabsRef.current?.getBoundingClientRect();
+      const rightInset = sideTabs?.width ? Math.max(inset, rect.right - sideTabs.left + gap) : inset;
+      const width = Math.max(1, rect.width - inset - rightInset), height = Math.max(1, rect.height - inset * 2);
+      const scale = clamp(Math.min(width / Math.max(1, bounds.x1 - bounds.x0), height / Math.max(1, bounds.y1 - bounds.y0), 1.5));
+      setTfNow({ x: inset + width / 2 - (bounds.x0 + bounds.x1) / 2 * scale, y: rect.height / 2 - (bounds.y0 + bounds.y1) / 2 * scale, scale });
+    }
+    setWorkSelectionFrame(null);
+  }, [workSelectionFrame, selectedWork, status, panels, setTfNow]);
+  function reviewWorkSelection() {
+    if (!selectedWork.pendingIds.length) return;
+    dispatchShape({ type: "review", ids: selectedWork.pendingIds });
+    setCommitMsg(uiText(`${selectedWork.pendingIds.length} selected measurements marked reviewed. Undo restores the batch.`));
+    setWorkSelectionIds([]); setWorkSelectionFrame(null);
+  }
 
   // A withheld transition is a QUESTION, and the answer is at a PLACE on the
   // sheet — so its row in the panel jumps there rather than printing raw image
@@ -11075,10 +11132,16 @@ export default function TakeoffCanvas() {
                         mirror (ReferencePane.jsx) — see that module for the full
                         measure_role switch. `sel`/`DS.selection` only matter when
                         `sel` is true, which never happens on the reference side. */}
-                    {uiText(pShapes.map((s) => renderShapeGlyph(s, {
-                    dn, cond: condById[s.condition_id], sel: s.id === selectedId,
-                    z: tf.scale, darkMode, selection: DS.selection, patId,
-                    })))}
+                  {uiText(pShapes.map((s) => {
+                    // Counts inherit the same glyph and selected appearance in
+                    // single and bulk review; no separate shape is drawn over them.
+                    const bulkCount = selectedCountIds.has(s.id);
+                    const glyph = renderShapeGlyph(s, {
+                      dn, cond: condById[s.condition_id], sel: s.id === selectedId || bulkCount,
+                      z: tf.scale, darkMode, selection: DS.selection, patId,
+                    });
+                    return bulkCount ? <g key={s.id} data-work-selection-id={s.id}>{glyph}</g> : glyph;
+                  }))}
                   {/* vertex handles for the selected shape (drag to reshape) */}
                   {selectedId && (() => {
                     const sel = pShapes.find((s) => s.id === selectedId);
@@ -11330,6 +11393,7 @@ export default function TakeoffCanvas() {
                         tick, per the plan's no-live-tick rule. The guard on `rect` shape
                         matches the try-wrap the export side uses: a malformed value from a
                         future caller must not take the canvas down. */}
+                  <WorkSelectionHighlight shapes={selectedWork.locatable} panel={p} zoom={tf.scale} color={DS.selection.color} />
                   {sourceFlash && sourceFlash.sheet_id === p.key
                     && Array.isArray(sourceFlash.rect) && sourceFlash.rect.length === 2 && (() => {
                       const [[fnx0, fny0], [fnx1, fny1]] = sourceFlash.rect;
@@ -11745,7 +11809,7 @@ export default function TakeoffCanvas() {
           {/* proposals (#365): one pill per BATCH. A forty-room detect run the
             agent proposed under one label is one Accept and one Reject, not
             forty; un-batched pending shapes keep the original pill. */}
-          {pendingGroups.map((g) => {
+          {!selectedWork.rows.length && pendingGroups.map((g) => {
             const n = g.ids.length;
           const label = g.proposal ? g.proposal.label : formatMessage("Proposed measurements: {0}", [n]);
             const key = g.proposal ? g.proposal.id : "_loose";
@@ -12047,7 +12111,7 @@ export default function TakeoffCanvas() {
           {uiText(panelBtn(() => setShowRevisions(true), "revisions", tr("Revisions — save the takeoff at each bid revision, compare what moved"), showRevisions))}
       </div>
 
-        {workspaceLayout && !focusMode && view === "canvas" && !showReport && <CanvasSideTabs
+        {workspaceLayout && !focusMode && view === "canvas" && !showReport && <CanvasSideTabs tabsRef={canvasSideTabsRef}
           conditionsOpen={condDockOpen && !fullTableOpen} conditionCount={conditions.length}
           onConditions={() => { if (fullTableOpen) { setFullTableOpen(false); setCondDockOpen(true); } else setCondDockOpen((v) => !v); }}
           assistantOpen={assistantOpen} onAssistant={() => (assistantOpen ? setAssistantOpen(false) : openAssistant())} working={agentRunning} />}
@@ -13076,6 +13140,8 @@ export default function TakeoffCanvas() {
           sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
           scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
           proposalCount={agentProposals.length} onLocate={locateWork}
+          selectionIds={workSelectionIds} onSelectionChange={changeWorkSelection} onLocateSelection={locateWorkSelection}
+          onReviewSelection={reviewWorkSelection} maxSelectionSheets={MAX_GROUP}
           onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
           onClose={() => { setAgentOpen(false); workButtonRef.current?.focus(); }} onReport={() => setShowReport(true)}>
           <AgentChat

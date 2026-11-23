@@ -25,6 +25,7 @@ export const Z = {
    --cobalt / --c-danger / --c-positive; the DARK set matches the HUD theme.
    Pick with svgAccent(isDark) at the callsite when the overlay is theme-aware. */
 export const SVG = {
+  selectionHalo: "#fff", // Contrasting under-stroke for temporary review selection.
   cobalt: "#0e636b",
   danger: "#b03a26",
   positive: "#1f6b4a",

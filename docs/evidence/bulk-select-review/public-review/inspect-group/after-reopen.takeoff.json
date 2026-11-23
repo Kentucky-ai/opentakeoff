@@ -1,0 +1,3638 @@
+{
+  "schema": "opentakeoff.takeoff_canvas.v1",
+  "project_name": "Public sheets - bulk review QA sample",
+  "sheets": [
+    {
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "units_per_px": 0.05555555555555555,
+      "scale_source": "upp",
+      "scale_confirmed": false
+    },
+    {
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "units_per_px": 0.23443223443223443,
+      "scale_source": "calibrated",
+      "scale_confirmed": false
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "created_at": "2026-11-20T14:23:16.407Z",
+      "finish_tag": "DOOR-OPENING",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "diag",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Tagged hinged door openings - public review sample",
+        "remarks": "A-101 main floor plan, Missouri State Fair fire station F2405-01, 09/19/2025. Each EA is one tagged opening; marker is on the printed tag. Enlarged detail, untagged equipment/cubicle doors, overhead and serving openings excluded. No leaf, hardware, material or procurement quantities inferred. All pending."
+      }
+    },
+    {
+      "id": "cnd-7c2074b3-d756-46de-b497-a7ecfe8d3615",
+      "created_at": "2026-11-19T05:22:32.998Z",
+      "finish_tag": "AS",
+      "color": "#b34b21",
+      "fill": "#b34b21",
+      "hatch": "diag",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Acer saccharum 'Bailsta' | Fall Fiesta Sugar Maple",
+        "size": "B&B; 2.5-inch caliper; matching heads",
+        "remarks": "133 / central oval, two 1 AS callouts; schedule quantity 2. Individually located symbols. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    },
+    {
+      "id": "cnd-9e749675-92d0-4c44-b3f9-f7eeaacb1e51",
+      "created_at": "2026-11-19T05:22:33.001Z",
+      "finish_tag": "CB",
+      "color": "#287b54",
+      "fill": "#287b54",
+      "hatch": "diag2",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Carpinus betulus | Common Hornbeam",
+        "size": "B&B; 8-foot height; matching heads",
+        "remarks": "133 / central oval / 4 CB; schedule quantity 4. Individually located symbols. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    },
+    {
+      "id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "created_at": "2026-11-19T05:22:33.002Z",
+      "finish_tag": "HA",
+      "color": "#8036b0",
+      "fill": "#8036b0",
+      "hatch": "cross",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Hydrangea arborescens | Smooth Hydrangea",
+        "size": "pot; #5; 36-inch O.C. per plan",
+        "remarks": "133 / west central-plaza bed / 48 HA source callout, retained as a control only. Exactly 29 selected individual symbols measured for UI study. Remaining west-bed plants and all other HA are intentionally outside the sample. Sheet schedule 137 is not this sample total. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    },
+    {
+      "id": "cnd-3d78aff2-767d-4ff0-a9bf-7ee38fd73557",
+      "created_at": "2026-11-19T05:22:33.003Z",
+      "finish_tag": "BENCH-RELOCATE",
+      "color": "#11667b",
+      "fill": "#11667b",
+      "hatch": "diagdense",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Relocate existing concrete bench",
+        "size": "Detail 3/135",
+        "remarks": "133 / two central plaza bench symbols; details 3/135. Count rings are locators, not rectangular bench footprints. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    },
+    {
+      "id": "cnd-038b8be7-0755-4cb8-a275-ddaae35fb8de",
+      "created_at": "2026-11-19T05:22:33.006Z",
+      "finish_tag": "PAVERS-A+B",
+      "color": "#3789bc",
+      "fill": "#3789bc",
+      "hatch": "horiz",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Concrete pavers, types A and B combined",
+        "size": "2/135 and 7/135; no type split",
+        "remarks": "133 / central plaza only. Detail 7/135 shows concrete base below pavers; that layer has not been counted again. Furniture does not deduct paving. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    },
+    {
+      "id": "cnd-f6bb9d97-0189-4016-bab2-83e47cbae1e1",
+      "created_at": "2026-11-19T05:22:33.007Z",
+      "finish_tag": "MULCH",
+      "color": "#b08236",
+      "fill": "#b08236",
+      "hatch": "vert",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Hardwood bark mulch",
+        "size": "3-inch layer; general planting note 23/136",
+        "remarks": "133 / two central plaza planting beds. Visual raster trace; curved interfaces approximated with circular arcs. Includes planting area below trees and shrubs, not a second plant EA quantity. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    },
+    {
+      "id": "cnd-109941ad-de6c-44e1-b4dd-7ba767108448",
+      "created_at": "2026-11-19T05:22:33.011Z",
+      "finish_tag": "SOD",
+      "color": "#2a955f",
+      "fill": "#2a955f",
+      "hatch": "grid",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "Sod with topsoil",
+        "size": "4-inch topsoil; legend / 133",
+        "remarks": "133 / two central oval turf areas. Curved raster boundary approximated with circular arcs, subject to estimator review. Tree mulch rings require a separate scope/extent decision before an ordering takeoff; gross turf-area sample only. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    },
+    {
+      "id": "cnd-91e3b504-3528-4143-b3bf-cadab56142b5",
+      "created_at": "2026-11-19T05:22:33.014Z",
+      "finish_tag": "FENCE-4H",
+      "color": "#da3f56",
+      "fill": "#da3f56",
+      "hatch": "brick",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "description": "4-foot ornamental fence",
+        "size": "6 inches off back of curb; 4â€“6/135",
+        "remarks": "133 / bounded straight run at south edge of east linear planting bed. LF reference sample; not a curb measurement and not the entire fence. Public UI design study only. Pending human review. Graphic-scale calibration unconfirmed."
+      }
+    }
+  ],
+  "shapes": [
+    {
+      "id": "shp-36d37b96-2f3b-467e-b14b-e6905fd20e14",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2272991854745371,
+          0.8625445109953704
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 100A / A-101 main plan"
+    },
+    {
+      "id": "shp-2df2d7bd-a54a-46bb-b8a1-64f068e35a91",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.23197511140046298,
+          0.6812771498842594
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 100E / A-101 main plan"
+    },
+    {
+      "id": "shp-6a550923-0351-4a02-be2c-93a71bb2e7fe",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.294140997974537,
+          0.6709993721064814
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 100F / A-101 main plan"
+    },
+    {
+      "id": "shp-6e0ecea8-e178-477c-9016-5253b742ad02",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3024612225115741,
+          0.7295583998842593
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 101A / A-101 main plan"
+    },
+    {
+      "id": "shp-d4c42511-88c2-41f6-95b3-abe8035c6210",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3670214076967593,
+          0.7220931221064815
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 101B / A-101 main plan"
+    },
+    {
+      "id": "shp-108ab55b-a727-45e8-8657-c1533775032c",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3634334447337963,
+          0.8097320109953704
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 102A / A-101 main plan"
+    },
+    {
+      "id": "shp-f4c5aba8-536d-4060-b920-75cab1bef3a0",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3525190928819445,
+          0.7524229832175925
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 102B / A-101 main plan"
+    },
+    {
+      "id": "shp-7d7d4b6a-4645-4445-9338-b918e8974293",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.30235430844907407,
+          0.7788465943287037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 102C / A-101 main plan"
+    },
+    {
+      "id": "shp-e2a12251-43fe-4fa5-900b-76cf0fec5d58",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3407339380787037,
+          0.8817806221064814
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 102D / A-101 main plan"
+    },
+    {
+      "id": "shp-6e809f72-9cc0-40a0-813c-575c2e2a3cfd",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3102171840277778,
+          0.7040896498842593
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 103 / A-101 main plan"
+    },
+    {
+      "id": "shp-5c945306-9168-4605-b85e-174b1445409c",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3476130173611111,
+          0.7040896498842593
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "accepted_ts": "2026-11-20T17:07:17.646Z"
+      },
+      "label": "Door 104 / A-101 main plan"
+    },
+    {
+      "id": "shp-ec044819-c0ff-4928-abaa-be3a6dc7a0ed",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4204602395833334,
+          0.7524229832175925
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 105 / A-101 main plan"
+    },
+    {
+      "id": "shp-44815a30-f32e-4ab9-8588-cb3344c5f32b",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.37967320254629633,
+          0.7040896498842593
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 106 / A-101 main plan"
+    },
+    {
+      "id": "shp-c98a6166-e997-4216-b466-223b51160e0d",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.47991625810185184,
+          0.7524229832175925
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 107 / A-101 main plan"
+    },
+    {
+      "id": "shp-907386f4-d82f-4634-9bb3-fe751f7a33bd",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.48482366550925926,
+          0.8241070109953704
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 108 / A-101 main plan"
+    },
+    {
+      "id": "shp-0b61a56d-225a-4f62-b8e4-0a8daba73485",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4985954817708333,
+          0.8450097887731481
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 109A / A-101 main plan"
+    },
+    {
+      "id": "shp-480a2fd2-598d-4d45-bbf9-cf58ed84901d",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5620329817708334,
+          0.8521452054398148
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 109B / A-101 main plan"
+    },
+    {
+      "id": "shp-0e5daf70-c7d8-4218-9144-bee759034a9d",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4241857595486111,
+          0.7043847887731481
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 110A / A-101 main plan"
+    },
+    {
+      "id": "shp-591ab1e2-b719-4224-a396-23f7df4ee4e7",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.40265798177083345,
+          0.6557389554398149
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 110B / A-101 main plan"
+    },
+    {
+      "id": "shp-1b9b43dd-7ae4-44e7-ac01-2d64ec9d7763",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.40265798177083345,
+          0.5180306221064815
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 110E / A-101 main plan"
+    },
+    {
+      "id": "shp-bb351425-c1da-40ad-b6a3-9baca3baf9f2",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4293607025462963,
+          0.6806521498842593
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 111 / A-101 main plan"
+    },
+    {
+      "id": "shp-ea45182e-2fb2-4c7c-a500-95f95b53eb1b",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.46991625810185184,
+          0.7040896498842593
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 112 / A-101 main plan"
+    },
+    {
+      "id": "shp-fa905405-c4ba-4630-a06a-b1b621594764",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5134347766203704,
+          0.8117806221064815
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 113 / A-101 main plan"
+    },
+    {
+      "id": "shp-f80c1253-ea5e-41aa-b09b-6494003ee161",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5252403321759259,
+          0.6544368721064815
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 116 / A-101 main plan"
+    },
+    {
+      "id": "shp-cb85a4fe-e919-4972-a3c5-ca9c195950d6",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5252403321759259,
+          0.6324056221064814
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 117 / A-101 main plan"
+    },
+    {
+      "id": "shp-d72cc864-c735-44f8-b30a-ce543cf3cc50",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4826593136574074,
+          0.5600965943287037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 118 / A-101 main plan"
+    },
+    {
+      "id": "shp-2bb9d705-605a-4cbc-bc6c-57642ec58b5e",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4962819988425926,
+          0.5435167332175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 119 / A-101 main plan"
+    },
+    {
+      "id": "shp-b19e2b76-78c6-4c18-87ea-10062288dba3",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5702982025462963,
+          0.5435167332175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 120 / A-101 main plan"
+    },
+    {
+      "id": "shp-7f1f496f-9d17-4a01-8f15-7fa2232d7f61",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5561315358796296,
+          0.5802528443287037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 121 / A-101 main plan"
+    },
+    {
+      "id": "shp-75a6f556-d14a-4ce2-b1ba-007e5067f7cb",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5521384803240741,
+          0.6429090943287037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 122 / A-101 main plan"
+    },
+    {
+      "id": "shp-0c8d549d-3170-4ba6-9717-89a68f4dbfec",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.653527369212963,
+          0.5430827054398149
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 123 / A-101 main plan"
+    },
+    {
+      "id": "shp-dfb980c8-498a-43fe-8fa0-4c8cd4a2dcc0",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.6078213506944444,
+          0.5808604832175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 124 / A-101 main plan"
+    },
+    {
+      "id": "shp-8db417a9-b6e8-462b-87ce-db4f181bf5de",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.6532958877314814,
+          0.5823708998842593
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 125 / A-101 main plan"
+    },
+    {
+      "id": "shp-2637d50a-4d79-4a5f-8b7c-e69dccb547d6",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7381454247685185,
+          0.5435167332175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 126 / A-101 main plan"
+    },
+    {
+      "id": "shp-37fd4499-dd2c-4eb3-8845-051c39c5886c",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7598551828993055,
+          0.581106876099537
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 127A / A-101 main plan"
+    },
+    {
+      "id": "shp-859fd12a-e682-46ec-b992-e86870b40152",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7333042569733796,
+          0.6622874316550926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 127B / A-101 main plan"
+    },
+    {
+      "id": "shp-d730f871-5719-4cde-9729-996291092e8b",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7900551469907408,
+          0.5603917332175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "accepted_ts": "2026-11-20T17:07:17.646Z"
+      },
+      "label": "Door 130 / A-101 main plan"
+    },
+    {
+      "id": "shp-9617b9a2-fa18-445d-a312-ac17339e781a",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5362009803240742,
+          0.6099229832175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 131 / A-101 main plan"
+    },
+    {
+      "id": "shp-f35196df-6b65-48f0-b0c3-35b0d7fb6cf9",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.23235705584490743,
+          0.6566417332175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 132A / A-101 main plan"
+    },
+    {
+      "id": "shp-a321eb9e-33d2-4375-967e-dd15bcac4970",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.23346816695601857,
+          0.4746452054398148
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 132B / A-101 main plan"
+    },
+    {
+      "id": "shp-c1405b6e-0e82-4e46-bd42-f3dea6ee0437",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.39093069733796293,
+          0.4658604832175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 132C / A-101 main plan"
+    },
+    {
+      "id": "shp-582fa7fc-378e-4178-a4f0-d843019ad187",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5910157951388889,
+          0.7118153443287037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 133 / A-101 main plan"
+    },
+    {
+      "id": "shp-a1050142-5824-422e-a9d0-024b208cfab9",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.6585968136574074,
+          0.7118153443287037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 134 / A-101 main plan"
+    },
+    {
+      "id": "shp-d74a7cfe-1b46-4cc1-ac40-ed5f082691c1",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7353097766203703,
+          0.7055306221064815
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 135 / A-101 main plan"
+    },
+    {
+      "id": "shp-6faba3c2-8d58-4fbd-a589-fb29d228cb22",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.7749612225115741,
+          0.6774403443287037
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 136A / A-101 main plan"
+    },
+    {
+      "id": "shp-97eca527-d0e9-40cd-9342-02243c7b2937",
+      "sheet_id": "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+      "condition_id": "cnd-d0fd634b-3766-4b6c-83aa-d2e47c19f789",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.5837459447337963,
+          0.6822667332175926
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Door 136B / A-101 main plan"
+    },
+    {
+      "id": "shp-26ae481c-e3f0-43da-9ee1-05900abc92ba",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-7c2074b3-d756-46de-b497-a7ecfe8d3615",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.25,
+          0.6830808080808081
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-fa9c3bd8-e7a1-43f6-9fbd-1de95300557f",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-7c2074b3-d756-46de-b497-a7ecfe8d3615",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.4366830065359477,
+          0.6732954545454546
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-27a84c72-3874-4c26-86d3-8a85a17cafba",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-9e749675-92d0-4c44-b3f9-f7eeaacb1e51",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3073937908496732,
+          0.6398358585858586
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-30fdd5f2-ff72-4e05-afae-d2215e5b2773",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-9e749675-92d0-4c44-b3f9-f7eeaacb1e51",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.30943627450980393,
+          0.7304292929292929
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-03a90700-d042-4cfe-8cbe-8bfef560c74e",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-9e749675-92d0-4c44-b3f9-f7eeaacb1e51",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.377859477124183,
+          0.6363636363636364
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-505a2780-97aa-4a49-8179-0d39c93e6cd5",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-9e749675-92d0-4c44-b3f9-f7eeaacb1e51",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3799019607843137,
+          0.726010101010101
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-0ea1aee0-161e-4a66-a2c4-f991d16d6883",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6332070707070707
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-af9e8e6b-7002-40c5-a549-bf49c37313a3",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6414141414141414
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-d3890ae9-7981-469a-b14d-5ffca1af7f2b",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6499368686868687
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-3ef082b0-bcbc-4ae1-bcda-12d5eb1b603f",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6578282828282829
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-3aeb5846-3511-4a23-a4a9-64423345c8f0",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6660353535353535
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-1ae03034-914d-4d52-bbe6-43c03498f470",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6742424242424242
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-4e808658-dde5-4cff-b825-d6fe8f9683c4",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6830808080808081
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-290cf7c2-86a8-4e23-a825-34945098aa18",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.6909722222222222
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-113986e2-67b9-4501-860d-45b3363f6222",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.7001262626262627
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-98250f55-3a16-4fb5-8b3d-cf8040d09876",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.7083333333333334
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-6eceed8e-28da-459e-a641-64a6c46a3718",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.7165404040404041
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-09727c79-b652-4b1a-8f2e-006fa73350d4",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.7244318181818182
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-4e1ee5c3-abad-4eb5-a571-83088a6861fb",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.7326388888888888
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-c73e0aee-8a79-4736-8069-a4dd9c0dad17",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2920751633986928,
+          0.7408459595959596
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-c853ff46-663b-45e2-a11d-e3ed56641cb6",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6287878787878788
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-c0917a24-709b-4e23-9fbf-34d60c1d9b34",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6369949494949495
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-1de537ef-2340-4597-b0e8-0cd48232b14e",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6448863636363636
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-59a2ea45-d711-49fa-b6d2-c4c946e3b412",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6527777777777778
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-7dc148b4-1da2-439e-9ca6-4a090edd9b84",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6609848484848485
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-4a3c565f-2936-45fa-a4b9-6c939398a7dd",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6691919191919192
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-5b5ebdfb-2fa3-4fc7-93ad-00188830cab4",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6770833333333334
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-6286d332-a618-4c2f-bd4a-642bb4e36aec",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6852904040404041
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-0c833194-875b-4305-aa40-82e38aa9acea",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.6934974747474747
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-1c795e39-53b0-414f-92dd-08fb47a427fc",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.7017045454545454
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-9980a0ac-dd4d-43df-accc-04fcfe83ff04",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.7095959595959596
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-7f2fb25e-62a4-4577-92b0-5f475d06e1cf",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.7178030303030303
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-69a2aaba-3dad-4147-9d23-9711dd28979c",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.726010101010101
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-c94f627d-4b7f-406b-97ed-967f1a7ee335",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.7342171717171717
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-9b2fbd88-2c67-42a8-8b17-3bd6cf4e35d2",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-5918da3b-e8f7-42e5-999d-11a11a065d97",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.2973856209150327,
+          0.742739898989899
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-2e3a3557-4245-475d-bca8-52848fa9b132",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-3d78aff2-767d-4ff0-a9bf-7ee38fd73557",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.31004901960784315,
+          0.6846590909090909
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-a5da0ad3-f356-4f1a-9e2d-86fc062c4a77",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-3d78aff2-767d-4ff0-a9bf-7ee38fd73557",
+      "measure_role": "count",
+      "verts_norm": [
+        [
+          0.3770424836601307,
+          0.6830808080808081
+        ]
+      ],
+      "computed": {
+        "count": 1
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-0107de84-9789-4b80-8236-d4d087de24bf",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-038b8be7-0755-4cb8-a275-ddaae35fb8de",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.3329248366013072,
+          0.6114267676767676
+        ],
+        [
+          0.35130718954248363,
+          0.6114267676767676
+        ],
+        [
+          0.35130718954248363,
+          0.6420454545454546
+        ],
+        [
+          0.35290375751418807,
+          0.6426731719394916
+        ],
+        [
+          0.35447550365818575,
+          0.6434359715441023
+        ],
+        [
+          0.3560176467473896,
+          0.6443315329348683
+        ],
+        [
+          0.35752549560674013,
+          0.6453571318281031
+        ],
+        [
+          0.3589944633836867,
+          0.6465096483680796
+        ],
+        [
+          0.3604200815013207,
+          0.6477855766175824
+        ],
+        [
+          0.3617980132517163,
+          0.6491810352229138
+        ],
+        [
+          0.36312406698812805,
+          0.6506917792209109
+        ],
+        [
+          0.3643942088759142,
+          0.6523132129520567
+        ],
+        [
+          0.36560457516339867,
+          0.6540404040404041
+        ],
+        [
+          0.36666086986837726,
+          0.6557161767833479
+        ],
+        [
+          0.36766087242348733,
+          0.6574725033859549
+        ],
+        [
+          0.3686020143818466,
+          0.6593048728281642
+        ],
+        [
+          0.36948187847650266,
+          0.6612085787784199
+        ],
+        [
+          0.3702982048290389,
+          0.6631787316816028
+        ],
+        [
+          0.3710488967539375,
+          0.6652102713175602
+        ],
+        [
+          0.37173202614379086,
+          0.6672979797979798
+        ],
+        [
+          0.3815359477124183,
+          0.6672979797979798
+        ],
+        [
+          0.3815359477124183,
+          0.6994949494949495
+        ],
+        [
+          0.3713235294117647,
+          0.6994949494949495
+        ],
+        [
+          0.3707408883942031,
+          0.7017260380050913
+        ],
+        [
+          0.37007601090801523,
+          0.7039015203217879
+        ],
+        [
+          0.36933110740155983,
+          0.7060141638474312
+        ],
+        [
+          0.3685086543773015,
+          0.708056944897943
+        ],
+        [
+          0.36761138615844313,
+          0.7100230720536796
+        ],
+        [
+          0.3666422857984087,
+          0.7119060087381521
+        ],
+        [
+          0.36560457516339867,
+          0.7136994949494949
+        ],
+        [
+          0.3644798598179066,
+          0.715429280355378
+        ],
+        [
+          0.36329133673905983,
+          0.7170539708940881
+        ],
+        [
+          0.3620431108232788,
+          0.7185679552430562
+        ],
+        [
+          0.3607394931674069,
+          0.7199660044344605
+        ],
+        [
+          0.3593849861791335,
+          0.7212432899149278
+        ],
+        [
+          0.3579842680266713,
+          0.7223954002222915
+        ],
+        [
+          0.35654217648139597,
+          0.7234183562218082
+        ],
+        [
+          0.35506369220925105,
+          0.7243086248492103
+        ],
+        [
+          0.35355392156862747,
+          0.7250631313131313
+        ],
+        [
+          0.3545751633986928,
+          0.7556818181818182
+        ],
+        [
+          0.3366013071895425,
+          0.7566287878787878
+        ],
+        [
+          0.33578431372549017,
+          0.7263257575757576
+        ],
+        [
+          0.3341495758879094,
+          0.7257863919903718
+        ],
+        [
+          0.33253981174317415,
+          0.7250903725939352
+        ],
+        [
+          0.3309613000229501,
+          0.7242404141437861
+        ],
+        [
+          0.3294201975617989,
+          0.7232398318218737
+        ],
+        [
+          0.3279225152830315,
+          0.7220925283042076
+        ],
+        [
+          0.3264740947536747,
+          0.7208029785388413
+        ],
+        [
+          0.32508058539999546,
+          0.7193762122917647
+        ],
+        [
+          0.323747422472452,
+          0.7178177945287797
+        ],
+        [
+          0.3224798058460172,
+          0.7161338037098821
+        ],
+        [
+          0.3212826797385621,
+          0.7143308080808081
+        ],
+        [
+          0.32025158664645964,
+          0.7125801574091032
+        ],
+        [
+          0.31928698409673845,
+          0.7107412147272394
+        ],
+        [
+          0.3183920314148278,
+          0.7088200030530694
+        ],
+        [
+          0.31756965980463847,
+          0.7068228148568954
+        ],
+        [
+          0.3168225627481038,
+          0.7047561914519839
+        ],
+        [
+          0.31615318718332225,
+          0.7026269015700554
+        ],
+        [
+          0.31556372549019607,
+          0.7004419191919192
+        ],
+        [
+          0.30514705882352944,
+          0.7001262626262627
+        ],
+        [
+          0.30514705882352944,
+          0.6720328282828283
+        ],
+        [
+          0.31556372549019607,
+          0.6710858585858586
+        ],
+        [
+          0.31588270801515206,
+          0.668742575035019
+        ],
+        [
+          0.3163054138959167,
+          0.6664388313603485
+        ],
+        [
+          0.3168298335910198,
+          0.6641855795468123
+        ],
+        [
+          0.3174534740120684,
+          0.6619935315413409
+        ],
+        [
+          0.31817337037587484,
+          0.6598731083282917
+        ],
+        [
+          0.31898610029902064,
+          0.6578343903881476
+        ],
+        [
+          0.3198878000678485,
+          0.6558870697749654
+        ],
+        [
+          0.320874183006536,
+          0.6540404040404041
+        ],
+        [
+          0.3218781971360456,
+          0.6523983652582892
+        ],
+        [
+          0.32294916665366485,
+          0.6508606840081692
+        ],
+        [
+          0.3240825596294627,
+          0.6494338671640183
+        ],
+        [
+          0.3252735799815097,
+          0.648123952464405
+        ],
+        [
+          0.3265171877710465,
+          0.6469364829631102
+        ],
+        [
+          0.3278081205295613,
+          0.6458764835730626
+        ],
+        [
+          0.32914091552752633,
+          0.6449484398028442
+        ],
+        [
+          0.33050993289056263,
+          0.6441562787757487
+        ],
+        [
+          0.3319093794652131,
+          0.6435033526117101
+        ],
+        [
+          0.3333333333333333,
+          0.6429924242424242
+        ]
+      ],
+      "computed": {
+        "area_sf": 1224.6,
+        "perimeter_lf": 173.69
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "curved": true,
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-a4555882-5417-4a21-b739-a3994dda7d41",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-f6bb9d97-0189-4016-bab2-83e47cbae1e1",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.29044117647058826,
+          0.625
+        ],
+        [
+          0.3329248366013072,
+          0.6224747474747475
+        ],
+        [
+          0.3333333333333333,
+          0.6426767676767676
+        ],
+        [
+          0.3318553158996323,
+          0.6437737133690746
+        ],
+        [
+          0.33041366433382424,
+          0.6449807280661243
+        ],
+        [
+          0.3290118079899281,
+          0.6462949405604763
+        ],
+        [
+          0.3276530815583787,
+          0.6477132246460445
+        ],
+        [
+          0.32634071713357343,
+          0.6492322065546147
+        ],
+        [
+          0.32507783652547045,
+          0.6508482729812545
+        ],
+        [
+          0.3238674438335288,
+          0.6525575796795275
+        ],
+        [
+          0.3227124183006536,
+          0.6543560606060606
+        ],
+        [
+          0.3217052714758299,
+          0.6560782118987956
+        ],
+        [
+          0.3207489057616021,
+          0.6578681710734593
+        ],
+        [
+          0.31984523034167134,
+          0.6597223648517218
+        ],
+        [
+          0.3189960492146096,
+          0.6616370917243307
+        ],
+        [
+          0.318203057592555,
+          0.6636085293403976
+        ],
+        [
+          0.3174678385170756,
+          0.665632742137921
+        ],
+        [
+          0.31679185969895896,
+          0.667705689200311
+        ],
+        [
+          0.3161764705882353,
+          0.6698232323232324
+        ],
+        [
+          0.30514705882352944,
+          0.6710858585858586
+        ],
+        [
+          0.30514705882352944,
+          0.6998106060606061
+        ],
+        [
+          0.31576797385620914,
+          0.7001262626262627
+        ],
+        [
+          0.3163176695808492,
+          0.7024900299157004
+        ],
+        [
+          0.3169646411375252,
+          0.7047942361393513
+        ],
+        [
+          0.31770620713260467,
+          0.7070293314432347
+        ],
+        [
+          0.3185392941228786,
+          0.7091860524057149
+        ],
+        [
+          0.31946044935354206,
+          0.7112554604300385
+        ],
+        [
+          0.32046585506824316,
+          0.7132289787906264
+        ],
+        [
+          0.3215513443318922,
+          0.7150984281795768
+        ],
+        [
+          0.3227124183006536,
+          0.7168560606060606
+        ],
+        [
+          0.3239531573478747,
+          0.7185056649571971
+        ],
+        [
+          0.3252604517679181,
+          0.7200275558526791
+        ],
+        [
+          0.3266288070704518,
+          0.7214153368643698
+        ],
+        [
+          0.3280524721294362,
+          0.7226631752209862
+        ],
+        [
+          0.3295254633548073,
+          0.723765826322933
+        ],
+        [
+          0.3310415898411938,
+          0.7247186557850814
+        ],
+        [
+          0.33259447938797004,
+          0.7255176589148485
+        ],
+        [
+          0.3341776052812829,
+          0.7261594775437115
+        ],
+        [
+          0.33578431372549017,
+          0.7266414141414141
+        ],
+        [
+          0.3366013071895425,
+          0.7474747474747475
+        ],
+        [
+          0.29125816993464054,
+          0.7487373737373737
+        ]
+      ],
+      "computed": {
+        "area_sf": 831.69,
+        "perimeter_lf": 165.08
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "curved": true,
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-a03a9206-407c-4cf9-86b8-7f82776f3b97",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-f6bb9d97-0189-4016-bab2-83e47cbae1e1",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.35130718954248363,
+          0.6202651515151515
+        ],
+        [
+          0.4011437908496732,
+          0.6186868686868687
+        ],
+        [
+          0.40155228758169936,
+          0.7471590909090909
+        ],
+        [
+          0.3545751633986928,
+          0.7487373737373737
+        ],
+        [
+          0.35355392156862747,
+          0.7250631313131313
+        ],
+        [
+          0.35506369220925105,
+          0.7243086248492102
+        ],
+        [
+          0.35654217648139597,
+          0.7234183562218081
+        ],
+        [
+          0.3579842680266713,
+          0.7223954002222915
+        ],
+        [
+          0.35938498617913345,
+          0.7212432899149278
+        ],
+        [
+          0.3607394931674069,
+          0.7199660044344605
+        ],
+        [
+          0.3620431108232787,
+          0.7185679552430562
+        ],
+        [
+          0.3632913367390598,
+          0.7170539708940881
+        ],
+        [
+          0.3644798598179066,
+          0.715429280355378
+        ],
+        [
+          0.36560457516339867,
+          0.7136994949494949
+        ],
+        [
+          0.3666422857984087,
+          0.7119060087381521
+        ],
+        [
+          0.3676113861584431,
+          0.7100230720536796
+        ],
+        [
+          0.3685086543773015,
+          0.708056944897943
+        ],
+        [
+          0.36933110740155983,
+          0.7060141638474312
+        ],
+        [
+          0.37007601090801523,
+          0.7039015203217879
+        ],
+        [
+          0.3707408883942031,
+          0.7017260380050913
+        ],
+        [
+          0.3713235294117647,
+          0.6994949494949495
+        ],
+        [
+          0.3815359477124183,
+          0.6994949494949495
+        ],
+        [
+          0.3815359477124183,
+          0.6672979797979798
+        ],
+        [
+          0.37173202614379086,
+          0.6672979797979798
+        ],
+        [
+          0.3710488967539375,
+          0.6652102713175599
+        ],
+        [
+          0.37029820482903897,
+          0.6631787316816028
+        ],
+        [
+          0.36948187847650266,
+          0.6612085787784199
+        ],
+        [
+          0.36860201438184664,
+          0.6593048728281641
+        ],
+        [
+          0.3676608724234874,
+          0.6574725033859548
+        ],
+        [
+          0.36666086986837726,
+          0.6557161767833478
+        ],
+        [
+          0.36560457516339867,
+          0.6540404040404041
+        ],
+        [
+          0.3643942088759142,
+          0.6523132129520567
+        ],
+        [
+          0.3631240669881281,
+          0.6506917792209109
+        ],
+        [
+          0.3617980132517163,
+          0.6491810352229138
+        ],
+        [
+          0.3604200815013207,
+          0.6477855766175823
+        ],
+        [
+          0.35899446338368673,
+          0.6465096483680796
+        ],
+        [
+          0.35752549560674013,
+          0.6453571318281031
+        ],
+        [
+          0.3560176467473896,
+          0.6443315329348682
+        ],
+        [
+          0.35447550365818575,
+          0.6434359715441021
+        ],
+        [
+          0.35290375751418807,
+          0.6426731719394916
+        ],
+        [
+          0.35130718954248363,
+          0.6420454545454546
+        ]
+      ],
+      "computed": {
+        "area_sf": 1000.81,
+        "perimeter_lf": 173.61
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "curved": true,
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-49e4fcfa-098c-48d5-bf0a-cfb0b9f90fde",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-109941ad-de6c-44e1-b4dd-7ba767108448",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.29044117647058826,
+          0.625
+        ],
+        [
+          0.25020424836601307,
+          0.6256313131313131
+        ],
+        [
+          0.24867639479000722,
+          0.6249969673376432
+        ],
+        [
+          0.24712724855414397,
+          0.6245010735840173
+        ],
+        [
+          0.2455620579230881,
+          0.6241453118807564
+        ],
+        [
+          0.2439861255174008,
+          0.6239308874927558
+        ],
+        [
+          0.24240479034909218,
+          0.6238585268562378
+        ],
+        [
+          0.24082340973388544,
+          0.6239284751176982
+        ],
+        [
+          0.23924734114147073,
+          0.6241404953033897
+        ],
+        [
+          0.23768192404523752,
+          0.6244938691221509
+        ],
+        [
+          0.23613246183297554,
+          0.6249873993988647
+        ],
+        [
+          0.2346042038398279,
+          0.6256194141302998
+        ],
+        [
+          0.23310232756436683,
+          0.6263877721495952
+        ],
+        [
+          0.23163192112803913,
+          0.6272898703801989
+        ],
+        [
+          0.230197966037409,
+          0.6283226526546826
+        ],
+        [
+          0.22880532030759376,
+          0.629482620068558
+        ],
+        [
+          0.22745870200407048,
+          0.6307658428340173
+        ],
+        [
+          0.2261626732586093,
+          0.6321679735934377
+        ],
+        [
+          0.22492162481348613,
+          0.6336842621475486
+        ],
+        [
+          0.2237397611463357,
+          0.6353095715483613
+        ],
+        [
+          0.22262108622604054,
+          0.6370383955023449
+        ],
+        [
+          0.22156938994791175,
+          0.6388648770248845
+        ],
+        [
+          0.22058823529411764,
+          0.6407828282828283
+        ],
+        [
+          0.2196641244005409,
+          0.6428253371617104
+        ],
+        [
+          0.21882002031224648,
+          0.6449489500836976
+        ],
+        [
+          0.21805889453118557,
+          0.6471461912883609
+        ],
+        [
+          0.21738342645054526,
+          0.6494093258214253
+        ],
+        [
+          0.21679599392247356,
+          0.6517303867641493
+        ],
+        [
+          0.21629866488731994,
+          0.654101203279292
+        ],
+        [
+          0.21589319009385907,
+          0.6565134293749337
+        ],
+        [
+          0.21558099693612512,
+          0.6589585732848942
+        ],
+        [
+          0.21536318442855265,
+          0.6614280273623204
+        ],
+        [
+          0.2152405193371131,
+          0.6639130983812102
+        ],
+        [
+          0.2152134334800663,
+          0.6664050381391986
+        ],
+        [
+          0.21528202220782955,
+          0.6688950742538801
+        ],
+        [
+          0.21544604406731524,
+          0.6713744410442495
+        ],
+        [
+          0.21570492165191887,
+          0.6738344103885537
+        ],
+        [
+          0.21605774363416508,
+          0.6762663224499226
+        ],
+        [
+          0.21650326797385622,
+          0.6786616161616161
+        ],
+        [
+          0.21688947457177152,
+          0.6811616284262041
+        ],
+        [
+          0.21732451674237588,
+          0.6836424086647177
+        ],
+        [
+          0.21780799501970202,
+          0.6861016789663141
+        ],
+        [
+          0.21833946546260868,
+          0.688537181171081
+        ],
+        [
+          0.2189184400624178,
+          0.6909466789435321
+        ],
+        [
+          0.21954438719101568,
+          0.6933279598260635
+        ],
+        [
+          0.22021673208900625,
+          0.6956788372704843
+        ],
+        [
+          0.22093485739346894,
+          0.6979971526457562
+        ],
+        [
+          0.22169810370483575,
+          0.7002807772201003
+        ],
+        [
+          0.2225057701923673,
+          0.7025276141156475
+        ],
+        [
+          0.22335711523767232,
+          0.7047356002338422
+        ],
+        [
+          0.22425135711567912,
+          0.7069027081498274
+        ],
+        [
+          0.22518767471243387,
+          0.7090269479740746
+        ],
+        [
+          0.22616520827906667,
+          0.711106369179546
+        ],
+        [
+          0.22718306022123352,
+          0.7131390623927157
+        ],
+        [
+          0.22824029592330847,
+          0.715123161146801
+        ],
+        [
+          0.22933594460656936,
+          0.7170568435955954
+        ],
+        [
+          0.23046900022059025,
+          0.7189383341863319
+        ],
+        [
+          0.23163842236702023,
+          0.7207659052900367
+        ],
+        [
+          0.23284313725490197,
+          0.7225378787878788
+        ],
+        [
+          0.23403460706577017,
+          0.7241888792428366
+        ],
+        [
+          0.23525671541045703,
+          0.7257854949493984
+        ],
+        [
+          0.23650842333469604,
+          0.7273263685723433
+        ],
+        [
+          0.23778866672065024,
+          0.728810190164618
+        ],
+        [
+          0.23909635719155353,
+          0.7302356982809665
+        ],
+        [
+          0.24043038303697536,
+          0.7316016810503249
+        ],
+        [
+          0.24178961015792227,
+          0.7329069772060739
+        ],
+        [
+          0.2431728830309722,
+          0.7341504770732684
+        ],
+        [
+          0.2445790256906231,
+          0.7353311235120094
+        ],
+        [
+          0.24600684272901938,
+          0.7364479128161522
+        ],
+        [
+          0.24745512031220748,
+          0.7374998955665907
+        ],
+        [
+          0.2489226272120555,
+          0.738486177438389
+        ],
+        [
+          0.25040811585296074,
+          0.7394059199610767
+        ],
+        [
+          0.25191032337245434,
+          0.7402583412314602
+        ],
+        [
+          0.2534279726948022,
+          0.7410427165783431
+        ],
+        [
+          0.25495977361668853,
+          0.7417583791785944
+        ],
+        [
+          0.25650442390406014,
+          0.7424047206240355
+        ],
+        [
+          0.25806061039919787,
+          0.7429811914386684
+        ],
+        [
+          0.2596270101370753,
+          0.7434873015458031
+        ],
+        [
+          0.2612022914700544,
+          0.743922620684688
+        ],
+        [
+          0.26278511519996256,
+          0.744286778776288
+        ],
+        [
+          0.26437413571658896,
+          0.7445794662379018
+        ],
+        [
+          0.26596800214163185,
+          0.7448004342463473
+        ],
+        [
+          0.2675653594771242,
+          0.7449494949494949
+        ],
+        [
+          0.29125816993464054,
+          0.7487373737373737
+        ]
+      ],
+      "computed": {
+        "area_sf": 1684.04,
+        "perimeter_lf": 157.72
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "curved": true,
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-42c87638-713c-4a8f-a081-6bfe33b13b22",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-109941ad-de6c-44e1-b4dd-7ba767108448",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.4011437908496732,
+          0.6186868686868687
+        ],
+        [
+          0.4381127450980392,
+          0.6167929292929293
+        ],
+        [
+          0.4397390716504215,
+          0.6163750029811773
+        ],
+        [
+          0.44137706662412524,
+          0.6160857135803702
+        ],
+        [
+          0.4430224728279735,
+          0.6159258129611206
+        ],
+        [
+          0.44467101380881063,
+          0.6158957167092618
+        ],
+        [
+          0.4463184049661148,
+          0.6159955030457281
+        ],
+        [
+          0.44796036468778533,
+          0.6162249126232582
+        ],
+        [
+          0.44959262547816276,
+          0.6165833492004437
+        ],
+        [
+          0.4512109450493601,
+          0.6170698811913773
+        ],
+        [
+          0.45281111734707863,
+          0.6176832440868678
+        ],
+        [
+          0.4543889834822514,
+          0.6184218437409325
+        ],
+        [
+          0.45594044254010296,
+          0.6192837605140235
+        ],
+        [
+          0.45746146223853296,
+          0.6202667542622203
+        ],
+        [
+          0.4589480894081212,
+          0.621368270159422
+        ],
+        [
+          0.4603964602665168,
+          0.6225854453374059
+        ],
+        [
+          0.4618028104605081,
+          0.6239151163264959
+        ],
+        [
+          0.463163484849674,
+          0.6253538272775017
+        ],
+        [
+          0.464474947006188,
+          0.6268978389435602
+        ],
+        [
+          0.4657337884060855,
+          0.6285431383985345
+        ],
+        [
+          0.4669367372881048,
+          0.6302854494667119
+        ],
+        [
+          0.4680806671570803,
+          0.6321202438366958
+        ],
+        [
+          0.4691626049097826,
+          0.6340427528306026
+        ],
+        [
+          0.4701797385620915,
+          0.6360479797979798
+        ],
+        [
+          0.4711099169575256,
+          0.638085580846994
+        ],
+        [
+          0.4719731740269686,
+          0.640192349741527
+        ],
+        [
+          0.47276736068205893,
+          0.6423630416562853
+        ],
+        [
+          0.47349049978602226,
+          0.6445922526288849
+        ],
+        [
+          0.47414079107577667,
+          0.6468744330130769
+        ],
+        [
+          0.4747166156437081,
+          0.6492039012946554
+        ],
+        [
+          0.4752165399679594,
+          0.6515748582356525
+        ],
+        [
+          0.4756393194811993,
+          0.6539814013116073
+        ],
+        [
+          0.47598390166898735,
+          0.6564175394059685
+        ],
+        [
+          0.47624942869002024,
+          0.6588772077250473
+        ],
+        [
+          0.4764352395117378,
+          0.6613542828963913
+        ],
+        [
+          0.47654087155597114,
+          0.6638425982129896
+        ],
+        [
+          0.47656606185053624,
+          0.6663359589853614
+        ],
+        [
+          0.47651074768390644,
+          0.6688281579633053
+        ],
+        [
+          0.476375066761333,
+          0.6713129907889215
+        ],
+        [
+          0.4761593568620266,
+          0.6737842714424295
+        ],
+        [
+          0.4758641549982524,
+          0.6762358476423375
+        ],
+        [
+          0.47549019607843135,
+          0.6786616161616161
+        ],
+        [
+          0.4751746218756385,
+          0.6810639740944263
+        ],
+        [
+          0.4748113240356488,
+          0.6834501724746257
+        ],
+        [
+          0.47440064721786923,
+          0.6858179475240447
+        ],
+        [
+          0.4739429810299799,
+          0.6881650529426642
+        ],
+        [
+          0.473438759658314,
+          0.6904892620396728
+        ],
+        [
+          0.4728884614559469,
+          0.6927883698459196
+        ],
+        [
+          0.4722926084888843,
+          0.6950601952057628
+        ],
+        [
+          0.4716517660407801,
+          0.6973025828463221
+        ],
+        [
+          0.4709665420766534,
+          0.6995134054221808
+        ],
+        [
+          0.4702375866661147,
+          0.7016905655335898
+        ],
+        [
+          0.46946559136664645,
+          0.7038319977162638
+        ],
+        [
+          0.46865128856752547,
+          0.7059356704008807
+        ],
+        [
+          0.4677954507950075,
+          0.707999587840423
+        ],
+        [
+          0.46689888997943413,
+          0.7100217920035383
+        ],
+        [
+          0.4659624566849574,
+          0.7120003644321143
+        ],
+        [
+          0.4649870393026125,
+          0.7139334280613154
+        ],
+        [
+          0.4639735632075043,
+          0.7158191490003472
+        ],
+        [
+          0.46292298988090724,
+          0.7176557382722611
+        ],
+        [
+          0.46183631599811087,
+          0.7194414535111526
+        ],
+        [
+          0.46071457248287834,
+          0.7211746006151365
+        ],
+        [
+          0.45955882352941174,
+          0.7228535353535354
+        ],
+        [
+          0.4583450783890957,
+          0.724509851232622
+        ],
+        [
+          0.4570982398293459,
+          0.7261063770038728
+        ],
+        [
+          0.45581954048030005,
+          0.7276415343348198
+        ],
+        [
+          0.45451024446981386,
+          0.7291138055621075
+        ],
+        [
+          0.4531716461737382,
+          0.7305217351918615
+        ],
+        [
+          0.45180506893629363,
+          0.731863931338597
+        ],
+        [
+          0.4504118637618066,
+          0.7331390671012423
+        ],
+        [
+          0.4489934079791001,
+          0.7343458818749191
+        ],
+        [
+          0.4475511038798609,
+          0.7354831825971824
+        ],
+        [
+          0.4460863773323271,
+          0.7365498449274868
+        ],
+        [
+          0.444600676371669,
+          0.7375448143587154
+        ],
+        [
+          0.4430954697684546,
+          0.7384671072596696
+        ],
+        [
+          0.44157224557661706,
+          0.7393158118474911
+        ],
+        [
+          0.44003250966235746,
+          0.7400900890890552
+        ],
+        [
+          0.4384777842154391,
+          0.740789173530442
+        ],
+        [
+          0.4369096062443439,
+          0.741412374053668
+        ],
+        [
+          0.43532952605677866,
+          0.7419590745599279
+        ],
+        [
+          0.4337391057270345,
+          0.7424287345786734
+        ],
+        [
+          0.43213991755171305,
+          0.7428208898019238
+        ],
+        [
+          0.43053354249534675,
+          0.7431351525432842
+        ],
+        [
+          0.42892156862745096,
+          0.7433712121212122
+        ],
+        [
+          0.40155228758169936,
+          0.7471590909090909
+        ]
+      ],
+      "computed": {
+        "area_sf": 1778.02,
+        "perimeter_lf": 160.82
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "curved": true,
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        }
+      }
+    },
+    {
+      "id": "shp-fe6d44ad-22e1-47e1-8521-883cfd61f108",
+      "sheet_id": "Illini-Union-Public-Sheets-133-135-136.pdf",
+      "condition_id": "cnd-91e3b504-3528-4143-b3bf-cadab56142b5",
+      "measure_role": "linear",
+      "verts_norm": [
+        [
+          0.3911356209150327,
+          0.5129419191919192
+        ],
+        [
+          0.5780228758169934,
+          0.5015782828282829
+        ]
+      ],
+      "computed": {
+        "area_sf": 0,
+        "perimeter_lf": 107.34
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": false,
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1
+      },
+      "label": "Bounded fence run between visible posts; sheet 133"
+    }
+  ],
+  "markups": [],
+  "rfis": [],
+  "sheet_group": [],
+  "last_group": [
+    "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+    "Illini-Union-Public-Sheets-133-135-136.pdf"
+  ],
+  "sheet_tabs": [
+    "mo-state-fair-fire-station-A-101-floor-plan.pdf",
+    "Illini-Union-Public-Sheets-133-135-136.pdf"
+  ]
+}

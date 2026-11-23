@@ -1,0 +1,50 @@
+{
+  "single": [
+    {
+      "dash": "2 1.6666666666666667",
+      "fill": "#c9644255",
+      "rx": 1.3333333333333333,
+      "screenWidth": 14,
+      "stroke": "#1f3fc7",
+      "strokeWidth": 2,
+      "tag": "rect",
+      "width": 9.333333333333334
+    }
+  ],
+  "bulk": [
+    {
+      "dash": null,
+      "fill": "#c96442cc",
+      "id": "shp-6cd58518-bb03-4b25-a62e-2dcb9b1474bc",
+      "rx": 1.3333333333333333,
+      "screenWidth": 14,
+      "stroke": "#1f3fc7",
+      "strokeWidth": 2,
+      "tag": "rect",
+      "width": 9.333333333333334
+    },
+    {
+      "dash": "2 1.6666666666666667",
+      "fill": "#c9644255",
+      "id": "shp-68d4b109-8917-4269-9066-c7caa04e65a3",
+      "rx": 1.3333333333333333,
+      "screenWidth": 14,
+      "stroke": "#1f3fc7",
+      "strokeWidth": 2,
+      "tag": "rect",
+      "width": 9.333333333333334
+    },
+    {
+      "dash": "2 1.6666666666666667",
+      "fill": "#c9644255",
+      "id": "shp-55832919-2707-481b-801a-a7bc17a3be12",
+      "rx": 1.3333333333333333,
+      "screenWidth": 14,
+      "stroke": "#1f3fc7",
+      "strokeWidth": 2,
+      "tag": "rect",
+      "width": 9.333333333333334
+    }
+  ],
+  "result": "PASS: pending count geometry and selected appearance match exactly between individual and bulk selection at the tested zoom. No review actions performed during this visual check."
+}

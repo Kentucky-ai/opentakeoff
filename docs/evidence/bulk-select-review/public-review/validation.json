@@ -1,0 +1,148 @@
+{
+  "date": "2026-11-20",
+  "kind": "Actual local browser UI checks and exact saved-export comparisons",
+  "measurement_records": 89,
+  "condition_records": 9,
+  "baseline_pending": 86,
+  "baseline_reviewed": 3,
+  "qa_only": true,
+  "quantities": {
+    "DOOR-OPENING": {
+      "records": 46,
+      "EA": 46,
+      "SF": 0,
+      "LF": 0
+    },
+    "AS": {
+      "records": 2,
+      "EA": 2,
+      "SF": 0,
+      "LF": 0
+    },
+    "CB": {
+      "records": 4,
+      "EA": 4,
+      "SF": 0,
+      "LF": 0
+    },
+    "HA": {
+      "records": 29,
+      "EA": 29,
+      "SF": 0,
+      "LF": 0
+    },
+    "BENCH-RELOCATE": {
+      "records": 2,
+      "EA": 2,
+      "SF": 0,
+      "LF": 0
+    },
+    "PAVERS-A+B": {
+      "records": 1,
+      "EA": 0,
+      "SF": 1224.6,
+      "LF": 0
+    },
+    "MULCH": {
+      "records": 2,
+      "EA": 0,
+      "SF": 1832.5,
+      "LF": 0
+    },
+    "SOD": {
+      "records": 2,
+      "EA": 0,
+      "SF": 3462.06,
+      "LF": 0
+    },
+    "FENCE-4H": {
+      "records": 1,
+      "EA": 0,
+      "SF": 0,
+      "LF": 107.34
+    }
+  },
+  "observed": {
+    "selected_subset": {
+      "ids": [
+        "103",
+        "105",
+        "135"
+      ],
+      "selected": 3,
+      "pending_in_selection": 2,
+      "total_pending_after_review": 84,
+      "total_pending_after_undo": 86
+    },
+    "all_door_counts": {
+      "selected_glyphs": 46,
+      "pending": 43
+    },
+    "all_filtered": {
+      "initial_rendered_rows": 50,
+      "selected": 89,
+      "selected_glyphs": 89,
+      "measured_sheets": 2,
+      "pending_after_review": 0,
+      "pending_after_undo": 86
+    },
+    "landscape": {
+      "selected": 43,
+      "counts": 37,
+      "areas": 5,
+      "lengths": 1
+    },
+    "ha": {
+      "selected": 29
+    },
+    "search_change": {
+      "selected_glyphs": 0
+    },
+    "trade_filter": {
+      "before": "Roofing",
+      "after": "All",
+      "selected_glyphs": 29
+    },
+    "reviewed_only": {
+      "code": "DOOR-OPENING",
+      "label": "103",
+      "review_action_disabled": true
+    },
+    "keyboard_space": {
+      "selected_then_unselected": [
+        1,
+        0
+      ]
+    },
+    "narrow": {
+      "viewport": [
+        760,
+        900
+      ],
+      "drawer_closed_on_show": true,
+      "selected_glyphs": 29
+    },
+    "classic_and_light": "Both classic light and classic dark exercised; screenshots 13 and 14",
+    "reopen": {
+      "pending": 86,
+      "reviewed": 3,
+      "selected_glyphs": 0
+    },
+    "captured_console_errors": 0
+  },
+  "exports": [
+    {
+      "file": "public.after-undo.takeoff.json",
+      "sha256": "bdc668288c78e886da55466b43f58a1c61091c74078b968f73835b852d66c8f5",
+      "exit_code": 0,
+      "output": "PASS: every measurement and condition equals the baseline; source calibration is preserved; selection is not exported."
+    },
+    {
+      "file": "public.after-reopen.takeoff.json",
+      "sha256": "bdc668288c78e886da55466b43f58a1c61091c74078b968f73835b852d66c8f5",
+      "exit_code": 0,
+      "output": "PASS: every measurement and condition equals the baseline; source calibration is preserved; selection is not exported."
+    }
+  ],
+  "export_hash_basis": "UTF-8 normalized to LF"
+}

@@ -36,7 +36,9 @@ engine for that job. It has two front ends:
 
 Both front ends share one takeoff format, so you can open an agent's takeoff in the canvas,
 check it and fix it. Every shape records the scale it was measured at, the method that drew
-it, and whether a person or an agent drew it.
+it, and whether a person or an agent drew it. In **Work and review**, select individual
+measurements or all filtered results, show the selection on the plan, and mark the
+selected pending measurements reviewed in one undoable step.
 
 > [!NOTE]
 > **One-Click Area is temporarily gated** while the flood engine is re-validated on a wider
