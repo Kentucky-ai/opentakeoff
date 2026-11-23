@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **OpenTakeoff moves to a new, more accurate format on December 1, 2026.** This version is being retired. Your projects import, and takeoff stays free and open source. [Read the upgrade notice](UPGRADE.md) · [Create your login](https://kentucky-ai.com)
+
 <div align="center">
 
 <a href="https://opentakeoff.kentucky-ai.com"><img src="docs/img/brand/hero.svg" alt="OpenTakeoff: the scan star beside the wordmark, and an agent tracing two rooms of a floor plan on their wall faces" width="100%"></a>
