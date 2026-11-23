@@ -1,9 +1,12 @@
+> [!IMPORTANT]
+> **OpenTakeoff moves to a new, more accurate format on December 1, 2026.** This version is being retired. Your projects import, and takeoff stays free and open source. [Read the upgrade notice](UPGRADE.md) · [Create your login](https://kentucky-ai.com)
+
 <div align="center">
 
 <a href="https://opentakeoff.kentucky-ai.com"><img src="docs/img/brand/hero.svg" alt="OpenTakeoff: the scan star beside the wordmark, and an agent tracing two rooms of a floor plan on their wall faces" width="100%"></a>
 
 **Measure construction plans in your browser, or hand the same engine to your AI agent.**<br/>
-Free, open source and local. Nothing uploads, and nobody has to sign up.
+Free, open source and local. Nothing uploads. Takeoff stays free in the new app launching December 1, with one free login at kentucky-ai.com.
 
 [![GitHub stars](https://img.shields.io/github/stars/Kentucky-ai/opentakeoff?style=flat&logo=github&label=stars&color=62d4dc)](https://github.com/Kentucky-ai/opentakeoff/stargazers)
 [![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp&color=62d4dc)](https://www.npmjs.com/package/opentakeoff-mcp)
