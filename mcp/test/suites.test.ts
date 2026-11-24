@@ -812,6 +812,13 @@ test("concrete_takeoff: walls, counted pads, joints, bars and mesh, base and vap
   near(r.data.pads[0].form_sf, 96);                   // 4 × 16 ft × 1.5 ft
   near(r.data.totals.joint_lf, 30);                   // as traced, not laid out
   near(r.data.totals.form_sf, 416);                   // 320 wall + 96 pads
+  assert.ok(r.data.not_figured.some((m: string) => /^C-PAD-1: pad reinforcing/.test(m)), "pads without bars list the bottom mat");
+  const padBars = await call(client, "concrete_takeoff", { pads: [{ condition: "C-PAD-1", length_ft: 4, width_ft: 4, depth_in: 18, bars: { size: "#4", count_each_way: 5, lap_in: 0 } }], apply: false });
+  assert.equal(padBars.isError, false, JSON.stringify(padBars.data));
+  near(padBars.data.pads[0].rebar.lf, 160);           // 4 pads × 5 each way × 8 ft
+  near(padBars.data.totals.rebar[0].weight_lb, 106.88);
+  const noCount = await call(client, "concrete_takeoff", { pads: [{ condition: "C-PAD-1", length_ft: 4, width_ft: 4, depth_in: 18, bars: { size: "#4" } }] });
+  assert.match(noCount.data.error, /pads\[0\]\.bars\.count_each_way is required/);
 
   const rep = (await call(client, "export_report")).data;
   const qty = (tag: string, name: string) => row(rep, tag).materials.find((m: any) => m.name === name)?.qty;

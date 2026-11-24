@@ -25,7 +25,7 @@ that. A client that reads its tool list only once can pre-open suites with
 | Suite | Divisions | Tool | What it figures |
 |---|---|---|---|
 | finishes | 09 | none | Rooms with `measure_polygon`, base with `derive_base`, transitions with `derive_transitions`, wall finishes with `measure_surface`. |
-| concrete | 03 | `concrete_takeoff` | Cubic yards (net and with waste) from slabs, footings, walls and pads, form contact area, reinforcing bar LF and weight with laps, welded wire, base course, vapor barrier, joint LF as traced. |
+| concrete | 03 | `concrete_takeoff` | Cubic yards (net and with waste) from slabs, footings, walls and pads, form contact area, reinforcing bar LF (pads: bars each way) and weight with laps, welded wire, base course, vapor barrier, joint LF as traced. |
 | acoustical_ceilings | 09 | `ceiling_takeoff` | Lay-in tiles from the module, main runners, long and short cross tees, hanger wires, wall angle LF from the areas' perimeters. |
 | roofing | 07 | `roof_takeoff` | Sloped SF and squares, true rake, hip and valley LF, drip edge, starter, ridge cap, underlayment, ice and water. |
 | siding | 07 | `siding_takeoff` | Net wall SF and squares, opening trim, starter, corners, lap pieces. |

@@ -6,7 +6,7 @@
 - **What it figures.**
   - Cubic yards, net and with waste (stated, or a labeled 5% allowance): slab area × thickness, footing length × width × depth, wall area × thickness, pads from their stated size.
   - Form contact area: slab edges (perimeter × thickness), both footing sides, both wall faces, the four sides of a counted pad.
-  - Reinforcing: bar LF and weight at a stated spacing each way on a slab or wall, or a stated count of continuous bars in a footing. A stated lap lengthens the run by `stock ÷ (stock − lap)` (20 ft bar stock unless stated, labeled). Weights are the nominal US bar table, named in the reply. Welded wire by area from a stated roll width and lap.
+  - Reinforcing: bar LF and weight at a stated spacing each way on a slab or wall, a stated count of continuous bars in a footing, or a stated count each way in the bottom mat of a counted pad. A counted pad without `bars` lists its reinforcing under `not_figured`. A stated lap lengthens the run by `stock ÷ (stock − lap)` (20 ft bar stock unless stated, labeled). Weights are the nominal US bar table, named in the reply. Welded wire by area from a stated roll width and lap.
   - Under the slab: base course CY from a stated depth, and vapor barrier SF.
   - Joints: `C-JOINT` LF as traced. The tool does not lay joints out.
 - **Where it puts them.** Material rows on each condition, updated on a re-run, never duplicated. Each slab's perimeter is committed as an edge form run under `<condition>-FORM` (a multiplier on the slab is copied to it), and a re-run skips slabs it already derived.

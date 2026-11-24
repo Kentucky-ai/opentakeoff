@@ -530,12 +530,14 @@ export function slabQuantities(inp: SlabInput) {
     out.rebar = rebarQuantities(barsEachWayLf(area, inp.bars.spacing_in, mats), inp.bars);
     out.rebar_spacing_in = inp.bars.spacing_in;
     if (inp.bars.lap_in === undefined) notFigured.push("bar laps (pass bars.lap_in from the structural notes): bar LF is the net run");
+    notFigured.push("the extra bar at the end of each run: bars each way are area ÷ spacing");
   }
   if (inp.mesh) {
     const w = inp.mesh.roll_width_ft, lap = inp.mesh.lap_in / 12;
     if (!(w > 0) || !(lap >= 0) || lap >= w) throw new Error("mesh needs a roll width wider than its lap");
     out.mesh_sf = r2(area * w / (w - lap));
     out.mesh_lap_in = inp.mesh.lap_in;
+    notFigured.push("welded wire fabric end laps: SF carries the side lap only");
   }
   if (inp.base_depth_in !== undefined) out.base_cy = r2(area * inp.base_depth_in / 12 / 27);
   if (inp.vapor_barrier) out.vapor_barrier_sf = r2(area);
@@ -608,6 +610,7 @@ export function concreteWallQuantities(inp: ConcreteWallInput) {
     out.rebar = rebarQuantities(barsEachWayLf(area, inp.bars.spacing_in, inp.bars.faces ?? 1), inp.bars);
     out.rebar_spacing_in = inp.bars.spacing_in;
     if (inp.bars.lap_in === undefined) notFigured.push("bar laps (pass bars.lap_in from the structural notes): bar LF is the net run");
+    notFigured.push("the extra bar at the end of each run: bars each way are area ÷ spacing");
   } else notFigured.push("wall reinforcing (pass bars from the structural sheets)");
   notFigured.push("wall openings, pilasters, ties and bracing: trace openings as deducts");
   out.not_figured = notFigured;
@@ -623,6 +626,8 @@ export interface PadInput {
   length_ft: number;
   width_ft: number;
   depth_in: number;
+  /** bottom mat in each pad: this many bars each way, full pad length and width */
+  bars?: RebarSpec & { count_each_way: number };
   waste_pct?: number;
 }
 
@@ -630,10 +635,25 @@ export interface PadInput {
 export function padQuantities(inp: PadInput) {
   if (!(inp.length_ft > 0) || !(inp.width_ft > 0) || !(inp.depth_in > 0)) throw new Error("length_ft, width_ft and depth_in must be positive");
   const n = Math.max(0, inp.count);
-  return {
+  const notFigured: string[] = [];
+  const out = {
     count: n, length_ft: inp.length_ft, width_ft: inp.width_ft, depth_in: inp.depth_in,
     ...concreteOrder(n * inp.length_ft * inp.width_ft * inp.depth_in / 12, inp.waste_pct),
     form_sf: r2(n * 2 * (inp.length_ft + inp.width_ft) * inp.depth_in / 12),
+  } as Record<string, unknown>;
+  if (inp.bars) {
+    if (!(inp.bars.count_each_way > 0)) throw new Error("bars.count_each_way must be positive");
+    // each way: count bars along the length and count bars along the width
+    out.rebar = rebarQuantities(n * inp.bars.count_each_way * (inp.length_ft + inp.width_ft), inp.bars);
+    out.rebar_count_each_way = inp.bars.count_each_way;
+    if (inp.bars.lap_in === undefined) notFigured.push("bar laps (pass bars.lap_in from the structural notes): bar LF is the net run");
+    notFigured.push("bar cover, hooks and bends: each bar is taken as the full pad length or width");
+  } else notFigured.push("pad reinforcing (from the footing schedule; pass bars: size and count_each_way)");
+  notFigured.push("pier dowels, keyways and stepped or sloped pad tops");
+  out.not_figured = notFigured;
+  return out as {
+    count: number; length_ft: number; width_ft: number; depth_in: number; concrete_cy: number; waste_pct: number; waste_source: string; order_cy: number;
+    form_sf: number; rebar?: ReturnType<typeof rebarQuantities>; rebar_count_each_way?: number; not_figured: string[];
   };
 }
 

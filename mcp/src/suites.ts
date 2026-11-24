@@ -641,6 +641,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     spacing_in: z.number().positive().optional().describe("Spacing each way, inches (slabs and walls); required there, or spacing_mm"),
     spacing_mm: z.number().positive().optional().describe("Spacing each way, mm (units metric)"),
     count: z.number().int().positive().optional().describe("Continuous bars along the run (footings); required there"),
+    count_each_way: z.number().int().positive().optional().describe("Bars each way in the bottom mat of a counted pad; required there"),
     mats: z.number().int().min(1).max(2).optional().describe("Mats in a slab (default 1)"),
     faces: z.number().int().min(1).max(2).optional().describe("Faces of a wall carrying the bars (default 1)"),
     lap_in: z.number().min(0).optional().describe("Splice lap, inches (structural notes); absent = laps not figured, or lap_mm"),
@@ -687,6 +688,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       width_m: z.number().positive().optional(),
       depth_in: z.number().positive().optional().describe("Pad depth, inches; required, or depth_mm"),
       depth_mm: z.number().positive().optional(),
+      bars: barsInput.optional().describe("Bottom mat of a counted pad: size and count_each_way (footing schedule), lap_in"),
     })).default([]),
     joints: z.string().default("C-JOINT").describe("The control and expansion joint condition, reported as traced"),
     waste_pct: z.number().min(0).max(50).optional().describe("Concrete waste; absent = 5 % suite allowance, reported as an allowance"),
@@ -807,12 +809,16 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       if (tot.ea > 0) {
         const length = need(p, "length_ft", path), width = need(p, "width_ft", path);
         let q: ReturnType<typeof padQuantities>;
-        try { q = padQuantities({ count: tot.ea, length_ft: length, width_ft: width, depth_in: depth, waste_pct: a.waste_pct }); } catch (e) { return refuse(path, e); }
+        const b = barSpec(p.bars, path);
+        if (b && !p.bars.count_each_way) throw new UserError(`${path}bars.count_each_way is required — the bars each way in the pad, from the footing schedule.`);
+        try { q = padQuantities({ count: tot.ea, length_ft: length, width_ft: width, depth_in: depth, bars: b && { ...b, count_each_way: p.bars.count_each_way }, waste_pct: a.waste_pct }); } catch (e) { return refuse(path, e); }
         rowOn(p.condition, "Concrete", tot.ea, q.order_cy, "count", "CY", `${q.length_ft} × ${q.width_ft} ft by ${mm(depth)}, ${q.waste_pct}% waste`);
         rowOn(p.condition, "Form contact area, sides", tot.ea, q.form_sf, "count", "SF", "four sides");
-        return { tag: p.condition, ...q };
+        rebarRows(p.condition, tot.ea, "count", q.rebar);
+        return { tag: p.condition, ...strip(p.condition, q) };
       }
       const q = areaElement(path, p.condition, depth, {}, "pad");
+      if (p.bars) notFigured.push(`${p.condition}: bars are read for counted pads only; this pad is traced as an area, so its reinforcing is not figured`);
       return { tag: p.condition, ...strip(p.condition, q) };
     });
 

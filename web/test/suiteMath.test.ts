@@ -377,6 +377,16 @@ test("concreteWallQuantities and padQuantities", () => {
   near(p.concrete_cy, 3.56);             // 4 × 4 × 4 × 1.5 = 96 CF / 27
   near(p.form_sf, 96);                   // 4 pads × 16 ft of side × 1.5 ft
   assert.throws(() => padQuantities({ count: 4, length_ft: 0, width_ft: 4, depth_in: 18 }), /positive/);
+  assert.ok(p.not_figured.some((m) => /^pad reinforcing/.test(m)), "counted pads say the bottom mat is left out");
+  const pb = padQuantities({ count: 4, length_ft: 4, width_ft: 4, depth_in: 18, bars: { size: "#4", count_each_way: 5, lap_in: 0 } });
+  near(pb.rebar!.net_lf, 160);           // 4 pads × 5 bars each way × (4 + 4) ft
+  near(pb.rebar!.weight_lb, 106.88);     // 160 × 0.668
+  assert.ok(!pb.not_figured.some((m) => /^pad reinforcing/.test(m)));
+  assert.throws(() => padQuantities({ count: 4, length_ft: 4, width_ft: 4, depth_in: 18, bars: { size: "#4", count_each_way: 0 } }), /count_each_way/);
+  const sl = slabQuantities({ area_sf: 1000, perimeter_lf: 130, thickness_in: 5, bars: { size: "#4", spacing_in: 12 }, mesh: { roll_width_ft: 5, lap_in: 6 } });
+  assert.ok(sl.not_figured.some((m) => /extra bar at the end/.test(m)));
+  assert.ok(sl.not_figured.some((m) => /end laps/.test(m)));
+  assert.ok(w.not_figured.some((m) => /extra bar at the end/.test(m)));
 });
 
 test("registry: ids unique, every suite has a method, divisions route, tools are owned once", () => {
