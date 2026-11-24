@@ -104,6 +104,30 @@ test("hatch pitch cap is feet-true: a 1.6 ft rhythm stays hard at every resoluti
   }
 });
 
+test("crossed-lattice tier is feet-true: a 2 ft ceiling grid softens at every resolution, the same 2 ft rhythm uncrossed stays hard", () => {
+  const verticals = (pitchPx: number): number[] => {
+    const segs: number[] = [];
+    for (let k = 0; k < 12; k++) segs.push(150 + k * pitchPx, 60, 150 + k * pitchPx, 580);
+    return segs;
+  };
+  const rows = (pitchPx: number): number[] => {
+    const segs: number[] = [];
+    for (let k = 0; k < 10; k++) segs.push(130, 80 + k * pitchPx, 720, 80 + k * pitchPx);
+    return segs;
+  };
+  for (const maxDim of [900, 450]) {                            // ws 1 and 0.5
+    const alone = verticals(2 * PXFT);
+    const aloneMask = buildMask(alone, 900, 600, maxDim, new Uint8Array(alone.length >> 2), PXFT);
+    assert.equal(aloneMask.softCount, 0, `ws ${aloneMask.ws}: an uncrossed 2 ft rhythm is walls`);
+    const grid = [...verticals(2 * PXFT), ...rows(2 * PXFT)];
+    const gridMask = buildMask(grid, 900, 600, maxDim, new Uint8Array(grid.length >> 2), PXFT);
+    assert.ok(gridMask.softCount >= 16, `ws ${gridMask.ws}: a crossed 2 ft grid is a lattice (got ${gridMask.softCount})`);
+    const bays = [...verticals(3 * PXFT).slice(0, 8 * 4), ...rows(3 * PXFT).slice(0, 6 * 4)];
+    const baysMask = buildMask(bays, 900, 600, maxDim, new Uint8Array(bays.length >> 2), PXFT);
+    assert.equal(baysMask.softCount, 0, `ws ${baysMask.ws}: a crossed 3 ft grid is above the lattice cap`);
+  }
+});
+
 test("scale-blind masks keep the legacy px behavior bit-for-bit at the 18 px/ft calibration", () => {
   const segs = [...sq(2, 2, 598, 398), ...sq(100, 100, 316, 280)];
   const meta = new Uint8Array(segs.length >> 2);

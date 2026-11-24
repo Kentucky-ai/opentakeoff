@@ -273,6 +273,16 @@ export const CLUSTER_FIT_TOL_PX = 1.5;
 export const HATCH_ANGLE_TOL = 2;      // deg — CAD hatch angle jitter is ≪ 1°
 export const HATCH_MAX_PITCH = 24;     // mask px — scale-unknown fallback for the pitch cap
 export const HATCH_MAX_PITCH_FT = HATCH_MAX_PITCH / 18;  // = 4/3 ft at the 18 px/ft calibration — keeps room-scale rhythm (demising walls) hard, at every resolution
+// A CROSSED lattice — a family whose strokes are crossed by a perpendicular
+// lattice of the same pen — is a ceiling grid or a tile field, never walls. A
+// 2'×2' lay-in ceiling grid pitches at 2 ft, above the cap above, so every grid
+// line stayed hard and a click inside a reflected ceiling plan returned one
+// tile. A family pitched between the two caps softens ONLY where it is crossed
+// (see classifyHatchSegs); a parallel rhythm with nothing crossing it — the
+// 1.6 ft walls the cap above protects — stays hard. 40 mask px at the 18 px/ft
+// calibration = 2.22 ft: the 2 ft module plus raster slop. Feet-true only: an
+// unknown-scale sheet gets no lattice tier. A 4 ft bay grid stays hard.
+export const HATCH_LATTICE_MAX_PITCH_FT = 40 / CAL_MPPF;
 /** Which verification regime accepted a hatch escalation — see floodRegion. */
 export type HatchTier = "bounded" | "trapped" | "override";
 /** Ordering for combining tiers across a room's retries: worst wins. */
@@ -878,12 +888,32 @@ function circleFitOk(segs: number[], chain: number[], c0: number, c1: number): {
 // same cells; offsets carry ~1e-14 float noise — the corpus caught a pitch
 // sitting exactly ON the cap splitting on that noise at one resolution), not
 // tunables.
+//
+// Crossed-lattice tier (latticeCapPx > pitchCapPx): a stroke whose lattice
+// pitch lies between the two caps is held PENDING, and softens only when at
+// least LATTICE_MIN_CROSSINGS rows of a perpendicular, same-pen family that is
+// itself a lattice (soft or pending) cross it. That is the ceiling-grid
+// signature; a parallel rhythm on its own never earns it. With latticeCapPx
+// at or below pitchCapPx the result is bit-identical to the single-cap
+// classifier: a stroke qualifies at some p ≤ pitchCapPx under the wider
+// search exactly when it does under the narrow one, since both neighbors at
+// ±p sit within p of the stroke.
 interface HatchPiece { i: number; d: number; t0: number; t1: number; w: number; }
-export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number, pitchCapPx: number = HATCH_MAX_PITCH): Uint8Array {
+interface LatticeFamily {
+  ang: number; dxu: number; dyu: number; nxu: number; nyu: number;
+  rowD: number[]; rowPieces: HatchPiece[][]; rowMaxT1: number[][];
+}
+const LATTICE_MIN_CROSSINGS = 2;
+export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number, pitchCapPx: number = HATCH_MAX_PITCH, latticeCapPx = 0): Uint8Array {
   const n = segs.length >> 2;
   const soft = new Uint8Array(n);
   if (!meta || !n) return soft;
   const HALF_CELL = 0.5;                         // mask px — raster resolution floor
+  const lattice = latticeCapPx > pitchCapPx;
+  const searchCap = lattice ? latticeCapPx : pitchCapPx;
+  const pending = lattice ? new Uint8Array(n) : null;   // qualified only above pitchCapPx
+  const famOf = lattice ? new Int32Array(n).fill(-1) : null;
+  const families: LatticeFamily[] = [];
   interface Cand { i: number; ang: number; x1: number; y1: number; x2: number; y2: number; w: number; }
   const cand: Cand[] = [];
   for (let i = 0; i < n; i++) {
@@ -955,6 +985,10 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number, 
       for (let i = 0; i < rp.length; i++) { mx = Math.max(mx, rp[i].t1); m[i] = mx; }
       return m;
     });
+    if (famOf) {
+      for (const p of pieces) famOf[p.i] = families.length;
+      families.push({ ang: sum / members.length, dxu, dyu, nxu, nyu, rowD, rowPieces, rowMaxT1 });
+    }
     // does row j hold a piece of pen width w overlapping [t0, t1]?
     const rowHas = (j: number, w: number, t0: number, t1: number): boolean => {
       const P = rowPieces[j], M = rowMaxT1[j];
@@ -971,7 +1005,7 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number, 
     // within the pitch cap; −1 when none
     const nearestRow = (j: number, dir: 1 | -1, w: number, t0: number, t1: number): number => {
       for (let r = j + dir; r >= 0 && r < rowD.length; r += dir) {
-        if (Math.abs(rowD[r] - rowD[j]) > pitchCapPx + HALF_CELL) break;
+        if (Math.abs(rowD[r] - rowD[j]) > searchCap + HALF_CELL) break;
         if (rowHas(r, w, t0, t1)) return r;
       }
       return -1;
@@ -1004,7 +1038,7 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number, 
       const pUp = rowD[up] - rowD[j], pDn = rowD[j] - rowD[dn];
       const at = (mult: number, p: number) => rowAt(rowD[j] + mult * p, c.w, c.t0, c.t1);
       for (const p of pUp === pDn ? [pUp] : [pUp, pDn]) {
-        if (p < HALF_CELL || p > pitchCapPx + HALF_CELL) continue;
+        if (p < HALF_CELL || p > searchCap + HALF_CELL) continue;
         // interior: ±p both sides, lattice extending to ±2p at least one way
         const interior = at(1, p) && at(-1, p) && (at(2, p) || at(-2, p));
         // clipped edge: a fill's LAST row before its bounding wall has a
@@ -1019,9 +1053,52 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number, 
         const clipped =
           (at(1, p) && at(2, p) && at(3, p) && pDn <= p + HALF_CELL) ||
           (at(-1, p) && at(-2, p) && at(-3, p) && pUp <= p + HALF_CELL);
-        if (interior || clipped) { soft[c.i] = 1; break; }
+        if (!(interior || clipped)) continue;
+        if (p <= pitchCapPx + HALF_CELL) { soft[c.i] = 1; if (pending) pending[c.i] = 0; break; }
+        if (pending) pending[c.i] = 1;           // keep looking for a pitch under the narrow cap
       }
     }
+  }
+  if (pending && famOf) {
+    // does a row of family B cover position t along B, with a lattice member
+    // (soft or pending) of pen w?
+    const covers = (B: LatticeFamily, j: number, w: number, t: number): boolean => {
+      const P = B.rowPieces[j], M = B.rowMaxT1[j];
+      let lo = 0, hi = P.length - 1, last = -1;
+      while (lo <= hi) { const mid = (lo + hi) >> 1; if (P[mid].t0 <= t + HALF_CELL) { last = mid; lo = mid + 1; } else hi = mid - 1; }
+      for (let i = last; i >= 0; i--) {
+        if (M[i] < t - HALF_CELL) break;
+        const p = P[i];
+        if (p.w === w && p.t1 >= t - HALF_CELL && (soft[p.i] || pending[p.i])) return true;
+      }
+      return false;
+    };
+    const promote: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (!pending[i] || soft[i]) continue;
+      const A = families[famOf[i]];
+      const w = meta[i] >> 4;
+      const x1 = segs[i * 4] * ws, y1 = segs[i * 4 + 1] * ws, x2 = segs[i * 4 + 2] * ws, y2 = segs[i * 4 + 3] * ws;
+      let crossings = 0;
+      for (const B of families) {
+        if (B === A) continue;
+        const dAng = Math.abs(((A.ang - B.ang) % 180 + 180) % 180 - 90);
+        if (dAng > HATCH_ANGLE_TOL) continue;
+        // the stroke runs across B's rows: its span in B's offset axis, and
+        // its (near-constant) position along B's rows
+        const da = x1 * B.nxu + y1 * B.nyu, db = x2 * B.nxu + y2 * B.nyu;
+        const d0 = Math.min(da, db) + HALF_CELL, d1 = Math.max(da, db) - HALF_CELL;
+        const t = ((x1 + x2) / 2) * B.dxu + ((y1 + y2) / 2) * B.dyu;
+        let lo = 0, hi = B.rowD.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (B.rowD[mid] < d0) lo = mid + 1; else hi = mid; }
+        for (let r = lo; r < B.rowD.length && B.rowD[r] <= d1; r++) {
+          if (covers(B, r, w, t) && ++crossings >= LATTICE_MIN_CROSSINGS) break;
+        }
+        if (crossings >= LATTICE_MIN_CROSSINGS) break;
+      }
+      if (crossings >= LATTICE_MIN_CROSSINGS) promote.push(i);
+    }
+    for (const i of promote) soft[i] = 1;      // decided on the pre-promotion state, so order-free
   }
   return soft;
 }
@@ -1971,7 +2048,7 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
   // reads as hatch or as walls is a property of the DRAWING, not of ws.
   // mppf = pxPerFt*k*wsB = basePxPerFt*wsB — the render scale cancels exactly.
   const mppf = Number.isFinite(pxPerFt) && pxPerFt > 0 ? pxPerFt * ws : 0;
-  const soft = meta ? classifyHatchSegs(segs, meta, ws, mppf > 0 ? HATCH_MAX_PITCH_FT * mppf : HATCH_MAX_PITCH) : null;
+  const soft = meta ? classifyHatchSegs(segs, meta, ws, mppf > 0 ? HATCH_MAX_PITCH_FT * mppf : HATCH_MAX_PITCH, mppf > 0 ? HATCH_LATTICE_MAX_PITCH_FT * mppf : 0) : null;
   // Second, independent contributor to the SAME soft plane: inset annotation
   // rings (section 2c). Feet-true only — every threshold it uses is a physical
   // distance, and guessing them in raw mask px on a sheet of unknown scale
