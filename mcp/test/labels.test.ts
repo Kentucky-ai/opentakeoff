@@ -43,6 +43,25 @@ test("detect_rooms: a preview that commits nothing stamps nothing", async () => 
   assert.equal(s.shapes.length, 0, "no condition given — nothing to label");
 });
 
+test("detect_rooms: letter-prefixed room numbers (A2521) only with label_prefixes, never a sheet number", async () => {
+  const s = new Session();
+  await s.loadPlan(PLAN);
+  s.setScale(KEY, { use_detected: true });
+  await s.detectRooms(KEY, { role: "floor_area", returnVerts: false });     // fills the sheet's text spans
+  // the same four rooms, numbered the way a hospital set numbers them: 101 → A1101
+  const sheet = s.sheet(KEY);
+  for (const sp of sheet.spans!) sp.str = sp.str.replace(/\b(10[1-4])\b/, "A1$1");
+  const numeric = await s.detectRooms(KEY, { role: "floor_area", returnVerts: false });
+  assert.equal(numeric.detected, 0, "no prefix stated: numeric room numbers only");
+  const prefixed = await s.detectRooms(KEY, { condition: "CPT-1", role: "floor_area", returnVerts: false, labelPrefixes: ["A"] });
+  assert.equal(prefixed.detected, 4);
+  assert.deepEqual(s.shapes.map((x) => x.label).sort(), ["A1101", "A1102", "A1103", "A1104"]);
+  // a token that is a loaded sheet's own number is never a room
+  sheet.sheetNumber = "A-1103";
+  const guarded = await s.detectRooms(KEY, { role: "floor_area", returnVerts: false, labelPrefixes: ["A"] });
+  assert.equal(guarded.detected, 3);
+});
+
 test("exportPayload carries the label — the canvas loads the sweep already sliced by room", async () => {
   const s = await swept();
   const p = s.exportPayload() as { shapes: { label?: string }[] };

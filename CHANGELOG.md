@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-17 — detect_rooms: letter-prefixed room numbers on request (MCP 0.9.117)
+
+- **`detect_rooms {label_prefixes: ["A"]}` reads room numbers like A2521, A2532 and B101A.** Hospital and campus sets put a wing or floor letter in front of every room number, so the 2–3 digit room pattern found no rooms at all. The letters are an argument read off the plan, because a sheet number (A101) has the same shape. A prefixed token that is the number of any loaded sheet is never a room, and the text gates (printed areas, title-block words, a second number) still apply.
+- Without `label_prefixes`, nothing changes: numeric room numbers only. `roomLabelSeeds` takes the same `prefixes` and `exclude` options (`roomLabelMatcher` in `web/src/lib/detectRooms.ts`). The sheet graph's room tags are unchanged.
+
 ## 2026-11-20 — Public test sheets
 
 - **`demo/public-sheets/`: nine real sheets to test against.** Footing and foundation plan, a fire station floor plan and exterior elevations, a veterans home overall plan with letter-prefixed room numbers, four area plans that meet at match lines, and an overall reflected ceiling plan. All are from Missouri state public bid sets, extracted unchanged with the document metadata removed. The README links each source and records what `main` reads today, including three misses: S-101's sheet number and scale, and no scale on the fire station plan.
