@@ -420,7 +420,9 @@ export function ceilingQuantities(inp: CeilingInput) {
 // reinforcing each come from a value the drawings or the product data state:
 //   units per SF = 144 / (length_in × height_in)        16 × 8 → 1.125
 //   mortar CF    = units / 100 × stated CF per 100 units
-//   joint reinforcement LF = wall length × ceil(height × 12 / spacing)
+//   joint reinforcement LF = wall length × (ceil(height × 12 / spacing) − 1)
+//     the bed joints at spacing, 2 × spacing … strictly below the top of the wall:
+//     10 ft at 16 in → 16, 32 … 112 in = 7 lines; the top course is the bond beam's
 //   vertical bar LF        = wall face SF / (spacing_in / 12)
 //   grout CF     = wall face SF × (12 / cell spacing_in) × cell area_in² / 144
 // Bars and grout are average-density counts over the face: a layout that adds
@@ -434,6 +436,28 @@ export function parseMasonryUnit(text: string, metric = false): { length_in: num
   const a = Number(m[1]) * toIn, b = Number(m[2]) * toIn;
   if (!(a > 0 && b > 0)) return null;
   return { length_in: Math.max(a, b), height_in: Math.min(a, b) };
+}
+
+/** Joint reinforcement lines up one wall: a line in each bed joint at the
+ *  stated spacing that falls strictly below the top of the wall. 10 ft at
+ *  16 in → 7 (16 … 112 in), 8 ft at 16 in → 5 (the joint at 96 in is the top
+ *  of the wall, where the bond beam or the cap goes). Never negative. */
+export function jointReinforcementLines(height_ft: number, spacing_in: number): number {
+  if (!(height_ft > 0 && spacing_in > 0)) return 0;
+  return Math.max(0, ceil(height_ft * 12 / spacing_in) - 1);
+}
+
+/** An opening's width, in the units of its ring: its extent along the view's
+ *  ground line. `viewRotationDeg` is the angle of that ground line from the
+ *  sheet's horizontal, 0 for an elevation that reads upright, 90 for one
+ *  drawn on its side, 45 for an angled wing. The sheet's left-to-right extent
+ *  is only the width when the view is upright. */
+export function openingWidth(ring: Pt[], viewRotationDeg = 0): number {
+  if (!ring.length) return 0;
+  const a = (viewRotationDeg * Math.PI) / 180, ux = Math.cos(a), uy = Math.sin(a);
+  let lo = Infinity, hi = -Infinity;
+  for (const [x, y] of ring) { const d = x * ux + y * uy; if (d < lo) lo = d; if (d > hi) hi = d; }
+  return hi - lo;
 }
 
 export interface MasonryInput {
@@ -489,7 +513,7 @@ export function masonryQuantities(inp: MasonryInput) {
   if (inp.joint_reinf_spacing_in !== undefined) {
     const s = inp.joint_reinf_spacing_in;
     if (!(s > 0)) throw new Error("joint_reinf_spacing_in must be positive");
-    const lines = runs.reduce((n, r) => n + Math.max(0, r.length_lf) * ceil(r.height_ft * 12 / s), 0);
+    const lines = runs.reduce((n, r) => n + Math.max(0, r.length_lf) * jointReinforcementLines(r.height_ft, s), 0);
     out.joint_reinforcement_lf = r2(lines);
     out.joint_reinforcement_spacing_in = s;
   } else notFigured.push("joint reinforcement (pass joint_reinf_spacing_in from the structural notes)");
