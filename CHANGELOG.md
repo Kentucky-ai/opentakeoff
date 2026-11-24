@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-11-23 — Sitework/earthwork suite + section-view UI (#651)
+## 2026-11-23 — Sitework/earthwork suite + section-view UI (#651) (MCP 0.9.120)
 
 - **`earthwork_takeoff` and `open_suite {suite: "sitework"}` covering Divisions 31, 32, and 33.** Adds earthwork, exterior improvements, and utilities trade suite with prefixes `EW-`, `EX-`, `FL-`, `TR-`, `PV-`, `UT-`.
 - **Average End Area (AEA) cut & fill arithmetic:** Evaluated against Indiana DNR Ferdinand culvert answer key (matches 34 of 37 cross-section stations within 1 CY). Net-versus-gross guard strictly separates cut and fill volumes and never reports them as a netted quantity; supports compaction shrinkage and excavation swell percentages.
