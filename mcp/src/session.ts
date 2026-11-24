@@ -6241,9 +6241,8 @@ export class Session {
     }
 
     const explicitSeam = opts.seam_coord ?? opts.match_line;
-    if (explicitSeam !== undefined) {
-      if (!Number.isFinite(explicitSeam)) throw new UserError("seam_coord must be a finite number.");
-      st.seams = [explicitSeam];
+    if (explicitSeam !== undefined && !Number.isFinite(explicitSeam)) {
+      throw new UserError("seam_coord must be a finite number.");
     }
 
     const realigning = hasAnchor && hasMoving;
@@ -6290,6 +6289,10 @@ export class Session {
     }
 
     st.aligned = true;
+    // An explicit seam wins; a realign without one drops the seam computed for
+    // the old placement so the check re-derives it from the new linework.
+    if (explicitSeam !== undefined) st.seams = [explicitSeam];
+    else if (realigning) delete st.seams;
 
     const memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array }> = {};
     for (const ms of resolvedSheets) {
