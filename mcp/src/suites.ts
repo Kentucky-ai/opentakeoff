@@ -25,7 +25,7 @@ import {
 import { M_PER_FT, MM_PER_IN, SUITE_UNIT_PAIRS, suiteMetricName, suiteMetricReply } from "../../web/src/lib/units.ts";
 import {
   parsePitch, roofQuantities, slopeFactor, hipValleyFactor, sidingQuantities, bottomEdges, starterRuns, soffitQuantities,
-  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, ringPerimeter, type Pt,
+  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, openingWidth, ringPerimeter, type Pt,
 } from "../../web/src/lib/suiteMath.ts";
 
 export { SUITE_TOOL_NAMES };
@@ -654,6 +654,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     }).optional().describe("Grouted cells: spacing along the wall and each cell's net area"),
     lintel_bearing_in: z.number().min(0).optional().describe("Lintel bearing each side of an opening, inches; absent = lintels not figured, or lintel_bearing_mm"),
     lintel_bearing_mm: z.number().min(0).optional().describe("Lintel bearing each side, mm (units metric)"),
+    view_rotation_deg: z.number().min(-180).max(180).default(0).describe("Angle of the elevation's ground line from the sheet's horizontal: 0 (default) for a view that reads upright, 90 for one drawn on its side, 45 for an angled wing. An opening's width, and so its lintel length, is measured along it"),
     lintels: z.array(z.string()).default([]).describe("Lintel count conditions (M-LINTEL-<type>) to check against the openings: the counted total is reported beside the opening count"),
     bond_beams: z.string().default("M-BB").describe("Bond beam condition, reported as traced"),
     control_joints: z.string().default("M-CJ").describe("Control joint condition, reported as traced"),
@@ -706,7 +707,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
         unit_length_in: face.length_in, unit_height_in: face.height_in, waste_pct: a.waste_pct,
         mortar_cf_per_100_units: a.mortar_cf_per_100_units, runs, joint_reinf_spacing_in: spacing, vertical_bar_spacing_in: barSpacing,
         grout: groutIn && { spacing_in: groutIn.spacing_in!, cell_area_in2: groutIn.cell_area_in2! },
-        opening_widths_ft: separate.map((o) => { const xs = o.ft.map((p) => p[0]); return Math.max(...xs) - Math.min(...xs); }),
+        opening_widths_ft: separate.map((o) => openingWidth(o.ft, a.view_rotation_deg)),
         lintel_bearing_in: bearing,
       });
     } catch (e) { throw new UserError(`${(e as Error).message}.`); }

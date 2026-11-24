@@ -754,10 +754,13 @@ test("masonry_takeoff: the #612 finish line — 30 × 10 ft wall, one 3 × 4 ft 
   assert.equal(r.data.unit_count, 324);               // 288 × 1.125
   assert.equal(r.data.unit_count_order, 341);         // 324 × 1.05 = 340.2
   near(r.data.mortar_cf, 25.92);                      // 324 / 100 × 8 CF
-  near(r.data.joint_reinforcement_lf, 240);           // 8 lines (120 in / 16 = 7.5) × 30 LF
+  near(r.data.joint_reinforcement_lf, 210);           // 7 lines (joints at 16 … 112 in of 120) × 30 LF
   near(r.data.vertical_bar_lf, 112.5);                // 300 SF / (32 / 12)
   near(r.data.grout_cf, 18.75);                       // 300 × (12/32) × 24 in² / 144
   assert.deepEqual(r.data.lintels.lengths_ft, [4.33]); // 3 ft + 2 × 8 in bearing
+  // the same 3 × 4 ft opening read on a view drawn on its side: the lintel spans its 4 ft, not the sheet's left-to-right 3 ft
+  const turned = await call(client, "masonry_takeoff", { unit: "16x8", lintel_bearing_in: 8, view_rotation_deg: 90, apply: false });
+  assert.deepEqual(turned.data.lintels.lengths_ft, [5.33]);   // 4 ft + 2 × 8 in bearing
   near(r.data.bond_beam_lf, 20);
   near(r.data.control_joint_lf, 5);
   assert.equal(r.data.committed, 1);                  // the opening's deduct
@@ -767,7 +770,7 @@ test("masonry_takeoff: the #612 finish line — 30 × 10 ft wall, one 3 × 4 ft 
   const qty = (name: string) => row(rep, "M-WALL-1").materials.find((m: any) => m.name === name)?.qty;
   assert.equal(qty("Masonry units"), 341);            // the order count, waste in the row
   near(qty("Mortar"), 25.92, 0.01);
-  near(qty("Joint reinforcement"), 240, 0.05);
+  near(qty("Joint reinforcement"), 210, 0.05);
   near(qty("Vertical bars"), 112.5, 0.05);
   near(qty("Grout"), 18.75, 0.01);
   near(row(rep, "M-WALL-1").total_sf, 288);           // the estimate is net
@@ -816,6 +819,6 @@ test("masonry_takeoff: a face traced on an elevation takes its height from the c
   const r = await call(client, "masonry_takeoff", { walls: "M-WALL-2", unit: "16x8", height_ft: 10, joint_reinf_spacing_in: 16 });
   assert.equal(r.isError, false, JSON.stringify(r.data));
   assert.equal(r.data.unit_count, 338);               // 300 × 1.125 = 337.5
-  near(r.data.joint_reinforcement_lf, 240);           // length = 300 SF / 10 ft = 30 LF × 8 lines
+  near(r.data.joint_reinforcement_lf, 210);           // length = 300 SF / 10 ft = 30 LF × 7 lines
   assert.equal(r.data.committed, 0);                  // no openings under M-OPEN
 });

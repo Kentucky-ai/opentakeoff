@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePitch, slopeFactor, hipValleyFactor, roofQuantities, bottomEdges, starterRuns, sidingQuantities,
-  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, ringAreaSf, ringPerimeter, type Pt,
+  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, jointReinforcementLines, openingWidth, ringAreaSf, ringPerimeter, type Pt,
 } from "../src/lib/suiteMath.ts";
 import { TRADE_SUITES, SUITE_TOOL_NAMES, suitesForDivision, suiteOfTool, suiteCatalogLines } from "../src/lib/tradeSuites.ts";
 
@@ -319,6 +319,29 @@ test("masonryQuantities: the #612 finish line — 30 × 10 ft wall, one 3 × 4 f
   near(masonryQuantities({ gross_sf: 10, openings_sf: 50, unit_length_in: 16, unit_height_in: 8 }).net_sf, 0);   // openings never exceed the wall
 });
 
+test("jointReinforcementLines: bed joints at the spacing, strictly below the top of the wall", () => {
+  assert.equal(jointReinforcementLines(10, 16), 7);    // 16, 32, 48, 64, 80, 96, 112 in; 128 is past the 120 in top
+  assert.equal(jointReinforcementLines(8, 16), 5);     // 16 … 80 in; the joint at 96 in is the top of the wall
+  assert.equal(jointReinforcementLines(8, 8), 11);     // every course of an 8 in unit, less the top
+  assert.equal(jointReinforcementLines(1, 16), 0);     // a wall shorter than the spacing takes none
+  assert.equal(jointReinforcementLines(0, 16), 0);
+  assert.equal(jointReinforcementLines(10, 0), 0);
+});
+
+test("openingWidth: measured along the view's ground line, not the sheet's left-to-right", () => {
+  const upright: Pt[] = [[0, 0], [3, 0], [3, 7], [0, 7]];               // a 3 × 7 ft door, view upright
+  near(openingWidth(upright), 3);
+  const onItsSide: Pt[] = [[0, 0], [7, 0], [7, 3], [0, 3]];             // the same door, view drawn on its side
+  near(openingWidth(onItsSide), 7);                                     // left-to-right reads the HEIGHT
+  near(openingWidth(onItsSide, 90), 3);                                 // stated rotation reads the width
+  near(openingWidth(onItsSide, -90), 3);
+  const c = Math.SQRT1_2;                                               // the same door on a wing turned 45°
+  const angled: Pt[] = upright.map(([x, y]) => [x * c - y * c, x * c + y * c]);
+  near(openingWidth(angled, 45), 3);
+  assert.ok(Math.abs(openingWidth(angled) - 3) > 3, "unrotated, the 45° door reads 7.07 ft wide");
+  assert.equal(openingWidth([]), 0);
+});
+
 test("masonryQuantities: mortar, joint reinforcement, vertical bars, grout and lintels", () => {
   const q = masonryQuantities({
     gross_sf: 300, openings_sf: 12, unit_length_in: 16, unit_height_in: 8,
@@ -327,7 +350,7 @@ test("masonryQuantities: mortar, joint reinforcement, vertical bars, grout and l
     opening_widths_ft: [3], lintel_bearing_in: 8,
   });
   near(q.mortar_cf!, 25.92);               // 324 / 100 × 8
-  near(q.joint_reinforcement_lf!, 240);    // 10 ft = 120 in / 16 = 7.5 → 8 lines × 30 LF
+  near(q.joint_reinforcement_lf!, 210);    // 10 ft = 120 in: joints at 16, 32 … 112 in = 7 lines × 30 LF
   near(q.vertical_bar_lf!, 112.5);         // 300 SF / (32/12 ft)
   near(q.grout_cf!, 18.75);                // 300 × (12/32) cells × 24 in² / 144
   assert.deepEqual(q.lintels, { count: 1, lengths_ft: [4.33], total_lf: 4.33, bearing_in: 8 });   // 3 + 2 × 8/12
