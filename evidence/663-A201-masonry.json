@@ -1,0 +1,39 @@
+{
+  "gross_sf": 289.42,
+  "openings_sf": 106.06,
+  "net_sf": 183.36,
+  "unit_length_in": 8,
+  "unit_height_in": 2.667,
+  "units_per_sf": 6.7492,
+  "unit_count": 1238,
+  "waste_pct": 5,
+  "waste_source": "suite allowance — override with your standard",
+  "unit_count_order": 1300,
+  "lintels": {
+    "count": 6,
+    "lengths_ft": [
+      3.44,
+      3.74,
+      4.2,
+      11.68,
+      11.68,
+      2.81
+    ],
+    "total_lf": 37.55,
+    "bearing_in": 8
+  },
+  "not_figured": [
+    "mortar (pass mortar_cf_per_100_units from the spec or the product data)",
+    "joint reinforcement (pass joint_reinf_spacing_in from the structural notes)",
+    "vertical bars (pass vertical_bar_spacing_in from the structural notes)",
+    "grout (pass grout {spacing_in, cell_area_in2} from the structural notes and the unit data)",
+    "cut units at corners, jambs and the top course; reinforcement and grout at jambs, corners and bond beams"
+  ],
+  "wall_condition": "M-WALL-BRICK",
+  "bond_beam_lf": 0,
+  "control_joint_lf": 0,
+  "committed": 6,
+  "undo_steps": 2,
+  "next": "view_sheet overlay:true to check the opening deducts. export_report lists the rows on the wall condition. Lintels, bond beams and control joints are reported, not drawn. A row an earlier run wrote and this one did not stays until edit_materials removes it.",
+  "units": "imperial"
+}

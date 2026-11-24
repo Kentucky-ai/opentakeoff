@@ -1,0 +1,125 @@
+{
+  "slabs": [
+    {
+      "tag": "C-SOG-6",
+      "area_sf": 3755.56,
+      "thickness_in": 6,
+      "concrete_cy": 69.55,
+      "waste_pct": 5,
+      "waste_source": "suite allowance — override with your standard",
+      "order_cy": 73.02,
+      "edge_form_lf": 0,
+      "edge_form_sf": 0,
+      "rebar": {
+        "size": "#4",
+        "bar_weight": "0.668 lb/ft (nominal, #4)",
+        "net_lf": 7511.12,
+        "lap_lf": 0,
+        "lap_in": 0,
+        "stock_ft": 20,
+        "stock_source": "suite allowance — override with the bar length you buy",
+        "lf": 7511.12,
+        "pieces": 376,
+        "weight_lb": 5017.43
+      },
+      "rebar_spacing_in": 12,
+      "base_cy": 46.36,
+      "vapor_barrier_sf": 3755.56
+    }
+  ],
+  "footings": [
+    {
+      "tag": "C-FTG-GB1",
+      "length_lf": 264.33,
+      "width_in": 18,
+      "depth_in": 36,
+      "concrete_cy": 44.06,
+      "waste_pct": 5,
+      "waste_source": "suite allowance — override with your standard",
+      "order_cy": 46.26,
+      "form_sf": 1585.98,
+      "rebar": {
+        "size": "#6",
+        "bar_weight": "1.502 lb/ft (nominal, #6)",
+        "net_lf": 1585.98,
+        "lap_lf": 0,
+        "lap_in": 0,
+        "stock_ft": 20,
+        "stock_source": "suite allowance — override with the bar length you buy",
+        "lf": 1585.98,
+        "pieces": 80,
+        "weight_lb": 2382.14
+      },
+      "rebar_count": 6
+    }
+  ],
+  "walls": [],
+  "pads": [
+    {
+      "tag": "C-PAD-A",
+      "count": 7,
+      "length_ft": 4,
+      "width_ft": 4,
+      "depth_in": 12,
+      "concrete_cy": 4.15,
+      "waste_pct": 5,
+      "waste_source": "suite allowance — override with your standard",
+      "order_cy": 4.36,
+      "form_sf": 112
+    },
+    {
+      "tag": "C-PAD-B",
+      "count": 6,
+      "length_ft": 5.5,
+      "width_ft": 5.5,
+      "depth_in": 12,
+      "concrete_cy": 6.72,
+      "waste_pct": 5,
+      "waste_source": "suite allowance — override with your standard",
+      "order_cy": 7.06,
+      "form_sf": 132
+    },
+    {
+      "tag": "C-PAD-C",
+      "count": 1,
+      "length_ft": 7.5,
+      "width_ft": 7.5,
+      "depth_in": 18,
+      "concrete_cy": 3.13,
+      "waste_pct": 5,
+      "waste_source": "suite allowance — override with your standard",
+      "order_cy": 3.28,
+      "form_sf": 45
+    }
+  ],
+  "totals": {
+    "concrete_cy": 127.61,
+    "order_cy": 133.98,
+    "form_sf": 1874.98,
+    "edge_form_lf": 0,
+    "rebar": [
+      {
+        "size": "#4",
+        "lf": 7511.12,
+        "weight_lb": 5017.43
+      },
+      {
+        "size": "#6",
+        "lf": 1585.98,
+        "weight_lb": 2382.14
+      }
+    ],
+    "joint_lf": 0
+  },
+  "committed": 0,
+  "undo_steps": 5,
+  "not_figured": [
+    "C-SOG-6: bar laps (pass bars.lap_in from the structural notes): bar LF is the net run",
+    "C-SOG-6: vapor barrier laps and turn-ups at the edges: SF is the plan area",
+    "C-SOG-6: forms at blockouts and cut-out openings, reinforcing chairs, dowels, thickened edges and depressions",
+    "C-FTG-GB1: bar laps (pass bars.lap_in from the structural notes): bar LF is the net run",
+    "C-FTG-GB1: keyways, dowels to the wall and step footings"
+  ],
+  "next": "export_report lists the rows on each condition. view_sheet overlay:true to check the edge form runs (<condition>-FORM). Joints are reported as traced under C-JOINT: trace them with measure_line. A row an earlier run wrote and this one did not stays until edit_materials removes it.",
+  "units": "imperial"
+}

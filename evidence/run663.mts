@@ -1,0 +1,24 @@
+import { writeFileSync } from "node:fs";
+const [root, out] = process.argv.slice(2);
+const { Client } = await import(root + "/mcp/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js");
+const { InMemoryTransport } = await import(root + "/mcp/node_modules/@modelcontextprotocol/sdk/dist/esm/inMemory.js");
+const { buildServer } = await import(root + "/mcp/server.ts");
+const { Session } = await import(root + "/mcp/src/session.ts");
+const [ct, st] = InMemoryTransport.createLinkedPair();
+await buildServer(new Session(), { suites: ["masonry"], stagedTools: false }).connect(st);
+const c = new Client({ name: "a201", version: "0" }); await c.connect(ct);
+const call = async (name: string, args: any = {}) => { const r: any = await c.callTool({ name, arguments: args }); const t = r.content?.[0]?.text ?? ""; let d; try { d = JSON.parse(t) } catch { d = t } if (r.isError) console.log("ERR", name, t.slice(0, 400)); return d; };
+const KEY = "mo-state-fair-fire-station-A201-exterior-elevations.pdf";
+await call("load_plan", { path: root + "/demo/public-sheets/" + KEY });
+await call("set_scale", { sheet: KEY, label: '1/8" = 1\'-0"' });
+const Z = 1.3158, P = (x: number, y: number) => [470 + x / Z, 520 + y / Z];
+const rect = (x0: number, y0: number, x1: number, y1: number) => [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)];
+const T = 298, B = 383;
+await call("measure_polygon", { sheet: KEY, verts: rect(25, T, 1935, B), condition: "M-WALL-BRICK" });
+for (const [a, b, n] of [[80, 130, "132B"], [893, 950, "132A"], [1012, 1080, "100E"], [1140, 1385, "100D"], [1520, 1765, "100C"], [1835, 1870, "100A"]] as const)
+  await call("measure_polygon", { sheet: KEY, verts: rect(a, T, b, B), condition: "M-OPEN" });
+const r = await call("masonry_takeoff", { walls: "M-WALL-BRICK", unit: "8x2.667", height_ft: 3.667, lintel_bearing_in: 8 });
+writeFileSync(out + "/a201-masonry.json", JSON.stringify(r, null, 2));
+console.log(JSON.stringify(r, null, 1).slice(0, 5000));
+const vr: any = await c.callTool({ name: "view_sheet", arguments: { sheet: KEY, overlay: true, px: 2000, region: { x0: 470, y0: 520, x1: 1990, y1: 860 } } });
+writeFileSync(out + "/a201-overlay.png", Buffer.from(vr.content.find((x: any) => x.type === "image").data, "base64"));
