@@ -40,6 +40,7 @@ export interface TradeSuite {
 }
 
 export const DIVISIONS: Record<string, string> = {
+  "03": "Concrete",
   "07": "Thermal & moisture protection",
   "08": "Openings",
   "09": "Finishes",
@@ -63,6 +64,29 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
       "Wall finishes: measure_surface along the wall with the condition's height. Roll goods: edit_condition roll_setup.",
     ].join("\n"),
     presets: [],
+  },
+  {
+    id: "concrete",
+    label: "Concrete",
+    prefixes: ["C-SOG-", "C-FTG-", "C-PAD-", "C-WALL-", "C-JOINT"],
+    divisions: ["03"],
+    summary: "slabs, footings, walls and pads: cubic yards, form contact area, reinforcing and base from traced areas and runs",
+    tools: ["concrete_takeoff"],
+    method: [
+      "Foundation and slab plans, scale set. Trace under the tags below, one type per tag from the structural sheets: C-SOG-<type> slab areas, C-FTG-<type> footing runs, C-PAD-<type> spread footings (count them, or trace them as areas), C-WALL-<type> cast walls (measure_surface, or a run with height_ft), C-JOINT joint runs.",
+      "1. measure_polygon each slab wall to wall (cut_out the openings and blockouts); measure_line each continuous footing along its centerline; place_count each spread footing.",
+      "2. concrete_takeoff {slabs, footings, walls, pads}: one entry per condition, with every dimension from the structural sheets: thickness_in for a slab, width_in and depth_in for a footing, thickness_in for a wall, length_ft, width_ft and depth_in for a counted pad. Cubic yards come back net and with waste, form contact area, and bars with their laps and weight.",
+      "Bars: bars {size: \"#4\", spacing_in, lap_in} on a slab or wall (each way), bars {size, count, lap_in} on a footing. Welded wire on a slab: mesh {roll_width_ft, lap_in}. Under the slab: base_depth_in and vapor_barrier.",
+      "apply (default true) writes the volumes, forms, bars, mesh and base as material rows on each condition (updated on a re-run) and commits each slab's edge form as a run under <condition>-FORM. Joints are reported as traced under C-JOINT: the tool does not lay them out.",
+      "A thickness, size, spacing or lap the structural sheets do not give: create_rfi, never guess. A value left out is listed under not_figured, and the waste (5 %) and the bar stock length (20 ft) are labeled allowances you override.",
+    ].join("\n"),
+    presets: [
+      { tag: "C-SOG-<type>", measure: "area", what: "slabs on grade and elevated slabs, one tag per slab type" },
+      { tag: "C-FTG-<type>", measure: "line", what: "continuous footings along their centerline" },
+      { tag: "C-PAD-<type>", measure: "count", what: "spread footings and pads (or area, when traced)" },
+      { tag: "C-WALL-<type>", measure: "surface", what: "cast walls: traced length at the wall height" },
+      { tag: "C-JOINT", measure: "line", what: "control and expansion joints, as traced" },
+    ],
   },
   {
     id: "acoustical_ceilings",

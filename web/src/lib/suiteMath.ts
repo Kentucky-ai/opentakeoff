@@ -412,6 +412,251 @@ export function ceilingQuantities(inp: CeilingInput) {
   };
 }
 
+// ── Concrete ───────────────────────────────────────────────────────────────
+//
+// What a concrete estimator orders, from slabs, footings, walls and pads
+// already traced: cubic yards, form contact area (SFCA), reinforcing and the
+// material under the slab. Every dimension the plan does not show (thickness,
+// footing size, bar size and spacing, lap, base depth) is an argument read
+// from the structural sheets; none is assumed. The two allowances are the
+// waste on concrete (5 %) and the bar stock length that sets how many laps a
+// run carries (20 ft), and both are reported as allowances.
+//
+//   cubic yards = SF × thickness(in) / 12 / 27          (area elements)
+//               = LF × width(in) × depth(in) / 144 / 27  (footings)
+//   bars each way = 2 × faces × SF / (spacing(in) / 12)  LF per SF of face
+//   with a lap L on stock length S: LF × S / (S − L), because every piece
+//   but the first in a run gives up one lap of its length
+
+/** Bar weight, lb per ft, by US bar size (ASTM A615 nominal weights). */
+export const REBAR_LB_PER_FT: Readonly<Record<string, number>> = Object.freeze({
+  "3": 0.376, "4": 0.668, "5": 1.043, "6": 1.502, "7": 2.044, "8": 2.67, "9": 3.4, "10": 4.303, "11": 5.313,
+});
+
+/** "#4", "No. 4", "4" or 4 → "4"; null when it is not a US bar size #3–#11. */
+export function parseBarSize(v: unknown): string | null {
+  const m = /^\s*(?:#|no\.?\s*)?(\d{1,2})\s*$/i.exec(String(v));
+  return m && Object.prototype.hasOwnProperty.call(REBAR_LB_PER_FT, m[1]) ? m[1] : null;
+}
+
+const CONCRETE_WASTE_PCT = 5;
+const BAR_STOCK_FT = 20;
+
+export interface RebarSpec {
+  /** US bar size, "#4" */
+  size: string;
+  /** splice lap, inches (structural notes); absent = laps not figured */
+  lap_in?: number;
+  /** bar stock length, feet; absent = 20 ft allowance */
+  stock_ft?: number;
+}
+
+/** Bars from their net run length: laps added, pieces counted and weighed. */
+export function rebarQuantities(net_lf: number, spec: RebarSpec) {
+  const size = parseBarSize(spec.size);
+  if (!size) throw new Error(`bar size ${JSON.stringify(spec.size)} is not a US bar size #3 to #11`);
+  const stock = spec.stock_ft ?? BAR_STOCK_FT;
+  const lapFt = (spec.lap_in ?? 0) / 12;
+  if (lapFt >= stock) throw new Error(`a ${spec.lap_in} in lap is not shorter than the ${stock} ft bar`);
+  const net = Math.max(0, net_lf);
+  const lf = net * stock / (stock - lapFt);
+  return {
+    size: `#${size}`,
+    bar_weight: `${REBAR_LB_PER_FT[size]} lb/ft (nominal, #${size})`,
+    net_lf: r2(net),
+    lap_lf: r2(lf - net),
+    lap_in: spec.lap_in ?? 0,
+    stock_ft: stock,
+    stock_source: spec.stock_ft === undefined ? "suite allowance — override with the bar length you buy" : "stated",
+    lf: r2(lf),
+    pieces: ceil(lf / stock),
+    weight_lb: r2(lf * REBAR_LB_PER_FT[size]),
+  };
+}
+
+/** Net bar LF each way (both directions) on `faces` mats or faces of `area_sf`. */
+export function barsEachWayLf(area_sf: number, spacing_in: number, faces = 1): number {
+  return 2 * faces * Math.max(0, area_sf) / (spacing_in / 12);
+}
+
+/** A concrete order: waste on a net volume. */
+function concreteOrder(cf: number, waste_pct?: number) {
+  const waste = waste_pct ?? CONCRETE_WASTE_PCT;
+  return {
+    concrete_cy: r2(cf / 27),
+    waste_pct: waste,
+    waste_source: waste_pct === undefined ? "suite allowance — override with your standard" : "stated",
+    order_cy: r2(cf * (1 + waste / 100) / 27),
+  };
+}
+
+export interface SlabInput {
+  /** net plan area, SF (the condition's total) */
+  area_sf: number;
+  /** plan perimeter, LF, for the edge forms */
+  perimeter_lf: number;
+  thickness_in: number;
+  /** edge forms on the perimeter: a slab on grade poured against forms (default true) */
+  edge_form?: boolean;
+  /** reinforcing bars at this spacing each way, one mat */
+  bars?: RebarSpec & { spacing_in: number; mats?: number };
+  /** welded wire fabric: roll width and side lap */
+  mesh?: { roll_width_ft: number; lap_in: number };
+  /** compacted base course under the slab, inches */
+  base_depth_in?: number;
+  /** vapor barrier under the slab (default false) */
+  vapor_barrier?: boolean;
+  waste_pct?: number;
+}
+
+/** A slab on grade, an elevated slab, or a pad traced as an area. */
+export function slabQuantities(inp: SlabInput) {
+  const area = Math.max(0, inp.area_sf);
+  const t = inp.thickness_in;
+  if (!(t > 0)) throw new Error("thickness_in must be positive");
+  const edge = inp.edge_form ?? true;
+  const edgeLf = edge ? Math.max(0, inp.perimeter_lf) : 0;
+  const notFigured: string[] = [];
+  const out = {
+    area_sf: r2(area),
+    thickness_in: t,
+    ...concreteOrder(area * t / 12, inp.waste_pct),
+    edge_form_lf: r2(edgeLf),
+    edge_form_sf: r2(edgeLf * t / 12),
+  } as Record<string, unknown>;
+  if (inp.bars) {
+    if (!(inp.bars.spacing_in > 0)) throw new Error("bars.spacing_in must be positive");
+    const mats = inp.bars.mats ?? 1;
+    out.rebar = rebarQuantities(barsEachWayLf(area, inp.bars.spacing_in, mats), inp.bars);
+    out.rebar_spacing_in = inp.bars.spacing_in;
+    if (inp.bars.lap_in === undefined) notFigured.push("bar laps (pass bars.lap_in from the structural notes): bar LF is the net run");
+    notFigured.push("the extra bar at the end of each run: bars each way are area ÷ spacing");
+  }
+  if (inp.mesh) {
+    const w = inp.mesh.roll_width_ft, lap = inp.mesh.lap_in / 12;
+    if (!(w > 0) || !(lap >= 0) || lap >= w) throw new Error("mesh needs a roll width wider than its lap");
+    out.mesh_sf = r2(area * w / (w - lap));
+    out.mesh_lap_in = inp.mesh.lap_in;
+    notFigured.push("welded wire fabric end laps: SF carries the side lap only");
+  }
+  if (inp.base_depth_in !== undefined) out.base_cy = r2(area * inp.base_depth_in / 12 / 27);
+  if (inp.vapor_barrier) out.vapor_barrier_sf = r2(area);
+  if (inp.vapor_barrier) notFigured.push("vapor barrier laps and turn-ups at the edges: SF is the plan area");
+  if (!inp.bars && !inp.mesh) notFigured.push("reinforcing (pass bars or mesh from the structural sheets)");
+  if (inp.base_depth_in === undefined) notFigured.push("base course under the slab (pass base_depth_in)");
+  notFigured.push("forms at blockouts and cut-out openings, reinforcing chairs, dowels, thickened edges and depressions");
+  out.not_figured = notFigured;
+  return out as {
+    area_sf: number; thickness_in: number; concrete_cy: number; waste_pct: number; waste_source: string; order_cy: number;
+    edge_form_lf: number; edge_form_sf: number; rebar?: ReturnType<typeof rebarQuantities>; rebar_spacing_in?: number;
+    mesh_sf?: number; mesh_lap_in?: number; base_cy?: number; vapor_barrier_sf?: number; not_figured: string[];
+  };
+}
+
+export interface FootingInput {
+  length_lf: number;
+  width_in: number;
+  depth_in: number;
+  /** continuous bars along the footing: how many, and their size */
+  bars?: RebarSpec & { count: number };
+  waste_pct?: number;
+}
+
+/** A continuous footing: its volume, the two side forms, and continuous bars. */
+export function footingQuantities(inp: FootingInput) {
+  const len = Math.max(0, inp.length_lf);
+  if (!(inp.width_in > 0) || !(inp.depth_in > 0)) throw new Error("width_in and depth_in must be positive");
+  const notFigured: string[] = [];
+  const out = {
+    length_lf: r2(len), width_in: inp.width_in, depth_in: inp.depth_in,
+    ...concreteOrder(len * inp.width_in * inp.depth_in / 144, inp.waste_pct),
+    form_sf: r2(2 * len * inp.depth_in / 12),
+  } as Record<string, unknown>;
+  if (inp.bars) {
+    if (!(inp.bars.count > 0)) throw new Error("bars.count must be positive");
+    out.rebar = rebarQuantities(len * inp.bars.count, inp.bars);
+    out.rebar_count = inp.bars.count;
+    if (inp.bars.lap_in === undefined) notFigured.push("bar laps (pass bars.lap_in from the structural notes): bar LF is the net run");
+  } else notFigured.push("footing reinforcing (pass bars: count and size from the footing schedule)");
+  notFigured.push("keyways, dowels to the wall and step footings");
+  out.not_figured = notFigured;
+  return out as {
+    length_lf: number; width_in: number; depth_in: number; concrete_cy: number; waste_pct: number; waste_source: string; order_cy: number;
+    form_sf: number; rebar?: ReturnType<typeof rebarQuantities>; rebar_count?: number; not_figured: string[];
+  };
+}
+
+export interface ConcreteWallInput {
+  /** wall face area, SF (length × height) */
+  area_sf: number;
+  thickness_in: number;
+  /** bars at this spacing each way, on `faces` faces (1 or 2) */
+  bars?: RebarSpec & { spacing_in: number; faces?: number };
+  waste_pct?: number;
+}
+
+/** A cast wall: volume, both faces of form, and bars each way. */
+export function concreteWallQuantities(inp: ConcreteWallInput) {
+  const area = Math.max(0, inp.area_sf);
+  if (!(inp.thickness_in > 0)) throw new Error("thickness_in must be positive");
+  const notFigured: string[] = [];
+  const out = {
+    area_sf: r2(area), thickness_in: inp.thickness_in,
+    ...concreteOrder(area * inp.thickness_in / 12, inp.waste_pct),
+    form_sf: r2(2 * area),
+  } as Record<string, unknown>;
+  if (inp.bars) {
+    if (!(inp.bars.spacing_in > 0)) throw new Error("bars.spacing_in must be positive");
+    out.rebar = rebarQuantities(barsEachWayLf(area, inp.bars.spacing_in, inp.bars.faces ?? 1), inp.bars);
+    out.rebar_spacing_in = inp.bars.spacing_in;
+    if (inp.bars.lap_in === undefined) notFigured.push("bar laps (pass bars.lap_in from the structural notes): bar LF is the net run");
+    notFigured.push("the extra bar at the end of each run: bars each way are area ÷ spacing");
+  } else notFigured.push("wall reinforcing (pass bars from the structural sheets)");
+  notFigured.push("wall openings, pilasters, ties and bracing: trace openings as deducts");
+  out.not_figured = notFigured;
+  return out as {
+    area_sf: number; thickness_in: number; concrete_cy: number; waste_pct: number; waste_source: string; order_cy: number;
+    form_sf: number; rebar?: ReturnType<typeof rebarQuantities>; rebar_spacing_in?: number; not_figured: string[];
+  };
+}
+
+export interface PadInput {
+  /** pads counted, each of a stated size */
+  count: number;
+  length_ft: number;
+  width_ft: number;
+  depth_in: number;
+  /** bottom mat in each pad: this many bars each way, full pad length and width */
+  bars?: RebarSpec & { count_each_way: number };
+  waste_pct?: number;
+}
+
+/** Spread footings or pads counted, each of its stated plan size and depth. */
+export function padQuantities(inp: PadInput) {
+  if (!(inp.length_ft > 0) || !(inp.width_ft > 0) || !(inp.depth_in > 0)) throw new Error("length_ft, width_ft and depth_in must be positive");
+  const n = Math.max(0, inp.count);
+  const notFigured: string[] = [];
+  const out = {
+    count: n, length_ft: inp.length_ft, width_ft: inp.width_ft, depth_in: inp.depth_in,
+    ...concreteOrder(n * inp.length_ft * inp.width_ft * inp.depth_in / 12, inp.waste_pct),
+    form_sf: r2(n * 2 * (inp.length_ft + inp.width_ft) * inp.depth_in / 12),
+  } as Record<string, unknown>;
+  if (inp.bars) {
+    if (!(inp.bars.count_each_way > 0)) throw new Error("bars.count_each_way must be positive");
+    // each way: count bars along the length and count bars along the width
+    out.rebar = rebarQuantities(n * inp.bars.count_each_way * (inp.length_ft + inp.width_ft), inp.bars);
+    out.rebar_count_each_way = inp.bars.count_each_way;
+    if (inp.bars.lap_in === undefined) notFigured.push("bar laps (pass bars.lap_in from the structural notes): bar LF is the net run");
+    notFigured.push("bar cover, hooks and bends: each bar is taken as the full pad length or width");
+  } else notFigured.push("pad reinforcing (from the footing schedule; pass bars: size and count_each_way)");
+  notFigured.push("pier dowels, keyways and stepped or sloped pad tops");
+  out.not_figured = notFigured;
+  return out as {
+    count: number; length_ft: number; width_ft: number; depth_in: number; concrete_cy: number; waste_pct: number; waste_source: string; order_cy: number;
+    form_sf: number; rebar?: ReturnType<typeof rebarQuantities>; rebar_count_each_way?: number; not_figured: string[];
+  };
+}
+
 // ── Glazing ────────────────────────────────────────────────────────────────
 
 export interface GlazingOpeningInput {

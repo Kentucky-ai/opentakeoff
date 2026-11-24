@@ -9,6 +9,8 @@ export const M2_PER_SF = 0.09290304;
 export const MM_PER_IN = 25.4;
 export const M3_PER_CF = 0.028316846592;
 export const MM2_PER_IN2 = 645.16;
+export const M3_PER_CY = 27 * M3_PER_CF;
+export const KG_PER_LB = 0.45359237;
 
 // ── trade-suite tools: names and values in either system (#620) ─────────────
 // The suite tools work in feet, inches and SF inside, like everything else.
@@ -24,6 +26,8 @@ export const SUITE_UNIT_PAIRS: readonly { imperial: string; metric: string; fact
   { imperial: "_lf", metric: "_m", factor: M_PER_FT },
   { imperial: "_ft", metric: "_m", factor: M_PER_FT },
   { imperial: "_in", metric: "_mm", factor: MM_PER_IN },
+  { imperial: "_cy", metric: "_m3", factor: M3_PER_CY },
+  { imperial: "_lb", metric: "_kg", factor: KG_PER_LB },
 ];
 /** Bare keys that name a quantity: a pipe run's `lf`, an opening's `sf`. */
 const SUITE_BARE_KEYS: Readonly<Record<string, { metric: string; factor: number }>> = {

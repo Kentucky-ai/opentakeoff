@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-20 — Concrete suite (MCP 0.9.119)
+
+- **`concrete_takeoff`, Division 03 (#611).** `open_suite {suite: "concrete"}` or `{division: "03"}` opens it. Trace under `C-SOG-<type>` (slab areas), `C-FTG-<type>` (footing runs), `C-PAD-<type>` (spread footings, counted or as areas), `C-WALL-<type>` (cast walls, `measure_surface` or a run with `height_ft`) and `C-JOINT` (joint runs), then call `concrete_takeoff {slabs, footings, walls, pads}` with one entry per condition and the dimensions from the structural sheets.
+- **What it figures.**
+  - Cubic yards, net and with waste (stated, or a labeled 5% allowance): slab area × thickness, footing length × width × depth, wall area × thickness, pads from their stated size.
+  - Form contact area: slab edges (perimeter × thickness), both footing sides, both wall faces, the four sides of a counted pad.
+  - Reinforcing: bar LF and weight at a stated spacing each way on a slab or wall, a stated count of continuous bars in a footing, or a stated count each way in the bottom mat of a counted pad. A counted pad without `bars` lists its reinforcing under `not_figured`. A stated lap lengthens the run by `stock ÷ (stock − lap)` (20 ft bar stock unless stated, labeled). Weights are the nominal US bar table, named in the reply. Welded wire by area from a stated roll width and lap.
+  - Under the slab: base course CY from a stated depth, and vapor barrier SF.
+  - Joints: `C-JOINT` LF as traced. The tool does not lay joints out.
+- **Where it puts them.** Material rows on each condition, updated on a re-run, never duplicated. Each slab's perimeter is committed as an edge form run under `<condition>-FORM` (a multiplier on the slab is copied to it), and a re-run skips slabs it already derived.
+- **Missing values.** A missing thickness, width or depth refuses naming the argument, and nothing is committed. A value the call leaves out (bars, base depth, laps) is listed under `not_figured`. On a 40 × 25 ft slab at 5 in, the tool gives 15.43 CY and 130 LF of edge form, and 130 LF of 24 × 12 in footing gives 9.63 CY.
+- **Metric.** With `units: "metric"` the arguments are in mm and m and the reply in m³, m², m and kg. Bars stay US sizes (`#4`).
+- The Trade view books `C-SOG-`, `C-FTG-`, `C-PAD-`, `C-WALL-` and `C-JOINT` tags to the new suite.
+
 ## 2026-11-17 — detect_rooms: letter-prefixed room numbers on request (MCP 0.9.117)
 
 - **`detect_rooms {label_prefixes: ["A"]}` reads room numbers like A2521, A2532 and B101A.** Hospital and campus sets put a wing or floor letter in front of every room number, so the 2–3 digit room pattern found no rooms at all. The letters are an argument read off the plan, because a sheet number (A101) has the same shape. A prefixed token that is the number of any loaded sheet is never a room, and the text gates (printed areas, title-block words, a second number) still apply.

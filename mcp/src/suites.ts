@@ -25,7 +25,7 @@ import {
 import { M_PER_FT, MM_PER_IN, SUITE_UNIT_PAIRS, suiteMetricName, suiteMetricReply } from "../../web/src/lib/units.ts";
 import {
   parsePitch, roofQuantities, slopeFactor, hipValleyFactor, sidingQuantities, bottomEdges, starterRuns, soffitQuantities,
-  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringPerimeter, type Pt,
+  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, slabQuantities, footingQuantities, concreteWallQuantities, padQuantities, parseBarSize, ringPerimeter, type Pt,
 } from "../../web/src/lib/suiteMath.ts";
 
 export { SUITE_TOOL_NAMES };
@@ -34,7 +34,7 @@ const SUITE_IDS = TRADE_SUITES.map((s) => s.id) as [string, ...string[]];
 
 /** One line for the initialize instructions. */
 export const SUITE_INSTRUCTIONS =
-  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, acoustical ceiling, plumbing and electrical tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
+  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, concrete, acoustical ceiling, plumbing and electrical tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
 
 const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
   async (args: any): Promise<ToolReply> => {
@@ -633,6 +633,239 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     }
     return { ...q, module: a.module, wall_angle_condition: waTag, committed, undo_steps: steps,
       next: `view_sheet overlay:true: the wall angle runs (${waTag}) follow every traced edge; an edge against another ceiling is not wall angle — delete_shape that run and measure_line the wall edges. export_report lists the grid rows. A row an earlier run wrote and this one did not (a short-tee row after switching to a 2x4 module) stays until edit_materials removes it.` };
+  }));
+
+  // ── concrete ──────────────────────────────────────────────────────────────
+  const barsInput = z.looseObject({
+    size: z.union([z.string(), z.number()]).describe('US bar size from the structural notes: "#4" or 4'),
+    spacing_in: z.number().positive().optional().describe("Spacing each way, inches (slabs and walls); required there, or spacing_mm"),
+    spacing_mm: z.number().positive().optional().describe("Spacing each way, mm (units metric)"),
+    count: z.number().int().positive().optional().describe("Continuous bars along the run (footings); required there"),
+    count_each_way: z.number().int().positive().optional().describe("Bars each way in the bottom mat of a counted pad; required there"),
+    mats: z.number().int().min(1).max(2).optional().describe("Mats in a slab (default 1)"),
+    faces: z.number().int().min(1).max(2).optional().describe("Faces of a wall carrying the bars (default 1)"),
+    lap_in: z.number().min(0).optional().describe("Splice lap, inches (structural notes); absent = laps not figured, or lap_mm"),
+    lap_mm: z.number().min(0).optional().describe("Splice lap, mm (units metric)"),
+    stock_ft: z.number().positive().optional().describe("Bar stock length, feet; absent = 20 ft allowance"),
+    stock_m: z.number().positive().optional().describe("Bar stock length, m (units metric); absent = 6.1"),
+  });
+  const concreteInput = z.looseObject({
+    slabs: z.array(z.looseObject({
+      condition: z.string().describe("A slab condition, e.g. C-SOG-1"),
+      thickness_in: z.number().positive().optional().describe("Slab thickness, inches (structural sheets); required, or thickness_mm"),
+      thickness_mm: z.number().positive().optional().describe("Slab thickness, mm (units metric)"),
+      edge_form: z.boolean().optional().describe("Form the slab edge (default true); false for a slab poured against earth or walls"),
+      bars: barsInput.optional(),
+      mesh: z.looseObject({
+        roll_width_ft: z.number().positive().optional(), roll_width_m: z.number().positive().optional(),
+        lap_in: z.number().min(0).optional(), lap_mm: z.number().min(0).optional(),
+      }).optional().describe("Welded wire fabric: roll width and side lap"),
+      base_depth_in: z.number().positive().optional().describe("Compacted base course under the slab, inches; absent = not figured"),
+      base_depth_mm: z.number().positive().optional().describe("Base course depth, mm (units metric)"),
+      vapor_barrier: z.boolean().optional().describe("Vapor barrier under the slab"),
+    })).default([]),
+    footings: z.array(z.looseObject({
+      condition: z.string().describe("A footing run condition, e.g. C-FTG-1"),
+      width_in: z.number().positive().optional().describe("Footing width, inches (footing schedule); required, or width_mm"),
+      width_mm: z.number().positive().optional(),
+      depth_in: z.number().positive().optional().describe("Footing depth, inches; required, or depth_mm"),
+      depth_mm: z.number().positive().optional(),
+      bars: barsInput.optional(),
+    })).default([]),
+    walls: z.array(z.looseObject({
+      condition: z.string().describe("A cast wall condition, e.g. C-WALL-1"),
+      thickness_in: z.number().positive().optional().describe("Wall thickness, inches; required, or thickness_mm"),
+      thickness_mm: z.number().positive().optional(),
+      height_ft: z.number().positive().optional().describe("Wall height, feet, for a wall traced as a plain run; a surface run carries its own height. Or height_m"),
+      height_m: z.number().positive().optional(),
+      bars: barsInput.optional(),
+    })).default([]),
+    pads: z.array(z.looseObject({
+      condition: z.string().describe("A pad condition, e.g. C-PAD-1: counted, or traced as areas"),
+      length_ft: z.number().positive().optional().describe("Pad length, feet, for a counted pad; or length_m"),
+      length_m: z.number().positive().optional(),
+      width_ft: z.number().positive().optional().describe("Pad width, feet, for a counted pad; or width_m"),
+      width_m: z.number().positive().optional(),
+      depth_in: z.number().positive().optional().describe("Pad depth, inches; required, or depth_mm"),
+      depth_mm: z.number().positive().optional(),
+      bars: barsInput.optional().describe("Bottom mat of a counted pad: size and count_each_way (footing schedule), lap_in"),
+    })).default([]),
+    joints: z.string().default("C-JOINT").describe("The control and expansion joint condition, reported as traced"),
+    waste_pct: z.number().min(0).max(50).optional().describe("Concrete waste; absent = 5 % suite allowance, reported as an allowance"),
+    apply: z.boolean().default(true),
+    units: unitsArg,
+  });
+  reg("concrete_takeoff", {
+    description: "Concrete suite. From slabs, footings, walls and pads already traced, and the dimensions on the structural sheets: cubic yards (net, and with waste), form contact area (slab edges, footing sides, both wall faces), reinforcing bars LF and weight with laps, welded wire, base course and vapor barrier, plus joint LF as traced. A missing thickness, width or depth refuses naming the argument and commits nothing; a value left out is listed under not_figured. apply (default true) writes the volumes, forms, bars, mesh and base as material rows on each condition (updating rows it wrote before) and commits each slab's edge form as a run under <condition>-FORM. Re-running adds nothing twice.",
+    inputSchema: concreteInput,
+    outputSchema: { ...deriveOutput, totals: anyRecord, not_figured: z.array(z.string()) },
+  }, suiteRun("concrete_takeoff", concreteInput, (a, units) => {
+    if (!a.slabs.length && !a.footings.length && !a.walls.length && !a.pads.length) throw new UserError("Nothing to take off — pass slabs, footings, walls and/or pads (condition tags).");
+    const mm = (inches: number) => (units === "metric" ? `${Math.round(inches * MM_PER_IN)} mm` : `${inches} in`);
+    /** A dimension the structural sheets must give: refused by name when absent. */
+    const need = (args: Record<string, unknown>, name: string, path: string): number => {
+      const v = unitArg(args, name, units, path);
+      if (v === undefined) throw new UserError(`${path}${units === "metric" ? suiteMetricName(name) : name} is required — read it from the structural sheets (create_rfi when it is not given). Nothing was committed.`);
+      return v;
+    };
+    const refuse = (path: string, e: unknown): never => { throw new UserError(`${path.replace(/\.$/, "")}: ${(e as Error).message}. Nothing was committed.`); };
+    const barSpec = (b: Record<string, any> | undefined, path: string) => {
+      if (!b) return undefined;
+      if (!parseBarSize(b.size)) throw new UserError(`${path}bars.size ${JSON.stringify(b.size)} is not a US bar size — pass "#3" to "#11" as the structural notes print it.`);
+      return { size: String(b.size), lap_in: unitArg(b, "lap_in", units, `${path}bars.`), stock_ft: unitArg(b, "stock_ft", units, `${path}bars.`) };
+    };
+    const perimeterOf = (s: { shape: { computed?: { perimeter_lf?: number } }; ft: Pt[] }) => s.shape.computed?.perimeter_lf ?? ringPerimeter(s.ft);
+
+    type Row = MatRow & { tag: string };
+    const rows: Row[] = [];
+    const rowOn = (tag: string, name: string, basisQty: number, qty: number, basis: MatRow["basis"], unit: string, note: string, round = false) => {
+      if (qty > 0 && basisQty > 0) rows.push({ tag, name, basis, per: r2c(basisQty / qty), unit, round, note: `${note} (concrete_takeoff)` });
+    };
+    const rebarRows = (tag: string, basisQty: number, basis: MatRow["basis"], re: { size: string; lf: number; weight_lb: number; lap_in: number } | undefined) => {
+      if (!re) return;
+      rowOn(tag, `Reinforcing ${re.size}, LF`, basisQty, re.lf, basis, "LF", `${re.size} bars${re.lap_in ? `, ${mm(re.lap_in)} laps` : ", laps not figured"}`);
+      rowOn(tag, `Reinforcing ${re.size}, weight`, basisQty, re.weight_lb, basis, "LB", `${re.size} at nominal weight per foot`);
+    };
+    const edgeForms: { tag: string; thickness_in: number; mult: number; shapes: ReturnType<Session["suiteShapes"]> }[] = [];
+    const notFigured: string[] = [];
+    const strip = <T extends { not_figured: string[] }>(tag: string, q: T): Omit<T, "not_figured"> => {
+      const { not_figured, ...rest } = q;
+      notFigured.push(...not_figured.map((m) => `${tag}: ${m}`));
+      return rest;
+    };
+
+    /** An area element — a slab, or a pad traced as an area — figured and its rows queued. */
+    const areaElement = (path: string, tag: string, thicknessIn: number, extra: Partial<Parameters<typeof slabQuantities>[0]>, what: string) => {
+      const tot = session.suiteTotals(tag)!;
+      if (!(tot.floor_sf > 0)) throw new UserError(`${path}${tag} has no ${what} area — measure_polygon it under that tag first.`);
+      const shapes = session.suiteShapes(tag, ["floor_area"]);
+      const mult = tot.multiplier || 1;
+      let q: ReturnType<typeof slabQuantities>;
+      try {
+        q = slabQuantities({ area_sf: tot.floor_sf, perimeter_lf: shapes.reduce((n, x) => n + perimeterOf(x), 0) * mult, thickness_in: thicknessIn, waste_pct: a.waste_pct, ...extra });
+      } catch (e) { return refuse(path, e); }
+      rowOn(tag, "Concrete", tot.floor_sf, q.order_cy, "area", "CY", `${mm(thicknessIn)} thick, ${q.waste_pct}% waste`);
+      rebarRows(tag, tot.floor_sf, "area", q.rebar);
+      rowOn(tag, "Welded wire fabric", tot.floor_sf, q.mesh_sf ?? 0, "area", "SF", `${mm(q.mesh_lap_in ?? 0)} side lap included`);
+      rowOn(tag, "Base course", tot.floor_sf, q.base_cy ?? 0, "area", "CY", `${mm(extra.base_depth_in ?? 0)} compacted, no waste`);
+      rowOn(tag, "Vapor barrier", tot.floor_sf, q.vapor_barrier_sf ?? 0, "area", "SF", "plan area, no laps");
+      if (q.edge_form_lf > 0) edgeForms.push({ tag, thickness_in: thicknessIn, mult, shapes });
+      return q;
+    };
+
+    const slabs = a.slabs.map((s: Record<string, any>, i: number) => {
+      const path = `slabs[${i}].`;
+      conditionOrError(s.condition, "slab");
+      const t = need(s, "thickness_in", path);
+      const b = barSpec(s.bars, path);
+      const bars = b && { ...b, spacing_in: need(s.bars, "spacing_in", `${path}bars.`), mats: s.bars.mats };
+      const mesh = s.mesh && { roll_width_ft: need(s.mesh, "roll_width_ft", `${path}mesh.`), lap_in: need(s.mesh, "lap_in", `${path}mesh.`) };
+      const q = areaElement(path, s.condition, t, { edge_form: s.edge_form, bars, mesh, base_depth_in: unitArg(s, "base_depth_in", units, path), vapor_barrier: s.vapor_barrier }, "slab");
+      return { tag: s.condition, ...strip(s.condition, q) };
+    });
+
+    const footings = a.footings.map((f: Record<string, any>, i: number) => {
+      const path = `footings[${i}].`;
+      conditionOrError(f.condition, "footing");
+      const width = need(f, "width_in", path), depth = need(f, "depth_in", path);
+      const b = barSpec(f.bars, path);
+      if (b && !f.bars.count) throw new UserError(`${path}bars.count is required — the continuous bars in the footing, from the footing schedule.`);
+      const tot = session.suiteTotals(f.condition)!;
+      if (!(tot.lf > 0)) throw new UserError(`${path}${f.condition} has no footing run — measure_line it along the centerline under that tag first.`);
+      let q: ReturnType<typeof footingQuantities>;
+      try { q = footingQuantities({ length_lf: tot.lf, width_in: width, depth_in: depth, bars: b && { ...b, count: f.bars.count }, waste_pct: a.waste_pct }); } catch (e) { return refuse(path, e); }
+      rowOn(f.condition, "Concrete", tot.lf, q.order_cy, "linear", "CY", `${mm(width)} × ${mm(depth)}, ${q.waste_pct}% waste`);
+      rowOn(f.condition, "Form contact area, sides", tot.lf, q.form_sf, "linear", "SF", `both sides, ${mm(depth)} deep`);
+      rebarRows(f.condition, tot.lf, "linear", q.rebar);
+      return { tag: f.condition, ...strip(f.condition, q) };
+    });
+
+    const walls = a.walls.map((w: Record<string, any>, i: number) => {
+      const path = `walls[${i}].`;
+      conditionOrError(w.condition, "wall");
+      const t = need(w, "thickness_in", path);
+      const b = barSpec(w.bars, path);
+      const bars = b && { ...b, spacing_in: need(w.bars, "spacing_in", `${path}bars.`), faces: w.bars.faces };
+      const tot = session.suiteTotals(w.condition)!;
+      if (tot.lf > 0 && tot.wall_sf > 0) throw new UserError(`${path}${w.condition} holds both plain runs and surface runs: keep one kind under a tag.`);
+      const byRun = tot.lf > 0;
+      const area = byRun ? tot.lf * need(w, "height_ft", path) : tot.wall_sf;
+      if (!(area > 0)) throw new UserError(`${path}${w.condition} has no wall — measure_surface it at its height first.`);
+      let q: ReturnType<typeof concreteWallQuantities>;
+      try { q = concreteWallQuantities({ area_sf: area, thickness_in: t, bars, waste_pct: a.waste_pct }); } catch (e) { return refuse(path, e); }
+      const basis = byRun ? "linear" : "area", basisQty = byRun ? tot.lf : tot.wall_sf;
+      rowOn(w.condition, "Concrete", basisQty, q.order_cy, basis, "CY", `${mm(t)} thick, ${q.waste_pct}% waste`);
+      rowOn(w.condition, "Form contact area, both faces", basisQty, q.form_sf, basis, "SF", "both faces");
+      rebarRows(w.condition, basisQty, basis, q.rebar);
+      return { tag: w.condition, ...strip(w.condition, q) };
+    });
+
+    const pads = a.pads.map((p: Record<string, any>, i: number) => {
+      const path = `pads[${i}].`;
+      conditionOrError(p.condition, "pad");
+      const depth = need(p, "depth_in", path);
+      const tot = session.suiteTotals(p.condition)!;
+      if (tot.ea > 0 && tot.floor_sf > 0) throw new UserError(`${path}${p.condition} holds both counted and traced pads: keep one kind under a tag.`);
+      if (tot.ea > 0) {
+        const length = need(p, "length_ft", path), width = need(p, "width_ft", path);
+        let q: ReturnType<typeof padQuantities>;
+        const b = barSpec(p.bars, path);
+        if (b && !p.bars.count_each_way) throw new UserError(`${path}bars.count_each_way is required — the bars each way in the pad, from the footing schedule.`);
+        try { q = padQuantities({ count: tot.ea, length_ft: length, width_ft: width, depth_in: depth, bars: b && { ...b, count_each_way: p.bars.count_each_way }, waste_pct: a.waste_pct }); } catch (e) { return refuse(path, e); }
+        rowOn(p.condition, "Concrete", tot.ea, q.order_cy, "count", "CY", `${q.length_ft} × ${q.width_ft} ft by ${mm(depth)}, ${q.waste_pct}% waste`);
+        rowOn(p.condition, "Form contact area, sides", tot.ea, q.form_sf, "count", "SF", "four sides");
+        rebarRows(p.condition, tot.ea, "count", q.rebar);
+        return { tag: p.condition, ...strip(p.condition, q) };
+      }
+      const q = areaElement(path, p.condition, depth, {}, "pad");
+      if (p.bars) notFigured.push(`${p.condition}: bars are read for counted pads only; this pad is traced as an area, so its reinforcing is not figured`);
+      return { tag: p.condition, ...strip(p.condition, q) };
+    });
+
+    const jointLf = a.joints ? session.suiteTotals(a.joints)?.lf ?? 0 : 0;
+
+    // totals, from the figured items
+    const sum = (list: Record<string, any>[], k: string) => list.reduce((n, x) => n + (Number(x[k]) || 0), 0);
+    const all = [...slabs, ...footings, ...walls, ...pads] as Record<string, any>[];
+    const bySize = new Map<string, { size: string; lf: number; weight_lb: number }>();
+    for (const x of all) if (x.rebar) {
+      const cur = bySize.get(x.rebar.size) ?? { size: x.rebar.size, lf: 0, weight_lb: 0 };
+      cur.lf += x.rebar.lf; cur.weight_lb += x.rebar.weight_lb;
+      bySize.set(x.rebar.size, cur);
+    }
+    const totals = {
+      concrete_cy: r2(sum(all, "concrete_cy")), order_cy: r2(sum(all, "order_cy")),
+      form_sf: r2(sum(all, "form_sf") + sum(all, "edge_form_sf")), edge_form_lf: r2(sum(all, "edge_form_lf")),
+      rebar: [...bySize.values()].map((b) => ({ ...b, lf: r2(b.lf), weight_lb: r2(b.weight_lb) })),
+      joint_lf: r2(jointLf),
+    };
+
+    let committed = 0, steps = 0;
+    if (a.apply) {
+      // edge forms: each slab perimeter as a run, once per source shape
+      for (const e of edgeForms) {
+        const formTag = `${e.tag}-FORM`;
+        const done = derivedFrom("concrete_takeoff", [formTag]);
+        const items: Parameters<Session["suiteCommit"]>[1] = [];
+        for (const s of e.shapes) {
+          if (done.has(`${formTag}|${s.shape.id}`)) continue;
+          const px = s.px, closed = px.length > 1 && px[0][0] === px[px.length - 1][0] && px[0][1] === px[px.length - 1][1];
+          items.push({ sheet_id: s.shape.sheet_id, tag: formTag, role: "linear", px: closed ? px : [...px, px[0]], computed: { area_sf: 0, perimeter_lf: r2(perimeterOf(s)) }, derived: { from_shape_id: s.shape.id, thickness_in: e.thickness_in } });
+        }
+        if (items.length) { session.suiteCommit("concrete_takeoff", items); committed += items.length; steps++; }
+        // N identical floors on the slab condition are N runs of edge form
+        if (e.mult !== 1 && session.hasCondition(formTag)) { session.editCondition(formTag, { multiplier: e.mult }); steps++; }
+        const lf = session.suiteTotals(formTag)?.lf ?? 0;
+        if (lf > 0) rowOn(formTag, "Form contact area, edge", lf, lf * e.thickness_in / 12, "linear", "SF", `${mm(e.thickness_in)} slab edge`);
+      }
+      const byTag = new Map<string, MatRow[]>();
+      for (const { tag, ...r } of rows) byTag.set(tag, [...(byTag.get(tag) ?? []), r]);
+      for (const [tag, list] of byTag) steps += upsertRows(session, tag, list);
+    }
+    return { slabs, footings, walls, pads, totals, committed, undo_steps: steps, not_figured: notFigured,
+      next: a.apply
+        ? "export_report lists the rows on each condition. view_sheet overlay:true to check the edge form runs (<condition>-FORM). Joints are reported as traced under C-JOINT: trace them with measure_line. A row an earlier run wrote and this one did not stays until edit_materials removes it."
+        : "Report only — call again with apply:true to write the material rows and commit the edge form runs." };
   }));
 
   // hidden until opened, unless pre-opened
