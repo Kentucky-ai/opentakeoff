@@ -47,9 +47,14 @@
 .pc-dot { position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--cobalt); color: var(--paper-bright); font: 700 9.5px/16px var(--f-mono); text-align: center; }
 
 .pc-sidetabs {
-  position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 25;
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 28;
   display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--ink-faint); border-radius: 14px;
   background: color-mix(in srgb, var(--paper-cream) 92%, transparent); box-shadow: var(--shadow-2); backdrop-filter: blur(6px);
+  user-select: none; touch-action: none; cursor: grab;
+}
+.pc-sidetabs.is-dragging,
+.pc-sidetabs.is-dragging * {
+  cursor: grabbing !important;
 }
 .pc-sidetabs button { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 84px; padding: 10px 4px 9px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--ink-muted); font: 500 12px/1.1 var(--f-body); cursor: pointer; }
 .pc-sidetabs button:hover { color: var(--ink); background: var(--paper-shadow); }

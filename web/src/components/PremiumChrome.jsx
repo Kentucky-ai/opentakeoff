@@ -4,7 +4,7 @@
 //   · CanvasSideTabs  — the floating Conditions / Assistant tabs at the canvas's right edge
 // Every action is supplied by the canvas; these components own no takeoff state.
 
-import React from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { localizeText as uiText, formatEstimateMoney } from "../lib/i18n/core.js";
 import { useTranslation } from "../lib/i18n/index.jsx";
 import { Icon } from "../brand/icons.jsx";
@@ -90,8 +90,132 @@ export function PremiumTopBar({ title, subtitle, onBack, onGallery, sheets, curr
 
 export function CanvasSideTabs({ conditionsOpen, conditionCount, onConditions, assistantOpen, onAssistant, working }) {
   useTranslation(); // re-render on a language switch
+  const frameRef = useRef(null);
+  const pointerStartRef = useRef(null);
+  const didDragRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [topPos, setTopPos] = useState(() => {
+    try {
+      const saved = localStorage.getItem("opentakeoff:sidetabs-top");
+      if (saved != null) {
+        const n = parseFloat(saved);
+        if (Number.isFinite(n)) {
+          const minTop = 48;
+          const maxTop = Math.max(minTop, (typeof window !== "undefined" ? window.innerHeight : 800) - 132 - 16);
+          return Math.max(minTop, Math.min(maxTop, n));
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+
+  const clampTop = useCallback((rawTop) => {
+    const height = frameRef.current?.offsetHeight || 132;
+    const minTop = 48;
+    const maxTop = Math.max(minTop, (typeof window !== "undefined" ? window.innerHeight : 800) - height - 16);
+    return Math.max(minTop, Math.min(maxTop, rawTop));
+  }, []);
+
+  useEffect(() => {
+    setTopPos((prev) => (prev == null ? null : clampTop(prev)));
+    const onResize = () => {
+      setTopPos((prev) => (prev == null ? null : clampTop(prev)));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampTop]);
+
+  const handlePointerDown = (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    pointerStartRef.current = {
+      startY: e.clientY,
+      startTop: rect.top,
+      pointerId: e.pointerId,
+    };
+    didDragRef.current = false;
+  };
+
+  const handlePointerMove = (e) => {
+    const p = pointerStartRef.current;
+    if (!p) return;
+    const deltaY = e.clientY - p.startY;
+    if (!didDragRef.current) {
+      if (Math.abs(deltaY) > 4) {
+        didDragRef.current = true;
+        setIsDragging(true);
+        try { frameRef.current?.setPointerCapture(p.pointerId); } catch { /* gone */ }
+      } else {
+        return;
+      }
+    }
+    const nextTop = clampTop(p.startTop + deltaY);
+    setTopPos(nextTop);
+  };
+
+  const handlePointerUp = (_e) => {
+    const p = pointerStartRef.current;
+    if (p) {
+      try { frameRef.current?.releasePointerCapture(p.pointerId); } catch { /* gone */ }
+      pointerStartRef.current = null;
+    }
+    if (didDragRef.current) {
+      setIsDragging(false);
+      if (topPos != null) {
+        try { localStorage.setItem("opentakeoff:sidetabs-top", String(topPos)); } catch { /* quota/private */ }
+      }
+    }
+  };
+
+  const handleClickCapture = (e) => {
+    if (didDragRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      didDragRef.current = false;
+    }
+  };
+
+  const resetPos = (e) => {
+    e.stopPropagation();
+    setTopPos(null);
+    try { localStorage.removeItem("opentakeoff:sidetabs-top"); } catch { /* quota/private */ }
+  };
+
+  const handleKeyDown = (e) => {
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.altKey) {
+      e.preventDefault();
+      const step = e.shiftKey ? 40 : 15;
+      const rect = frameRef.current?.getBoundingClientRect();
+      const currentTop = topPos ?? (rect?.top || 200);
+      const nextTop = clampTop(currentTop + (e.key === "ArrowUp" ? -step : step));
+      setTopPos(nextTop);
+      try { localStorage.setItem("opentakeoff:sidetabs-top", String(nextTop)); } catch { /* quota/private */ }
+    } else if (e.key === "Escape" && topPos != null) {
+      resetPos(e);
+    }
+  };
+
   return (
-    <div className="pc-sidetabs" role="tablist" aria-label={uiText("Side panels")}>
+    <div
+      ref={frameRef}
+      className={`pc-sidetabs${isDragging ? " is-dragging" : ""}`}
+      role="tablist"
+      aria-label={uiText("Side panels")}
+      style={{
+        ...(topPos != null ? { top: `${topPos}px`, transform: "none" } : {}),
+        zIndex: isDragging ? 35 : 28,
+      }}
+      title={uiText("Side tabs — drag up or down to reposition; double-click to reset")}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onClickCapture={handleClickCapture}
+      onDoubleClick={resetPos}
+      onKeyDown={handleKeyDown}
+    >
       <button type="button" role="tab" aria-selected={!!conditionsOpen} onClick={onConditions} title={uiText("Conditions")}>
         <span className="pc-sidetab-ico"><Icon name="list" size={20} />{conditionCount > 0 && <span className="pc-badge">{conditionCount}</span>}</span>
         <span>{uiText("Conditions")}</span>
