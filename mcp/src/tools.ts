@@ -187,6 +187,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
         min_area_sf: z.number().positive().default(5).describe("Plausibility floor: enclosed non-bubble regions smaller than this are withheld as cavities, not rooms. Default 5 SF — below any real finished space (a broom closet is ~10 SF). Lower it to inspect what was skipped."),
         sensitivity: z.number().min(0).max(1).optional().describe("Fill sensitivity, the same knob the canvas has: 0 strict (hatch/light linework always blocks), 0.5 balanced (default), 1 aggressive (crosses more hatch, tolerates more growth). Raise it when a flood stops short at hatching INSIDE the room; verify the grown ring with view_sheet overlay before committing"),
         layers: layersFilterSchema,
+        label_prefixes: z.array(z.string().regex(/^[A-Za-z]{1,2}$/)).max(8).optional().describe("Letter prefixes the set's room numbers carry, read off the plan: [\"A\"] for A2521, A2532; [\"B\"] for B101. Absent = numeric room numbers only (134, 139A). A prefixed token that is a loaded sheet's number (A101) is never a room"),
       },
       outputSchema: detectRoomsOutput,
     }, run("detect_rooms", (a) => {
@@ -195,7 +196,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       if (a.assign_from_schedule && a.condition !== undefined) {
         throw new UserError("Provide at most one of: condition (every room under one stated tag) or assign_from_schedule (each room's own schedule row decides).");
       }
-      return session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers, assignFromSchedule: a.assign_from_schedule });
+      return session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers, assignFromSchedule: a.assign_from_schedule, labelPrefixes: a.label_prefixes });
     }));
   }
 

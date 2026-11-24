@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-11-20 — Masonry suite (MCP 0.9.117)
+## 2026-11-20 — Masonry suite (MCP 0.9.118)
 
 - **`masonry_takeoff`, Division 04 (#612).** `open_suite {suite: "masonry"}` or `{division: "04"}` opens it. Trace under `M-WALL-<type>` (`measure_surface` at the wall height, or a face on an elevation), `M-OPEN` (the openings in it), `M-LINTEL-<type>`, `M-BB` (bond beams) and `M-CJ` (control joints), then call `masonry_takeoff {walls, unit}`. Veneer and structural walls take separate tags and separate calls.
 - **What it figures.**
@@ -12,6 +12,11 @@
 - **Where it puts them.** Material rows on the wall condition, updated on a re-run, never duplicated. Each opening traced under `M-OPEN` is added as a deduct on the wall condition, so the estimate is net, and a re-run skips openings it already deducted. Lintels, bond beams and control joints are reported, not drawn.
 - **Missing values.** No unit is refused. A rate, spacing or bearing the call leaves out is listed under `not_figured`, and so are cut units, and reinforcement and grout at jambs, corners and bond beams. Changing the unit size changes every derived number. A face traced as a polygon needs `height_ft` for the reinforcing and grout that follow the wall's height.
 - The Trade view books `M-WALL-`, `M-OPEN`, `M-LINTEL-`, `M-BB` and `M-CJ` tags to the new suite.
+
+## 2026-11-17 — detect_rooms: letter-prefixed room numbers on request (MCP 0.9.117)
+
+- **`detect_rooms {label_prefixes: ["A"]}` reads room numbers like A2521, A2532 and B101A.** Hospital and campus sets put a wing or floor letter in front of every room number, so the 2–3 digit room pattern found no rooms at all. The letters are an argument read off the plan, because a sheet number (A101) has the same shape. A prefixed token that is the number of any loaded sheet is never a room, and the text gates (printed areas, title-block words, a second number) still apply.
+- Without `label_prefixes`, nothing changes: numeric room numbers only. `roomLabelSeeds` takes the same `prefixes` and `exclude` options (`roomLabelMatcher` in `web/src/lib/detectRooms.ts`). The sheet graph's room tags are unchanged.
 
 ## 2026-11-20 — Public test sheets
 

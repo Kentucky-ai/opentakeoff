@@ -39,6 +39,32 @@ import type { MaskObj, FloodResult } from "./oneclick.ts";
  *  (134, 139A, 170) — the same shape estimators read off a finish plan. */
 export const ROOM_LABEL_RE = /^\d{2,3}[A-Z]?$/;
 
+/** A letter-prefixed room number: one or two letters, 3–4 digits, an optional
+ *  trailing letter (A2521, B101, AB101A), the wing or floor designator a
+ *  hospital or campus set puts in front of every room. Never matched on its
+ *  own: a sheet number (A101) has exactly this shape, so `roomLabelMatcher`
+ *  accepts it only for a prefix the caller names, and never for one of the
+ *  set's own sheet numbers. */
+export const PREFIXED_ROOM_LABEL_RE = /^([A-Z]{1,2})\d{3,4}[A-Z]?$/;
+
+const sheetKey = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** The room-number test for one sweep: ROOM_LABEL_RE, widened to
+ *  letter-prefixed numbers only for the stated `prefixes` and never for a
+ *  token that is one of `exclude` (the set's sheet numbers, compared without
+ *  punctuation: "A-101" excludes "A101"). With no prefixes it is exactly
+ *  ROOM_LABEL_RE. */
+export function roomLabelMatcher(opts: { prefixes?: Iterable<string>; exclude?: Iterable<string> } = {}): (tok: string) => boolean {
+  const pre = new Set([...(opts.prefixes ?? [])].map((p) => p.trim().toUpperCase()).filter(Boolean));
+  if (!pre.size) return (tok) => ROOM_LABEL_RE.test(tok);
+  const ex = new Set([...(opts.exclude ?? [])].map(sheetKey));
+  return (tok) => {
+    if (ROOM_LABEL_RE.test(tok)) return true;
+    const m = PREFIXED_ROOM_LABEL_RE.exec(tok);
+    return !!m && pre.has(m[1]) && !ex.has(sheetKey(tok));
+  };
+}
+
 /** One positioned text item, already resolved to the caller's seed-space px
  *  (image px for the browser canvas; the same for the MCP server, which
  *  resolves it via pdfjs.Util.transform in positionedText). */
@@ -98,6 +124,11 @@ export interface RoomLabelOptions {
   placement?: "anchor" | "below-box";
   /** Multiples of the text height to drop by, for "below-box". */
   gap?: number;
+  /** Letter prefixes the set's room numbers carry ("A" for A2521): see
+   *  roomLabelMatcher. Absent = numeric room numbers only. */
+  prefixes?: string[];
+  /** The set's sheet numbers: a prefixed token equal to one is never a room. */
+  exclude?: string[];
 }
 
 /** Default drop for "below-box", in multiples of the label's text height.
@@ -122,11 +153,12 @@ export const LABEL_GAP = 1.5;
 export function roomLabelSeeds(items: PositionedTextItem[], opts: RoomLabelOptions = {}): RoomLabelSeed[] {
   const out: RoomLabelSeed[] = [];
   const b = opts.bounds;
+  const isLabel = roomLabelMatcher({ prefixes: opts.prefixes, exclude: opts.exclude });
   for (const it of items) {
     const raw = (it.str || "").trim();
     if (!raw) continue;
     const toks = raw.split(/\s+/);
-    const num = toks.find((tok) => ROOM_LABEL_RE.test(tok));
+    const num = toks.find(isLabel);
     if (!num) continue;
     if (UNIT_OR_DIM_RE.test(raw)) continue;                       // "557 SF", "58'-5\""
     if (toks.some((t) => t !== num && OTHER_NUMBER_RE.test(t))) continue;   // "08 - 6231"
