@@ -822,3 +822,24 @@ test("masonry_takeoff: a face traced on an elevation takes its height from the c
   near(r.data.joint_reinforcement_lf, 210);           // length = 300 SF / 10 ft = 30 LF × 7 lines
   assert.equal(r.data.committed, 0);                  // no openings under M-OPEN
 });
+
+test("masonry_takeoff: an opening that runs to the top of its traced face takes no lintel", async () => {
+  const client = await pair({ suites: ["masonry"] });
+  await ready(client);
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 400, 200), condition: "M-WALL-2" });   // 30 × 10 ft, top edge at y = 100
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(150, 100, 180, 200), condition: "M-OPEN" });     // a door, grade to the top edge
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(250, 130, 280, 170), condition: "M-OPEN" });     // a window with brick above it
+  const r = await call(client, "masonry_takeoff", { walls: "M-WALL-2", unit: "16x8", height_ft: 10, lintel_bearing_in: 8, apply: false });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  assert.equal(r.data.lintels.count, 1, "only the window gets a lintel");
+  assert.deepEqual(r.data.lintels.lengths_ft, [4.33]);
+  assert.deepEqual(r.data.full_height_openings, { count: 1, note: "full-height: no lintel" });
+  await call(client, "place_count", { sheet: KEY, points: [[265, 120]], condition: "M-LINTEL-1" });
+  const checked = await call(client, "masonry_takeoff", { walls: "M-WALL-2", unit: "16x8", height_ft: 10, lintel_bearing_in: 8, lintels: ["M-LINTEL-1"], apply: false });
+  assert.equal(checked.data.lintels_counted, 1);
+  assert.equal(checked.data.full_height_openings.count, 1);
+  assert.equal(checked.data.needs_you, undefined, "one lintel for the one opening that takes it");
+  const none = await call(client, "masonry_takeoff", { walls: "M-WALL-2", unit: "16x8", height_ft: 10, apply: false });
+  assert.equal(none.data.lintels, undefined);
+  assert.ok(none.data.not_figured.some((n: string) => /^lintels/.test(n)));
+});

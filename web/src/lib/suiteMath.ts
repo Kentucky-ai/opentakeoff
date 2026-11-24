@@ -460,6 +460,32 @@ export function openingWidth(ring: Pt[], viewRotationDeg = 0): number {
   return hi - lo;
 }
 
+/** Whether an opening runs up to the top of the wall face it sits in, so no
+ *  masonry is left above it for a lintel to carry. Heights are read along the
+ *  view's up direction (`viewRotationDeg` as in `openingWidth`); the wall's top
+ *  is taken at the opening's own centre line, so a stepped top reads right.
+ *  `undefined` when no traced face spans the opening: a lintel stays counted
+ *  rather than dropped on a guess. `tol` is how far below the top still counts
+ *  as reaching it, in the units of the rings. */
+export function openingReachesWallTop(opening: Pt[], faces: Pt[][], viewRotationDeg = 0, tol = 0.1): boolean | undefined {
+  if (!opening.length) return undefined;
+  const a = (viewRotationDeg * Math.PI) / 180, gx = Math.cos(a), gy = Math.sin(a), ux = Math.sin(a), uy = -Math.cos(a);
+  const along = (p: Pt) => p[0] * gx + p[1] * gy, up = (p: Pt) => p[0] * ux + p[1] * uy;
+  const lo = Math.min(...opening.map(along)), hi = Math.max(...opening.map(along));
+  const c = (lo + hi) / 2;
+  let top = -Infinity;
+  for (const f of faces) {
+    for (let i = 0; i < f.length; i++) {
+      const p = f[i], q = f[(i + 1) % f.length];
+      const d1 = along(p), d2 = along(q);
+      if (d1 === d2 || c < Math.min(d1, d2) || c > Math.max(d1, d2)) continue;
+      top = Math.max(top, up(p) + (up(q) - up(p)) * ((c - d1) / (d2 - d1)));
+    }
+  }
+  if (top === -Infinity) return undefined;
+  return Math.max(...opening.map(up)) >= top - tol;
+}
+
 export interface MasonryInput {
   /** wall face before openings, SF */
   gross_sf: number;
@@ -483,6 +509,8 @@ export interface MasonryInput {
   /** openings' widths, ft, and the bearing each side of a lintel, inches */
   opening_widths_ft?: number[];
   lintel_bearing_in?: number;
+  /** openings that run to the top of the wall and so take no lintel; they are not in opening_widths_ft */
+  full_height_openings?: number;
 }
 
 export function masonryQuantities(inp: MasonryInput) {
@@ -531,11 +559,13 @@ export function masonryQuantities(inp: MasonryInput) {
     out.grout_spacing_in = s;
   } else notFigured.push("grout (pass grout {spacing_in, cell_area_in2} from the structural notes and the unit data)");
   const widths = inp.opening_widths_ft ?? [];
-  if (widths.length) {
+  const fullHeight = inp.full_height_openings ?? 0;
+  if (widths.length || fullHeight > 0) {
     if (inp.lintel_bearing_in !== undefined) {
       const bearing = inp.lintel_bearing_in / 12;
       const lens = widths.map((w) => r2(w + 2 * bearing));
       out.lintels = { count: lens.length, lengths_ft: lens, total_lf: r2(lens.reduce((n, x) => n + x, 0)), bearing_in: inp.lintel_bearing_in };
+      if (fullHeight > 0) out.full_height_openings = { count: fullHeight, note: "full-height: no lintel" };
     } else notFigured.push("lintels (pass lintel_bearing_in, the bearing each side of an opening)");
   }
   if (length > 0 || runs.length) out.wall_length_lf = r2(length);
@@ -546,7 +576,7 @@ export function masonryQuantities(inp: MasonryInput) {
     unit_count: number; waste_pct: number; waste_source: string; unit_count_order: number;
     mortar_cf?: number; mortar_source?: string; joint_reinforcement_lf?: number; joint_reinforcement_spacing_in?: number;
     vertical_bar_lf?: number; vertical_bar_spacing_in?: number; grout_cf?: number; grout_spacing_in?: number;
-    lintels?: { count: number; lengths_ft: number[]; total_lf: number; bearing_in: number }; wall_length_lf?: number; not_figured: string[];
+    lintels?: { count: number; lengths_ft: number[]; total_lf: number; bearing_in: number }; full_height_openings?: { count: number; note: string }; wall_length_lf?: number; not_figured: string[];
   };
 }
 

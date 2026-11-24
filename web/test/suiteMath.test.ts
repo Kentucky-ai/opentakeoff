@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePitch, slopeFactor, hipValleyFactor, roofQuantities, bottomEdges, starterRuns, sidingQuantities,
-  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, jointReinforcementLines, openingWidth, ringAreaSf, ringPerimeter, type Pt,
+  soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, openingReachesWallTop, jointReinforcementLines, openingWidth, ringAreaSf, ringPerimeter, type Pt,
 } from "../src/lib/suiteMath.ts";
 import { TRADE_SUITES, SUITE_TOOL_NAMES, suitesForDivision, suiteOfTool, suiteCatalogLines } from "../src/lib/tradeSuites.ts";
 
@@ -411,4 +411,28 @@ test("trade view: explicit trade wins, then tag prefix, then Finishes; the view 
   assert.equal(sanitizeViewTrade("siding"), "siding");
   assert.equal(sanitizeViewTrade("drop table"), "all");
   assert.equal(sanitizeViewTrade(null), "all");
+});
+
+test("openingReachesWallTop: a door to the top edge takes no lintel, a window below it does", () => {
+  const wall: [number, number][] = [[0, 0], [30, 0], [30, 10], [0, 10]];            // y down, top edge at y = 0
+  const door: [number, number][] = [[5, 0], [8, 0], [8, 10], [5, 10]];
+  const window_: [number, number][] = [[15, 3], [18, 3], [18, 7], [15, 7]];
+  assert.equal(openingReachesWallTop(door, [wall]), true);
+  assert.equal(openingReachesWallTop(window_, [wall]), false);
+  assert.equal(openingReachesWallTop([[5, 0.05], [8, 0.05], [8, 10], [5, 10]], [wall]), true, "a hand-traced edge within 0.1 ft of the top still reaches it");
+  assert.equal(openingReachesWallTop([[5, 0.5], [8, 0.5], [8, 10], [5, 10]], [wall]), false);
+  assert.equal(openingReachesWallTop(door, []), undefined, "no traced face: no verdict");
+  assert.equal(openingReachesWallTop([[40, 0], [43, 0], [43, 10], [40, 10]], [wall]), undefined, "outside every face");
+  // a stepped top: the wall is 10 ft on the left and 6 ft on the right; a door to the lower step reaches it
+  const stepped: [number, number][] = [[0, 0], [10, 0], [10, 4], [30, 4], [30, 10], [0, 10]];
+  assert.equal(openingReachesWallTop([[20, 4], [23, 4], [23, 10], [20, 10]], [stepped]), true);
+  assert.equal(openingReachesWallTop([[20, 6], [23, 6], [23, 10], [20, 10]], [stepped]), false);
+  // the elevation turned 90°: up on the sheet is +x, so the top edge is the wall's right edge
+  const side: [number, number][] = [[0, 0], [10, 0], [10, 30], [0, 30]];
+  assert.equal(openingReachesWallTop([[0, 5], [10, 5], [10, 8], [0, 8]], [side], 90), true);
+  assert.equal(openingReachesWallTop([[0, 5], [6, 5], [6, 8], [0, 8]], [side], 90), false);
+  // lintels: full-height openings are reported, not counted
+  const q = masonryQuantities({ gross_sf: 300, openings_sf: 12, unit_length_in: 16, unit_height_in: 8, opening_widths_ft: [3], lintel_bearing_in: 8, full_height_openings: 2 });
+  assert.equal(q.lintels?.count, 1);
+  assert.deepEqual(q.full_height_openings, { count: 2, note: "full-height: no lintel" });
 });

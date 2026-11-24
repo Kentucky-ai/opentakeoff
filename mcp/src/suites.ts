@@ -25,7 +25,7 @@ import {
 import { M_PER_FT, MM_PER_IN, SUITE_UNIT_PAIRS, suiteMetricName, suiteMetricReply } from "../../web/src/lib/units.ts";
 import {
   parsePitch, roofQuantities, slopeFactor, hipValleyFactor, sidingQuantities, bottomEdges, starterRuns, soffitQuantities,
-  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, openingWidth, ringPerimeter, type Pt,
+  glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, masonryQuantities, parseMasonryUnit, openingWidth, openingReachesWallTop, ringPerimeter, type Pt,
 } from "../../web/src/lib/suiteMath.ts";
 
 export { SUITE_TOOL_NAMES };
@@ -694,6 +694,10 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
       runs.push({ length_lf: ((w.shape.computed.area_sf ?? 0) / heightFt) * mult, height_ft: heightFt });
     }
     const separate = session.suiteShapes(a.openings, ["floor_area"]);
+    // an opening that runs to the top of its traced wall face has no masonry over it: no lintel
+    const faces = wallShapes.filter((w) => w.shape.measure_role === "floor_area");
+    const fullHeight = separate.map((o) => openingReachesWallTop(o.ft, faces.filter((w) => w.shape.sheet_id === o.shape.sheet_id).map((w) => w.ft), a.view_rotation_deg) === true);
+    const fullHeightCount = fullHeight.filter(Boolean).length;
     const done = derivedFrom("masonry_takeoff", [a.walls]);
     const pending = separate.filter((o) => !done.has(`${a.walls}|${o.shape.id}`));
     const areaOf = (list: typeof separate) => list.reduce((n, o) => n + (o.shape.computed.area_sf ?? 0), 0);
@@ -707,7 +711,8 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
         unit_length_in: face.length_in, unit_height_in: face.height_in, waste_pct: a.waste_pct,
         mortar_cf_per_100_units: a.mortar_cf_per_100_units, runs, joint_reinf_spacing_in: spacing, vertical_bar_spacing_in: barSpacing,
         grout: groutIn && { spacing_in: groutIn.spacing_in!, cell_area_in2: groutIn.cell_area_in2! },
-        opening_widths_ft: separate.map((o) => openingWidth(o.ft, a.view_rotation_deg)),
+        opening_widths_ft: separate.filter((_, i) => !fullHeight[i]).map((o) => openingWidth(o.ft, a.view_rotation_deg)),
+        full_height_openings: fullHeightCount,
         lintel_bearing_in: bearing,
       });
     } catch (e) { throw new UserError(`${(e as Error).message}.`); }
@@ -717,7 +722,7 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     const lintelsCounted = a.lintels.length ? a.lintels.reduce((n: number, t: string) => n + (session.suiteTotals(t)?.ea ?? 0), 0) : undefined;
     const lintelCheck = lintelsCounted === undefined ? {} : {
       lintels_counted: lintelsCounted, openings_traced: separate.length,
-      ...(lintelsCounted !== separate.length ? { needs_you: [`${lintelsCounted} lintels counted against ${separate.length} openings traced: settle the difference (a lintel over a pair of openings, an opening not traced) before the counts go out.`] } : {}),
+      ...(lintelsCounted !== separate.length - fullHeightCount ? { needs_you: [`${lintelsCounted} lintels counted against ${separate.length - fullHeightCount} openings that take one: settle the difference (a lintel over a pair of openings, an opening not traced) before the counts go out.`] } : {}),
     };
     let committed = 0, steps = 0;
     if (a.apply) {
