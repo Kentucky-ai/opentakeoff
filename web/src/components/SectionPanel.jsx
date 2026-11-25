@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { averageEndArea, trenchQuantities, slabPavingQuantities, footingQuantities } from "../lib/suiteMath.ts";
 import "./sectionPanel.css";
 
@@ -58,9 +58,14 @@ export default function SectionPanel({
   const [newCut, setNewCut] = useState("");
   const [newFill, setNewFill] = useState("");
 
-  // Scale state
+  // Scale state — synced when active sheet or its saved scale changes
   const [hUpp, setHUpp] = useState(scaleH || 0.0347); // default ~1"=5'
   const [vUpp, setVUpp] = useState(scaleV || scaleH || 0.0347);
+
+  useEffect(() => {
+    setHUpp(scaleH || 0.0347);
+    setVUpp(scaleV || scaleH || 0.0347);
+  }, [sheetKey, scaleH, scaleV]);
 
   // Trench helper state
   const [trenchL, setTrenchL] = useState(100);
@@ -280,6 +285,17 @@ export default function SectionPanel({
                 </tbody>
               </table>
             </div>
+            {aeaResult.skipped_segments?.length > 0 && (
+              <div className="sec-res-box" role="status">
+                <strong>Skipped segments (&gt; max_gap_ft):</strong>
+                {aeaResult.skipped_segments.map((sk) => (
+                  <div key={`${sk.from_station}-${sk.to_station}`} className="sec-res-line">
+                    <span>{sk.from_station} → {sk.to_station}</span>
+                    <span>{sk.reason}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 

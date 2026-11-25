@@ -466,3 +466,44 @@ test("trade view: explicit trade wins, then tag prefix, then Finishes; the view 
   assert.equal(sanitizeViewTrade("drop table"), "all");
   assert.equal(sanitizeViewTrade(null), "all");
 });
+
+test("formatStation handles 99.999 rollover and averageEndArea reports skipped gaps (#651)", () => {
+  assert.equal(formatStation(1499.999), "15+00.00");
+  assert.equal(formatStation(99.996), "1+00.00");
+
+  const res = averageEndArea([
+    { station: "10+00.00", cut_sf: 10, fill_sf: 5 },
+    { station: "10+50.00", cut_sf: 10, fill_sf: 5 },
+    { station: "20+00.00", cut_sf: 20, fill_sf: 10 },
+  ], { max_gap_ft: 100 });
+  assert.equal(res.segments.length, 1);
+  assert.equal(res.skipped_segments?.length, 1);
+  assert.equal(res.skipped_segments?.[0].from_station, "10+50.00");
+  assert.equal(res.skipped_segments?.[0].to_station, "20+00.00");
+  assert.equal(res.skipped_segments?.[0].distance_ft, 950);
+  assert.match(res.skipped_segments?.[0].reason || "", /max_gap_ft/);
+});
+
+test("computeShapeMetrics: trench CY uses plan_lf rather than rise/drop vertical LF (#651)", async () => {
+  const { computeShapeMetrics } = await import("../src/lib/shapeMetrics.js");
+  // 100 px horizontal line at upp = 1 ft/px -> plan = 100 LF; rise_ft = 10 -> LF = 110 LF
+  // Trench width 3 ft, depth 3 ft -> plan CY = (100 * 3 * 3) / 27 = 33.33 CY (NOT 110 * 9 / 27 = 36.67 CY)
+  const met = computeShapeMetrics(
+    { measure_role: "linear", verts_norm: [[0, 0], [1, 0]], rise_ft: 10 },
+    { w: 100, h: 100 },
+    1,
+    { width_ft: 3, depth_ft: 3 },
+  );
+  assert.equal(met.plan_lf, 100);
+  assert.equal(met.perimeter_lf, 110);
+  near(met.volume_cy!, 33.33);
+});
+
+test("sheetEntry persists anisotropic units_per_px_y and omits when isotropic (#651)", async () => {
+  const { sheetEntry } = await import("../src/lib/takeoffDocument.js");
+  const iso = sheetEntry({ sheet_id: "S1#1", units_per_px: 0.05, units_per_px_y: 0.05 });
+  assert.equal("units_per_px_y" in iso, false);
+  const aniso = sheetEntry({ sheet_id: "XS#1", units_per_px: 0.05, units_per_px_y: 0.01 });
+  assert.equal(aniso.units_per_px, 0.05);
+  assert.equal(aniso.units_per_px_y, 0.01);
+});

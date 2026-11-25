@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // totals.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
-import { conditionTotals, materialsSummary, verticalWallSf, sheetTotals, reportJson } from "../src/lib/totals.js";
+import { conditionTotals, materialsSummary, verticalWallSf, sheetTotals, reportJson, grandTotals } from "../src/lib/totals.js";
 
 const area = (id: string, sf: number) => ({ condition_id: id, measure_role: "floor_area", computed: { area_sf: sf } });
 const lin = (id: string, lf: number) => ({ condition_id: id, measure_role: "linear", computed: { perimeter_lf: lf } });
@@ -327,4 +327,30 @@ test("conditionTotals: reconciled deduct never double-subtracts; legacy deduct s
     { id: "d2", condition_id: "c1", measure_role: "deduct", verts_norm: [], computed: { area_sf: 5 } },
   ] as any);
   assert.equal(rows[0].floor_sf, 85, "90 − 5 (legacy only); a double-deduct would read 75");
+});
+
+test("sitework CY (#651): linear CY isolated from LF grand total; area CY without depth held back", () => {
+  const conds = [
+    { id: "tr", finish_tag: "TR-1", unit: "CY", multiplier: 0.1 },
+    { id: "sl", finish_tag: "PV-1", unit: "CY", depth_in: 6 },
+    { id: "nd", finish_tag: "EW-NODP", unit: "CY" },
+    { id: "bs", finish_tag: "RB-1" },
+  ];
+  const shapes = [
+    lin("tr", 100),        // 100 LF * 0.1 mult = 10 CY, must NOT add to grandTotals.lf
+    area("sl", 540),       // 540 SF * 0.5 ft / 27 = 10 CY
+    area("nd", 540),       // 540 SF with no depth -> held back (volume_cy = 0)
+    lin("bs", 40),         // regular linear = 40 LF
+  ];
+  const rows = conditionTotals(conds, shapes) as any[];
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+
+  assert.equal(byId.tr.volume_cy, 10);
+  assert.equal(byId.sl.volume_cy, 10);
+  assert.equal(byId.nd.volume_cy, 0);
+  assert.match(byId.nd.volume_held_reason, /depth required/i);
+
+  const g = grandTotals(rows);
+  assert.equal(g.lf, 40, "CY linear condition must not contaminate LF grand total");
+  assert.equal(g.volume_cy, 20);
 });

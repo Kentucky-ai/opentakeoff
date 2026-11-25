@@ -1856,6 +1856,15 @@ export default function TakeoffCanvas() {
   // unchanged so none of factorFor/uppFor's ~20 call sites needed to move.
   const factorFor = (key) => panelGeom.factorFor(renderScalesRef.current, key);
   const uppFor = (key) => panelGeom.uppFor(scales, renderScalesRef.current, key);
+  const uppVFor = (key) => {
+    const u = dualScales[key] ?? scales[key];
+    return u == null ? null : u / factorFor(key);
+  };
+  const shapeUppFor = (key) => {
+    const ux = uppFor(key) || 0;
+    const uy = uppVFor(key) ?? ux;
+    return dualScales[key] != null && Math.abs(uy - ux) > 1e-12 ? { x: ux, y: uy } : ux;
+  };
   // keep the agent's capability closures reading LIVE state across their awaits
   useEffect(() => {
     agentStateRef.current = { panels, scales, scaleSources, detectedScales, conditions, status };
@@ -2469,10 +2478,14 @@ export default function TakeoffCanvas() {
       if (sheetsLoadedRef.current) setView(cloudMode && !hasSheetsRef.current ? "picker" : "gallery");
     }
     const sc = {};
+    const scY = {};
     const src = {};
     const unconf = {};
     for (const s of a.sheets || []) if (s.sheet_id && s.units_per_px) {
       sc[s.sheet_id] = s.units_per_px;
+      if (typeof s.units_per_px_y === "number" && s.units_per_px_y > 0 && Math.abs(s.units_per_px_y - s.units_per_px) > 1e-12) {
+        scY[s.sheet_id] = s.units_per_px_y;
+      }
       // provenance is additive — old projects lack it (report shows "unknown").
       // Any non-empty string passes through, not just today's known values: a
       // whitelist would silently strip a future value on load and the next
@@ -2481,6 +2494,7 @@ export default function TakeoffCanvas() {
       if (s.scale_confirmed === false) unconf[s.sheet_id] = false;   // scale gate: agent-set, awaiting a human
     }
     setScales(sc);
+    setDualScales(scY);
     setScaleSources(src);
     setScaleUnconfirmed(unconf);
     // display units ride the payload (additive) — a metric project opens metric
@@ -3583,7 +3597,7 @@ export default function TakeoffCanvas() {
     client_info: overrides.client_info ?? clientInfo,
     estimate_settings: overrides.estimate_settings ?? estimateSettings,
     bid_proposal: overrides.bid_proposal ?? bidProposal,
-    sheets: overrides.sheets ?? Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
+    sheets: overrides.sheets ?? Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, units_per_px_y: dualScales[sheet_id], scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
     conditions: overrides.conditions ?? conditions,
     condition_columns: overrides.condition_columns ?? conditionColumns,
     shape_labels: overrides.shape_labels ?? shapeLabels,
@@ -5497,9 +5511,7 @@ export default function TakeoffCanvas() {
   // Hole-aware since #137: a parent carrying verts_norm_holes prices the
   // clipped geometry, not the outer ring.
   function recomputeShape(s, uppOverride) {
-    const d = dualScales[s.sheet_id];
-    const u = uppOverride ?? (d ? { x: d.upp_x, y: d.upp_y } : (uppFor(s.sheet_id) || 0));
-    return computeShapeMetrics(s, panelByKey(s.sheet_id).img, u, condById[s.condition_id]);
+    return computeShapeMetrics(s, panelByKey(s.sheet_id).img, uppOverride ?? shapeUppFor(s.sheet_id), condById[s.condition_id]);
   }
   // The panel chip chromes' children — built imperatively by moveCrosshair on a
   // __mode change (the chip element stays CHILDLESS in JSX for every chrome;
@@ -6245,12 +6257,14 @@ export default function TakeoffCanvas() {
   // scale (the same staleness pasteClipboard calls "the legacy bug") — glaring
   // now that the check tool's one-tap recalibrate makes late rescales routine.
   // Hydrate bypasses this on purpose: saved computed matches the saved scale.
-  function rescaleSheet(key, upp) {
+  function rescaleSheet(key, upp, uppV = undefined) {
     // stash the scale this rescale replaces, but only when it actually changes
     // committed quantities (sheet had a scale, the scale moved, shapes exist on
     // it) — that's the case worth a one-step revert (the Scale menu surfaces it)
     const prior = scales[key];
-    if (prior === upp) { confirmScale(key); return; } // re-picking the active scale — no reprice churn, no stash (mirrors the MCP guard)
+    const priorY = dualScales[key];
+    const nextY = typeof uppV === "number" && uppV > 0 && Math.abs(uppV - upp) > 1e-12 ? uppV : undefined;
+    if (prior === upp && priorY === nextY) { confirmScale(key); return; } // re-picking the active scale — no reprice churn, no stash (mirrors the MCP guard)
     const sp = panels.find((p) => p.key === key);
     if (!sp?.img?.w && shapes.some((sh) => sh.sheet_id === key && sh.measure_role !== "count")) {
       setCommitMsg(uiText("Open this sheet before recalibrating its measurements."));
@@ -6260,6 +6274,13 @@ export default function TakeoffCanvas() {
       setPrevScale({ key, upp: prior, source: scaleSources[key] || "standard" });
     }
     setScales((s) => ({ ...s, [key]: upp }));
+    setDualScales((d) => {
+      if (nextY != null) return { ...d, [key]: nextY };
+      if (!(key in d)) return d;
+      const copy = { ...d };
+      delete copy[key];
+      return copy;
+    });
     confirmScale(key);   // scale gate: a human scale act IS the confirmation
     // The vector mask bakes the scale in (its hatch-pitch cap and seal radii
     // are feet-true via mppf), so a recalibrated sheet must rebuild its masks
@@ -6268,7 +6289,8 @@ export default function TakeoffCanvas() {
     maskCacheRef.current.delete(key);
     rasterMaskCacheRef.current.delete(key);
     if (!sp?.img?.w) return; // no dimensional shapes to reprice
-    const uEff = upp / factorFor(key);
+    const f = factorFor(key);
+    const uEff = nextY != null ? { x: upp / f, y: nextY / f } : upp / f;
     // count shapes keep their computed: EA has no upp dependency at all, and
     // recomputeShape's count branch would clobber a hand-edited / hydrated
     // fractional count (supported data — see totals.js accumulateRole) to 1.
@@ -10013,7 +10035,7 @@ export default function TakeoffCanvas() {
       if (s.condition_id !== activeCond) return s;
       if (!((field === "thickness_in" || field === "rise_ft" || field === "drop_ft") && s.measure_role === "linear")) return s;
       const sp = panelByKey(s.sheet_id);
-      const u = uppFor(s.sheet_id) || 0;
+      const u = shapeUppFor(s.sheet_id);
       return { ...s, computed: computeShapeMetrics(s, sp.img, u, { ...condById[s.condition_id], [field]: v }) };
     }));
   };
@@ -10142,7 +10164,7 @@ export default function TakeoffCanvas() {
       if (seq !== healSeqRef.current) return;   // stale — a newer load/edit owns the heal now
       const healed = new Map(missing
         .filter((s) => dimsBy.has(s.sheet_id))
-        .map((s) => [s.id, computeShapeMetrics(s, dimsBy.get(s.sheet_id), uppFor(s.sheet_id) || 0, condById[s.condition_id])]));
+        .map((s) => [s.id, computeShapeMetrics(s, dimsBy.get(s.sheet_id), shapeUppFor(s.sheet_id), condById[s.condition_id])]));
       if (!healed.size) return;
       dispatchShape({ type: "replace", shapes: shapes.map((s) => (healed.has(s.id) ? { ...s, computed: healed.get(s.id) } : s)) }, { reset: true });
       setCommitMsg(uiText(`Repriced ${healed.size} takeoff${healed.size === 1 ? "" : "s"} that loaded without quantities.`));
@@ -13318,11 +13340,12 @@ export default function TakeoffCanvas() {
           <SectionPanel
             sheetLabel={sheetKey ? sheetBaseLabel(sheetKey) : "Cross Sections"}
             sheetKey={sheetKey || ""}
-            scaleH={typeof uppFor(sheetKey) === "object" ? uppFor(sheetKey)?.x : (uppFor(sheetKey) || 0)}
-            scaleV={typeof uppFor(sheetKey) === "object" ? uppFor(sheetKey)?.y : (uppFor(sheetKey) || 0)}
+            scaleH={uppFor(sheetKey) || 0}
+            scaleV={uppVFor(sheetKey) || 0}
             onSetDualScale={(key, h, v) => {
-              setDualScales((prev) => ({ ...prev, [key]: { upp_x: h, upp_y: v } }));
-              setScales((prev) => ({ ...prev, [key]: h }));
+              const f = factorFor(key);
+              rescaleSheet(key, h * f, v * f);
+              setScaleSources((s) => ({ ...s, [key]: "calibrated" }));
             }}
             onClose={() => pickViewTrade(ALL_TRADES)}
           />

@@ -548,8 +548,9 @@ export function parseStation(raw: unknown): number | null {
 /** Formats feet along alignment to standard station format ("14+50.00"). */
 export function formatStation(feet: number): string {
   if (!Number.isFinite(feet) || feet < 0) return "0+00.00";
-  const sta = Math.floor(feet / 100);
-  const rem = (feet % 100).toFixed(2).padStart(5, "0");
+  const rounded = Math.round(feet * 100) / 100;
+  const sta = Math.floor(rounded / 100);
+  const rem = (rounded - sta * 100).toFixed(2).padStart(5, "0");
   return `${sta}+${rem}`;
 }
 
@@ -595,6 +596,14 @@ export function averageEndArea(stations: StationInput[], options: AEAOptions = {
     .sort((a, b) => a.sta_ft - b.sta_ft);
 
   const segments: AEASegment[] = [];
+  const skippedSegments: Array<{
+    from_station: string;
+    to_station: string;
+    from_feet: number;
+    to_feet: number;
+    distance_ft: number;
+    reason: string;
+  }> = [];
   let totalCutBcy = 0;
   let totalFillCcy = 0;
   let totalBenchBcy = 0;
@@ -655,6 +664,15 @@ export function averageEndArea(stations: StationInput[], options: AEAOptions = {
         ...(vb != null ? { bench_sf_start: Number(prev.bench_sf) || 0, bench_sf_end: ab || 0, bench_cy: r2(vb) } : {}),
         match: segMatch,
       });
+    } else if (prev && L > maxGap) {
+      skippedSegments.push({
+        from_station: typeof prev.station === "string" ? prev.station : formatStation(prev.sta_ft),
+        to_station: typeof curr.station === "string" ? curr.station : formatStation(curr.sta_ft),
+        from_feet: prev.sta_ft,
+        to_feet: curr.sta_ft,
+        distance_ft: r2(L),
+        reason: `gap ${r2(L)} ft exceeds max_gap_ft (${maxGap} ft)`,
+      });
     }
 
     const matchCut = curr.printed_cut_cy == null || Math.abs(Math.round(vc) - curr.printed_cut_cy) <= 1;
@@ -697,6 +715,7 @@ export function averageEndArea(stations: StationInput[], options: AEAOptions = {
   return {
     stations: stationRows,
     segments,
+    ...(skippedSegments.length > 0 ? { skipped_segments: skippedSegments } : {}),
     totals: {
       cut_bcy: r2(totalCutBcy),
       fill_ccy: r2(totalFillCcy),
@@ -711,6 +730,7 @@ export function averageEndArea(stations: StationInput[], options: AEAOptions = {
     checks: {
       total_stations: parsed.length,
       matching_stations: matchingStations,
+      ...(skippedSegments.length > 0 ? { skipped_segments_count: skippedSegments.length } : {}),
       ...(printedCutTotal > 0 ? { printed_cut_total_cy: printedCutTotal } : {}),
       ...(printedFillTotal > 0 ? { printed_fill_total_cy: printedFillTotal } : {}),
     },

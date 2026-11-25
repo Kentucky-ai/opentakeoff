@@ -118,12 +118,15 @@ export function conditionTotals(conditions, shapes, ctx = null) {
     const total = floor + wall + border;
     const dFt = c.depth_ft != null ? Number(c.depth_ft) : c.depth_in != null ? Number(c.depth_in) / 12 : 0;
     const wFt = c.width_ft != null ? Number(c.width_ft) : c.width_in != null ? Number(c.width_in) / 12 : 0;
+    const isCy = String(c.unit || "").toUpperCase() === "CY" || String(c.target_unit || "").toUpperCase() === "CY";
     let vol = 0;
+    let volHeldReason = null;
     if (dFt > 0) {
       if (wFt > 0 && lf > 0) vol = (lf * wFt * dFt) / 27;
       else if (total > 0) vol = (total * dFt) / 27;
-    } else if (c.unit === "CY" || c.unit === "cy" || c.target_unit === "CY") {
-      vol = lf > 0 ? lf : total > 0 ? total / 27 : 0;
+    } else if (isCy) {
+      if (lf > 0) vol = lf;
+      else if (total > 0) volHeldReason = "depth required (depth_ft or depth_in) to convert area (SF) to CY — held back rather than assuming 1 ft";
     }
     // supporting materials: deterministic quantity = basis ÷ coverage, rounded up
     // to whole units (you buy whole buckets/bags). basis = this condition's measured
@@ -150,7 +153,8 @@ export function conditionTotals(conditions, shapes, ctx = null) {
       lf: round2(lf), ea,
       total_sf: round2(total),
       ...(c.unit ? { unit: c.unit } : {}),
-      ...(vol > 0 || c.unit === "CY" ? { volume_cy: round2(vol), volume_cy_net: round2(vol * w) } : {}),
+      ...(vol > 0 || isCy ? { volume_cy: round2(vol), volume_cy_net: round2(vol * w) } : {}),
+      ...(volHeldReason ? { volume_held_reason: volHeldReason } : {}),
       // waste-adjusted (order quantities)
       floor_sf_net: round2(floor * w), wall_sf_net: round2(wall * w),
       border_sf_net: round2(border * w), lf_net: round2(lf * w),

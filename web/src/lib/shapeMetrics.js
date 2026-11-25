@@ -77,7 +77,7 @@ export function computeShapeMetrics(s, dims, upp, cond) {
     const tIn = Number(cond?.thickness_in) || 0;
     const wFt = cond?.width_ft != null ? Number(cond.width_ft) : cond?.width_in != null ? Number(cond.width_in) / 12 : 0;
     const dFt = cond?.depth_ft != null ? Number(cond.depth_ft) : cond?.depth_in != null ? Number(cond.depth_in) / 12 : 0;
-    const volCy = wFt > 0 && dFt > 0 ? (LF * wFt * dFt) / 27 : 0;
+    const volCy = wFt > 0 && dFt > 0 ? (plan * wFt * dFt) / 27 : 0;
     return {
       perimeter_lf: +LF.toFixed(2),
       area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0,
