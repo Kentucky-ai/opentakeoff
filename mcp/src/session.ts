@@ -1814,9 +1814,8 @@ export class Session {
     };
 
     const sheetNumberOf = (s: SheetState): string | null => {
-      const spans = spansOf(s);
-      const fromText = extractSheetNumber(spans);
-      return fromText || s.label || null;
+      if (s.sheetNumber) return s.sheetNumber;
+      return s.page ? extractSheetNumber(s.page.textContent, s.page.viewport) : null;
     };
 
     let baseEntries: SheetEntry[] = [];
@@ -1833,7 +1832,7 @@ export class Session {
           file: this.fileFor(sA.key),
           page: sA.pageNum,
           sheetNumber: num,
-          label: sA.label,
+          label: sA.sheetNumber,
           width: sA.widthPx,
           height: sA.heightPx,
           widthPx: sA.widthPx,
@@ -1845,7 +1844,7 @@ export class Session {
           file: this.fileFor(sB.key),
           page: sB.pageNum,
           sheetNumber: num,
-          label: sB.label,
+          label: sB.sheetNumber,
           width: sB.widthPx,
           height: sB.heightPx,
           widthPx: sB.widthPx,
@@ -1891,7 +1890,7 @@ export class Session {
         file: this.fileFor(s.key),
         page: s.pageNum,
         sheetNumber: sheetNumberOf(s),
-        label: s.label,
+        label: s.sheetNumber,
         width: s.widthPx,
         height: s.heightPx,
       });
