@@ -1394,3 +1394,105 @@ export const compareSheetsOutput = {
     added_segments: z.number().int(),
   }),
 };
+
+const ledgerShapeRefSchema = z.object({
+  id: z.string(),
+  condition_id: z.string(),
+  finish_tag: z.string(),
+  measure_role: z.string(),
+  quantity: z.number(),
+  unit: z.enum(["SF", "LF", "EA"]),
+});
+
+const ledgerQuantityDeltaSchema = z.object({
+  field: z.enum(["floor_sf", "wall_sf", "border_sf", "lf", "ea"]),
+  unit: z.enum(["SF", "LF", "EA"]),
+  before: z.number(),
+  after: z.number().nullable(),
+  delta: z.number().nullable(),
+  exposure: z.number(),
+});
+
+const ledgerSourceRegionSchema = z.object({
+  bounds: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  hull: z.array(z.tuple([z.number(), z.number()])),
+  segment_count: z.number(),
+  text: z.string().optional(),
+});
+
+export const revisionDeltaLedgerOutput = {
+  ledger: z.object({
+    set_a_label: z.string(),
+    set_b_label: z.string(),
+    created_at: z.string(),
+    paired_sheets: z.array(z.object({
+      sheet_number: z.string(),
+      sheet_a: z.string(),
+      sheet_b: z.string(),
+      revised_measured: z.boolean(),
+      alignment: z.object({
+        dx: z.number(),
+        dy: z.number(),
+        scale: z.number().optional(),
+        rotationDeg: z.number().optional(),
+        confidence: z.number(),
+        method: z.string(),
+      }),
+      diff_method: z.enum(["vector", "raster"]),
+      scale_a: z.number().nullable().optional(),
+      scale_b: z.number().nullable().optional(),
+      scale_mismatch: z.boolean(),
+      reconciliation: z.array(z.object({
+        field: z.enum(["floor_sf", "wall_sf", "border_sf", "lf", "ea"]),
+        unit: z.enum(["SF", "LF", "EA"]),
+        before: z.number(),
+        after: z.number().nullable(),
+        delta: z.number().nullable(),
+        attributed: z.number().nullable(),
+        unattributed: z.number().nullable(),
+        reconciles: z.boolean(),
+        exposure: z.number(),
+      })),
+      entry_ids: z.array(z.string()),
+      unattributed_shape_ids: z.array(z.string()),
+    })),
+    unpaired_sheets: z.object({
+      unmatched_base: z.array(z.object({ key: z.string(), sheetNumber: z.string().nullable() })),
+      unmatched_incoming: z.array(z.object({ key: z.string(), sheetNumber: z.string().nullable() })),
+      ambiguous: z.array(z.object({
+        sheetNumber: z.string(),
+        base_keys: z.array(z.string()),
+        incoming_keys: z.array(z.string()),
+      })),
+    }),
+    entries: z.array(z.object({
+      id: z.string(),
+      sheet_number: z.string(),
+      sheet_a: z.string(),
+      sheet_b: z.string(),
+      kind: z.enum(["linework", "text", "mixed", "cloud", "unattributed"]),
+      change_type: z.enum(["added", "removed", "modified", "unattributed"]),
+      summary: z.string(),
+      source_region_a: ledgerSourceRegionSchema.nullable(),
+      source_region_b: ledgerSourceRegionSchema.nullable(),
+      shapes_a: z.array(ledgerShapeRefSchema),
+      shapes_b: z.array(ledgerShapeRefSchema),
+      quantities: z.array(ledgerQuantityDeltaSchema),
+      status: z.enum(["exposure", "measured", "unchanged", "unattributed"]),
+      reasons: z.array(z.string()),
+      agent_check: z.object({
+        checked: z.boolean(),
+        actor: z.string().optional(),
+        note: z.string().optional(),
+        ts: z.string().optional(),
+      }),
+      estimator_approval: z.object({
+        approved: z.boolean(),
+        actor: z.string().optional(),
+        note: z.string().optional(),
+        ts: z.string().optional(),
+      }),
+    })),
+  }),
+  csv: z.string().optional(),
+};

@@ -30,6 +30,7 @@ import {
   rotatePageOutput, reorderPagesOutput, extractPagesOutput, mergeDocumentsOutput,
   stitchSheetsOutput, alignStitchOutput, listStitchesOutput,
   compareSheetsOutput,
+  revisionDeltaLedgerOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { exportEstimateFile, exportProposalFile } from "./estimateFiles.ts";
@@ -470,6 +471,30 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     outputSchema: compareSheetsOutput,
   }, run("compare_sheets", (a) => session.compareSheets(a.sheet_a, a.sheet_b, a.alignment)));
+
+  server.registerTool("revision_delta_ledger", {
+    description: `Build or update the Revision Delta Ledger between two issued drawing sets: pairs sheets 1-to-1 by title-block number (listing unpaired/ambiguous sheets without guessing), diffs both vector linework and normalized text runs, ties each drawing change to touched takeoff shapes (including count marks and 2-point runs) and quantities (stating exposure until the revised side is measured, then delta), reconciles delta = attributed + unattributed per sheet, and records agent_check separately from estimator_approval. ${COORDS}`,
+    inputSchema: {
+      sheet_pairs: z.array(z.object({
+        sheet_a: z.string().describe("Base sheet key or filename"),
+        sheet_b: z.string().describe("Revised sheet key or filename"),
+        sheet_number: z.string().optional().describe("Optional title-block sheet number override"),
+        alignment: z.object({
+          dx: z.number().optional(),
+          dy: z.number().optional(),
+          scale: z.number().optional(),
+          rotation_deg: z.number().optional(),
+        }).optional(),
+        revised_measured: z.boolean().optional().describe("Explicitly mark revised side as measured (even if 0 shapes)"),
+      })).optional().describe("Explicit sheet pairs; if omitted, pairs loaded sheets 1-to-1 by title-block number across the two sets"),
+      set_a_label: z.string().optional().describe("Label or filename for base issued set"),
+      set_b_label: z.string().optional().describe("Label or filename for revised issued set"),
+      format: z.enum(["json", "csv"]).optional().describe("Return JSON ledger only (default) or include CSV text"),
+      check_entry_id: z.string().optional().describe("Mark an existing ledger entry's agent_check as checked (never modifies estimator_approval)"),
+      check_note: z.string().optional().describe("Optional note for agent_check"),
+    },
+    outputSchema: revisionDeltaLedgerOutput,
+  }, run("revision_delta_ledger", (a) => session.revisionDeltaLedger(a)));
 
   server.registerTool("estimate_summary", {
     description: `The priced estimate — the canvas Estimate panel as data: one line per quantity kind each measured condition carries — its area, LF and EA are separate lines (unit, order and measured quantities, rates, material / labor / supply cost, main marks each condition's first line; status priced | partial | unpriced with what is missing, or optional — a bordered linear run's derived line nobody priced, carried in its main line and never missing; set_pricing prices any line: the main one by default, the others with line "LF" / "EA" / "SF"), then material, labor, sales tax, cost, overhead, profit and the base bid. complete is false while anything is unentered: the total then counts the missing pieces at $0 and is "priced so far", and unpriced lists every hole — report it to the estimator, never fill it. Read-only.`,

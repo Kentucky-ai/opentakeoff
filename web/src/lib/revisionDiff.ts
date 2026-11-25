@@ -1,9 +1,22 @@
-// Pure geometric revision diffing: vector segment differencing and raster fallback.
+// Pure geometric revision diffing: vector segment differencing, text-layer diffing,
+// and raster fallback.
 // No DOM dependencies; runs cleanly under Node and in the browser worker or UI thread.
+
+import { joinAbuttingSpans, type BoxSpan } from "./textjoin";
 
 export type Point = [number, number];
 export type Segment = [number, number, number, number]; // [x0, y0, x1, y1]
 export type Polygon = Point[];
+
+export interface TextDiffItem {
+  id: string;
+  type: "added" | "removed" | "modified";
+  textA?: string;
+  textB?: string;
+  boundsA?: [number, number, number, number];
+  boundsB?: [number, number, number, number];
+  bounds: [number, number, number, number];
+}
 
 export interface ChangedRegion {
   id: string;
@@ -11,6 +24,10 @@ export interface ChangedRegion {
   bounds: [number, number, number, number]; // [minX, minY, maxX, maxY]
   hull: Polygon;
   segmentCount: number;
+  segments?: Segment[];
+  rasterCells?: Array<[number, number, number, number]>;
+  isCloud?: boolean;
+  textChanges?: TextDiffItem[];
 }
 
 export interface VectorDiffResult {
@@ -45,6 +62,7 @@ export interface TransformOffset {
   dx: number;
   dy: number;
   scale?: number;
+  rotationDeg?: number;
 }
 
 /** Canonicalize a segment so (x0, y0) <= (x1, y1) for order-independent comparison. */
@@ -159,6 +177,55 @@ export function bboxToPolygon(box: [number, number, number, number], pad = 4): P
   ];
 }
 
+/** Transform a 2D point by alignment (scale, rotationDeg, dx, dy). */
+export function transformPoint(x: number, y: number, alignment: TransformOffset): [number, number] {
+  const scale = alignment.scale ?? 1;
+  const rot = alignment.rotationDeg ?? 0;
+  let px = x * scale;
+  let py = y * scale;
+  if (rot !== 0) {
+    const rad = (rot * Math.PI) / 180;
+    const c = Math.cos(rad);
+    const s = Math.sin(rad);
+    const rx = px * c - py * s;
+    const ry = px * s + py * c;
+    px = rx;
+    py = ry;
+  }
+  return [px + alignment.dx, py + alignment.dy];
+}
+
+/** Detect if a cluster of changed segments forms a closed revision cloud boundary. */
+export function detectRevisionCloud(segs: Segment[], bounds: [number, number, number, number]): boolean {
+  if (segs.length < 12) return false;
+  const w = bounds[2] - bounds[0];
+  const h = bounds[3] - bounds[1];
+  if (w < 30 || h < 30) return false;
+
+  // Revision clouds are made of many short arc-chord segments whose endpoints
+  // chain together around a perimeter, leaving the interior mostly empty.
+  let totalLen = 0;
+  let nearPerimeter = 0;
+  const margin = Math.max(12, Math.min(w, h) * 0.18);
+  for (const s of segs) {
+    const len = Math.hypot(s[2] - s[0], s[3] - s[1]);
+    totalLen += len;
+    const mx = (s[0] + s[2]) / 2;
+    const my = (s[1] + s[3]) / 2;
+    const distEdge = Math.min(
+      Math.abs(mx - bounds[0]),
+      Math.abs(bounds[2] - mx),
+      Math.abs(my - bounds[1]),
+      Math.abs(bounds[3] - my)
+    );
+    if (distEdge <= margin) nearPerimeter++;
+  }
+  const avgLen = totalLen / segs.length;
+  const perimeter = 2 * (w + h);
+  // Short segments (avg < 35px or < 8% of perimeter) and mostly near the outer boundary
+  return avgLen <= 40 && totalLen >= perimeter * 0.7 && nearPerimeter / segs.length >= 0.65;
+}
+
 /** Group changed segments into discrete spatial regions. */
 export function clusterChangedSegments(
   segments: Array<{ seg: Segment; type: "added" | "removed" }>,
@@ -186,6 +253,10 @@ export function clusterChangedSegments(
     while (queue.length > 0) {
       const curIdx = queue.pop()!;
       const cur = segments[curIdx].seg;
+      const cMinX = Math.min(cur[0], cur[2]);
+      const cMaxX = Math.max(cur[0], cur[2]);
+      const cMinY = Math.min(cur[1], cur[3]);
+      const cMaxY = Math.max(cur[1], cur[3]);
 
       for (let j = 0; j < n; j++) {
         if (visited[j]) continue;
@@ -197,8 +268,8 @@ export function clusterChangedSegments(
         const bMinY = Math.min(cand[1], cand[3]);
         const bMaxY = Math.max(cand[1], cand[3]);
 
-        const dx = Math.max(0, Math.max(minX - bMaxX, bMinX - maxX));
-        const dy = Math.max(0, Math.max(minY - bMaxY, bMinY - maxY));
+        const dx = Math.max(0, Math.max(cMinX - bMaxX, bMinX - cMaxX));
+        const dy = Math.max(0, Math.max(cMinY - bMaxY, bMinY - cMaxY));
 
         if (dx <= clusterDist && dy <= clusterDist) {
           visited[j] = 1;
@@ -219,12 +290,16 @@ export function clusterChangedSegments(
       hasAdded && hasRemoved ? "modified" : hasAdded ? "added" : "removed";
 
     const box: [number, number, number, number] = [minX, minY, maxX, maxY];
+    const segs = group.map((g) => g.seg);
+    const isCloud = hasAdded && !hasRemoved && detectRevisionCloud(segs, box);
     regions.push({
       id: `crg-${regions.length + 1}`,
       type: regionType,
       bounds: box,
       hull: bboxToPolygon(box, 4),
       segmentCount: group.length,
+      segments: segs,
+      ...(isCloud ? { isCloud: true } : {}),
     });
   }
 
@@ -233,7 +308,7 @@ export function clusterChangedSegments(
 
 /**
  * Compare two sets of vector segments (e.g. from pdf.js extractVectorGeometry).
- * An optional alignment offset (dx, dy) is applied to the incoming segments.
+ * An optional alignment offset (dx, dy, scale, rotationDeg) is applied to the incoming segments.
  */
 export function diffVectorSegments(
   baseRawSegs: Segment[],
@@ -242,9 +317,11 @@ export function diffVectorSegments(
   tolerance = 1.0
 ): VectorDiffResult {
   const baseSegs: Segment[] = baseRawSegs.map((s) => canonicalizeSegment(s[0], s[1], s[2], s[3]));
-  const incomingSegs: Segment[] = incomingRawSegs.map((s) =>
-    canonicalizeSegment(s[0] + alignment.dx, s[1] + alignment.dy, s[2] + alignment.dx, s[3] + alignment.dy)
-  );
+  const incomingSegs: Segment[] = incomingRawSegs.map((s) => {
+    const [x0, y0] = transformPoint(s[0], s[1], alignment);
+    const [x1, y1] = transformPoint(s[2], s[3], alignment);
+    return canonicalizeSegment(x0, y0, x1, y1);
+  });
 
   const baseMatched = new Uint8Array(baseSegs.length);
   const incomingMatched = new Uint8Array(incomingSegs.length);
@@ -357,6 +434,7 @@ export function diffRasterGrayscale(
           bounds: box,
           hull: bboxToPolygon(box, 2),
           segmentCount: count,
+          rasterCells: [box],
         });
       }
     }
@@ -372,5 +450,240 @@ export function diffRasterGrayscale(
       changeRatio: totalPixels > 0 ? changedPixels / totalPixels : 0,
     },
   };
+}
+
+export interface CoalescedTextLine {
+  text: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  rot: number;
+}
+
+export interface TextDiffResult {
+  unchangedCount: number;
+  items: TextDiffItem[];
+  changedRegions: ChangedRegion[];
+}
+
+/**
+ * Coalesce PDF text runs into logical visual lines so that two PDF writers
+ * splitting the same printed line into different runs produce identical lines.
+ */
+export function coalesceTextLines(rawSpans: readonly BoxSpan[]): CoalescedTextLine[] {
+  const cleaned = rawSpans
+    .filter((s) => s.str && s.str.trim().length > 0)
+    .map((s) => ({ ...s, rot: s.rot ?? 0 }));
+  if (!cleaned.length) return [];
+
+  // First join abutting runs (0-gap split tags/dates/numbers)
+  const abutted = joinAbuttingSpans(cleaned);
+
+  // Group by quantized rotation (0, 90, 180, 270)
+  const byRot = new Map<number, BoxSpan[]>();
+  for (const s of abutted) {
+    const r = ((Math.round((s.rot ?? 0) / 90) * 90) % 360 + 360) % 360;
+    let list = byRot.get(r);
+    if (!list) byRot.set(r, (list = []));
+    list.push(s);
+  }
+
+  const lines: CoalescedTextLine[] = [];
+
+  for (const [rot, list] of byRot.entries()) {
+    const axisOf = (s: BoxSpan) => {
+      if (rot === 90) return { a0: s.y0, a1: s.y1, p: (s.x0 + s.x1) / 2, h: Math.max(1, s.x1 - s.x0) };
+      if (rot === 270) return { a0: -s.y1, a1: -s.y0, p: (s.x0 + s.x1) / 2, h: Math.max(1, s.x1 - s.x0) };
+      if (rot === 180) return { a0: -s.x1, a1: -s.x0, p: (s.y0 + s.y1) / 2, h: Math.max(1, s.y1 - s.y0) };
+      return { a0: s.x0, a1: s.x1, p: (s.y0 + s.y1) / 2, h: Math.max(1, s.y1 - s.y0) };
+    };
+
+    const items = list.map((s) => ({ s, ax: axisOf(s) }));
+    // Sort by baseline p, then along-line a0
+    items.sort((u, v) => u.ax.p - v.ax.p || u.ax.a0 - v.ax.a0);
+
+    // Cluster into baseline rows
+    const rows: Array<typeof items> = [];
+    for (const item of items) {
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) {
+        const ref = lastRow[0].ax;
+        const tol = 0.35 * Math.min(ref.h, item.ax.h);
+        if (Math.abs(item.ax.p - ref.p) <= tol && Math.abs(ref.h - item.ax.h) <= 0.4 * Math.max(ref.h, item.ax.h)) {
+          lastRow.push(item);
+          continue;
+        }
+      }
+      rows.push([item]);
+    }
+
+    // Within each row, sort by a0 and split on large horizontal gaps (> 1.2 * h)
+    for (const row of rows) {
+      row.sort((u, v) => u.ax.a0 - v.ax.a0);
+      let curText = row[0].s.str.trim();
+      let { x0, y0, x1, y1 } = row[0].s;
+      let prevAx = row[0].ax;
+
+      const flush = () => {
+        const norm = curText.replace(/\s+/g, " ").trim();
+        if (norm) lines.push({ text: norm, x0, y0, x1, y1, rot });
+      };
+
+      for (let i = 1; i < row.length; i++) {
+        const cur = row[i];
+        const h = Math.max(prevAx.h, cur.ax.h);
+        const gap = cur.ax.a0 - prevAx.a1;
+        // Skip faux-bold duplicate runs at the exact same position
+        if (cur.s.str.trim() === row[i - 1].s.str.trim() && gap < -0.5 * (prevAx.a1 - prevAx.a0)) {
+          continue;
+        }
+        if (gap <= 1.2 * h) {
+          const sep = gap > 0.12 * h ? " " : "";
+          curText += sep + cur.s.str.trim();
+          x0 = Math.min(x0, cur.s.x0);
+          y0 = Math.min(y0, cur.s.y0);
+          x1 = Math.max(x1, cur.s.x1);
+          y1 = Math.max(y1, cur.s.y1);
+          prevAx = cur.ax;
+        } else {
+          flush();
+          curText = cur.s.str.trim();
+          ({ x0, y0, x1, y1 } = cur.s);
+          prevAx = cur.ax;
+        }
+      }
+      flush();
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Diff text layers between two sheets after coalescing re-chunked runs.
+ * Re-chunked text runs at the same aligned position produce zero entries.
+ */
+export function diffTextSpans(
+  baseSpans: readonly BoxSpan[],
+  incomingSpans: readonly BoxSpan[],
+  alignment: TransformOffset = { dx: 0, dy: 0 },
+  posTol = 28
+): TextDiffResult {
+  const baseLines = coalesceTextLines(baseSpans);
+  const incLinesRaw = coalesceTextLines(incomingSpans);
+
+  const incLines = incLinesRaw.map((l) => {
+    const [tx0, ty0] = transformPoint(l.x0, l.y0, alignment);
+    const [tx1, ty1] = transformPoint(l.x1, l.y1, alignment);
+    return {
+      ...l,
+      x0: Math.min(tx0, tx1),
+      y0: Math.min(ty0, ty1),
+      x1: Math.max(tx0, tx1),
+      y1: Math.max(ty0, ty1),
+    };
+  });
+
+  const baseMatched = new Uint8Array(baseLines.length);
+  const incMatched = new Uint8Array(incLines.length);
+  let unchangedCount = 0;
+
+  const centerOf = (l: CoalescedTextLine): [number, number] => [(l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2];
+  const boxesOverlap = (a: CoalescedTextLine, b: CoalescedTextLine, pad = 8) =>
+    a.x0 - pad <= b.x1 && a.x1 + pad >= b.x0 && a.y0 - pad <= b.y1 && a.y1 + pad >= b.y0;
+
+  // Pass 1: exact normalized text match near the same position
+  for (let i = 0; i < baseLines.length; i++) {
+    const b = baseLines[i];
+    const [bcx, bcy] = centerOf(b);
+    let bestJ = -1;
+    let bestDist = Infinity;
+    for (let j = 0; j < incLines.length; j++) {
+      if (incMatched[j]) continue;
+      const inc = incLines[j];
+      if (b.text !== inc.text) continue;
+      const [icx, icy] = centerOf(inc);
+      const dist = Math.hypot(bcx - icx, bcy - icy);
+      if ((dist <= posTol || boxesOverlap(b, inc, 10)) && dist < bestDist) {
+        bestDist = dist;
+        bestJ = j;
+      }
+    }
+    if (bestJ >= 0) {
+      baseMatched[i] = 1;
+      incMatched[bestJ] = 1;
+      unchangedCount++;
+    }
+  }
+
+  const items: TextDiffItem[] = [];
+  let seq = 1;
+
+  // Pass 2: pair remaining lines at the same position as "modified" (retyped text)
+  for (let i = 0; i < baseLines.length; i++) {
+    if (baseMatched[i]) continue;
+    const b = baseLines[i];
+    const [bcx, bcy] = centerOf(b);
+    let bestJ = -1;
+    let bestDist = Infinity;
+    for (let j = 0; j < incLines.length; j++) {
+      if (incMatched[j]) continue;
+      const inc = incLines[j];
+      const [icx, icy] = centerOf(inc);
+      const dist = Math.hypot(bcx - icx, bcy - icy);
+      if ((boxesOverlap(b, inc, 8) || dist <= posTol) && dist < bestDist) {
+        bestDist = dist;
+        bestJ = j;
+      }
+    }
+    if (bestJ >= 0) {
+      baseMatched[i] = 1;
+      incMatched[bestJ] = 1;
+      const inc = incLines[bestJ];
+      const boundsA: [number, number, number, number] = [b.x0, b.y0, b.x1, b.y1];
+      const boundsB: [number, number, number, number] = [inc.x0, inc.y0, inc.x1, inc.y1];
+      const bounds: [number, number, number, number] = [
+        Math.min(boundsA[0], boundsB[0]),
+        Math.min(boundsA[1], boundsB[1]),
+        Math.max(boundsA[2], boundsB[2]),
+        Math.max(boundsA[3], boundsB[3]),
+      ];
+      items.push({
+        id: `txt-${seq++}`,
+        type: "modified",
+        textA: b.text,
+        textB: inc.text,
+        boundsA,
+        boundsB,
+        bounds,
+      });
+    }
+  }
+
+  // Pass 3: remaining unmatched -> removed / added
+  for (let i = 0; i < baseLines.length; i++) {
+    if (baseMatched[i]) continue;
+    const b = baseLines[i];
+    const bounds: [number, number, number, number] = [b.x0, b.y0, b.x1, b.y1];
+    items.push({ id: `txt-${seq++}`, type: "removed", textA: b.text, boundsA: bounds, bounds });
+  }
+  for (let j = 0; j < incLines.length; j++) {
+    if (incMatched[j]) continue;
+    const inc = incLines[j];
+    const bounds: [number, number, number, number] = [inc.x0, inc.y0, inc.x1, inc.y1];
+    items.push({ id: `txt-${seq++}`, type: "added", textB: inc.text, boundsB: bounds, bounds });
+  }
+
+  const changedRegions: ChangedRegion[] = items.map((it, idx) => ({
+    id: `crg-t-${idx + 1}`,
+    type: it.type,
+    bounds: it.bounds,
+    hull: bboxToPolygon(it.bounds, 4),
+    segmentCount: 0,
+    textChanges: [it],
+  }));
+
+  return { unchangedCount, items, changedRegions };
 }
 

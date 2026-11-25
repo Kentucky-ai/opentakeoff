@@ -2,7 +2,7 @@
 // and collision flagging ("Check after revision").
 // Pure geometry & logic, no DOM dependencies.
 
-import type { ChangedRegion } from "./revisionDiff";
+import type { ChangedRegion, Segment } from "./revisionDiff";
 
 export interface SheetEntry {
   key: string;       // e.g. "file.pdf#1"
@@ -194,9 +194,157 @@ export function polygonsIntersect(polyA: Array<[number, number]>, polyB: Array<[
   return false;
 }
 
+export const COUNT_HIT_RADIUS = 16; // px at render scale 2.0 (~8 pt)
+export const LINEAR_HIT_TOL = 6;    // px at render scale 2.0 (~3 pt)
+export const POLY_HIT_TOL = 4;      // px at render scale 2.0 (~2 pt)
+
+/** Shortest distance from point (px, py) to segment [x0, y0, x1, y1]. */
+export function pointToSegmentDist(px: number, py: number, seg: Segment): number {
+  const [x0, y0, x1, y1] = seg;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-9) return Math.hypot(px - x0, py - y0);
+  const t = Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / lenSq));
+  return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+}
+
+/** Shortest distance from point (px, py) to axis-aligned box [minX, minY, maxX, maxY]. */
+export function pointToBoxDist(px: number, py: number, box: [number, number, number, number]): number {
+  const dx = Math.max(0, box[0] - px, px - box[2]);
+  const dy = Math.max(0, box[1] - py, py - box[3]);
+  return Math.hypot(dx, dy);
+}
+
+/** Shortest distance between two 2D segments. */
+function segmentToSegmentDist(a0: [number, number], a1: [number, number], b: Segment): number {
+  if (segmentsIntersect(a0, a1, [b[0], b[1]], [b[2], b[3]])) return 0;
+  return Math.min(
+    pointToSegmentDist(a0[0], a0[1], b),
+    pointToSegmentDist(a1[0], a1[1], b),
+    pointToSegmentDist(b[0], b[1], [a0[0], a0[1], a1[0], a1[1]]),
+    pointToSegmentDist(b[2], b[3], [a0[0], a0[1], a1[0], a1[1]])
+  );
+}
+
+/** Test whether an axis-aligned box overlaps or touches a polygon. */
+function boxIntersectsPolygon(box: [number, number, number, number], poly: Array<[number, number]>): boolean {
+  const rect: Array<[number, number]> = [
+    [box[0], box[1]],
+    [box[2], box[1]],
+    [box[2], box[3]],
+    [box[0], box[3]],
+  ];
+  return polygonsIntersect(rect, poly);
+}
+
+/**
+ * Test whether a takeoff shape (in page px) touches the actual changed ink
+ * of a ChangedRegion (never flagging a polygon solely because it sits inside
+ * a large bounding rectangle of unrelated changed segments).
+ */
+export function shapeTouchesRegion(
+  vertsPx: Array<[number, number]>,
+  region: ChangedRegion,
+  measureRole?: string
+): boolean {
+  if (!vertsPx.length) return false;
+
+  const isCount = measureRole === "count" || vertsPx.length === 1;
+  const isLinear = !isCount && (measureRole === "linear" || vertsPx.length === 2);
+  const pad = isCount ? COUNT_HIT_RADIUS : isLinear ? LINEAR_HIT_TOL : POLY_HIT_TOL;
+
+  let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
+  for (const [vx, vy] of vertsPx) {
+    if (vx < sMinX) sMinX = vx;
+    if (vx > sMaxX) sMaxX = vx;
+    if (vy < sMinY) sMinY = vy;
+    if (vy > sMaxY) sMaxY = vy;
+  }
+  const expandedBox: [number, number, number, number] = [sMinX - pad, sMinY - pad, sMaxX + pad, sMaxY + pad];
+  if (!aabbOverlap(expandedBox, region.bounds)) return false;
+
+  const segs = region.segments;
+  const cells = region.rasterCells;
+
+  if (isCount) {
+    for (const [vx, vy] of vertsPx) {
+      if (segs && segs.length > 0) {
+        for (const s of segs) {
+          if (pointToSegmentDist(vx, vy, s) <= COUNT_HIT_RADIUS) return true;
+        }
+      } else if (cells && cells.length > 0) {
+        for (const c of cells) {
+          if (pointToBoxDist(vx, vy, c) <= COUNT_HIT_RADIUS) return true;
+        }
+      } else if (pointInPolygon([vx, vy], region.hull) || pointToBoxDist(vx, vy, region.bounds) <= COUNT_HIT_RADIUS) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (isLinear) {
+    for (let i = 0; i < vertsPx.length - 1; i++) {
+      const p0 = vertsPx[i];
+      const p1 = vertsPx[i + 1];
+      if (segs && segs.length > 0) {
+        for (const s of segs) {
+          if (segmentToSegmentDist(p0, p1, s) <= LINEAR_HIT_TOL) return true;
+        }
+      } else if (cells && cells.length > 0) {
+        for (const c of cells) {
+          const rPoly: Array<[number, number]> = [[c[0], c[1]], [c[2], c[1]], [c[2], c[3]], [c[0], c[3]]];
+          if (pointInPolygon(p0, rPoly) || pointInPolygon(p1, rPoly)) return true;
+          for (let k = 0; k < 4; k++) {
+            if (segmentToSegmentDist(p0, p1, [rPoly[k][0], rPoly[k][1], rPoly[(k + 1) % 4][0], rPoly[(k + 1) % 4][1]]) <= LINEAR_HIT_TOL) {
+              return true;
+            }
+          }
+        }
+      } else {
+        // Text-only or cloud region
+        if (pointInPolygon(p0, region.hull) || pointInPolygon(p1, region.hull)) return true;
+        for (let j = 0; j < region.hull.length; j++) {
+          const h1 = region.hull[j];
+          const h2 = region.hull[(j + 1) % region.hull.length];
+          if (segmentsIntersect(p0, p1, h1, h2)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Polygon (vertsPx.length >= 3)
+  if (region.isCloud) {
+    return polygonsIntersect(vertsPx, region.hull);
+  }
+  if (segs && segs.length > 0) {
+    for (const s of segs) {
+      const a: [number, number] = [s[0], s[1]];
+      const b: [number, number] = [s[2], s[3]];
+      if (pointInPolygon(a, vertsPx) || pointInPolygon(b, vertsPx)) return true;
+      for (let i = 0; i < vertsPx.length; i++) {
+        const p0 = vertsPx[i];
+        const p1 = vertsPx[(i + 1) % vertsPx.length];
+        if (segmentsIntersect(a, b, p0, p1)) return true;
+        if (pointToSegmentDist(p0[0], p0[1], s) <= POLY_HIT_TOL) return true;
+      }
+    }
+    return false;
+  }
+  if (cells && cells.length > 0) {
+    for (const c of cells) {
+      if (boxIntersectsPolygon(c, vertsPx)) return true;
+    }
+    return false;
+  }
+  return polygonsIntersect(vertsPx, region.hull);
+}
+
 /**
  * Carry takeoff shapes from a base sheet forward to the incoming sheet.
- * Flags any shape whose boundary or interior crosses changed ink.
+ * Flags any shape whose geometry (count mark, linear run, or polygon) touches changed ink.
  */
 export function carryTakeoffShapes(
   baseShapes: TakeoffShape[],
@@ -223,20 +371,9 @@ export function carryTakeoffShapes(
     const intersectedRegionIds: string[] = [];
     const intersectedRegions: Array<{ id: string; type: string; bounds: [number, number, number, number] }> = [];
 
-    if (vertsPx.length >= 3 && changedRegions.length > 0) {
-      // Shape bounding box
-      let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
-      for (const [vx, vy] of vertsPx) {
-        if (vx < sMinX) sMinX = vx;
-        if (vx > sMaxX) sMaxX = vx;
-        if (vy < sMinY) sMinY = vy;
-        if (vy > sMaxY) sMaxY = vy;
-      }
-      const shapeBox: [number, number, number, number] = [sMinX, sMinY, sMaxX, sMaxY];
-
+    if (vertsPx.length >= 1 && changedRegions.length > 0) {
       for (const region of changedRegions) {
-        if (!aabbOverlap(shapeBox, region.bounds)) continue;
-        if (polygonsIntersect(vertsPx, region.hull)) {
+        if (shapeTouchesRegion(vertsPx, region, shape.measure_role)) {
           touchesChange = true;
           intersectedRegionIds.push(region.id);
           intersectedRegions.push({
