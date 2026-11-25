@@ -461,14 +461,18 @@ test("stitch_sheets: seam gate enforced on edit_shape/revise_proposal, align_sti
   assert.equal(rev.isError, true);
   assert.match(rev.data.error, /Align the stitch across match lines/);
 
-  // Realigning when shapes exist is refused, while verify-only align_stitch (no anchor/moving) is allowed
+  // Realigning when shapes exist is refused, and explicit seam_coord is not saved when guards throw
   const blockedRealign = await call(client, "align_stitch", {
     stitch: stitchId,
     anchor: [2900, 1000],
     moving: [3900, 1000],
+    seam_coord: 3500,
   });
   assert.equal(blockedRealign.isError, true);
   assert.match(blockedRealign.data.error, /after shapes or annotations exist/);
+  const expPre = await call(client, "export_takeoff", {});
+  const stPre = expPre.data.stitches?.find((s: any) => (s.key || s.id) === stitchId);
+  assert.notEqual(stPre?.seams?.[0], 3500);
 
   // Create clean correctly aligned stitch to test read_sheet_text, find_text, scale consistency, and verify-only
   const valid = await call(client, "stitch_sheets", {
@@ -486,6 +490,30 @@ test("stitch_sheets: seam gate enforced on edit_shape/revise_proposal, align_sti
   const withSeamCoord = await call(client, "align_stitch", { stitch: vId, seam_coord: 2850 });
   assert.equal(withSeamCoord.isError, false);
   assert.equal(withSeamCoord.data.seam_check.passed, true);
+  const expWithSeam = await call(client, "export_takeoff", {});
+  const stWithSeam = expWithSeam.data.stitches?.find((s: any) => (s.key || s.id) === vId);
+  assert.deepEqual(stWithSeam?.seams, [2850]);
+
+  // Realigning with anchor/moving clears previous st.seams so seam check re-derives it from new linework
+  const unalignedFresh = await call(client, "stitch_sheets", { sheets: [k1, k2], seam_coord: 2850 });
+  assert.equal(unalignedFresh.isError, false);
+  const uId = unalignedFresh.data.stitch_id;
+  const expFresh = await call(client, "export_takeoff", {});
+  assert.deepEqual(expFresh.data.stitches?.find((s: any) => (s.key || s.id) === uId)?.seams, [2850]);
+
+  const realignedStitch = await call(client, "align_stitch", {
+    stitch: uId,
+    anchor: [2800, 1500],
+    moving: [3800, 1500],
+  });
+  assert.equal(realignedStitch.isError, false);
+  assert.equal(realignedStitch.data.aligned, true);
+  assert.equal(realignedStitch.data.seam_check.passed, true);
+  const expRealigned = await call(client, "export_takeoff", {});
+  const stRealigned = expRealigned.data.stitches?.find((s: any) => (s.key || s.id) === uId);
+  // Old explicit seam (2850) was cleared and re-derived from linework (not 2850)
+  assert.notEqual(stRealigned?.seams?.[0], 2850);
+  assert.deepEqual(stRealigned?.seams, realignedStitch.data.seam_check.seam_coords);
 
   const compText = await call(client, "read_sheet_text", { sheet: vId });
   assert.equal(compText.isError, false);

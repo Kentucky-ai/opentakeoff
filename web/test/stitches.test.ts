@@ -443,3 +443,22 @@ test("checkSeamLinework: genuine displaced wall parallel to seam is detected and
   assert.equal(result.max_in, 3);
   assert.ok(result.withheld_reasons[0].includes('exceeds 0.50" tolerance'));
 });
+
+test("checkSeamLinework: seam_coords falls back to page overlap midline when a member has no linework (#642)", () => {
+  const members = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 80, dy: 0 }];
+  const testDims = { A: { w: 100, h: 100 }, B: { w: 100, h: 100 } };
+  const upp = 0.05555555555555555;
+
+  // Member A has linework, but member B has no linework
+  const result = checkSeamLinework(
+    members,
+    testDims,
+    { A: new Float32Array([10, 10, 50, 10]) },
+    upp,
+  );
+
+  assert.equal(result.passed, false);
+  assert.equal(result.withheld, true);
+  // Expected page overlap midline: (boxes[1].x0 + boxes[0].x1) / 2 = (80 + 100) / 2 = 90
+  assert.deepEqual(result.seam_coords, [90]);
+});

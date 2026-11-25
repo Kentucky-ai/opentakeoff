@@ -626,7 +626,7 @@ export function checkSeamLinework(
 
   const allMatched: Array<{ miss_px: number; miss_in: number; angle_err: number; at: [number, number]; pA: [number, number]; pB: [number, number] }> = [];
   const discrepancies: SeamCheckDiscrepancy[] = [];
-  const seamStats: Array<{ k: number; aKey: string; bKey: string; count: number; maxIn: number; rotDeg: number; seamCoord?: number }> = [];
+  const seamStats: Array<{ k: number; aKey: string; bKey: string; count: number; maxIn: number; rotDeg: number; seamCoord?: number; midline: number }> = [];
 
   for (let k = 0; k + 1 < order.length; k++) {
     const ai = order[k], bi = order[k + 1];
@@ -634,8 +634,11 @@ export function checkSeamLinework(
     const segsA = memberSegs[mA.key];
     const segsB = memberSegs[mB.key];
     const seamMatched: typeof allMatched = [];
+    const midline = horizontal
+      ? (boxes[bi].x0 + boxes[ai].x1) / 2
+      : (boxes[bi].y0 + boxes[ai].y1) / 2;
     if (!segsA || !segsB) {
-      seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: 0, maxIn: 0, rotDeg: 0 });
+      seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: 0, maxIn: 0, rotDeg: 0, seamCoord: midline, midline });
       continue;
     }
 
@@ -1001,7 +1004,7 @@ export function checkSeamLinework(
     const seamRotDeg = seamAngs.length ? +(seamAngs[Math.floor(seamAngs.length / 2)] * 180 / Math.PI).toFixed(2) : 0;
     const seamCoordsList = seamMatched.map((m) => horizontal ? m.at[0] : m.at[1]).sort((a, b) => a - b);
     const seamVerifiedCoord = seamCoordsList.length > 0 ? +seamCoordsList[Math.floor(seamCoordsList.length / 2)].toFixed(1) : seamCoord;
-    seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: seamMatched.length, maxIn: +seamMaxIn.toFixed(2), rotDeg: seamRotDeg, seamCoord: seamVerifiedCoord });
+    seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: seamMatched.length, maxIn: +seamMaxIn.toFixed(2), rotDeg: seamRotDeg, seamCoord: seamVerifiedCoord, midline });
   }
 
   const sampleCount = allMatched.length;
@@ -1073,6 +1076,6 @@ export function checkSeamLinework(
     withheld_reasons: withheldReasons,
     discrepancies: discrepancies.slice(0, 20),
     note,
-    seam_coords: seamStats.map((s) => s.seamCoord ?? 0),
+    seam_coords: seamStats.map((s) => s.seamCoord ?? s.midline),
   };
 }

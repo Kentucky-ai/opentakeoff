@@ -847,8 +847,8 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
         dx: z.number(),
         dy: z.number(),
       })).optional().describe("Explicit member sheet placements in image px (alternative to auto-butt or align)"),
-      seam_coord: z.number().optional().describe("Explicit seam position in stitch image px along the chain axis (e.g. match line position). When omitted, placed where member linework meets"),
-      match_line: z.number().optional().describe("Alias for seam_coord"),
+      seam_coord: z.number().optional().describe("Explicit seam position in stitch image px along the chain axis (e.g. match line position; on a 3-4 sheet stitch, applies to the first seam only). When omitted, placed where member linework meets"),
+      match_line: z.number().optional().describe("Alias for seam_coord (applies to the first seam only)"),
     },
     outputSchema: stitchSheetsOutput,
   }, run("stitch_sheets", (a) => session.stitchSheets(a)));
@@ -861,8 +861,8 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       moving: pointSchema.optional().describe("Second alignment point in image px — sheet under moving translates to anchor (omit with anchor to verify existing placement)"),
       tolerance_in: z.number().positive().optional().describe("Linework displacement tolerance in inches (default: 0.50)"),
       rot_tolerance_deg: z.number().positive().optional().describe("Leftover rotation tolerance in degrees (default: 0.25)"),
-      seam_coord: z.number().optional().describe("Explicit seam position in stitch image px along the chain axis (e.g. match line position). When omitted, placed where member linework meets"),
-      match_line: z.number().optional().describe("Alias for seam_coord"),
+      seam_coord: z.number().optional().describe("Explicit seam position in stitch image px along the chain axis (e.g. match line position; on a 3-4 sheet stitch, applies to the first seam only). When omitted, placed where member linework meets"),
+      match_line: z.number().optional().describe("Alias for seam_coord (applies to the first seam only)"),
     },
     outputSchema: alignStitchOutput,
   }, run("align_stitch", (a) => session.alignStitch(a)));
