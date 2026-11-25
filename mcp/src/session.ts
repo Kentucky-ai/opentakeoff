@@ -112,7 +112,7 @@ export interface TakeoffDocument extends Record<string, unknown> {
   schema: string;
   project_name: string;
   units?: "metric";
-  sheets: { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: false }[];
+  sheets: { sheet_id: string; units_per_px: number; units_per_px_y?: number; scale_source?: string; scale_confirmed?: false }[];
   conditions: Condition[];
   shapes: Shape[];
   markups: Markup[];
@@ -555,6 +555,8 @@ interface SheetState {
   detected: DetectedScale | null;
   /** real feet per image px at RENDER_SCALE; null until set_scale */
   upp: number | null;
+  /** optional vertical feet per image px at RENDER_SCALE for cross-sections with vertical exaggeration */
+  uppY?: number | null;
   /** how the scale was set — report provenance (export_report scale_source),
    * canvas vocabulary: "standard" | "upp" | "calibrated" | "detected" */
   scaleSource?: string;
@@ -1162,6 +1164,7 @@ export class Session {
           return sheetEntry({
             sheet_id: nextKey,
             units_per_px: sh.upp as number,
+            units_per_px_y: sh.uppY ?? undefined,
             scale_source: sh.scaleSource,
             scale_confirmed: sh.scaleConfirmed,
           });
@@ -1257,6 +1260,7 @@ export class Session {
           return sheetEntry({
             sheet_id: nextKey,
             units_per_px: sh.upp as number,
+            units_per_px_y: sh.uppY ?? undefined,
             scale_source: sh.scaleSource,
             scale_confirmed: sh.scaleConfirmed,
           });
@@ -5947,7 +5951,7 @@ export class Session {
       client_info: this.clientInfo,
       estimate_settings: this.estimateSettings,
       bid_proposal: this.bidProposal,
-      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => sheetEntry({ sheet_id: s.key, units_per_px: s.upp as number, scale_source: s.scaleSource, scale_confirmed: s.scaleConfirmed })),
+      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => sheetEntry({ sheet_id: s.key, units_per_px: s.upp as number, units_per_px_y: s.uppY ?? undefined, scale_source: s.scaleSource, scale_confirmed: s.scaleConfirmed })),
       conditions: this.conditions,
       shapes: this.shapes,
       markups: this.markups,

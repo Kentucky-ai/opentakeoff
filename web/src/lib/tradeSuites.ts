@@ -47,6 +47,9 @@ export const DIVISIONS: Record<string, string> = {
   "26": "Electrical",
   "27": "Communications",
   "28": "Electronic safety & security",
+  "31": "Earthwork",
+  "32": "Exterior improvements",
+  "33": "Utilities",
 };
 
 export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
@@ -216,6 +219,30 @@ export const TRADE_SUITES: readonly TradeSuite[] = Object.freeze([
       { tag: "E-<device>", measure: "count", what: "legend devices (receptacles, switches, data, fire alarm)" },
       { tag: "E-FIX-<mark>", measure: "count", what: "light fixtures by schedule mark" },
       { tag: "E-<run>", measure: "line", what: "conduit / branch runs" },
+    ],
+  },
+  {
+    id: "sitework",
+    label: "Sitework & earthwork",
+    prefixes: ["EW-", "EX-", "FL-", "TR-", "PV-", "UT-"],
+    divisions: ["31", "32", "33"],
+    summary: "cross-section cut and fill average end area, grading, utility trenches, slabs and paving, footings",
+    tools: ["earthwork_takeoff"],
+    method: [
+      "Cross-sections, scale set (set_scale with separate H and V scales when vertical exaggeration is used).",
+      "1. Trace cut areas under EW-CUT and fill areas under EW-FILL per station (measure_polygon). Benching: EW-BENCH.",
+      "2. earthwork_takeoff {mode: \"sections\", stations: [{station: \"14+00\", cut_sf, fill_sf, printed_cut_cy, printed_fill_cy}, ...]}: computes average end area ((A1 + A2) / 2 × L / 27) per segment, compares against printed CY, and totals cut and fill separately.",
+      "3. Plan view utility trenches: measure_line under TR-<utility>. earthwork_takeoff {mode: \"trench\", condition, width_ft, depth_ft, bedding_depth_in, pipe_od_in} figures excavation CY, bedding CY, backfill CY, and spoil CY.",
+      "4. Plan view paving & slabs: measure_polygon under PV-<type>. earthwork_takeoff {mode: \"slab_paving\", condition, thickness_in, base_thickness_in} figures concrete CY, subbase CY, aggregate tons, and formwork SFCA.",
+      "5. Footings & walls: measure_line under EW-FTG. earthwork_takeoff {mode: \"footing\", condition, height_ft, width_ft} figures 2-sided formwork SFCA and concrete CY.",
+    ].join("\n"),
+    presets: [
+      { tag: "EW-CUT", measure: "area", what: "cut end area on cross-sections (Ac) or plan excavation" },
+      { tag: "EW-FILL", measure: "area", what: "fill end area on cross-sections (Af) or plan embankment" },
+      { tag: "EW-BENCH", measure: "area", what: "benching excavation area on cross-sections" },
+      { tag: "TR-<utility>", measure: "line", what: "trench runs on utility plans" },
+      { tag: "PV-<type>", measure: "area", what: "paving or concrete slab areas on civil plans" },
+      { tag: "UT-<mark>", measure: "count", what: "structures: catch basins, manholes, hydrants" },
     ],
   },
 ]);

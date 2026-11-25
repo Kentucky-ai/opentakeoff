@@ -79,10 +79,13 @@ export async function importTakeoff(session: Session, filePath: string) {
   session.importStitches(payload.stitches, { deferInherit: true });
   // scales: mergeTakeoffImport already applied "the session's calibration wins
   // per sheet" — adopt the merged rows onto sheets this document actually has
-  for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: boolean }[]) ?? []) {
+  for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; units_per_px_y?: number; scale_source?: string; scale_confirmed?: boolean }[]) ?? []) {
     const s = session.sheetOrNull(row.sheet_id);
     if (s && s.upp == null && row.units_per_px > 0) {
       s.upp = row.units_per_px;
+      if (typeof row.units_per_px_y === "number" && row.units_per_px_y > 0 && Math.abs(row.units_per_px_y - row.units_per_px) > 1e-12) {
+        s.uppY = row.units_per_px_y;
+      }
       s.scaleSource = row.scale_source ?? "upp";
       // scale gate — transport, not minting (the approvals rule): an
       // unconfirmed agent scale arriving by file STAYS unconfirmed; absent

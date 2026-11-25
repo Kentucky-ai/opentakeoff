@@ -26,6 +26,7 @@ import { M_PER_FT, MM_PER_IN, SUITE_UNIT_PAIRS, suiteMetricName, suiteMetricRepl
 import {
   parsePitch, roofQuantities, slopeFactor, hipValleyFactor, sidingQuantities, bottomEdges, starterRuns, soffitQuantities,
   glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringPerimeter, type Pt,
+  averageEndArea, trenchQuantities, slabPavingQuantities, footingQuantities,
 } from "../../web/src/lib/suiteMath.ts";
 
 export { SUITE_TOOL_NAMES };
@@ -34,7 +35,7 @@ const SUITE_IDS = TRADE_SUITES.map((s) => s.id) as [string, ...string[]];
 
 /** One line for the initialize instructions. */
 export const SUITE_INSTRUCTIONS =
-  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, acoustical ceiling, plumbing and electrical tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
+  "TRADE SUITES: roofing, siding, soffit & fascia, glazing, acoustical ceiling, plumbing, electrical and sitework tools stay hidden until you call open_suite {suite} or {division:\"07\"}; it enables that trade's tools and returns its method. Open only the trade you are taking off.";
 
 const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
   async (args: any): Promise<ToolReply> => {
@@ -633,6 +634,239 @@ export function registerSuites(stageServer: { registerTool: (n: string, m: unkno
     }
     return { ...q, module: a.module, wall_angle_condition: waTag, committed, undo_steps: steps,
       next: `view_sheet overlay:true: the wall angle runs (${waTag}) follow every traced edge; an edge against another ceiling is not wall angle — delete_shape that run and measure_line the wall edges. export_report lists the grid rows. A row an earlier run wrote and this one did not (a short-tee row after switching to a 2x4 module) stays until edit_materials removes it.` };
+  }));
+
+  const earthworkStationSchema = z.looseObject({
+    station: z.union([z.string(), z.number()]).describe("Station mark (e.g. '14+50.00' or 1450)"),
+    cut_sf: z.number().optional().describe("Cut end area Ac in SF (m² with units: 'metric')"),
+    cut_m2: z.number().optional(),
+    fill_sf: z.number().optional().describe("Fill end area Af in SF (m² with units: 'metric')"),
+    fill_m2: z.number().optional(),
+    bench_sf: z.number().optional().describe("Benching end area in SF"),
+    bench_m2: z.number().optional(),
+    printed_cut_cy: z.number().optional().describe("Printed cut volume Vc in CY (m³ with units: 'metric') for verification"),
+    printed_cut_m3: z.number().optional(),
+    printed_fill_cy: z.number().optional().describe("Printed fill volume Vf in CY (m³ with units: 'metric') for verification"),
+    printed_fill_m3: z.number().optional(),
+  });
+
+  const earthworkInput = z.looseObject({
+    mode: z.enum(["sections", "trench", "slab_paving", "footing"]).default("sections")
+      .describe("'sections' (average end area cut & fill from cross-section stations), 'trench' (utility trench excavation, bedding, backfill & spoil), 'slab_paving' (paving/slab CY, subbase tons & edge formwork), 'footing' (2-sided formwork SFCA & concrete CY)"),
+    condition: z.string().optional().describe("Condition tag or id (required for trench, slab_paving, footing)"),
+    stations: z.array(earthworkStationSchema).optional().describe("Cross-section stations with cut_sf and fill_sf (mode: 'sections')"),
+    swell_pct: z.number().optional().describe("Excavation swell factor % (BCY -> LCY, default 0)"),
+    shrink_pct: z.number().optional().describe("Embankment compaction/shrink factor % (default 0)"),
+    max_gap_ft: z.number().optional().describe("Max distance between stations before treating as alignment gap (default 500 ft)"),
+    max_gap_m: z.number().optional(),
+    width_ft: z.number().optional(),
+    width_in: z.number().optional(),
+    width_m: z.number().optional(),
+    width_mm: z.number().optional(),
+    depth_ft: z.number().optional(),
+    depth_in: z.number().optional(),
+    depth_m: z.number().optional(),
+    depth_mm: z.number().optional(),
+    bedding_depth_in: z.number().optional(),
+    bedding_depth_mm: z.number().optional(),
+    pipe_od_in: z.number().optional(),
+    pipe_od_mm: z.number().optional(),
+    thickness_in: z.number().optional(),
+    thickness_mm: z.number().optional(),
+    base_thickness_in: z.number().optional(),
+    base_thickness_mm: z.number().optional(),
+    height_ft: z.number().optional(),
+    height_m: z.number().optional(),
+    tons_per_cy: z.number().optional().describe("Subbase aggregate density tons/CY (default 1.4)"),
+    apply: z.boolean().optional().default(true).describe("Write material rows on the condition (default true)"),
+    units: unitsArg,
+  });
+
+  reg("earthwork_takeoff", {
+    description: "Sitework & earthwork suite. Computes: 1) average end area cut and fill CY from cross-section stations (mode: 'sections'), 2) utility trench excavation, bedding, backfill and haul-off spoil CY (mode: 'trench'), 3) paving / slab concrete CY, aggregate subbase tons and edge formwork SFCA (mode: 'slab_paving'), or 4) continuous footing / wall 2-sided formwork SFCA and concrete CY (mode: 'footing'). Cut and fill are reported separately (net-versus-gross guard), never as a single netted number.",
+    inputSchema: earthworkInput,
+    outputSchema: {
+      ...deriveOutput,
+      mode: z.string().optional(),
+      stations: z.array(anyRecord).optional(),
+      segments: z.array(anyRecord).optional(),
+      totals: anyRecord.optional(),
+      checks: anyRecord.optional(),
+      trench_cy: z.number().optional(),
+      bedding_cy: z.number().optional(),
+      backfill_cy: z.number().optional(),
+      spoil_bcy: z.number().optional(),
+      surface_sf: z.number().optional(),
+      surface_sy: z.number().optional(),
+      paving_cy: z.number().optional(),
+      subbase_cy: z.number().optional(),
+      subbase_tons: z.number().optional(),
+      edge_formwork_sfca: z.number().optional(),
+      formwork_sfca: z.number().optional(),
+      concrete_cy: z.number().optional(),
+    },
+  }, suiteRun("earthwork_takeoff", earthworkInput, (a, units) => {
+    const mode = a.mode ?? "sections";
+    let steps = 0;
+
+    if (mode === "sections") {
+      const rawStations = a.stations ?? [];
+      if (!rawStations.length) {
+        throw new UserError("earthwork_takeoff in 'sections' mode needs a list of stations with station and cut_sf / fill_sf.");
+      }
+      const mapped = rawStations.map((st: any) => ({
+        station: st.station,
+        cut_sf: unitArg(st, "cut_sf", units),
+        fill_sf: unitArg(st, "fill_sf", units),
+        bench_sf: unitArg(st, "bench_sf", units),
+        printed_cut_cy: unitArg(st, "printed_cut_cy", units),
+        printed_fill_cy: unitArg(st, "printed_fill_cy", units),
+      }));
+      const maxGapFt = unitArg(a, "max_gap_ft", units);
+      const res = averageEndArea(mapped, {
+        max_gap_ft: maxGapFt,
+        swell_pct: a.swell_pct,
+        shrink_pct: a.shrink_pct,
+      });
+
+      if (a.apply && a.condition) {
+        const rows: MatRow[] = [
+          { name: "Earthwork Cut (BCY)", basis: "area", per: res.totals.cut_bcy > 0 ? 1 : 0, unit: "CY", round: false, note: "Average End Area cut" },
+          { name: "Earthwork Fill (CCY)", basis: "area", per: res.totals.fill_ccy > 0 ? 1 : 0, unit: "CY", round: false, note: "Average End Area fill" },
+        ];
+        steps += upsertRows(session, a.condition, rows);
+      }
+
+      return {
+        mode: "sections",
+        ...res,
+        committed: 0,
+        undo_steps: steps,
+        next: "export_report lists the station cut/fill summary. Net cut and fill are kept strictly separate; review excess cut export or borrow import requirements.",
+      };
+    }
+
+    if (mode === "trench") {
+      if (!a.condition) throw new UserError("earthwork_takeoff in 'trench' mode requires condition (e.g. TR-SEWER).");
+      conditionOrError(a.condition, "trench");
+      const tot = session.suiteTotals(a.condition)!;
+      const wFt = unitArg(a, "width_ft", units) ?? (unitArg(a, "width_in", units) != null ? unitArg(a, "width_in", units)! / 12 : undefined);
+      const dFt = unitArg(a, "depth_ft", units) ?? (unitArg(a, "depth_in", units) != null ? unitArg(a, "depth_in", units)! / 12 : undefined);
+      if (wFt == null || dFt == null) throw new UserError("trench mode requires width (width_ft or width_in) and depth (depth_ft or depth_in).");
+
+      const q = trenchQuantities({
+        length_lf: tot.lf,
+        width_ft: wFt,
+        depth_ft: dFt,
+        bedding_depth_in: unitArg(a, "bedding_depth_in", units),
+        pipe_od_in: unitArg(a, "pipe_od_in", units),
+        swell_pct: a.swell_pct,
+      });
+
+      if (a.apply && tot.lf > 0) {
+        const rows: MatRow[] = [
+          { name: "Trench excavation", basis: "linear", per: q.trench_cy > 0 ? r2(tot.lf / q.trench_cy) : 0, unit: "CY", round: false, note: `${r2(wFt * 12)}" W x ${r2(dFt)}' D trench (earthwork_takeoff)` },
+        ];
+        if (q.bedding_cy > 0) {
+          rows.push({ name: "Pipe bedding aggregate", basis: "linear", per: r2(tot.lf / q.bedding_cy), unit: "CY", round: false, note: `${unitArg(a, "bedding_depth_in", units)}" bedding (earthwork_takeoff)` });
+        }
+        if (q.backfill_cy > 0) {
+          rows.push({ name: "Trench backfill", basis: "linear", per: r2(tot.lf / q.backfill_cy), unit: "CY", round: false, note: "Common backfill compacted (earthwork_takeoff)" });
+        }
+        if (q.spoil_bcy > 0) {
+          rows.push({ name: "Excavated spoil haul-off", basis: "linear", per: r2(tot.lf / q.spoil_bcy), unit: "CY", round: false, note: "Spoil haul-off (earthwork_takeoff)" });
+        }
+        steps += upsertRows(session, a.condition, rows);
+      }
+
+      return {
+        mode: "trench",
+        condition: a.condition,
+        length_lf: tot.lf,
+        ...q,
+        committed: 0,
+        undo_steps: steps,
+        next: "Trench volume materials applied. Use export_report to view order quantities.",
+      };
+    }
+
+    if (mode === "slab_paving") {
+      if (!a.condition) throw new UserError("earthwork_takeoff in 'slab_paving' mode requires condition (e.g. PV-ASPHALT).");
+      conditionOrError(a.condition, "slab_paving");
+      const tot = session.suiteTotals(a.condition)!;
+      const thickIn = unitArg(a, "thickness_in", units);
+      if (thickIn == null || thickIn <= 0) throw new UserError("slab_paving mode requires thickness_in (or thickness_mm).");
+      const baseThickIn = unitArg(a, "base_thickness_in", units);
+
+      const areas = session.suiteShapes(a.condition, ["floor_area"]);
+      const perimeterLf = areas.reduce((sum, s) => sum + ringPerimeter(s.ft), 0);
+
+      const q = slabPavingQuantities({
+        area_sf: tot.total_sf,
+        thickness_in: thickIn,
+        perimeter_lf: perimeterLf,
+        base_thickness_in: baseThickIn,
+        tons_per_cy: a.tons_per_cy,
+      });
+
+      if (a.apply && tot.total_sf > 0) {
+        const rows: MatRow[] = [
+          { name: "Paving / concrete slab", basis: "area", per: q.paving_cy ? r2(tot.total_sf / q.paving_cy) : 0, unit: "CY", round: false, note: `${thickIn}" thick (earthwork_takeoff)` },
+        ];
+        if (q.subbase_tons) {
+          rows.push({ name: "Aggregate subbase", basis: "area", per: r2(tot.total_sf / q.subbase_tons), unit: "TON", round: false, note: `${baseThickIn}" base course (earthwork_takeoff)` });
+        }
+        if (q.edge_formwork_sfca) {
+          rows.push({ name: "Edge formwork", basis: "area", per: r2(tot.total_sf / q.edge_formwork_sfca), unit: "SFCA", round: false, note: `${thickIn}" edge form (earthwork_takeoff)` });
+        }
+        steps += upsertRows(session, a.condition, rows);
+      }
+
+      return {
+        mode: "slab_paving",
+        condition: a.condition,
+        ...q,
+        committed: 0,
+        undo_steps: steps,
+        next: "Paving / slab quantities applied. Use export_report to inspect totals.",
+      };
+    }
+
+    if (mode === "footing") {
+      if (!a.condition) throw new UserError("earthwork_takeoff in 'footing' mode requires condition (e.g. EW-FTG).");
+      conditionOrError(a.condition, "footing");
+      const tot = session.suiteTotals(a.condition)!;
+      const heightFt = unitArg(a, "height_ft", units);
+      if (heightFt == null || heightFt <= 0) throw new UserError("footing mode requires height_ft (or height_m).");
+      const widthFt = unitArg(a, "width_ft", units);
+
+      const q = footingQuantities({
+        length_lf: tot.lf,
+        height_ft: heightFt,
+        width_ft: widthFt,
+      });
+
+      if (a.apply && tot.lf > 0) {
+        const rows: MatRow[] = [
+          { name: "Footing formwork (2-sided)", basis: "linear", per: q.formwork_sfca > 0 ? r2(tot.lf / q.formwork_sfca) : 0, unit: "SFCA", round: false, note: `${heightFt}' H x 2 sides (earthwork_takeoff)` },
+        ];
+        if (q.concrete_cy) {
+          rows.push({ name: "Footing concrete", basis: "linear", per: r2(tot.lf / q.concrete_cy), unit: "CY", round: false, note: `${widthFt}' W x ${heightFt}' H concrete (earthwork_takeoff)` });
+        }
+        steps += upsertRows(session, a.condition, rows);
+      }
+
+      return {
+        mode: "footing",
+        condition: a.condition,
+        ...q,
+        committed: 0,
+        undo_steps: steps,
+        next: "Continuous footing formwork and concrete applied. Use export_report to inspect rows.",
+      };
+    }
+
+    throw new UserError(`Unknown earthwork_takeoff mode: ${mode}`);
   }));
 
   // hidden until opened, unless pre-opened

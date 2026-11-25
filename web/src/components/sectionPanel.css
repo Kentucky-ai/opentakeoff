@@ -1,0 +1,280 @@
+/* Section / Earthwork side panel — design tokens for light and HUD themes */
+.sec-panel {
+  order: 30;
+  flex: 0 0 var(--sec-w, 420px);
+  width: var(--sec-w, 420px);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper-cream);
+  color: var(--ink);
+  border-left: 1px solid var(--ink-faint);
+  font-family: var(--f-body);
+  font-size: var(--fs-m);
+}
+
+.sec-head {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--ink-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sec-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sec-title-row h2 {
+  margin: 0;
+  font-size: var(--fs-l);
+  font-weight: 700;
+  flex: 1;
+}
+
+.sec-x {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--ink-faint);
+  background: transparent;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sec-summary {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--ink-secondary);
+  font-size: var(--fs-s);
+}
+
+.sec-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+  flex-wrap: wrap;
+}
+
+.sec-tabs button {
+  padding: 6px 10px;
+  border: 1px solid var(--ink-faint);
+  background: transparent;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: var(--fs-s);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 30px;
+}
+
+.sec-tabs button.on {
+  border-color: var(--cobalt);
+  color: var(--ink);
+  background: var(--tint-14);
+}
+
+.sec-body {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sec-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.sec-kpi-card {
+  padding: 10px 12px;
+  border: 1px solid var(--ink-faint);
+  background: var(--paper-bright);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sec-kpi-label {
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+}
+
+.sec-kpi-val {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  font-family: var(--f-mono);
+}
+
+.sec-kpi-sub {
+  font-size: var(--fs-xs);
+  color: var(--ink-secondary);
+}
+
+.sec-banner {
+  padding: 8px 12px;
+  border: 1px solid var(--c-positive);
+  background: var(--tint-08);
+  font-size: var(--fs-s);
+  line-height: 1.4;
+  border-radius: var(--r-1);
+}
+
+.sec-banner.warn {
+  border-color: var(--c-warning);
+}
+
+.sec-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--ink-faint);
+  background: var(--paper-bright);
+}
+
+.sec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+  font-family: var(--f-mono);
+}
+
+.sec-table th {
+  text-align: right;
+  font-weight: 600;
+  color: var(--ink-muted);
+  padding: 6px 8px;
+  background: var(--paper-cream);
+  border-bottom: 1px solid var(--ink-faint);
+  white-space: nowrap;
+}
+
+.sec-table th:first-child,
+.sec-table td:first-child {
+  text-align: left;
+}
+
+.sec-table td {
+  padding: 6px 8px;
+  border-top: 1px solid var(--ink-faint);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sec-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.sec-badge-ok {
+  background: var(--c-positive);
+  color: #fff;
+}
+
+.sec-badge-diff {
+  background: var(--c-warning);
+  color: #fff;
+}
+
+.sec-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.sec-btn {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--ink-faint);
+  background: var(--paper-bright);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-s);
+  cursor: pointer;
+  border-radius: var(--r-1);
+}
+
+.sec-btn-primary {
+  background: var(--accent-fill, var(--cobalt));
+  border-color: var(--accent-fill, var(--cobalt));
+  color: var(--accent-fill-ink, #fff);
+  font-weight: 600;
+}
+
+.sec-btn-primary:hover {
+  background: var(--accent-fill-hover, var(--cobalt-deep));
+}
+
+.sec-form-card {
+  padding: 12px;
+  border: 1px solid var(--ink-faint);
+  background: var(--paper-bright);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sec-form-card h3 {
+  margin: 0;
+  font-size: var(--fs-m);
+  font-weight: 700;
+}
+
+.sec-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.sec-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sec-field label {
+  font-size: var(--fs-xs);
+  color: var(--ink-secondary);
+}
+
+.sec-field input,
+.sec-field select {
+  padding: 6px 8px;
+  border: 1px solid var(--ink-faint);
+  background: var(--paper-cream);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-s);
+  border-radius: var(--r-1);
+}
+
+.sec-res-box {
+  padding: 10px 12px;
+  background: var(--tint-08);
+  border: 1px solid var(--ink-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: var(--fs-s);
+}
+
+.sec-res-line {
+  display: flex;
+  justify-content: space-between;
+}
+
+.sec-res-line strong {
+  font-family: var(--f-mono);
+}

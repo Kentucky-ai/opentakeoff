@@ -525,3 +525,309 @@ export function plumbingRollup(inp: PlumbingInput) {
     not_figured: notFigured,
   };
 }
+
+// ── Sitework & Earthwork ────────────────────────────────────────────────────
+
+/**
+ * Parses highway/civil station notation ("14+50.00", "14+50", "0+00", "1450")
+ * to linear feet along the alignment. Returns null if unparseable.
+ */
+export function parseStation(raw: unknown): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  const m = s.match(/^(\d+)\+(\d+(?:\.\d+)?)$/);
+  if (m) return Number(m[1]) * 100 + Number(m[2]);
+  if (/^\d+(?:\.\d+)?$/.test(s)) {
+    const v = Number(s);
+    return Number.isFinite(v) && v >= 0 ? v : null;
+  }
+  return null;
+}
+
+/** Formats feet along alignment to standard station format ("14+50.00"). */
+export function formatStation(feet: number): string {
+  if (!Number.isFinite(feet) || feet < 0) return "0+00.00";
+  const rounded = Math.round(feet * 100) / 100;
+  const sta = Math.floor(rounded / 100);
+  const rem = (rounded - sta * 100).toFixed(2).padStart(5, "0");
+  return `${sta}+${rem}`;
+}
+
+export interface StationInput {
+  station: string | number;
+  cut_sf?: number;
+  fill_sf?: number;
+  bench_sf?: number;
+  printed_cut_cy?: number;
+  printed_fill_cy?: number;
+  printed_bench_cy?: number;
+}
+
+export interface AEAOptions {
+  max_gap_ft?: number;
+  swell_pct?: number;
+  shrink_pct?: number;
+}
+
+export interface AEASegment {
+  from_station: string;
+  to_station: string;
+  from_feet: number;
+  to_feet: number;
+  distance_ft: number;
+  cut_sf_start: number;
+  cut_sf_end: number;
+  cut_cy: number;
+  fill_sf_start: number;
+  fill_sf_end: number;
+  fill_cy: number;
+  bench_sf_start?: number;
+  bench_sf_end?: number;
+  bench_cy?: number;
+  match?: boolean;
+}
+
+export function averageEndArea(stations: StationInput[], options: AEAOptions = {}) {
+  const maxGap = options.max_gap_ft ?? 500;
+  const parsed = stations
+    .map((s) => ({ ...s, sta_ft: parseStation(s.station) }))
+    .filter((s): s is typeof s & { sta_ft: number } => s.sta_ft !== null)
+    .sort((a, b) => a.sta_ft - b.sta_ft);
+
+  const segments: AEASegment[] = [];
+  const skippedSegments: Array<{
+    from_station: string;
+    to_station: string;
+    from_feet: number;
+    to_feet: number;
+    distance_ft: number;
+    reason: string;
+  }> = [];
+  let totalCutBcy = 0;
+  let totalFillCcy = 0;
+  let totalBenchBcy = 0;
+  let printedCutTotal = 0;
+  let printedFillTotal = 0;
+  let matchingStations = 0;
+  const stationRows: Array<{
+    station: string;
+    feet: number;
+    cut_sf: number;
+    fill_sf: number;
+    bench_sf?: number;
+    cut_cy: number;
+    fill_cy: number;
+    bench_cy?: number;
+    printed_cut_cy?: number;
+    printed_fill_cy?: number;
+    differs?: boolean;
+  }> = [];
+
+  for (let i = 0; i < parsed.length; i++) {
+    const curr = parsed[i];
+    const prev = i > 0 ? parsed[i - 1] : null;
+    const ac = Number(curr.cut_sf) || 0;
+    const af = Number(curr.fill_sf) || 0;
+    const ab = curr.bench_sf != null ? Number(curr.bench_sf) || 0 : undefined;
+
+    let vc = 0;
+    let vf = 0;
+    let vb: number | undefined = undefined;
+    const L = prev ? curr.sta_ft - prev.sta_ft : 0;
+
+    if (prev && L > 0 && L <= maxGap) {
+      const prevAc = Number(prev.cut_sf) || 0;
+      const prevAf = Number(prev.fill_sf) || 0;
+      vc = ((prevAc + ac) / 2) * (L / 27);
+      vf = ((prevAf + af) / 2) * (L / 27);
+      if (ab != null || prev.bench_sf != null) {
+        const prevAb = Number(prev.bench_sf) || 0;
+        vb = (((prevAb + (ab || 0)) / 2) * L) / 27;
+      }
+      const matchCut = curr.printed_cut_cy == null || Math.abs(Math.round(vc) - curr.printed_cut_cy) <= 1;
+      const matchFill = curr.printed_fill_cy == null || Math.abs(Math.round(vf) - curr.printed_fill_cy) <= 1;
+      const segMatch = matchCut && matchFill;
+
+      segments.push({
+        from_station: typeof prev.station === "string" ? prev.station : formatStation(prev.sta_ft),
+        to_station: typeof curr.station === "string" ? curr.station : formatStation(curr.sta_ft),
+        from_feet: prev.sta_ft,
+        to_feet: curr.sta_ft,
+        distance_ft: r2(L),
+        cut_sf_start: prevAc,
+        cut_sf_end: ac,
+        cut_cy: r2(vc),
+        fill_sf_start: prevAf,
+        fill_sf_end: af,
+        fill_cy: r2(vf),
+        ...(vb != null ? { bench_sf_start: Number(prev.bench_sf) || 0, bench_sf_end: ab || 0, bench_cy: r2(vb) } : {}),
+        match: segMatch,
+      });
+    } else if (prev && L > maxGap) {
+      skippedSegments.push({
+        from_station: typeof prev.station === "string" ? prev.station : formatStation(prev.sta_ft),
+        to_station: typeof curr.station === "string" ? curr.station : formatStation(curr.sta_ft),
+        from_feet: prev.sta_ft,
+        to_feet: curr.sta_ft,
+        distance_ft: r2(L),
+        reason: `gap ${r2(L)} ft exceeds max_gap_ft (${maxGap} ft)`,
+      });
+    }
+
+    const matchCut = curr.printed_cut_cy == null || Math.abs(Math.round(vc) - curr.printed_cut_cy) <= 1;
+    const matchFill = curr.printed_fill_cy == null || Math.abs(Math.round(vf) - curr.printed_fill_cy) <= 1;
+    const differs = !matchCut || !matchFill;
+    if (!differs) matchingStations++;
+
+    totalCutBcy += vc;
+    totalFillCcy += vf;
+    if (vb != null) totalBenchBcy += vb;
+    if (curr.printed_cut_cy != null) printedCutTotal += curr.printed_cut_cy;
+    if (curr.printed_fill_cy != null) printedFillTotal += curr.printed_fill_cy;
+
+    stationRows.push({
+      station: typeof curr.station === "string" ? curr.station : formatStation(curr.sta_ft),
+      feet: curr.sta_ft,
+      cut_sf: ac,
+      fill_sf: af,
+      ...(ab != null ? { bench_sf: ab } : {}),
+      cut_cy: r2(vc),
+      fill_cy: r2(vf),
+      ...(vb != null ? { bench_cy: r2(vb) } : {}),
+      ...(curr.printed_cut_cy != null ? { printed_cut_cy: curr.printed_cut_cy } : {}),
+      ...(curr.printed_fill_cy != null ? { printed_fill_cy: curr.printed_fill_cy } : {}),
+      ...(curr.printed_cut_cy != null || curr.printed_fill_cy != null ? { differs } : {}),
+    });
+  }
+
+  // Net-vs-gross guard: Cut and fill are reported separately, never as a netted number.
+  // Swell applies to excavation: BCY (Bank) -> LCY (Loose).
+  // Shrink applies to embankment: CCY (Compacted) requires more BCY.
+  const swellPct = Math.max(0, Number(options.swell_pct) || 0);
+  const shrinkPct = Math.max(0, Number(options.shrink_pct) || 0);
+
+  const looseCutLcy = swellPct > 0 ? r2(totalCutBcy * (1 + swellPct / 100)) : r2(totalCutBcy);
+  const fillAdjustedBcy = shrinkPct > 0 ? r2(totalFillCcy * (1 + shrinkPct / 100)) : r2(totalFillCcy);
+
+  const balance = totalCutBcy - fillAdjustedBcy;
+
+  return {
+    stations: stationRows,
+    segments,
+    ...(skippedSegments.length > 0 ? { skipped_segments: skippedSegments } : {}),
+    totals: {
+      cut_bcy: r2(totalCutBcy),
+      fill_ccy: r2(totalFillCcy),
+      ...(totalBenchBcy > 0 ? { benching_bcy: r2(totalBenchBcy) } : {}),
+      ...(swellPct > 0 ? { swell_pct: swellPct, loose_cut_lcy: looseCutLcy } : {}),
+      ...(shrinkPct > 0 ? { shrink_pct: shrinkPct, fill_adjusted_bcy: fillAdjustedBcy } : {}),
+      balance_bcy: r2(balance),
+      disposition: balance >= 0 ? "excess_cut_export" : "borrow_needed_import",
+      export_bcy: balance > 0 ? r2(balance) : 0,
+      borrow_import_bcy: balance < 0 ? r2(Math.abs(balance)) : 0,
+    },
+    checks: {
+      total_stations: parsed.length,
+      matching_stations: matchingStations,
+      ...(skippedSegments.length > 0 ? { skipped_segments_count: skippedSegments.length } : {}),
+      ...(printedCutTotal > 0 ? { printed_cut_total_cy: printedCutTotal } : {}),
+      ...(printedFillTotal > 0 ? { printed_fill_total_cy: printedFillTotal } : {}),
+    },
+  };
+}
+
+export interface TrenchInput {
+  length_lf: number;
+  width_ft?: number;
+  width_in?: number;
+  depth_ft?: number;
+  depth_in?: number;
+  bedding_depth_in?: number;
+  pipe_od_in?: number;
+  swell_pct?: number;
+}
+
+export function trenchQuantities(inp: TrenchInput) {
+  const L = Math.max(0, Number(inp.length_lf) || 0);
+  const W = inp.width_ft != null ? Number(inp.width_ft) : inp.width_in != null ? Number(inp.width_in) / 12 : 0;
+  const D = inp.depth_ft != null ? Number(inp.depth_ft) : inp.depth_in != null ? Number(inp.depth_in) / 12 : 0;
+  const beddingIn = Math.max(0, Number(inp.bedding_depth_in) || 0);
+  const pipeOdIn = Math.max(0, Number(inp.pipe_od_in) || 0);
+  const swellPct = Math.max(0, Number(inp.swell_pct) || 0);
+
+  const trenchCy = (L * W * D) / 27;
+  const beddingCy = (L * W * (beddingIn / 12)) / 27;
+  const pipeRadiusFt = (pipeOdIn / 2) / 12;
+  const pipeDisplacementCy = pipeOdIn > 0 ? (Math.PI * pipeRadiusFt * pipeRadiusFt * L) / 27 : 0;
+  const backfillCy = Math.max(0, trenchCy - beddingCy - pipeDisplacementCy);
+  const spoilBcy = trenchCy - backfillCy;
+  const spoilLcy = spoilBcy * (1 + swellPct / 100);
+
+  return {
+    trench_cy: r2(trenchCy),
+    bedding_cy: r2(beddingCy),
+    ...(pipeOdIn > 0 ? { pipe_displacement_cy: r2(pipeDisplacementCy) } : {}),
+    backfill_cy: r2(backfillCy),
+    spoil_bcy: r2(spoilBcy),
+    ...(swellPct > 0 ? { swell_pct: swellPct, spoil_loose_lcy: r2(spoilLcy) } : {}),
+  };
+}
+
+export interface SlabPavingInput {
+  area_sf: number;
+  thickness_in?: number;
+  perimeter_lf?: number;
+  base_thickness_in?: number;
+  tons_per_cy?: number;
+}
+
+export function slabPavingQuantities(inp: SlabPavingInput) {
+  const sf = Math.max(0, Number(inp.area_sf) || 0);
+  const thickIn = Math.max(0, Number(inp.thickness_in) || 0);
+  const baseThickIn = Math.max(0, Number(inp.base_thickness_in) || 0);
+  const perim = Math.max(0, Number(inp.perimeter_lf) || 0);
+  const tonsPerCy = inp.tons_per_cy && inp.tons_per_cy > 0 ? inp.tons_per_cy : 1.4;
+
+  const sy = sf / 9;
+  const pavingCy = thickIn > 0 ? (sf * (thickIn / 12)) / 27 : 0;
+  const subbaseCy = baseThickIn > 0 ? (sf * (baseThickIn / 12)) / 27 : 0;
+  const subbaseTons = subbaseCy * tonsPerCy;
+  const formworkSfca = perim > 0 && thickIn > 0 ? perim * (thickIn / 12) : 0;
+
+  return {
+    surface_sf: r2(sf),
+    surface_sy: r2(sy),
+    ...(thickIn > 0 ? { thickness_in: thickIn, paving_cy: r2(pavingCy) } : {}),
+    ...(baseThickIn > 0
+      ? {
+          base_thickness_in: baseThickIn,
+          subbase_cy: r2(subbaseCy),
+          subbase_tons: r2(subbaseTons),
+        }
+      : {}),
+    ...(formworkSfca > 0 ? { edge_formwork_sfca: r2(formworkSfca) } : {}),
+  };
+}
+
+export interface FootingInput {
+  length_lf: number;
+  height_ft: number;
+  width_ft?: number;
+}
+
+export function footingQuantities(inp: FootingInput) {
+  const L = Math.max(0, Number(inp.length_lf) || 0);
+  const H = Math.max(0, Number(inp.height_ft) || 0);
+  const W = inp.width_ft != null ? Math.max(0, Number(inp.width_ft)) : 0;
+
+  const formworkSfca = L * H * 2; // two vertical faces
+  const concreteCy = W > 0 ? (L * H * W) / 27 : 0;
+
+  return {
+    length_lf: r2(L),
+    height_ft: r2(H),
+    formwork_sfca: r2(formworkSfca),
+    ...(W > 0 ? { width_ft: r2(W), concrete_cy: r2(concreteCy) } : {}),
+  };
+}

@@ -20,7 +20,11 @@ export const SUITE_UNIT_PAIRS: readonly { imperial: string; metric: string; fact
   { imperial: "_in2_per_lf", metric: "_mm2_per_m", factor: MM2_PER_IN2 / M_PER_FT },
   { imperial: "_per_100_lf", metric: "_per_100_m", factor: 1 / M_PER_FT },
   { imperial: "_in2", metric: "_mm2", factor: MM2_PER_IN2 },
+  { imperial: "_sfca", metric: "_m2_ca", factor: M2_PER_SF },
   { imperial: "_sf", metric: "_m2", factor: M2_PER_SF },
+  { imperial: "_sy", metric: "_m2", factor: 0.83612736 },
+  { imperial: "_ton", metric: "_t", factor: 0.90718474 },
+  { imperial: "_cy", metric: "_m3", factor: 0.764554858 },
   { imperial: "_lf", metric: "_m", factor: M_PER_FT },
   { imperial: "_ft", metric: "_m", factor: M_PER_FT },
   { imperial: "_in", metric: "_mm", factor: MM_PER_IN },
@@ -29,6 +33,9 @@ export const SUITE_UNIT_PAIRS: readonly { imperial: string; metric: string; fact
 const SUITE_BARE_KEYS: Readonly<Record<string, { metric: string; factor: number }>> = {
   lf: { metric: "m", factor: M_PER_FT },
   sf: { metric: "m2", factor: M2_PER_SF },
+  cy: { metric: "m3", factor: 0.764554858 },
+  sy: { metric: "m2", factor: 0.83612736 },
+  ton: { metric: "t", factor: 0.90718474 },
 };
 
 /** The metric name of an imperial suite name, or null when it carries no unit. */

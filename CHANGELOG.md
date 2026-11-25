@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-23 — Sitework/earthwork suite + section-view UI (#651) (MCP 0.9.120)
+
+- **`earthwork_takeoff` and `open_suite {suite: "sitework"}` covering Divisions 31, 32, and 33.** Adds earthwork, exterior improvements, and utilities trade suite with prefixes `EW-`, `EX-`, `FL-`, `TR-`, `PV-`, `UT-`.
+- **Average End Area (AEA) cut & fill arithmetic:** Evaluated against Indiana DNR Ferdinand culvert answer key (matches 34 of 37 cross-section stations within 1 CY). Net-versus-gross guard strictly separates cut and fill volumes and never reports them as a netted quantity; supports compaction shrinkage and excavation swell percentages.
+- **Section View UI & dual-scale cross-section support:** Cross-section panel with station list, cut/fill end area table, segment volume breakdown, and separate horizontal and vertical scales ($u_x \neq u_y$) to handle section sheets with vertical exaggeration.
+- **Plan-view earthwork calculators:** Trench quantities (LF × width × depth with bedding, pipe deduction, backfill, and spoil swell), slab/paving (area × thickness → CY, subbase tons, edge formwork SFCA), and continuous footings (LF × height × 2 → formwork SFCA, concrete CY).
+- **Units and totals:** Added `CY`, `SY`, `TON` suite units; prevented linear multiplier conditions configured with `CY` from contaminating LF grand totals, reporting `volume_cy` accurately in conditions and reports.
+
 ## 2026-11-17 — detect_rooms: letter-prefixed room numbers on request (MCP 0.9.117)
 
 - **`detect_rooms {label_prefixes: ["A"]}` reads room numbers like A2521, A2532 and B101A.** Hospital and campus sets put a wing or floor letter in front of every room number, so the 2–3 digit room pattern found no rooms at all. The letters are an argument read off the plan, because a sheet number (A101) has the same shape. A prefixed token that is the number of any loaded sheet is never a room, and the text gates (printed areas, title-block words, a second number) still apply.

@@ -53,12 +53,12 @@ test("suites: a default build lists open_suite and hides every suite tool", asyn
 test("suites: open_suite with no arguments is the catalog; its description carries one line per suite", async () => {
   const client = await pair();
   const tool = (await client.listTools()).tools.find((t) => t.name === "open_suite")!;
-  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "acoustical_ceilings", "doors"]) {
+  for (const id of ["roofing", "siding", "soffit_fascia", "glazing", "plumbing", "electrical", "finishes", "acoustical_ceilings", "doors", "sitework"]) {
     assert.match(tool.description!, new RegExp(`- ${id} \\(Div`));
   }
   const r = await call(client, "open_suite");
   assert.equal(r.isError, false);
-  assert.equal(r.data.catalog.length, 9);
+  assert.equal(r.data.catalog.length, 10);
   assert.deepEqual(r.data.opened, []);
 });
 
@@ -99,7 +99,7 @@ test("suites: pre-opened by option or OPENTAKEOFF_MCP_SUITES", async () => {
   const client = await pair({ suites: ["glazing"] });
   const names = (await client.listTools()).tools.map((t) => t.name);
   assert.ok(names.includes("glazing_takeoff") && !names.includes("roof_takeoff"));
-  assert.deepEqual(preopenedSuites("all").length, 9);
+  assert.deepEqual(preopenedSuites("all").length, 10);
   const prev = process.env.OPENTAKEOFF_MCP_SUITES;
   process.env.OPENTAKEOFF_MCP_SUITES = "plumbing, nonsense";
   try { assert.deepEqual(preopenedSuites(), ["plumbing"]); } finally {
@@ -723,4 +723,72 @@ test("open_suite division 09 opens finishes only; ceilings by name, or once an A
   const rcp = await call(client, "open_suite", { division: "09" });
   assert.deepEqual(rcp.data.opened, ["finishes", "acoustical_ceilings"]);
   assert.deepEqual(rcp.data.tools_enabled, ["ceiling_takeoff"]);
+});
+
+test("earthwork_takeoff: average end area sections mode and plan helpers", async () => {
+  const client = await pair();
+  await ready(client);
+  const open = await call(client, "open_suite", { suite: "sitework" });
+  assert.deepEqual(open.data.opened, ["sitework"]);
+  assert.deepEqual(open.data.tools_enabled, ["earthwork_takeoff"]);
+
+  // Test sections mode on the Ferdinand Indiana DNR stations subset
+  const stations = [
+    { station: "14+00.00", cut_sf: 0.0, fill_sf: 0.0, printed_cut_cy: 0, printed_fill_cy: 0 },
+    { station: "14+27.00", cut_sf: 2.4, fill_sf: 1.5, printed_cut_cy: 1, printed_fill_cy: 1 },
+    { station: "14+50.00", cut_sf: 20.9, fill_sf: 25.8, printed_cut_cy: 10, printed_fill_cy: 12 },
+  ];
+  const sec = await call(client, "earthwork_takeoff", { mode: "sections", stations });
+  assert.equal(sec.isError, false, JSON.stringify(sec.data));
+  assert.equal(sec.data.checks.total_stations, 3);
+  assert.equal(sec.data.checks.matching_stations, 3);
+  near(sec.data.totals.cut_bcy, 11.12);
+  near(sec.data.totals.fill_ccy, 12.38);
+
+  // Test trench helper on a linear run
+  await call(client, "measure_line", { sheet: KEY, pts: [[100, 100], [200, 100]], condition: "TR-SEWER" }); // 10 ft at upp 0.1
+  const trench = await call(client, "earthwork_takeoff", {
+    mode: "trench",
+    condition: "TR-SEWER",
+    width_in: 24,
+    depth_in: 48,
+    bedding_depth_in: 6,
+    pipe_od_in: 12,
+  });
+  assert.equal(trench.isError, false, JSON.stringify(trench.data));
+  near(trench.data.trench_cy, 2.96);
+  near(trench.data.bedding_cy, 0.37);
+
+  // Test slab helper on an area
+  await call(client, "measure_polygon", { sheet: KEY, verts: rect(100, 100, 300, 300), condition: "PV-SLAB" }); // 20x20 = 400 SF
+  const slab = await call(client, "earthwork_takeoff", {
+    mode: "slab_paving",
+    condition: "PV-SLAB",
+    thickness_in: 4,
+    base_thickness_in: 6,
+  });
+  assert.equal(slab.isError, false, JSON.stringify(slab.data));
+  near(slab.data.surface_sy, 44.44);
+  near(slab.data.paving_cy, 4.94);
+  near(slab.data.subbase_cy, 7.41);
+
+  // Test footing helper on a linear run
+  await call(client, "measure_line", { sheet: KEY, pts: [[100, 100], [400, 100]], condition: "EW-FTG" }); // 30 ft at upp 0.1
+  const ftg = await call(client, "earthwork_takeoff", {
+    mode: "footing",
+    condition: "EW-FTG",
+    height_ft: 3,
+    width_ft: 1.5,
+  });
+  assert.equal(ftg.isError, false, JSON.stringify(ftg.data));
+  near(ftg.data.formwork_sfca, 180); // 30 * 3 * 2
+  near(ftg.data.concrete_cy, 5);     // 30 * 3 * 1.5 / 27
+});
+
+test("open_suite division 31, 32, 33 opens sitework", async () => {
+  const client = await pair();
+  await ready(client);
+  const r31 = await call(client, "open_suite", { division: "31" });
+  assert.deepEqual(r31.data.opened, ["sitework"]);
+  assert.deepEqual(r31.data.tools_enabled, ["earthwork_takeoff"]);
 });

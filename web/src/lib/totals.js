@@ -116,6 +116,18 @@ export function conditionTotals(conditions, shapes, ctx = null) {
     let seam = seamByShape ? cs.reduce((n, s) => n + (seamByShape.get(s.id) || 0), 0) : 0;
     floor *= mult; wall *= mult; border *= mult; lf *= mult; ea *= mult; seam *= mult;
     const total = floor + wall + border;
+    const dFt = c.depth_ft != null ? Number(c.depth_ft) : c.depth_in != null ? Number(c.depth_in) / 12 : 0;
+    const wFt = c.width_ft != null ? Number(c.width_ft) : c.width_in != null ? Number(c.width_in) / 12 : 0;
+    const isCy = String(c.unit || "").toUpperCase() === "CY" || String(c.target_unit || "").toUpperCase() === "CY";
+    let vol = 0;
+    let volHeldReason = null;
+    if (dFt > 0) {
+      if (wFt > 0 && lf > 0) vol = (lf * wFt * dFt) / 27;
+      else if (total > 0) vol = (total * dFt) / 27;
+    } else if (isCy) {
+      if (lf > 0) vol = lf;
+      else if (total > 0) volHeldReason = "depth required (depth_ft or depth_in) to convert area (SF) to CY — held back rather than assuming 1 ft";
+    }
     // supporting materials: deterministic quantity = basis ÷ coverage, rounded up
     // to whole units (you buy whole buckets/bags). basis = this condition's measured
     // area (SF), linear (LF), count (EA), or figured seam length (LF — weld rod,
@@ -140,6 +152,9 @@ export function conditionTotals(conditions, shapes, ctx = null) {
       floor_sf: round2(floor), wall_sf: round2(wall), border_sf: round2(border),
       lf: round2(lf), ea,
       total_sf: round2(total),
+      ...(c.unit ? { unit: c.unit } : {}),
+      ...(vol > 0 || isCy ? { volume_cy: round2(vol), volume_cy_net: round2(vol * w) } : {}),
+      ...(volHeldReason ? { volume_held_reason: volHeldReason } : {}),
       // waste-adjusted (order quantities)
       floor_sf_net: round2(floor * w), wall_sf_net: round2(wall * w),
       border_sf_net: round2(border * w), lf_net: round2(lf * w),
@@ -404,10 +419,13 @@ export function materialsSummary(rows) {
 // a key that collides with a CSV column key changes that row (golden-guarded).
 export function grandTotals(rows) {
   const sum = (k) => rows.reduce((n, r) => n + (r[k] || 0), 0);
+  const sumLf = rows.reduce((n, r) => n + (r.unit === "CY" ? 0 : (r.lf || 0)), 0);
+  const sumLfNet = rows.reduce((n, r) => n + (r.unit === "CY" ? 0 : (r.lf_net || 0)), 0);
   return {
     total_sf: round2(sum("total_sf")), total_sf_net: round2(sum("total_sf_net")),
-    lf: round2(sum("lf")), lf_net: round2(sum("lf_net")),
+    lf: round2(sumLf), lf_net: round2(sumLfNet),
     ea: sum("ea"), sy_net: round2(sum("sy_net")),
+    volume_cy: round2(sum("volume_cy")), volume_cy_net: round2(sum("volume_cy_net")),
   };
 }
 

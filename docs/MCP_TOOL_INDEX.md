@@ -85,7 +85,7 @@ Default build: **70 tools**. Coordinates, where present, are full-sheet image pi
 
 `open_tool_stage {stage}` exists only when staged exposure is enabled. Setup starts open; measure, revise and handoff open on demand. This opener is not part of the default flat count.
 
-Trade-suite tools are not in the default list or count: `open_suite {suite}` enables them (or `OPENTAKEOFF_MCP_SUITES` pre-opens them). acoustical_ceilings: `ceiling_takeoff`; roofing: `roof_takeoff`; siding: `siding_takeoff`; soffit_fascia: `soffit_takeoff`; glazing: `glazing_takeoff`; plumbing: `plumbing_rollup`; electrical: `electrical_rollup`. See [trade suites](wiki/suites.md).
+Trade-suite tools are not in the default list or count: `open_suite {suite}` enables them (or `OPENTAKEOFF_MCP_SUITES` pre-opens them). acoustical_ceilings: `ceiling_takeoff`; roofing: `roof_takeoff`; siding: `siding_takeoff`; soffit_fascia: `soffit_takeoff`; glazing: `glazing_takeoff`; plumbing: `plumbing_rollup`; electrical: `electrical_rollup`; sitework: `earthwork_takeoff`. See [trade suites](wiki/suites.md).
 
 Schema-required fields are only the first validation layer: conditional requirements (such as annotation coordinates by type or exactly one calibration method) are explained by each tool and validated by its handler.
 

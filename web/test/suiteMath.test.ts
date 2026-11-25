@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   parsePitch, slopeFactor, hipValleyFactor, roofQuantities, bottomEdges, starterRuns, sidingQuantities,
   soffitQuantities, glazingOpening, electricalRollup, plumbingRollup, ceilingQuantities, parseCeilingModule, ringAreaSf, ringPerimeter, type Pt,
+  parseStation, formatStation, averageEndArea, trenchQuantities, slabPavingQuantities, footingQuantities,
 } from "../src/lib/suiteMath.ts";
 import { TRADE_SUITES, SUITE_TOOL_NAMES, suitesForDivision, suiteOfTool, suiteCatalogLines } from "../src/lib/tradeSuites.ts";
 
@@ -291,6 +292,128 @@ test("ring helpers ignore a repeated closing point", () => {
   near(ringPerimeter([...r, r[0]]), 14, 1e-9);
 });
 
+test("parseStation and formatStation handle highway and civil alignments", () => {
+  assert.equal(parseStation("14+50.00"), 1450);
+  assert.equal(parseStation("14+50"), 1450);
+  assert.equal(parseStation("0+00"), 0);
+  assert.equal(parseStation("0+00.00"), 0);
+  assert.equal(parseStation("28+58.50"), 2858.5);
+  assert.equal(parseStation(1450), 1450);
+  assert.equal(parseStation("1450"), 1450);
+  assert.equal(parseStation("invalid"), null);
+  assert.equal(parseStation(-10), null);
+
+  assert.equal(formatStation(1450), "14+50.00");
+  assert.equal(formatStation(0), "0+00.00");
+  assert.equal(formatStation(2858.5), "28+58.50");
+});
+
+test("averageEndArea reproduces the Indiana DNR culvert 37-station eval (#651)", () => {
+  const stations = [
+    { station: "14+00.00", cut_sf: 0.0, fill_sf: 0.0, printed_cut_cy: 0, printed_fill_cy: 0 },
+    { station: "14+27.00", cut_sf: 2.4, fill_sf: 1.5, printed_cut_cy: 1, printed_fill_cy: 1 },
+    { station: "14+50.00", cut_sf: 20.9, fill_sf: 25.8, printed_cut_cy: 10, printed_fill_cy: 12 },
+    { station: "14+68.50", cut_sf: 43.4, fill_sf: 28.1, printed_cut_cy: 22, printed_fill_cy: 13 },
+    { station: "14+75.00", cut_sf: 19.7, fill_sf: 64.1, printed_cut_cy: 8, printed_fill_cy: 11 },
+    { station: "14+97.00", cut_sf: 21.9, fill_sf: 23.3, printed_cut_cy: 17, printed_fill_cy: 36 },
+    { station: "15+12.00", cut_sf: 0.0, fill_sf: 16.6, printed_cut_cy: 2, printed_fill_cy: 11 },
+    { station: "15+25.00", cut_sf: 0.0, fill_sf: 0.0, printed_cut_cy: 0, printed_fill_cy: 4 },
+    { station: "19+90.00", cut_sf: 0.0, fill_sf: 0.0, printed_cut_cy: 0, printed_fill_cy: 0 },
+    { station: "20+00.00", cut_sf: 7.4, fill_sf: 0.0, printed_cut_cy: 1, printed_fill_cy: 0 },
+    { station: "20+28.00", cut_sf: 30.6, fill_sf: 2.0, printed_cut_cy: 20, printed_fill_cy: 1 },
+    { station: "20+43.00", cut_sf: 75.9, fill_sf: 39.3, printed_cut_cy: 30, printed_fill_cy: 11 },
+    { station: "20+50.00", cut_sf: 77.9, fill_sf: 47.6, printed_cut_cy: 20, printed_fill_cy: 11 },
+    { station: "20+80.00", cut_sf: 47.3, fill_sf: 8.7, printed_cut_cy: 70, printed_fill_cy: 31 },
+    { station: "21+00.00", cut_sf: 37.9, fill_sf: 61.0, printed_cut_cy: 32, printed_fill_cy: 26 },
+    { station: "21+17.00", cut_sf: 37.2, fill_sf: 36.9, printed_cut_cy: 24, printed_fill_cy: 31 },
+    { station: "21+25.00", cut_sf: 17.6, fill_sf: 32.7, printed_cut_cy: 8, printed_fill_cy: 10 },
+    { station: "21+32.00", cut_sf: 12.4, fill_sf: 28.2, printed_cut_cy: 4, printed_fill_cy: 8 },
+    { station: "21+50.00", cut_sf: 1.3, fill_sf: 0.0, printed_cut_cy: 5, printed_fill_cy: 9 },
+    { station: "21+60.00", cut_sf: 0.0, fill_sf: 0.0, printed_cut_cy: 0, printed_fill_cy: 0 },
+    { station: "28+50.00", cut_sf: 0.0, fill_sf: 0.0, printed_cut_cy: 0, printed_fill_cy: 0 },
+    { station: "28+58.00", cut_sf: 8.0, fill_sf: 9.7, printed_cut_cy: 1, printed_fill_cy: 1 },
+    { station: "28+78.00", cut_sf: 21.2, fill_sf: 12.8, printed_cut_cy: 11, printed_fill_cy: 8 },
+    { station: "29+00.00", cut_sf: 12.3, fill_sf: 40.0, printed_cut_cy: 14, printed_fill_cy: 22 },
+    { station: "29+33.00", cut_sf: 0.5, fill_sf: 0.0, printed_cut_cy: 8, printed_fill_cy: 24 },
+    { station: "29+50.00", cut_sf: 2.5, fill_sf: 77.9, printed_cut_cy: 1, printed_fill_cy: 25 },
+    { station: "29+75.00", cut_sf: 14.8, fill_sf: 26.4, printed_cut_cy: 8, printed_fill_cy: 48 },
+    { station: "29+88.00", cut_sf: 19.9, fill_sf: 7.9, printed_cut_cy: 8, printed_fill_cy: 8 },
+    { station: "30+00.00", cut_sf: 4.1, fill_sf: 19.7, printed_cut_cy: 5, printed_fill_cy: 6 },
+    { station: "30+25.00", cut_sf: 1.1, fill_sf: 1.9, printed_cut_cy: 2, printed_fill_cy: 10 },
+    { station: "30+50.00", cut_sf: 0.6, fill_sf: 1.0, printed_cut_cy: 1, printed_fill_cy: 1 },
+    { station: "30+75.00", cut_sf: 12.2, fill_sf: 9.7, printed_cut_cy: 6, printed_fill_cy: 5 },
+    { station: "30+93.00", cut_sf: 32.3, fill_sf: 3.6, printed_cut_cy: 15, printed_fill_cy: 4 },
+    { station: "31+25.00", cut_sf: 17.7, fill_sf: 19.9, printed_cut_cy: 30, printed_fill_cy: 14 },
+    { station: "31+35.00", cut_sf: 18.6, fill_sf: 17.4, printed_cut_cy: 7, printed_fill_cy: 7 },
+    { station: "31+50.00", cut_sf: 0.0, fill_sf: 0.9, printed_cut_cy: 0, printed_fill_cy: 5 },
+    { station: "31+75.00", cut_sf: 0.0, fill_sf: 0.0, printed_cut_cy: 0, printed_fill_cy: 0 },
+  ];
+
+  const res = averageEndArea(stations, { max_gap_ft: 60 });
+  // Exactly 34 of 37 match within 1 CY (the remaining 3: 14+68.50, 15+12.00, 31+50.00 were printed adjustments)
+  assert.equal(res.checks.matching_stations, 34);
+  assert.equal(res.checks.total_stations, 37);
+
+  // Single station 14+50 check:
+  // 14+27 (Ac=2.4, Af=1.5) to 14+50 (Ac=20.9, Af=25.8), L = 23 ft:
+  // Vc = (2.4 + 20.9) / 2 * 23 / 27 = 9.92 CY (printed 10 CY)
+  // Vf = (1.5 + 25.8) / 2 * 23 / 27 = 11.63 CY (printed 12 CY)
+  const seg1450 = res.segments.find((s) => s.to_station === "14+50.00")!;
+  near(seg1450.cut_cy, 9.92);
+  near(seg1450.fill_cy, 11.63);
+  assert.equal(seg1450.match, true);
+
+  // Net-vs-gross guard: cut and fill totals kept separate
+  near(res.totals.cut_bcy, 397.53);
+  near(res.totals.fill_ccy, 421.91);
+});
+
+test("trenchQuantities: excavation, bedding, pipe deduction, backfill, and spoil", () => {
+  // 100 LF of trench, 24" wide (2 ft), 48" deep (4 ft), 6" bedding, 12" pipe OD, 20% swell
+  const q = trenchQuantities({
+    length_lf: 100,
+    width_in: 24,
+    depth_in: 48,
+    bedding_depth_in: 6,
+    pipe_od_in: 12,
+    swell_pct: 20,
+  });
+  // Total trench: 100 * 2 * 4 / 27 = 29.63 CY
+  near(q.trench_cy, 29.63);
+  // Bedding: 100 * 2 * 0.5 / 27 = 3.70 CY
+  near(q.bedding_cy, 3.70);
+  // Pipe OD = 12" -> radius 0.5 ft -> pi * 0.5^2 * 100 / 27 = 2.91 CY
+  near(q.pipe_displacement_cy!, 2.91);
+  // Backfill: 29.63 - 3.70 - 2.91 = 23.02 CY
+  near(q.backfill_cy, 23.02);
+  // Spoil: 29.63 - 23.02 = 6.61 BCY, loose with 20% swell = 7.94 LCY
+  near(q.spoil_bcy, 6.61);
+  near(q.spoil_loose_lcy!, 7.94);
+});
+
+test("slabPavingQuantities: surface SY, concrete CY, subbase tons, edge formwork SFCA", () => {
+  // 2,000 SF slab, 4" thick (1/3 ft), 6" base (1/2 ft), 180 LF perimeter, 1.4 tons/CY
+  const q = slabPavingQuantities({
+    area_sf: 2000,
+    thickness_in: 4,
+    base_thickness_in: 6,
+    perimeter_lf: 180,
+    tons_per_cy: 1.4,
+  });
+  near(q.surface_sy, 222.22);                     // 2000 / 9
+  near(q.paving_cy!, 24.69);                     // 2000 * (4/12) / 27
+  near(q.subbase_cy!, 37.04);                    // 2000 * (6/12) / 27
+  near(q.subbase_tons!, 51.85);                  // 37.04 * 1.4
+  near(q.edge_formwork_sfca!, 60.0);             // 180 * (4/12)
+});
+
+test("footingQuantities: 2-sided formwork SFCA and concrete CY", () => {
+  // 150 LF footing, 3 ft high, 1.5 ft wide
+  const q = footingQuantities({ length_lf: 150, height_ft: 3, width_ft: 1.5 });
+  near(q.formwork_sfca, 900);                     // 150 * 3 * 2 sides
+  near(q.concrete_cy!, 25);                      // 150 * 3 * 1.5 / 27
+});
+
 test("registry: ids unique, every suite has a method, divisions route, tools are owned once", () => {
   const ids = TRADE_SUITES.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -302,7 +425,10 @@ test("registry: ids unique, every suite has a method, divisions route, tools are
   assert.deepEqual(suitesForDivision("07").map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
   assert.deepEqual(suitesForDivision("Div 26 05 00").map((s) => s.id), ["electrical"]);
   assert.deepEqual(suitesForDivision("8").map((s) => s.id), ["glazing", "doors"]);
-  assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
+  assert.deepEqual(suitesForDivision("31").map((s) => s.id), ["sitework"]);
+  assert.deepEqual(suitesForDivision("32").map((s) => s.id), ["sitework"]);
+  assert.deepEqual(suitesForDivision("33").map((s) => s.id), ["sitework"]);
+  assert.deepEqual([...SUITE_TOOL_NAMES], ["ceiling_takeoff", "earthwork_takeoff", "electrical_rollup", "glazing_takeoff", "plumbing_rollup", "roof_takeoff", "siding_takeoff", "soffit_takeoff"]);
   assert.deepEqual(suitesForDivision("09").map((s) => s.id), ["finishes"], "a flooring job does not open ceilings");
   assert.deepEqual(suitesForDivision("09", ["CPT-1", "act-2"]).map((s) => s.id), ["finishes", "acoustical_ceilings"]);
   assert.deepEqual(suitesForDivision("07", ["ACT-1"]).map((s) => s.id), ["roofing", "siding", "soffit_fascia"]);
@@ -324,15 +450,60 @@ test("trade view: explicit trade wins, then tag prefix, then Finishes; the view 
   assert.equal(conditionTrade({ finish_tag: "FA-HORN" }), "electrical");
   assert.equal(conditionTrade({ finish_tag: "PT-1" }), "finishes");           // paint is not plumbing
   assert.equal(conditionTrade({ finish_tag: "ACT-2" }), "acoustical_ceilings");
+  assert.equal(conditionTrade({ finish_tag: "EW-CUT" }), "sitework");
+  assert.equal(conditionTrade({ finish_tag: "TR-SEWER" }), "sitework");
+  assert.equal(conditionTrade({ finish_tag: "PV-ASPHALT" }), "sitework");
   assert.equal(conditionTrade({ finish_tag: "LVT-1" }), "finishes");          // pre-suite takeoffs read as finishes
   assert.equal(conditionTrade({ finish_tag: "LVT-1", trade: "glazing" }), "glazing");
   assert.equal(conditionTrade({ finish_tag: "RF-1", trade: "nonsense" }), "roofing");
-  const cs = [{ id: "a", finish_tag: "RF-FIELD" }, { id: "b", finish_tag: "LVT-1" }, { id: "c", finish_tag: "X", trade: "roofing" }];
-  assert.deepEqual([...tradeHiddenIds(cs, "roofing")], ["b"]);
+  const cs = [{ id: "a", finish_tag: "RF-FIELD" }, { id: "b", finish_tag: "LVT-1" }, { id: "c", finish_tag: "X", trade: "roofing" }, { id: "d", finish_tag: "EW-CUT" }];
+  assert.deepEqual([...tradeHiddenIds(cs, "roofing")], ["b", "d"]);
   assert.equal(tradeHiddenIds(cs, ALL_TRADES).size, 0);
   assert.equal(tradeHiddenIds(cs, "bogus").size, 0);
-  assert.deepEqual(tradeCounts(cs), { roofing: 2, finishes: 1 });
+  assert.deepEqual(tradeCounts(cs), { roofing: 2, finishes: 1, sitework: 1 });
+  assert.equal(sanitizeViewTrade("sitework"), "sitework");
   assert.equal(sanitizeViewTrade("siding"), "siding");
   assert.equal(sanitizeViewTrade("drop table"), "all");
   assert.equal(sanitizeViewTrade(null), "all");
+});
+
+test("formatStation handles 99.999 rollover and averageEndArea reports skipped gaps (#651)", () => {
+  assert.equal(formatStation(1499.999), "15+00.00");
+  assert.equal(formatStation(99.996), "1+00.00");
+
+  const res = averageEndArea([
+    { station: "10+00.00", cut_sf: 10, fill_sf: 5 },
+    { station: "10+50.00", cut_sf: 10, fill_sf: 5 },
+    { station: "20+00.00", cut_sf: 20, fill_sf: 10 },
+  ], { max_gap_ft: 100 });
+  assert.equal(res.segments.length, 1);
+  assert.equal(res.skipped_segments?.length, 1);
+  assert.equal(res.skipped_segments?.[0].from_station, "10+50.00");
+  assert.equal(res.skipped_segments?.[0].to_station, "20+00.00");
+  assert.equal(res.skipped_segments?.[0].distance_ft, 950);
+  assert.match(res.skipped_segments?.[0].reason || "", /max_gap_ft/);
+});
+
+test("computeShapeMetrics: trench CY uses plan_lf rather than rise/drop vertical LF (#651)", async () => {
+  const { computeShapeMetrics } = await import("../src/lib/shapeMetrics.js");
+  // 100 px horizontal line at upp = 1 ft/px -> plan = 100 LF; rise_ft = 10 -> LF = 110 LF
+  // Trench width 3 ft, depth 3 ft -> plan CY = (100 * 3 * 3) / 27 = 33.33 CY (NOT 110 * 9 / 27 = 36.67 CY)
+  const met = computeShapeMetrics(
+    { measure_role: "linear", verts_norm: [[0, 0], [1, 0]], rise_ft: 10 },
+    { w: 100, h: 100 },
+    1,
+    { width_ft: 3, depth_ft: 3 },
+  );
+  assert.equal(met.plan_lf, 100);
+  assert.equal(met.perimeter_lf, 110);
+  near(met.volume_cy!, 33.33);
+});
+
+test("sheetEntry persists anisotropic units_per_px_y and omits when isotropic (#651)", async () => {
+  const { sheetEntry } = await import("../src/lib/takeoffDocument.js");
+  const iso = sheetEntry({ sheet_id: "S1#1", units_per_px: 0.05, units_per_px_y: 0.05 });
+  assert.equal("units_per_px_y" in iso, false);
+  const aniso = sheetEntry({ sheet_id: "XS#1", units_per_px: 0.05, units_per_px_y: 0.01 });
+  assert.equal(aniso.units_per_px, 0.05);
+  assert.equal(aniso.units_per_px_y, 0.01);
 });

@@ -31,11 +31,13 @@ export const TAKEOFF_DOCUMENT_KEYS = Object.freeze([
 
 /** One `sheets[]` entry. `scale_source` rides only when known; `scale_confirmed`
  *  only when explicitly false (absent = confirmed, the pre-flag reading).
- *  @param {{ sheet_id: string, units_per_px: number, scale_source?: string | null, scale_confirmed?: boolean | null }} e */
-export function sheetEntry({ sheet_id, units_per_px, scale_source = undefined, scale_confirmed = undefined }) {
+ *  `units_per_px_y` rides only when anisotropic (differs from `units_per_px`).
+ *  @param {{ sheet_id: string, units_per_px: number, units_per_px_y?: number | null, scale_source?: string | null, scale_confirmed?: boolean | null }} e */
+export function sheetEntry({ sheet_id, units_per_px, units_per_px_y = undefined, scale_source = undefined, scale_confirmed = undefined }) {
   return {
     sheet_id,
     units_per_px,
+    ...(typeof units_per_px_y === "number" && units_per_px_y > 0 && Math.abs(units_per_px_y - units_per_px) > 1e-12 ? { units_per_px_y } : {}),
     ...(scale_source ? { scale_source } : {}),
     ...(scale_confirmed === false ? { scale_confirmed: false } : {}),
   };
