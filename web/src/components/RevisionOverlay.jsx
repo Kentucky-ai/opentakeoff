@@ -9,8 +9,29 @@ import { store } from "../lib/store.js";
 import { extractVectorGeometry } from "../lib/oneclick.ts";
 import { diffVectorSegments, diffRasterGrayscale } from "../lib/revisionDiff.ts";
 import { autoAlignSheets, manualTwoPointAlign } from "../lib/sheetAlign.ts";
-import { carryTakeoffShapes, aabbOverlap, polygonsIntersect } from "../lib/slipsheet.ts";
+import { carryTakeoffShapes, shapeTouchesRegion } from "../lib/slipsheet.ts";
+import { buildRevisionLedger, ledgerToCsv } from "../lib/revisionLedger.ts";
+import { downloadText } from "../lib/totals.js";
 import { parseSheetKey } from "../lib/sheetKey";
+
+/** Convert pdf.js textContent items into BoxSpan[] in viewport px (y down). */
+function textContentToBoxSpans(tc, viewport) {
+  if (!tc?.items) return [];
+  const spans = [];
+  for (const it of tc.items) {
+    if (!it.str || !it.str.trim()) continue;
+    const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
+    const h = Math.hypot(tx[2], tx[3]) || Math.abs(it.height * viewport.scale) || 10;
+    const w = (it.width || 0) * viewport.scale;
+    const x0 = tx[4];
+    const y1 = tx[5];
+    const y0 = y1 - h;
+    const ang = Math.round((Math.atan2(tx[1], tx[0]) * 180) / Math.PI);
+    const rot = ((Math.round(ang / 90) * 90) % 360 + 360) % 360;
+    spans.push({ str: it.str, x0, y0, x1: x0 + w, y1, rot });
+  }
+  return spans;
+}
 
 export default function RevisionOverlay({
   sheets = [],
@@ -18,6 +39,10 @@ export default function RevisionOverlay({
   fileName: initialFileName,
   pageNumber: initialPageNumber = 1,
   shapes = [],
+  conditions = [],
+  beforeShapes = [],
+  beforeConditions = [],
+  beforeLabel = "Saved revision",
   onApplyCarriedShapes,
   onClose,
 }) {
@@ -53,9 +78,15 @@ export default function RevisionOverlay({
   const canvasRef = useRef(null);
   const baseSegsRef = useRef([]);
   const incSegsRef = useRef([]);
+  const baseSpansRef = useRef([]);
+  const incSpansRef = useRef([]);
   const baseRasterCanvasRef = useRef(null);
   const incRasterCanvasRef = useRef(null);
   const pageDimsRef = useRef({ width: 1000, height: 800 });
+
+  const [selectedEntryId, setSelectedEntryId] = useState(null);
+  const [approvalsById, setApprovalsById] = useState({});
+  const [showLedger, setShowLedger] = useState(true);
 
   const [customIncBytes, setCustomIncBytes] = useState(null);
   const [customIncFileName, setCustomIncFileName] = useState("");
@@ -222,6 +253,22 @@ export default function RevisionOverlay({
         baseSegsRef.current = baseSegs;
         incSegsRef.current = incSegs;
 
+        // Extract text layer spans for normalized text diffing
+        try {
+          const baseTc = await basePage.getTextContent();
+          baseSpansRef.current = textContentToBoxSpans(baseTc, vp);
+          if (isSelfComparison) {
+            incSpansRef.current = baseSpansRef.current;
+          } else {
+            const incVp = incPage.getViewport({ scale: 2.0 });
+            const incTc = await incPage.getTextContent();
+            incSpansRef.current = textContentToBoxSpans(incTc, incVp);
+          }
+        } catch {
+          baseSpansRef.current = [];
+          incSpansRef.current = [];
+        }
+
         // Auto-align sheets unless user supplied a manual alignment
         let activeAlign = alignmentRef.current;
         if (activeAlign.method !== "manual") {
@@ -329,6 +376,69 @@ export default function RevisionOverlay({
     return () => { cancelled = true; };
   }, [fileName, pageNumber, baseRev, incomingRev, diffMode, customIncBytes, incPageNum]);
 
+  const ledger = useMemo(() => {
+    if (!diffResult) return null;
+    const { width, height } = pageDimsRef.current;
+    const activeSheetObj = sheets.find(
+      (s) => s.key === selectedSheetKey || (s.file === fileName && s.page === pageNumber)
+    );
+    const sheetNum = activeSheetObj?.sheetNumber || activeSheetObj?.label || selectedSheetKey;
+    const hasSavedBefore = beforeShapes && beforeShapes.length > 0;
+    const shapesA = hasSavedBefore ? beforeShapes : shapes;
+    const shapesB = hasSavedBefore ? shapes : [];
+    const condsA = beforeConditions?.length ? beforeConditions : conditions;
+    const targetKey = customIncFileName ? `${customIncFileName}#${incPageNum}` : selectedSheetKey;
+    const normShapesB = shapesB.map((s) => ({
+      ...s,
+      sheet_id: s.sheet_id === selectedSheetKey ? targetKey : s.sheet_id,
+    }));
+
+    return buildRevisionLedger({
+      setALabel: beforeLabel || "Saved revision",
+      setBLabel: customIncFileName || "Current takeoff",
+      pairs: [
+        {
+          sheetNumber: sheetNum,
+          sheetA: {
+            key: selectedSheetKey,
+            file: fileName,
+            page: pageNumber,
+            sheetNumber: sheetNum,
+            widthPx: width,
+            heightPx: height,
+          },
+          sheetB: {
+            key: targetKey,
+            file: customIncFileName || fileName,
+            page: customIncFileName ? incPageNum : pageNumber,
+            sheetNumber: sheetNum,
+            widthPx: width,
+            heightPx: height,
+          },
+          segsA: baseSegsRef.current,
+          segsB: incSegsRef.current,
+          spansA: baseSpansRef.current,
+          spansB: incSpansRef.current,
+          precomputedRegions: diffResult.changedRegions,
+          diffMethod: diffResult.method,
+          alignment,
+          revisedMeasured: hasSavedBefore && normShapesB.some((s) => s.sheet_id === targetKey),
+        },
+      ],
+      shapesA,
+      shapesB: normShapesB,
+      conditionsA: condsA,
+      conditionsB: conditions,
+    });
+  }, [diffResult, sheets, selectedSheetKey, fileName, pageNumber, beforeShapes, beforeConditions, beforeLabel, shapes, conditions, customIncFileName, incPageNum, alignment]);
+
+  const toggleApproval = (entryId) => {
+    setApprovalsById((prev) => ({
+      ...prev,
+      [entryId]: !prev[entryId],
+    }));
+  };
+
   // 3. Render canvas overlay according to fade slider and diff result
   useEffect(() => {
     if (!diffResult || !canvasRef.current) return;
@@ -425,7 +535,7 @@ export default function RevisionOverlay({
       ctx.stroke();
     }
 
-    // 5. Draw existing takeoff shapes overlaid on the sheet
+    // 5. Draw existing takeoff shapes overlaid on the sheet (count marks, linear runs, polygons)
     if (shapes && shapes.length > 0) {
       const pageShapes = shapes.filter((s) => {
         if (!s.sheet_id) return pageNumber === 1;
@@ -434,54 +544,71 @@ export default function RevisionOverlay({
         return sp.file === fileName && sp.page === pageNumber;
       });
       for (const shape of pageShapes) {
-        if (!shape.verts_norm || shape.verts_norm.length < 3) continue;
+        if (!shape.verts_norm || shape.verts_norm.length === 0) continue;
 
         const vertsPx = shape.verts_norm.map(([nx, ny]) => [nx * width, ny * height]);
 
-        // Check if this shape touches any changed region
         let touchesChange = false;
         if (diffResult?.changedRegions?.length > 0) {
-          let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
-          for (const [vx, vy] of vertsPx) {
-            if (vx < sMinX) sMinX = vx;
-            if (vx > sMaxX) sMaxX = vx;
-            if (vy < sMinY) sMinY = vy;
-            if (vy > sMaxY) sMaxY = vy;
-          }
-          const sBox = [sMinX, sMinY, sMaxX, sMaxY];
           for (const reg of diffResult.changedRegions) {
-            if (aabbOverlap(sBox, reg.bounds) && polygonsIntersect(vertsPx, reg.hull)) {
+            if (shapeTouchesRegion(vertsPx, reg, shape.measure_role)) {
               touchesChange = true;
               break;
             }
           }
         }
 
-        ctx.beginPath();
-        ctx.moveTo(vertsPx[0][0], vertsPx[0][1]);
-        for (let i = 1; i < vertsPx.length; i++) {
-          ctx.lineTo(vertsPx[i][0], vertsPx[i][1]);
-        }
-        ctx.closePath();
+        const isCount = shape.measure_role === "count" || vertsPx.length === 1;
+        const isLinear = !isCount && (shape.measure_role === "linear" || vertsPx.length === 2);
+        const strokeColor = touchesChange ? "rgba(217, 119, 6, 0.95)" : "rgba(16, 185, 129, 0.9)";
+        const fillColor = touchesChange ? "rgba(245, 158, 11, 0.28)" : "rgba(16, 185, 129, 0.24)";
 
-        if (touchesChange) {
-          // Flagged for revision: distinct amber/orange fill and border
-          ctx.fillStyle = "rgba(245, 158, 11, 0.28)";
-          ctx.fill();
-          ctx.lineWidth = 2.5;
-          ctx.strokeStyle = "rgba(217, 119, 6, 0.95)";
+        if (isCount) {
+          for (const [cx, cy] of vertsPx) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+            ctx.lineWidth = touchesChange ? 2.5 : 2;
+            ctx.strokeStyle = strokeColor;
+            ctx.stroke();
+          }
+        } else if (isLinear) {
+          ctx.beginPath();
+          ctx.moveTo(vertsPx[0][0], vertsPx[0][1]);
+          for (let i = 1; i < vertsPx.length; i++) ctx.lineTo(vertsPx[i][0], vertsPx[i][1]);
+          ctx.lineWidth = touchesChange ? 3 : 2.5;
+          ctx.strokeStyle = strokeColor;
           ctx.stroke();
         } else {
-          // Unaffected: normal green takeoff fill and border
-          ctx.fillStyle = "rgba(16, 185, 129, 0.24)";
+          ctx.beginPath();
+          ctx.moveTo(vertsPx[0][0], vertsPx[0][1]);
+          for (let i = 1; i < vertsPx.length; i++) ctx.lineTo(vertsPx[i][0], vertsPx[i][1]);
+          ctx.closePath();
+          ctx.fillStyle = fillColor;
           ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = "rgba(16, 185, 129, 0.9)";
+          ctx.lineWidth = touchesChange ? 2.5 : 2;
+          ctx.strokeStyle = strokeColor;
           ctx.stroke();
         }
       }
     }
-  }, [diffResult, fade, manualAlignState, shapes, selectedSheetKey]);
+
+    // Highlight selected ledger entry region
+    if (selectedEntryId && ledger?.entries?.length) {
+      const selEntry = ledger.entries.find((e) => e.id === selectedEntryId);
+      const b = selEntry?.source_region_a?.bounds;
+      if (b) {
+        ctx.save();
+        ctx.strokeStyle = "#1f3fc7";
+        ctx.fillStyle = "rgba(31, 63, 199, 0.14)";
+        ctx.lineWidth = 3;
+        ctx.fillRect(b[0] - 4, b[1] - 4, b[2] - b[0] + 8, b[3] - b[1] + 8);
+        ctx.strokeRect(b[0] - 4, b[1] - 4, b[2] - b[0] + 8, b[3] - b[1] + 8);
+        ctx.restore();
+      }
+    }
+  }, [diffResult, fade, manualAlignState, shapes, selectedSheetKey, selectedEntryId, ledger, fileName, pageNumber]);
 
   // Helper to apply and re-diff when alignment changes manually
   const applyAlignment = (newAlign) => {
@@ -819,8 +946,24 @@ export default function RevisionOverlay({
           )}
         </div>
 
-        {/* Slip-Sheet Button */}
-        <div>
+        {/* Slip-Sheet & Ledger Buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setShowLedger((v) => !v)}
+            style={{
+              padding: "6px 10px",
+              background: showLedger ? "var(--ink)" : "transparent",
+              color: showLedger ? "var(--paper-bright)" : "var(--ink)",
+              border: "1px solid var(--ink-faint)",
+              borderRadius: 4,
+              fontWeight: 600,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+            title="Toggle Revision Delta Ledger panel beside overlay"
+          >
+            Ledger ({ledger?.entries?.length ?? 0})
+          </button>
           <button
             onClick={handleSlipSheet}
             disabled={loading || !diffResult}
@@ -882,34 +1025,190 @@ export default function RevisionOverlay({
         </div>
       )}
 
-      {/* Overlay Canvas Viewport */}
-      <div style={{
-        flex: 1,
-        overflow: "auto",
-        backgroundColor: "#111827",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}>
-        {loading ? (
-          <div style={{ color: "#ffffff", fontSize: 14 }}>Computing drawing revision diff…</div>
-        ) : error ? (
-          <div style={{ color: "#ef4444", fontSize: 14 }}>{error}</div>
-        ) : (
-          <div style={{
-            position: "relative",
-            boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
-            borderRadius: 4,
+      {/* Overlay Canvas + Delta Ledger Split Viewport */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div style={{
+          flex: 1,
+          overflow: "auto",
+          backgroundColor: "#111827",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}>
+          {loading ? (
+            <div style={{ color: "#ffffff", fontSize: 14 }}>Computing drawing revision diff…</div>
+          ) : error ? (
+            <div style={{ color: "#ef4444", fontSize: 14 }}>{error}</div>
+          ) : (
+            <div style={{
+              position: "relative",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+              borderRadius: 4,
+              overflow: "hidden",
+              cursor: manualAlignState ? "crosshair" : "default",
+            }}>
+              <canvas
+                ref={canvasRef}
+                onClick={handleCanvasClick}
+                style={{ display: "block", maxWidth: showLedger ? "64vw" : "90vw", maxHeight: "80vh" }}
+              />
+            </div>
+          )}
+        </div>
+
+        {showLedger && ledger && (
+          <aside style={{
+            width: 390,
+            borderLeft: "1px solid var(--ink-faint, #d8e0ec)",
+            backgroundColor: "var(--paper-bright, #fafcfe)",
+            display: "flex",
+            flexDirection: "column",
             overflow: "hidden",
-            cursor: manualAlignState ? "crosshair" : "default",
           }}>
-            <canvas
-              ref={canvasRef}
-              onClick={handleCanvasClick}
-              style={{ display: "block", maxWidth: "90vw", maxHeight: "80vh" }}
-            />
-          </div>
+            <div style={{
+              padding: "10px 14px",
+              borderBottom: "1px solid var(--ink-faint)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}>
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>Delta Ledger</div>
+                <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>
+                  {ledger.set_a_label} → {ledger.set_b_label}
+                </div>
+              </div>
+              <button
+                onClick={() => downloadText("revision_delta_ledger.csv", ledgerToCsv(ledger), "text/csv")}
+                style={{
+                  padding: "4px 8px",
+                  fontSize: 11,
+                  border: "1px solid var(--ink-faint)",
+                  background: "transparent",
+                  color: "var(--ink)",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Export CSV
+              </button>
+            </div>
+
+            {/* Per-sheet reconciliation summary */}
+            {ledger.paired_sheets[0]?.reconciliation?.length > 0 && (
+              <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Sheet Reconciliation ({ledger.paired_sheets[0].revised_measured ? "Measured" : "Exposure"})
+                </div>
+                {ledger.paired_sheets[0].reconciliation.map((r) => (
+                  <div key={r.field} style={{ display: "flex", justifyContent: "space-between", fontVariantNumeric: "tabular-nums", padding: "1px 0" }}>
+                    <span>{r.field} ({r.unit})</span>
+                    {r.delta !== null ? (
+                      <span>
+                        Δ {r.delta >= 0 ? "+" : ""}{r.delta.toFixed(2)} = {r.attributed?.toFixed(2)} + {r.unattributed?.toFixed(2)} {r.reconciles ? "✓" : "⚠"}
+                      </span>
+                    ) : (
+                      <span>Exposure: {r.exposure.toFixed(2)} {r.unit}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {ledger.entries.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 12, color: "var(--ink-muted)", textAlign: "center" }}>
+                  No drawing or quantity changes detected on this sheet.
+                </div>
+              ) : (
+                ledger.entries.map((entry) => {
+                  const isSel = selectedEntryId === entry.id;
+                  const approved = Boolean(approvalsById[entry.id] ?? entry.estimator_approval.approved);
+                  return (
+                    <div
+                      key={entry.id}
+                      onClick={() => setSelectedEntryId(isSel ? null : entry.id)}
+                      style={{
+                        border: isSel ? "1.5px solid var(--cobalt, #1f3fc7)" : "1px solid var(--ink-faint)",
+                        borderRadius: 4,
+                        padding: "8px 10px",
+                        background: isSel ? "rgba(31, 63, 199, 0.05)" : "var(--paper-bright)",
+                        cursor: "pointer",
+                        fontSize: 11.5,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 10.5, textTransform: "uppercase" }}>
+                          {entry.id} · {entry.kind}
+                        </span>
+                        <span style={{
+                          fontFamily: "var(--f-mono)",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          color: entry.status === "exposure" ? "var(--c-warning, #d97706)" : entry.status === "unattributed" ? "var(--c-danger, #b03a26)" : "var(--cobalt, #1f3fc7)",
+                        }}>
+                          {entry.status}
+                        </span>
+                      </div>
+                      <div style={{ color: "var(--ink)", fontWeight: 600, marginBottom: 4 }}>{entry.summary}</div>
+
+                      {entry.shapes_a.length > 0 && (
+                        <div style={{ color: "var(--ink-muted)", marginBottom: 3 }}>
+                          Before: {entry.shapes_a.map((s) => `${s.finish_tag} (${s.quantity} ${s.unit})`).join(", ")}
+                        </div>
+                      )}
+                      {entry.shapes_b.length > 0 && (
+                        <div style={{ color: "var(--ink-muted)", marginBottom: 3 }}>
+                          After: {entry.shapes_b.map((s) => `${s.finish_tag} (${s.quantity} ${s.unit})`).join(", ")}
+                        </div>
+                      )}
+                      {entry.quantities.map((q) => (
+                        <div key={q.field} style={{ fontVariantNumeric: "tabular-nums", fontWeight: 700, marginBottom: 3 }}>
+                          {q.delta !== null
+                            ? `${q.field}: ${q.before} → ${q.after} ${q.unit} (Δ ${q.delta >= 0 ? "+" : ""}${q.delta})`
+                            : `${q.field}: ${q.exposure} ${q.unit} exposure`}
+                        </div>
+                      ))}
+
+                      {entry.reasons.length > 0 && (
+                        <div style={{ fontSize: 10.5, color: "var(--ink-muted)", marginBottom: 6 }}>
+                          {entry.reasons.join(" · ")}
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--ink-faint)", paddingTop: 6 }}>
+                        <span style={{ fontSize: 10.5, color: entry.agent_check.checked ? "var(--c-positive, #1f6b4a)" : "var(--ink-muted)" }}>
+                          Agent: {entry.agent_check.checked ? "Checked" : "Pending"}
+                        </span>
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            toggleApproval(entry.id);
+                          }}
+                          style={{
+                            padding: "2px 8px",
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            borderRadius: 3,
+                            border: "1px solid var(--ink-faint)",
+                            background: approved ? "var(--c-positive, #1f6b4a)" : "transparent",
+                            color: approved ? "#fff" : "var(--ink)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {approved ? "Approved ✓" : "Approve"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </aside>
         )}
       </div>
 

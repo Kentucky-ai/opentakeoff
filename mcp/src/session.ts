@@ -23,7 +23,13 @@ import {
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import { diffVectorSegments, type Segment } from "../../web/src/lib/revisionDiff.ts";
 import { autoAlignSheets, type AlignmentResult } from "../../web/src/lib/sheetAlign.ts";
-import { carryTakeoffShapes } from "../../web/src/lib/slipsheet.ts";
+import { carryTakeoffShapes, matchSheetSets, type SheetEntry, type TakeoffShape } from "../../web/src/lib/slipsheet.ts";
+import {
+  buildRevisionLedger,
+  ledgerToCsv,
+  type RevisionLedger,
+  type SheetPairInput,
+} from "../../web/src/lib/revisionLedger.ts";
 import { buildSheetDxf, type DxfBuild } from "../../web/src/lib/dxf.ts";
 import {
   extractVectorGeometry, buildMask, traceRegion, snapVertices, ringArea,
@@ -1753,6 +1759,182 @@ export class Session {
         removed_segments: diff.stats.removedCount,
         added_segments: diff.stats.addedCount,
       },
+    };
+  }
+
+  private revisionLedger: RevisionLedger | null = null;
+
+  /** revision_delta_ledger (#670): tie each drawing change between issued sets
+   * to the takeoff quantity it moves, with per-sheet reconciliation. */
+  async revisionDeltaLedger(params: {
+    sheet_pairs?: Array<{
+      sheet_a: string;
+      sheet_b: string;
+      sheet_number?: string;
+      alignment?: { dx?: number; dy?: number; scale?: number; rotation_deg?: number };
+      revised_measured?: boolean;
+    }>;
+    set_a_label?: string;
+    set_b_label?: string;
+    format?: "json" | "csv";
+    check_entry_id?: string;
+    check_note?: string;
+  } = {}) {
+    if (params.check_entry_id) {
+      if (!this.revisionLedger) {
+        throw new UserError("No revision delta ledger has been computed yet in this session.");
+      }
+      const entry = this.revisionLedger.entries.find((e) => e.id === params.check_entry_id);
+      if (!entry) {
+        throw new UserError(`Ledger entry "${params.check_entry_id}" not found.`);
+      }
+      entry.agent_check = {
+        checked: true,
+        actor: "agent",
+        ...(params.check_note ? { note: params.check_note } : {}),
+        ts: new Date().toISOString(),
+      };
+      return {
+        ledger: this.revisionLedger,
+        ...(params.format === "csv" ? { csv: ledgerToCsv(this.revisionLedger) } : {}),
+      };
+    }
+
+    const segmentsOf = ({ segs }: VectorGeometry): Segment[] => {
+      const segments: Segment[] = [];
+      for (let i = 0; i < segs.length; i += 4) {
+        segments.push([segs[i], segs[i + 1], segs[i + 2], segs[i + 3]]);
+      }
+      return segments;
+    };
+
+    const spansOf = (s: SheetState) => {
+      if (!s.spans) s.spans = s.page ? textSpans(s.page) : [];
+      return s.spans;
+    };
+
+    const sheetNumberOf = (s: SheetState): string | null => {
+      if (s.sheetNumber) return s.sheetNumber;
+      return s.page ? extractSheetNumber(s.page.textContent, s.page.viewport) : null;
+    };
+
+    let baseEntries: SheetEntry[] = [];
+    let incEntries: SheetEntry[] = [];
+    const pairs: SheetPairInput[] = [];
+
+    if (params.sheet_pairs && params.sheet_pairs.length > 0) {
+      for (const p of params.sheet_pairs) {
+        const sA = this.sheet(p.sheet_a);
+        const sB = this.sheet(p.sheet_b);
+        const num = p.sheet_number || sheetNumberOf(sA) || sheetNumberOf(sB) || sA.key;
+        const entryA: SheetEntry & { widthPx: number; heightPx: number; scale?: number | null } = {
+          key: sA.key,
+          file: this.fileFor(sA.key),
+          page: sA.pageNum,
+          sheetNumber: num,
+          label: sA.sheetNumber,
+          width: sA.widthPx,
+          height: sA.heightPx,
+          widthPx: sA.widthPx,
+          heightPx: sA.heightPx,
+          scale: sA.upp,
+        };
+        const entryB: SheetEntry & { widthPx: number; heightPx: number; scale?: number | null } = {
+          key: sB.key,
+          file: this.fileFor(sB.key),
+          page: sB.pageNum,
+          sheetNumber: num,
+          label: sB.sheetNumber,
+          width: sB.widthPx,
+          height: sB.heightPx,
+          widthPx: sB.widthPx,
+          heightPx: sB.heightPx,
+          scale: sB.upp,
+        };
+        baseEntries.push(entryA);
+        incEntries.push(entryB);
+
+        const geoA = await this.ensureGeometry(sA);
+        const geoB = sA === sB ? geoA : await this.ensureGeometry(sB);
+        pairs.push({
+          sheetNumber: num,
+          sheetA: entryA,
+          sheetB: entryB,
+          segsA: segmentsOf(geoA),
+          segsB: sA === sB ? segmentsOf(geoA) : segmentsOf(geoB),
+          spansA: spansOf(sA),
+          spansB: sA === sB ? spansOf(sA) : spansOf(sB),
+          ...(p.alignment
+            ? {
+                alignment: {
+                  dx: p.alignment.dx ?? 0,
+                  dy: p.alignment.dy ?? 0,
+                  ...(p.alignment.scale != null ? { scale: p.alignment.scale } : {}),
+                  ...(p.alignment.rotation_deg != null ? { rotationDeg: p.alignment.rotation_deg } : {}),
+                },
+              }
+            : {}),
+          ...(p.revised_measured != null ? { revisedMeasured: p.revised_measured } : {}),
+        });
+      }
+    } else {
+      const allSheets = Array.from(this.sheets.values());
+      const files = Array.from(new Set(allSheets.map((s) => this.fileFor(s.key))));
+      if (files.length < 2) {
+        throw new UserError("Load two issued sets (or pass sheet_pairs explicitly) to build a revision delta ledger.");
+      }
+      const fileA = params.set_a_label && files.includes(params.set_a_label) ? params.set_a_label : files[0];
+      const fileB = params.set_b_label && files.includes(params.set_b_label) ? params.set_b_label : files[1];
+      const toEntry = (s: SheetState): SheetEntry => ({
+        key: s.key,
+        file: this.fileFor(s.key),
+        page: s.pageNum,
+        sheetNumber: sheetNumberOf(s),
+        label: s.sheetNumber,
+        width: s.widthPx,
+        height: s.heightPx,
+      });
+      baseEntries = allSheets.filter((s) => this.fileFor(s.key) === fileA).map(toEntry);
+      incEntries = allSheets.filter((s) => this.fileFor(s.key) === fileB).map(toEntry);
+      const matched = matchSheetSets(baseEntries, incEntries).matched;
+      for (const m of matched) {
+        const sA = this.sheet(m.baseSheet.key);
+        const sB = this.sheet(m.incomingSheet.key);
+        const geoA = await this.ensureGeometry(sA);
+        const geoB = await this.ensureGeometry(sB);
+        pairs.push({
+          sheetNumber: m.sheetNumber,
+          sheetA: { ...m.baseSheet, widthPx: sA.widthPx, heightPx: sA.heightPx, scale: sA.upp },
+          sheetB: { ...m.incomingSheet, widthPx: sB.widthPx, heightPx: sB.heightPx, scale: sB.upp },
+          segsA: segmentsOf(geoA),
+          segsB: segmentsOf(geoB),
+          spansA: spansOf(sA),
+          spansB: spansOf(sB),
+        });
+      }
+    }
+
+    const shapes = this.shapes.map((s) => ({
+      ...s,
+      verts_norm: s.verts_norm as Array<[number, number]>,
+    })) as TakeoffShape[];
+
+    const ledger = buildRevisionLedger({
+      setALabel: params.set_a_label || "Base Issue",
+      setBLabel: params.set_b_label || "Revised Issue",
+      baseSheets: baseEntries,
+      incomingSheets: incEntries,
+      pairs,
+      shapesA: shapes,
+      shapesB: shapes,
+      conditionsA: this.conditions,
+      conditionsB: this.conditions,
+    });
+    this.revisionLedger = ledger;
+
+    return {
+      ledger,
+      ...(params.format === "csv" ? { csv: ledgerToCsv(ledger) } : {}),
     };
   }
 

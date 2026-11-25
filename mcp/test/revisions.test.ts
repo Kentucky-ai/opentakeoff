@@ -75,3 +75,57 @@ test("compare_sheets reports one shared, one removed, and one added PDF segment"
     ["added", [360, 280, 430, 280]],
   ]);
 });
+
+test("revision_delta_ledger ties drawing changes to count/linear/area shapes, outputs CSV, and keeps agent_check separate from estimator_approval", async (t) => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "opentakeoff-ledger-"));
+  t.after(() => rm(scratch, { recursive: true, force: true }));
+  const pdf = await PDFDocument.create();
+  const base = pdf.addPage([400, 300]);
+  const revised = pdf.addPage([400, 300]);
+  for (const page of [base, revised]) {
+    page.drawLine({ start: { x: 20, y: 260 }, end: { x: 380, y: 260 }, thickness: 1 });
+  }
+  base.drawLine({ start: { x: 100, y: 150 }, end: { x: 120, y: 150 }, thickness: 1 });
+  revised.drawLine({ start: { x: 105, y: 150 }, end: { x: 125, y: 150 }, thickness: 1 });
+
+  const file = path.join(scratch, "ledger.pdf");
+  await writeFile(file, await pdf.save());
+
+  const session = new Session();
+  const { sheets } = await session.loadPlan(file);
+  session.conditions.push({ id: "cnd-bollard", finish_tag: "BOL-1", description: "Bollard", color: "#1f3fc7" } as any);
+  // Count mark (1 vertex) at (110, 150) in PDF pt -> (220, 300) in image px at scale 2.0 (y down: (300-150)*2 = 300)
+  session.shapes.push({
+    id: "shp-bol-1",
+    sheet_id: sheets[0].sheet,
+    condition_id: "cnd-bollard",
+    measure_role: "count",
+    verts_norm: [[220 / 800, 300 / 600]],
+    computed: { count: 1 },
+    origin: { method: "manual", actor: "human", reviewed: true },
+  } as any);
+
+  const res = await session.revisionDeltaLedger({
+    sheet_pairs: [{ sheet_a: sheets[0].sheet, sheet_b: sheets[1].sheet, sheet_number: "A-100", alignment: { dx: 0, dy: 0 } }],
+    set_a_label: "As Bid",
+    set_b_label: "Addendum 2",
+    format: "csv",
+  });
+
+  assert.ok(res.ledger.entries.length >= 1);
+  const entry = res.ledger.entries.find((e) => e.shapes_a.some((s) => s.id === "shp-bol-1"))!;
+  assert.ok(entry, "1-vertex count mark was tied to the drawing change");
+  assert.equal(entry.agent_check.checked, false);
+  assert.equal(entry.estimator_approval.approved, false);
+  assert.ok(res.csv && res.csv.includes("Revision Delta Ledger"));
+
+  // Agent marks check; estimator_approval must stay false
+  const checkedRes = await session.revisionDeltaLedger({
+    check_entry_id: entry.id,
+    check_note: "Verified bollard shift",
+  });
+  const updated = checkedRes.ledger.entries.find((e) => e.id === entry.id)!;
+  assert.equal(updated.agent_check.checked, true);
+  assert.equal(updated.agent_check.note, "Verified bollard shift");
+  assert.equal(updated.estimator_approval.approved, false);
+});

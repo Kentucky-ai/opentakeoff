@@ -39,7 +39,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
     "list_annotations", "edit_annotation", "link_annotation", "mark_verdict", "delete_verdict",
     "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
     "set_pricing", "set_estimate_settings",
-    "compare_sheets",
+    "compare_sheets", "revision_delta_ledger",
   ],
   handoff: [
     "takeoff_summary", "export_takeoff", "export_report", "import_takeoff",

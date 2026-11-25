@@ -98,6 +98,25 @@ export function autoAlignSheets(
         };
       }
     }
+
+    // 1b. Rescaled reissue (same aspect ratio within 2%, scaled by uniform factor)
+    if (extInc.width > 50 && extInc.height > 50) {
+      const sx = extBase.width / extInc.width;
+      const sy = extBase.height / extInc.height;
+      if (Math.abs(sx - sy) <= 0.02 && (Math.abs(sx - 1) > 0.03)) {
+        const scale = (sx + sy) / 2;
+        const dx = extBase.minX - extInc.minX * scale;
+        const dy = extBase.minY - extInc.minY * scale;
+        return {
+          dx,
+          dy,
+          scale,
+          confidence: 0.85,
+          method: "auto_frame",
+          details: `aligned rescaled drawing frame (scale=${scale.toFixed(3)}, dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)})`,
+        };
+      }
+    }
   }
 
   // 2. Try aligning prominent border lines

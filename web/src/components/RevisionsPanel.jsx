@@ -421,6 +421,10 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
           sheets={availableSheets}
           initialSheetKey={current?.shapes?.[0]?.sheet_id || availableSheets[0]?.key || "sample-finish-plan.pdf#1"}
           shapes={current?.shapes || []}
+          conditions={current?.conditions || []}
+          beforeShapes={sideA?.shapes || []}
+          beforeConditions={sideA?.conditions || []}
+          beforeLabel={baseId && baseId !== "current" ? nameOf(baseId) : "Saved revision"}
           onApplyCarriedShapes={handleApplyCarriedShapes}
           onClose={() => setActiveTab("quantities")}
         />
