@@ -1427,7 +1427,7 @@ export class Session {
         const ms = this.sheets.get(m.key);
         if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
       }
-      const clips = seamClips(st.members, dims);
+      const clips = seamClips(st.members, dims, st.seams ? { seams: st.seams } : undefined);
       const w = r.x1 - r.x0;
       const h = r.y1 - r.y0;
       zoom = px / Math.max(w, h);
@@ -1765,7 +1765,7 @@ export class Session {
         const ms = this.sheets.get(m.key);
         if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
       }
-      const actualClips = seamClips(st.members, dims);
+      const actualClips = seamClips(st.members, dims, st.seams ? { seams: st.seams } : undefined);
       const distinctFiles = new Set(st.members.map((m) => this.fileFor(m.key))).size;
       const multiFile = distinctFiles > 1;
       const perMember: (MergeSegMember & { points: Point[] })[] = [];
@@ -2656,7 +2656,7 @@ export class Session {
       const ms = this.sheets.get(m.key);
       if (ms) dims[m.key] = { w: ms.widthPx, h: ms.heightPx };
     }
-    const clips = seamClips(st.members, dims);
+    const clips = seamClips(st.members, dims, st.seams ? { seams: st.seams } : undefined);
     const boxes = memberBoxes(st.members, dims);
     const memberIndices = new Set<number>();
     for (const [x, y] of points) {
@@ -5974,6 +5974,10 @@ export class Session {
     name?: string;
     align?: { anchor: [number, number]; moving: [number, number] };
     members?: StitchMember[];
+    tolerance_in?: number;
+    rot_tolerance_deg?: number;
+    seam_coord?: number;
+    match_line?: number;
   }) {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     if (!Array.isArray(opts.sheets) || opts.sheets.length < 2 || opts.sheets.length > 4) {
@@ -6074,6 +6078,13 @@ export class Session {
     const inheritedConfirmed = firstConfirmed;
 
     const isAligned = !!opts.align;
+    const explicitSeam = opts.seam_coord ?? opts.match_line;
+    let initialSeams: number[] | undefined;
+    if (explicitSeam !== undefined) {
+      if (!Number.isFinite(explicitSeam)) throw new UserError("seam_coord must be a finite number.");
+      initialSeams = [explicitSeam];
+    }
+
     let seamCheck: SeamCheckResult | undefined;
     if (isAligned) {
       const memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array }> = {};
@@ -6081,7 +6092,14 @@ export class Session {
         const geo = await this.ensureGeometry(ms);
         memberSegs[ms.key] = { segs: geo.segs, meta: geo.meta };
       }
-      seamCheck = checkSeamLinework(members, dims, memberSegs, inheritedUpp);
+      seamCheck = checkSeamLinework(members, dims, memberSegs, inheritedUpp, {
+        tolerance_in: opts.tolerance_in,
+        rot_tolerance_deg: opts.rot_tolerance_deg,
+        seams: initialSeams,
+      });
+      if (initialSeams === undefined && seamCheck.seam_coords?.length) {
+        initialSeams = seamCheck.seam_coords;
+      }
     }
 
     const st: Stitch = {
@@ -6089,6 +6107,7 @@ export class Session {
       name,
       members,
       aligned: isAligned,
+      ...(initialSeams?.length ? { seams: initialSeams } : {}),
       ...(seamCheck ? { seam_check: seamCheck } : {}),
       created_at: new Date().toISOString(),
     };
@@ -6143,7 +6162,7 @@ export class Session {
 
   private syncStitchText(st: Stitch, s: SheetState): void {
     const dims = this.stitchDims(st);
-    const clips = seamClips(st.members, dims);
+    const clips = seamClips(st.members, dims, st.seams ? { seams: st.seams } : undefined);
     const text: { str: string; x: number; y: number }[] = [];
     const spans: TextSpan[] = [];
     for (let i = 0; i < st.members.length; i++) {
@@ -6206,6 +6225,8 @@ export class Session {
     moving?: [number, number];
     tolerance_in?: number;
     rot_tolerance_deg?: number;
+    seam_coord?: number;
+    match_line?: number;
   }) {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     const st = this.stitch(opts.stitch);
@@ -6217,6 +6238,11 @@ export class Session {
     const hasMoving = opts.moving !== undefined;
     if (hasAnchor !== hasMoving) {
       throw new UserError("Provide both anchor and moving points to realign, or omit both to verify the existing placement.");
+    }
+
+    const explicitSeam = opts.seam_coord ?? opts.match_line;
+    if (explicitSeam !== undefined && !Number.isFinite(explicitSeam)) {
+      throw new UserError("seam_coord must be a finite number.");
     }
 
     const realigning = hasAnchor && hasMoving;
@@ -6263,6 +6289,10 @@ export class Session {
     }
 
     st.aligned = true;
+    // An explicit seam wins; a realign without one drops the seam computed for
+    // the old placement so the check re-derives it from the new linework.
+    if (explicitSeam !== undefined) st.seams = [explicitSeam];
+    else if (realigning) delete st.seams;
 
     const memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array }> = {};
     for (const ms of resolvedSheets) {
@@ -6275,9 +6305,25 @@ export class Session {
       dims,
       memberSegs,
       s.upp,
-      { tolerance_in: opts.tolerance_in, rot_tolerance_deg: opts.rot_tolerance_deg },
+      {
+        tolerance_in: opts.tolerance_in,
+        rot_tolerance_deg: opts.rot_tolerance_deg,
+        seams: st.seams,
+        seam_coord: explicitSeam,
+      },
     );
     st.seam_check = seamCheck;
+    if (explicitSeam === undefined && seamCheck.seam_coords?.length) {
+      st.seams = seamCheck.seam_coords;
+    }
+    s.geo = undefined;
+    s.snap = undefined;
+    s.mask = undefined;
+    s.rmask = undefined;
+    s.png = undefined;
+    s.hatch = undefined;
+    s.layers = undefined;
+    this.syncStitchText(st, s);
 
     const extent = stitchExtent(st.members, dims);
     return {

@@ -100,18 +100,15 @@ built from this change, through an in-memory MCP client.
 | A 1,800 px line across the seam | 100 LF | 100 LF |
 | `export_takeoff`, then `import_takeoff` in a new session | stitch, offsets and seam check restored | restored, same totals |
 
-Two things this run found, both open:
+Two findings from testing on split pairs (resolved in #642):
 
-1. **The default tolerance withheld the correct alignment.** The maximum miss was 1.37 in, from
-   one pair: the north sheet's match line graphic, paired with a different line on the south
-   sheet. Every other statistic was under 0.2 in. The measurements above were taken after
-   passing `tolerance_in: 1.5`. The check fails safe (it refuses, it does not mis-measure), but
-   on sets like this one the agent has to inspect the outlier and state the override.
-2. **The seam is not at the match line when the sheets overlap a lot.** Each sheet is clipped at
-   the midpoint of the area where the two pages overlap. On this pair that left a blank band about
-   2 ft wide beside the match line in `view_sheet`, where the north sheet's empty paper covers
-   ink the south sheet has. Areas and lengths are not affected, since they are computed from
-   coordinates. Snapping and anything else that reads linework sees no ink in that band.
+1. **Match line graphics and parallel lines without counterparts**: Lines parallel to the seam
+   without counterparts of similar length, or with longitudinal displacement along the seam, are
+   held out of wall pairing so match line graphics and grid lines do not synthesize false wall
+   discrepancies.
+2. **Seam placement at the match line**: Where members overlap, the seam is positioned where member
+   linework meets (or where specified via `seam_coord` / `match_line`), rather than blindly at the
+   page-overlap midpoint, eliminating blank bands when sheets are drawn with large page overlaps.
 
 ## Limits
 

@@ -27,7 +27,7 @@ export function mintStitchId(): string {
 }
 
 export interface StitchMember { key: string; dx: number; dy: number }
-export interface Stitch { id: string; name: string; members: StitchMember[]; aligned?: boolean; seam_check?: SeamCheckResult; created_at?: string }
+export interface Stitch { id: string; name: string; members: StitchMember[]; aligned?: boolean; seam_check?: SeamCheckResult; created_at?: string; seams?: number[] }
 export interface Dim { w: number; h: number }
 export interface Box { x0: number; y0: number; x1: number; y1: number }
 
@@ -64,6 +64,7 @@ export function sanitizeStitches(raw: unknown, maxMembers: number): Stitch[] {
       members: normalizeMembers(members),
       ...(typeof s.aligned === "boolean" ? { aligned: s.aligned } : {}),
       ...(s.seam_check && typeof s.seam_check === "object" ? { seam_check: s.seam_check as SeamCheckResult } : {}),
+      ...(Array.isArray(s.seams) && s.seams.every((n) => typeof n === "number" && Number.isFinite(n)) ? { seams: s.seams as number[] } : {}),
       ...(typeof s.created_at === "string" ? { created_at: s.created_at } : {}),
     });
   }
@@ -165,15 +166,91 @@ export function alignMembers(
   return { members: normalizeMembers(next), movedKey: members[bi].key };
 }
 
+export interface SeamClipsOptions {
+  seams?: Array<number | undefined>;
+  inkBounds?: Record<string, Box>;
+}
+
+/** Compute drawing ink bounds per member (excluding outer page margin borders). */
+export function computeMemberInkBounds(
+  memberSegs: Record<string, { segs: ArrayLike<number> } | ArrayLike<number>>,
+  dims?: Record<string, Dim>,
+): Record<string, Box> {
+  const out: Record<string, Box> = {};
+  for (const [key, val] of Object.entries(memberSegs)) {
+    const segs = (val as any)?.segs ?? val;
+    if (!segs || segs.length < 4) continue;
+    const d = dims?.[key];
+    const w = d?.w ?? Infinity, h = d?.h ?? Infinity;
+    const margin = Number.isFinite(w) && Number.isFinite(h)
+      ? Math.max(20, Math.min(72, w * 0.03, h * 0.03))
+      : 0;
+
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const n = segs.length >> 2;
+    for (let s = 0; s < n; s++) {
+      const sx0 = segs[s * 4], sy0 = segs[s * 4 + 1];
+      const sx1 = segs[s * 4 + 2], sy1 = segs[s * 4 + 3];
+      if (margin > 0) {
+        const onLeft = sx0 <= margin && sx1 <= margin;
+        const onRight = sx0 >= w - margin && sx1 >= w - margin;
+        const onTop = sy0 <= margin && sy1 <= margin;
+        const onBottom = sy0 >= h - margin && sy1 >= h - margin;
+        if (onLeft || onRight || onTop || onBottom) continue;
+      }
+      if (sx0 < x0) x0 = sx0;
+      if (sx1 < x0) x0 = sx1;
+      if (sx0 > x1) x1 = sx0;
+      if (sx1 > x1) x1 = sx1;
+      if (sy0 < y0) y0 = sy0;
+      if (sy1 < y0) y0 = sy1;
+      if (sy0 > y1) y1 = sy0;
+      if (sy1 > y1) y1 = sy1;
+    }
+    if (!Number.isFinite(x0)) {
+      for (let s = 0; s < n; s++) {
+        const sx0 = segs[s * 4], sy0 = segs[s * 4 + 1];
+        const sx1 = segs[s * 4 + 2], sy1 = segs[s * 4 + 3];
+        if (sx0 < x0) x0 = sx0;
+        if (sx1 < x0) x0 = sx1;
+        if (sx0 > x1) x1 = sx0;
+        if (sx1 > x1) x1 = sx1;
+        if (sy0 < y0) y0 = sy0;
+        if (sy1 < y0) y0 = sy1;
+        if (sy0 > y1) y1 = sy0;
+        if (sy1 > y1) y1 = sy1;
+      }
+    }
+    if (Number.isFinite(x0)) {
+      out[key] = { x0, y0, x1, y1 };
+    }
+  }
+  return out;
+}
+
 /** Per-member VISIBLE boxes (stitch-local): where members overlap along the
- * dominant chain axis, the overlap splits at its midline — each member shows
- * its own half, so the neighbor's margin/border strip near the match line is
- * covered instead of overpainting the plan. Purely visual (canvas clipping);
- * quantities never read pixels. Parallel to `members`. */
-export function seamClips(members: StitchMember[], dims: Record<string, Dim>): Box[] {
+ * dominant chain axis, the overlap splits at its midline (or match line / ink boundary
+ * when explicit seams or ink bounds are provided) — each member shows its own half,
+ * so the neighbor's margin/border strip near the match line is covered instead of
+ * overpainting the plan. Purely visual (canvas clipping); quantities never read pixels.
+ * Parallel to `members`. */
+export function seamClips(
+  members: StitchMember[],
+  dims: Record<string, Dim>,
+  opts?: SeamClipsOptions | Array<number | undefined>,
+): Box[] {
   const boxes = memberBoxes(members, dims);
   const clips = boxes.map((b) => ({ ...b }));
   if (boxes.length < 2) return clips;
+
+  const explicitSeams: Array<number | undefined> = Array.isArray(opts)
+    ? opts
+    : (opts && typeof opts === "object" && Array.isArray(opts.seams))
+      ? opts.seams
+      : [];
+  const inkBounds: Record<string, Box> | undefined =
+    opts && typeof opts === "object" && !Array.isArray(opts) ? opts.inkBounds : undefined;
+
   // dominant axis: the one with more center spread
   const cxs = boxes.map((b) => (b.x0 + b.x1) / 2), cys = boxes.map((b) => (b.y0 + b.y1) / 2);
   const spread = (a: number[]) => Math.max(...a) - Math.min(...a);
@@ -181,12 +258,39 @@ export function seamClips(members: StitchMember[], dims: Record<string, Dim>): B
   const order = boxes.map((_, i) => i).sort((a, b) => (horizontal ? boxes[a].x0 - boxes[b].x0 : boxes[a].y0 - boxes[b].y0));
   for (let k = 0; k + 1 < order.length; k++) {
     const i = order[k], j = order[k + 1];
+    const explicit = explicitSeams[k];
     if (horizontal && boxes[j].x0 < boxes[i].x1) {
-      const seam = (boxes[j].x0 + boxes[i].x1) / 2;
+      let seam = (boxes[j].x0 + boxes[i].x1) / 2;
+      if (typeof explicit === "number" && Number.isFinite(explicit)) {
+        seam = explicit;
+      } else if (inkBounds) {
+        const bA = inkBounds[members[i].key];
+        const bB = inkBounds[members[j].key];
+        if (bA && bB) {
+          const inkMaxA = bA.x1 + members[i].dx;
+          const inkMinB = bB.x0 + members[j].dx;
+          if (inkMinB <= inkMaxA) {
+            seam = Math.max(inkMinB, Math.min(inkMaxA, seam));
+          }
+        }
+      }
       clips[i].x1 = Math.min(clips[i].x1, seam);
       clips[j].x0 = Math.max(clips[j].x0, seam);
     } else if (!horizontal && boxes[j].y0 < boxes[i].y1) {
-      const seam = (boxes[j].y0 + boxes[i].y1) / 2;
+      let seam = (boxes[j].y0 + boxes[i].y1) / 2;
+      if (typeof explicit === "number" && Number.isFinite(explicit)) {
+        seam = explicit;
+      } else if (inkBounds) {
+        const bA = inkBounds[members[i].key];
+        const bB = inkBounds[members[j].key];
+        if (bA && bB) {
+          const inkMaxA = bA.y1 + members[i].dy;
+          const inkMinB = bB.y0 + members[j].dy;
+          if (inkMinB <= inkMaxA) {
+            seam = Math.max(inkMinB, Math.min(inkMaxA, seam));
+          }
+        }
+      }
       clips[i].y1 = Math.min(clips[i].y1, seam);
       clips[j].y0 = Math.max(clips[j].y0, seam);
     }
@@ -359,8 +463,12 @@ export interface StitchPagePlan {
  * extent plus each member's offset and VISIBLE (seam-clipped) box, all in
  * stitch-local image px. Same seam rule as the canvas — overlapping members
  * split at the midline, so ink never double-draws at the match line. */
-export function stitchPagePlan(members: StitchMember[], dims: Record<string, Dim>): StitchPagePlan {
-  const clips = seamClips(members, dims);
+export function stitchPagePlan(
+  members: StitchMember[],
+  dims: Record<string, Dim>,
+  opts?: SeamClipsOptions | Array<number | undefined>,
+): StitchPagePlan {
+  const clips = seamClips(members, dims, opts);
   return {
     extent: stitchExtent(members, dims),
     members: members.map((m, i) => ({ key: m.key, dx: m.dx, dy: m.dy, clip: clips[i] })),
@@ -463,6 +571,7 @@ export interface SeamCheckResult {
   withheld_reasons: string[];
   discrepancies: SeamCheckDiscrepancy[];
   note: string;
+  seam_coords?: number[];
 }
 
 export function checkSeamLinework(
@@ -470,7 +579,12 @@ export function checkSeamLinework(
   dims: Record<string, Dim>,
   memberSegs: Record<string, { segs: ArrayLike<number>; meta?: Uint8Array } | ArrayLike<number>>,
   upp: number,
-  opts?: { tolerance_in?: number; rot_tolerance_deg?: number },
+  opts?: {
+    tolerance_in?: number;
+    rot_tolerance_deg?: number;
+    seams?: Array<number | undefined>;
+    seam_coord?: number;
+  },
 ): SeamCheckResult {
   // Empirical tolerance defaults calibrated from 6 real split-sheet UCCS CAD pairs
   // (AF2.2/AF2.1, A2.1.3/A2.1.2, A3.1.3/A3.1.2, E2.1.3/E2.1.2, MD2.1, EMP2.1):
@@ -478,7 +592,10 @@ export function checkSeamLinework(
   // long-segment max rotation 0.04°-0.14°, so 0.50" and 0.25° sit above real CAD noise.
   const toleranceIn = opts?.tolerance_in ?? 0.50;
   const rotToleranceDeg = opts?.rot_tolerance_deg ?? 0.25;
-  const clips = seamClips(members, dims);
+  const explicitSeams: Array<number | undefined> | undefined =
+    opts?.seams ?? (typeof opts?.seam_coord === "number" ? [opts.seam_coord] : undefined);
+  const inkBounds = computeMemberInkBounds(memberSegs, dims);
+  const clips = seamClips(members, dims, { seams: explicitSeams, inkBounds });
   const boxes = memberBoxes(members, dims);
 
   if (members.length < 2) {
@@ -509,7 +626,7 @@ export function checkSeamLinework(
 
   const allMatched: Array<{ miss_px: number; miss_in: number; angle_err: number; at: [number, number]; pA: [number, number]; pB: [number, number] }> = [];
   const discrepancies: SeamCheckDiscrepancy[] = [];
-  const seamStats: Array<{ k: number; aKey: string; bKey: string; count: number; maxIn: number; rotDeg: number }> = [];
+  const seamStats: Array<{ k: number; aKey: string; bKey: string; count: number; maxIn: number; rotDeg: number; seamCoord?: number; midline: number }> = [];
 
   for (let k = 0; k + 1 < order.length; k++) {
     const ai = order[k], bi = order[k + 1];
@@ -517,8 +634,11 @@ export function checkSeamLinework(
     const segsA = memberSegs[mA.key];
     const segsB = memberSegs[mB.key];
     const seamMatched: typeof allMatched = [];
+    const midline = horizontal
+      ? (boxes[bi].x0 + boxes[ai].x1) / 2
+      : (boxes[bi].y0 + boxes[ai].y1) / 2;
     if (!segsA || !segsB) {
-      seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: 0, maxIn: 0, rotDeg: 0 });
+      seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: 0, maxIn: 0, rotDeg: 0, seamCoord: midline, midline });
       continue;
     }
 
@@ -704,6 +824,10 @@ export function checkSeamLinework(
         if (dang > Math.PI / 2) dang = Math.PI - dang;
         if (dang > 0.08) continue; // angle within ~4.6 deg
 
+        // Drop periodic dashes (grid lines) from wall pairing candidates
+        if (isPeriodicDash(sa, dcA) || isPeriodicDash(sb, dcB)) continue;
+
+        const isParallel = horizontal ? Math.abs(sa.ang) > Math.PI / 4 : Math.abs(sa.ang) <= Math.PI / 4;
         const cos = Math.cos(sa.ang), sin = Math.sin(sa.ang);
         const ta0 = sa.x0 * cos + sa.y0 * sin;
         const ta1 = sa.x1 * cos + sa.y1 * sin;
@@ -714,6 +838,19 @@ export function checkSeamLinework(
         const minB = Math.min(tb0, tb1);
         const maxB = Math.max(tb0, tb1);
         const overlap = Math.min(maxA, maxB) - Math.max(minA, minB);
+
+        // Lines parallel to the seam (match lines, longitudinal walls):
+        // 1. Leave lines parallel to the seam that have no counterpart of similar length out of the pairing
+        // 2. Require overlap along the seam between the two lines of a pair
+        // 3. Displacement along the seam must be small (never pair with an unrelated line shifted along the seam)
+        if (isParallel) {
+          const minLen = Math.min(sa.len, sb.len);
+          const maxLen = Math.max(sa.len, sb.len);
+          if (maxLen - minLen > Math.max(3, minLen * 0.15)) continue;
+          if (overlap < minLen * 0.70) continue;
+          const alongShift = Math.abs((sb.mx - sa.mx) * cos + (sb.my - sa.my) * sin);
+          if (alongShift > Math.max(5, minLen * 0.15)) continue;
+        }
 
         // 1. Direct counterpart matching in overlap corridor
         const minLen = Math.min(sa.len, sb.len);
@@ -865,7 +1002,9 @@ export function checkSeamLinework(
     const seamMaxIn = seamMatched.reduce((m, x) => Math.max(m, x.miss_in), 0);
     const seamAngs = seamMatched.map((m) => m.angle_err).sort((a, b) => a - b);
     const seamRotDeg = seamAngs.length ? +(seamAngs[Math.floor(seamAngs.length / 2)] * 180 / Math.PI).toFixed(2) : 0;
-    seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: seamMatched.length, maxIn: +seamMaxIn.toFixed(2), rotDeg: seamRotDeg });
+    const seamCoordsList = seamMatched.map((m) => horizontal ? m.at[0] : m.at[1]).sort((a, b) => a - b);
+    const seamVerifiedCoord = seamCoordsList.length > 0 ? +seamCoordsList[Math.floor(seamCoordsList.length / 2)].toFixed(1) : seamCoord;
+    seamStats.push({ k, aKey: mA.key, bKey: mB.key, count: seamMatched.length, maxIn: +seamMaxIn.toFixed(2), rotDeg: seamRotDeg, seamCoord: seamVerifiedCoord, midline });
   }
 
   const sampleCount = allMatched.length;
@@ -937,5 +1076,6 @@ export function checkSeamLinework(
     withheld_reasons: withheldReasons,
     discrepancies: discrepancies.slice(0, 20),
     note,
+    seam_coords: seamStats.map((s) => s.seamCoord ?? s.midline),
   };
 }
