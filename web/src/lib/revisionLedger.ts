@@ -427,14 +427,15 @@ export function buildRevisionLedger(params: {
       for (const s of touchedB) attributedIdsB.add(s.id);
 
       const quantities = summarizeQuantities(touchedA, touchedB, revisedMeasured);
+      const touchedAny = [...touchedA, ...touchedB];
       const reasons: string[] = [];
-      if (touchedA.some((s) => s.measure_role === "count" || (s.verts_norm?.length || 0) === 1)) {
+      if (touchedAny.some((s) => s.measure_role === "count" || (s.verts_norm?.length || 0) === 1)) {
         reasons.push("Count mark touches changed ink");
       }
-      if (touchedA.some((s) => s.measure_role === "linear" || (s.verts_norm?.length || 0) === 2)) {
+      if (touchedAny.some((s) => s.measure_role === "linear" || (s.verts_norm?.length || 0) === 2)) {
         reasons.push("Linear run crosses changed ink");
       }
-      if (touchedA.some((s) => (s.verts_norm?.length || 0) >= 3 && s.measure_role !== "linear" && s.measure_role !== "count")) {
+      if (touchedAny.some((s) => (s.verts_norm?.length || 0) >= 3 && s.measure_role !== "linear" && s.measure_role !== "count")) {
         reasons.push(chg.kind === "cloud" ? "Shape enclosed by revision cloud" : "Takeoff polygon touches changed ink");
       }
       if (chg.textItems.length > 0) {

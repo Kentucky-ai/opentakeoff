@@ -608,7 +608,7 @@ export default function RevisionOverlay({
         ctx.restore();
       }
     }
-  }, [diffResult, fade, manualAlignState, shapes, selectedSheetKey, selectedEntryId, ledger]);
+  }, [diffResult, fade, manualAlignState, shapes, selectedSheetKey, selectedEntryId, ledger, fileName, pageNumber]);
 
   // Helper to apply and re-diff when alignment changes manually
   const applyAlignment = (newAlign) => {
