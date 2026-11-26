@@ -1241,7 +1241,7 @@ export default {
   "Sheet back to positive print": "Вернуть исходное отображение листа",
   "Invert sheet — negative print (affects marked-set export)": "Инвертировать цвета листа (влияет на PDF чертежей с измерениями)",
   "Exit focus mode — show panels and toolbars again (F)": "Выйти из режима рабочего поля — снова показать панели (F)",
-  "Focus — hide panels and zoom to the selected shape or markup (F)": "Рабочее поле — скрыть панели и приблизить к выбранной фигуре или пометке (F)",
+  "Focus — hide panels and zoom to the selection, or to where the active condition is placed (F)": "Рабочее поле — скрыть панели и приблизить к выбранному или к месту, где размещено активное условие (F)",
   "Focus — hide panels and toolbars for a larger drawing area; select a shape first to zoom to it (F)": "Рабочее поле — скрыть панели, чтобы увеличить область чертежа; выберите фигуру, чтобы приблизить к ней (F)",
   "calc(100% - {0}px)": "расчет (100 % – {0} пикселей)",
   "picture": "картинка",
