@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-26 — Focus zooms to the selection, with a crosshair icon (#676)
+
+- **Focus has its own icon, a crosshair.** The view controls and the workspace menu's **Focus mode** row show it. **Fit** keeps the corner brackets, so the two buttons no longer look alike.
+- **Focus zooms to what you have selected.** **Focus** (button or `F`) hides the panels and toolbars and zooms to, in this order: the selected shape (it fills the canvas), the selected markup (centered), or everything the active condition has placed on the open sheet. With none of those it works as before and only hides the panels and toolbars. While Focus is on, the button and `F` always turn it off, so a selection can never trap you in it.
+- **Tooltips say what each button does.** **Fit** reads "Fit sheet to view — show the whole sheet in the window". **Focus** reads "Focus — hide panels and toolbars for a larger drawing area; select a shape first to zoom to it (F)", "Focus — hide panels and zoom to the selection, or to where the active condition is placed (F)" with a selection, and "Exit focus mode — show panels and toolbars again (F)" while it is on. Fit has no keyboard shortcut.
+
 ## 2026-11-17 — detect_rooms: letter-prefixed room numbers on request (MCP 0.9.117)
 
 - **`detect_rooms {label_prefixes: ["A"]}` reads room numbers like A2521, A2532 and B101A.** Hospital and campus sets put a wing or floor letter in front of every room number, so the 2–3 digit room pattern found no rooms at all. The letters are an argument read off the plan, because a sheet number (A101) has the same shape. A prefixed token that is the number of any loaded sheet is never a room, and the text gates (printed areas, title-block words, a second number) still apply.

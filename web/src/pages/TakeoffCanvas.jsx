@@ -4833,6 +4833,42 @@ export default function TakeoffCanvas() {
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
 
+  // Focus (button, F, menu, palette). It zooms to, in order: the selected shape, the selected
+  // markup, or everything the active condition has placed on the open sheet(s) — and hides the
+  // panels and toolbars while doing it. With none of those it only toggles focus mode. While
+  // focus mode is already on it always exits, so the user can never get stuck in it.
+  const focusSelShape = selectedId ? shapes.find((s) => s.id === selectedId) : null;
+  const focusSelMarkup = !focusSelShape && selectedMarkupId ? markups.find((m) => m.id === selectedMarkupId) : null;
+  const focusCondShapes = !focusSelShape && !focusSelMarkup && activeCond
+    ? shapes.filter((s) => s.condition_id === activeCond && panelKeySet.has(s.sheet_id) && (s.verts_norm || []).length)
+    : [];
+  function zoomToShapes(list) {
+    const el = containerRef.current;
+    if (!el) return;
+    const xs = [], ys = [];
+    for (const sh of list) {
+      const sp = panels.find((p) => p.key === sh.sheet_id);
+      if (!sp?.img?.w) continue;
+      for (const v of sh.verts_norm || []) if (v.length === 2 && v.every(Number.isFinite)) { xs.push(v[0] * sp.img.w + sp.xOffset); ys.push(v[1] * sp.img.h); }
+    }
+    if (!xs.length) return;
+    const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(1, Math.max(...xs) - x0), h = Math.max(1, Math.max(...ys) - y0);
+    const r = el.getBoundingClientRect();
+    const scale = clamp(Math.min((r.width - 90) / w, (r.height - 90) / h, 1.5));
+    setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
+  }
+  function focusAction() {
+    const wasOn = getFocusMode();
+    toggleFocusMode();
+    if (wasOn) return;
+    // The zoom has to measure the canvas AFTER the panels are gone, or it frames the old, smaller area.
+    if (focusSelShape) locateWork(focusSelShape);   // its effect runs after the layout commit
+    else if (focusSelMarkup) { const m = focusSelMarkup; requestAnimationFrame(() => flyToMarkup(m)); }
+    else if (focusCondShapes.length) { const list = focusCondShapes; requestAnimationFrame(() => zoomToShapes(list)); }
+  }
+  const focusActionRef = useRef(focusAction);
+  focusActionRef.current = focusAction;   // the key handler below binds once per deps change; always call the latest
+
   // Single-letter tool shortcuts (STACK-style) — suppressed while typing or
   // while a toolbar menu is open. ⌘-combos and 1–9 live in their own handlers.
   useEffect(() => {
@@ -4867,7 +4903,7 @@ export default function TakeoffCanvas() {
       const lower = e.key.toLowerCase();
       if (viewRef.current === "gallery") return;
       if (lower === "g") { setView("gallery"); return; }
-      if (lower === "f") { toggleFocusMode(); return; }
+      if (lower === "f") { focusActionRef.current(); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
       // no `p` binding: pan is not a tool — drag open canvas, or Space/middle/right-drag
       // Q with a bendable trace in flight flips the straight/curve switch
@@ -10936,7 +10972,7 @@ export default function TakeoffCanvas() {
     { id: "work", label: tr("Open work and review"), group: tr("Workspace"), run: () => setAgentOpen(true) },
     { id: "layout", label: tr("Arrange and save your layout"), group: tr("Workspace"), run: () => setWorkspaceLayoutOpen(true) },
     { id: "fit", label: tr("Fit sheet to view"), group: tr("View"), disabled: !stage.w, run: () => fitToView(stage.w, stage.h) },
-    { id: "focus", label: tr("Focus mode"), group: tr("View"), shortcut: "F", run: toggleFocusMode },
+    { id: "focus", label: tr("Focus mode"), group: tr("View"), shortcut: "F", run: focusAction },
     { id: "theme", label: workspaceArrangement.look === "light" ? tr("Backlit graphite") : tr("Studio light"), group: tr("Appearance"), run: () => workspacePrefs.update({ look: workspaceArrangement.look === "light" ? "graphite" : "light" }) },
     { id: "addcondition", label: tr("Add condition"), group: tr("Conditions"), run: addCondition },
     ...scaleItems.filter((item) => item.onSelect).map((item) => ({ ...item, id: `scale-${item.id}`, group: tr("Scale"), run: item.onSelect })),
@@ -11793,8 +11829,8 @@ export default function TakeoffCanvas() {
               return (<>
                 {dockBottom && <button onClick={() => zoomStep(1.25)} title={tr("Zoom in")} aria-label={tr("Zoom in")} style={face(false)}><Icon name="zoomIn" size={16} /></button>}
                 {dockBottom && <button onClick={() => zoomStep(0.8)} title={tr("Zoom out")} aria-label={tr("Zoom out")} style={face(false)}><Icon name="zoomOut" size={16} /></button>}
-                <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={tr("Fit sheet to view")} aria-label={tr("Fit sheet to view")} style={{ ...face(false), ...(!dockBottom && language === "ru" ? { width: "auto", minWidth: 114, padding: "0 8px", whiteSpace: "nowrap" } : {}) }}>{dockBottom ? <Icon name="fit" size={16} /> : (language === "ru" ? "Лист целиком" : "fit")}</button>
-                <button onClick={() => toggleFocusMode()} title={uiText(focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)")} aria-label={tr("Focus mode")} aria-pressed={focusMode} style={face(focusMode)}>{dockBottom ? <Icon name="focus" size={16} /> : "⛶"}</button>
+                <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={tr("Fit sheet to view — show the whole sheet in the window")} aria-label={tr("Fit sheet to view")} style={{ ...face(false), ...(!dockBottom && language === "ru" ? { width: "auto", minWidth: 114, padding: "0 8px", whiteSpace: "nowrap" } : {}) }}>{dockBottom ? <Icon name="fit" size={16} /> : (language === "ru" ? "Лист целиком" : "fit")}</button>
+                <button onClick={() => focusAction()} title={uiText(focusMode ? "Exit focus mode — show panels and toolbars again (F)" : (focusSelShape || focusSelMarkup || focusCondShapes.length) ? "Focus — hide panels and zoom to the selection, or to where the active condition is placed (F)" : "Focus — hide panels and toolbars for a larger drawing area; select a shape first to zoom to it (F)")} aria-label={tr("Focus mode")} aria-pressed={focusMode} style={face(focusMode)}>{dockBottom ? <Icon name="focus" size={16} /> : "⛶"}</button>
                 <button name="view-3d" onClick={open3d} title="3D — this sheet's takeoff stood up: floors, base, transitions, wall runs, stairs. Read-only." aria-label="3D view" aria-pressed={!!show3d} style={{ ...face(!!show3d), fontSize: 11, fontWeight: 700 }}>3D</button>
                 <button onClick={() => setDarkMode((d) => !d)} title={uiText(darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)")} aria-label={tr("Invert sheet")} aria-pressed={darkMode} style={face(darkMode)}>{dockBottom ? <Icon name="invert" size={16} /> : (darkMode ? "☀" : "☾")}</button>
               </>);
@@ -12261,7 +12297,7 @@ export default function TakeoffCanvas() {
           "divider",
           { section: tr("Workspace") },
           { id: "layout", icon: "sliders", label: tr("Layout…"), onSelect: () => setWorkspaceLayoutOpen(true) },
-          { id: "focus", icon: "focus", label: tr("Focus mode"), shortcut: "F", onSelect: toggleFocusMode },
+          { id: "focus", icon: "focus", label: tr("Focus mode"), shortcut: "F", onSelect: focusAction },
           { id: "controls", label: tr(workspaceControlsOpen ? "Hide classic toolbar" : "Classic toolbar"), checked: workspaceControlsOpen, onSelect: () => setWorkspaceControlsOpen((v) => !v) },
           { id: "classic", label: tr("Classic layout"), onSelect: () => workspacePrefs.setEnabled(false) },
           ...(cloudMode ? [{ id: "closeproj", label: tr("Close project"), onSelect: closeProject }] : []),

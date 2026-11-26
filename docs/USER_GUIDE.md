@@ -1262,7 +1262,7 @@ The following key is available only in a build with One-Click enabled (see §6):
 | `⇧`+wheel | Pan |
 | Hold `Space` + drag | Pan (any tool) |
 | Middle-drag / right-drag | Pan (any tool) |
-| `F` | Focus mode—collapse the chrome, trade it for canvas height |
+| `F` | Focus—hide panels and toolbars for a larger drawing area, and zoom to the selected shape or markup, or to where the active condition is placed |
 | `Esc` (gallery open) | Clear the sheet search if one is typed; otherwise close the gallery; in Browse Drive, back to the plan set |
 | `Esc` (menu open) | Close the menu |
 | `Esc` (Import from schedule dialog open) | Close the dialog; while you're fixing a code, it only cancels that edit |
