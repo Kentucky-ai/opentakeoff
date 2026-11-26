@@ -4833,6 +4833,22 @@ export default function TakeoffCanvas() {
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
 
+  // Focus (button, F, menu, palette). Nothing selected: toggle focus mode (hide panels and
+  // toolbars). A shape or markup selected: hide the panels AND zoom to it. While focus mode
+  // is already on it always exits, so the user can never get stuck in it with a selection.
+  const focusSelShape = selectedId ? shapes.find((s) => s.id === selectedId) : null;
+  const focusSelMarkup = !focusSelShape && selectedMarkupId ? markups.find((m) => m.id === selectedMarkupId) : null;
+  function focusAction() {
+    const wasOn = getFocusMode();
+    toggleFocusMode();
+    if (wasOn) return;
+    // The zoom has to measure the canvas AFTER the panels are gone, or it frames the old, smaller area.
+    if (focusSelShape) locateWork(focusSelShape);   // its effect runs after the layout commit
+    else if (focusSelMarkup) { const m = focusSelMarkup; requestAnimationFrame(() => flyToMarkup(m)); }
+  }
+  const focusActionRef = useRef(focusAction);
+  focusActionRef.current = focusAction;   // the key handler below binds once per deps change; always call the latest
+
   // Single-letter tool shortcuts (STACK-style) — suppressed while typing or
   // while a toolbar menu is open. ⌘-combos and 1–9 live in their own handlers.
   useEffect(() => {
@@ -4867,7 +4883,7 @@ export default function TakeoffCanvas() {
       const lower = e.key.toLowerCase();
       if (viewRef.current === "gallery") return;
       if (lower === "g") { setView("gallery"); return; }
-      if (lower === "f") { toggleFocusMode(); return; }
+      if (lower === "f") { focusActionRef.current(); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
       // no `p` binding: pan is not a tool — drag open canvas, or Space/middle/right-drag
       // Q with a bendable trace in flight flips the straight/curve switch
@@ -10936,7 +10952,7 @@ export default function TakeoffCanvas() {
     { id: "work", label: tr("Open work and review"), group: tr("Workspace"), run: () => setAgentOpen(true) },
     { id: "layout", label: tr("Arrange and save your layout"), group: tr("Workspace"), run: () => setWorkspaceLayoutOpen(true) },
     { id: "fit", label: tr("Fit sheet to view"), group: tr("View"), disabled: !stage.w, run: () => fitToView(stage.w, stage.h) },
-    { id: "focus", label: tr("Focus mode"), group: tr("View"), shortcut: "F", run: toggleFocusMode },
+    { id: "focus", label: tr("Focus mode"), group: tr("View"), shortcut: "F", run: focusAction },
     { id: "theme", label: workspaceArrangement.look === "light" ? tr("Backlit graphite") : tr("Studio light"), group: tr("Appearance"), run: () => workspacePrefs.update({ look: workspaceArrangement.look === "light" ? "graphite" : "light" }) },
     { id: "addcondition", label: tr("Add condition"), group: tr("Conditions"), run: addCondition },
     ...scaleItems.filter((item) => item.onSelect).map((item) => ({ ...item, id: `scale-${item.id}`, group: tr("Scale"), run: item.onSelect })),
@@ -11794,7 +11810,7 @@ export default function TakeoffCanvas() {
                 {dockBottom && <button onClick={() => zoomStep(1.25)} title={tr("Zoom in")} aria-label={tr("Zoom in")} style={face(false)}><Icon name="zoomIn" size={16} /></button>}
                 {dockBottom && <button onClick={() => zoomStep(0.8)} title={tr("Zoom out")} aria-label={tr("Zoom out")} style={face(false)}><Icon name="zoomOut" size={16} /></button>}
                 <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={tr("Fit sheet to view — show the whole sheet in the window")} aria-label={tr("Fit sheet to view")} style={{ ...face(false), ...(!dockBottom && language === "ru" ? { width: "auto", minWidth: 114, padding: "0 8px", whiteSpace: "nowrap" } : {}) }}>{dockBottom ? <Icon name="fit" size={16} /> : (language === "ru" ? "Лист целиком" : "fit")}</button>
-                <button onClick={() => toggleFocusMode()} title={uiText(focusMode ? "Exit focus mode — show panels and toolbars again (F)" : "Focus mode — hide panels and toolbars for a larger drawing area (F)")} aria-label={tr("Focus mode")} aria-pressed={focusMode} style={face(focusMode)}>{dockBottom ? <Icon name="focus" size={16} /> : "⛶"}</button>
+                <button onClick={() => focusAction()} title={uiText(focusMode ? "Exit focus mode — show panels and toolbars again (F)" : (focusSelShape || focusSelMarkup) ? "Focus — hide panels and zoom to the selected shape or markup (F)" : "Focus — hide panels and toolbars for a larger drawing area; select a shape first to zoom to it (F)")} aria-label={tr("Focus mode")} aria-pressed={focusMode} style={face(focusMode)}>{dockBottom ? <Icon name="focus" size={16} /> : "⛶"}</button>
                 <button name="view-3d" onClick={open3d} title="3D — this sheet's takeoff stood up: floors, base, transitions, wall runs, stairs. Read-only." aria-label="3D view" aria-pressed={!!show3d} style={{ ...face(!!show3d), fontSize: 11, fontWeight: 700 }}>3D</button>
                 <button onClick={() => setDarkMode((d) => !d)} title={uiText(darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)")} aria-label={tr("Invert sheet")} aria-pressed={darkMode} style={face(darkMode)}>{dockBottom ? <Icon name="invert" size={16} /> : (darkMode ? "☀" : "☾")}</button>
               </>);
@@ -12261,7 +12277,7 @@ export default function TakeoffCanvas() {
           "divider",
           { section: tr("Workspace") },
           { id: "layout", icon: "sliders", label: tr("Layout…"), onSelect: () => setWorkspaceLayoutOpen(true) },
-          { id: "focus", icon: "focus", label: tr("Focus mode"), shortcut: "F", onSelect: toggleFocusMode },
+          { id: "focus", icon: "focus", label: tr("Focus mode"), shortcut: "F", onSelect: focusAction },
           { id: "controls", label: tr(workspaceControlsOpen ? "Hide classic toolbar" : "Classic toolbar"), checked: workspaceControlsOpen, onSelect: () => setWorkspaceControlsOpen((v) => !v) },
           { id: "classic", label: tr("Classic layout"), onSelect: () => workspacePrefs.setEnabled(false) },
           ...(cloudMode ? [{ id: "closeproj", label: tr("Close project"), onSelect: closeProject }] : []),
